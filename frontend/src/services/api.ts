@@ -55,7 +55,7 @@ function updateCsrfToken(response: Response): void {
 
 // Helper function for API calls with CSRF protection
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...options?.headers,
   };

@@ -284,7 +284,7 @@ describe('Updates', () => {
     })
 
     it('highlights active filter type button', async () => {
-      const { container } = render(<Updates />)
+      render(<Updates />)
 
       await waitFor(() => {
         expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
@@ -568,7 +568,7 @@ describe('Updates', () => {
     })
 
     it('rejects update without reason when prompt cancelled', async () => {
-      const { toast } = await import('sonner')
+      await import('sonner')
       ;(api.updates.reject as any).mockResolvedValue({ success: true })
 
       // Mock window.prompt to return null (cancelled)
@@ -592,7 +592,7 @@ describe('Updates', () => {
     })
 
     it('applies update with confirmation when apply action called', async () => {
-      const { toast } = await import('sonner')
+      await import('sonner')
       ;(api.updates.apply as any).mockResolvedValue({ success: true })
       ;(api.updates.get as any).mockResolvedValue({
         id: 1,

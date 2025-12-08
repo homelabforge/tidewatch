@@ -4,11 +4,14 @@
 
 TideWatch is a comprehensive Docker container update manager that provides real-time monitoring, intelligent scheduling, automated restarts, and seamless integration with multiple notification services. Keep your Docker containers up-to-date while maintaining security and stability across your homelab.
 
-[![Version](https://img.shields.io/badge/version-3.4.0-blue.svg)](https://github.com/homelabforge/tidewatch)
-[![Python](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
-[![React](https://img.shields.io/badge/react-19.2-blue.svg)](https://reactjs.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/homelabforge/tidewatch/pkgs/container/tidewatch)
+[![CI](https://github.com/homelabforge/tidewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml)
+[![CodeQL](https://github.com/homelabforge/tidewatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-2.14.0-green.svg)](https://github.com/homelabforge/tidewatch/releases)
+[![Docker](https://img.shields.io/badge/Docker-Available-2496ED?logo=docker&logoColor=white)](https://github.com/homelabforge/tidewatch/pkgs/container/mygarage)
+[![Python 3.14+](https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
 
 🌐 **[Website](https://homelabforge.io/builds/tidewatch/)** | 📖 **[Documentation](https://github.com/homelabforge/tidewatch/wiki)** | 💬 **[Discussions](https://github.com/homelabforge/tidewatch/discussions)**
 
