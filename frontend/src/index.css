@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  /* Tidewatch brand colors - consistent across themes */
+  --color-primary: var(--color-teal-500);
+  --color-accent: var(--color-orange-500);
+
+  /* Semantic theme colors - Dark theme (default) */
+  --color-tide-bg: #0a0e14;
+  --color-tide-surface: #1a1f28;
+  --color-tide-surface-light: #2a3040;
+  --color-tide-border: #3a4050;
+  --color-tide-border-light: #4a5060;
+  --color-tide-text: #e4e6eb;
+  --color-tide-text-muted: #9ca3af;
+  --color-tide-text-disabled: #6b7280;
+}
+
+@layer base {
+  /* Light theme overrides */
+  html.light {
+    --color-tide-bg: #f0fdfa;
+    --color-tide-surface: #ffffff;
+    --color-tide-surface-light: #ccfbf1;
+    --color-tide-border: #99f6e4;
+    --color-tide-border-light: #5eead4;
+    --color-tide-text: #111827;
+    --color-tide-text-muted: #6b7280;
+    --color-tide-text-disabled: #9ca3af;
+  }
+
+  body {
+    margin: 0;
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom scrollbar - Dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Custom scrollbar - Light theme */
+html.light ::-webkit-scrollbar-track {
+  background: #ccfbf1;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #5eead4;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #2dd4bf;
+}

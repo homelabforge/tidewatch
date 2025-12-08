@@ -1,0 +1,104 @@
+# TideWatch - Docker Compose Example Configuration
+# Copy this file to compose.yaml and customize for your environment
+
+services:
+  tidewatch:
+    container_name: tidewatch
+    image: ghcr.io/homelabforge/tidewatch:latest
+
+    # Environment variables
+    environment:
+      # Timezone (adjust to your location)
+      - TZ=America/New_York
+
+      # Docker connection (choose one option below)
+      - DOCKER_HOST=unix:///var/run/docker.sock  # Direct socket mount (default)
+      # - DOCKER_HOST=tcp://socket-proxy:2375    # Socket proxy (recommended for security)
+
+      # Database (SQLite is default, PostgreSQL optional)
+      # - DATABASE_URL=sqlite+aiosqlite:////data/tidewatch.db  # Default SQLite
+      # - DATABASE_URL=postgresql+asyncpg://tidewatch:password@postgres:5432/tidewatch  # PostgreSQL
+
+      # Security Settings (production recommendations)
+      - TIDEWATCH_DEBUG=false           # Set to true only in development
+      - CSRF_SECURE_COOKIE=false        # Set to true if using HTTPS
+      # - CORS_ORIGINS=https://tidewatch.yourdomain.com  # Set to your domain in production
+
+      # Database Encryption (optional but recommended)
+      # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      # - TIDEWATCH_ENCRYPTION_KEY=your-fernet-key-here
+
+      # OIDC/SSO Authentication (optional - for enterprise SSO)
+      # Supports: Authentik, Authelia, Keycloak, Google Workspace, Microsoft Entra ID, GitHub
+      # - OIDC_PROVIDER_URL=https://authentik.example.com/application/o/tidewatch/
+      # - OIDC_CLIENT_ID=your-client-id
+      # - OIDC_CLIENT_SECRET=your-client-secret
+      # - OIDC_REDIRECT_URI=https://tidewatch.example.com/api/auth/oidc/callback
+
+      # Logging
+      # - LOG_LEVEL=INFO  # Options: DEBUG, INFO, WARNING, ERROR
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8788/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+    # Networks
+    networks:
+      - default
+      # - proxy  # Add if using reverse proxy (Traefik, Nginx Proxy Manager, etc.)
+
+    # Port mapping (choose one option below)
+    ports:
+      - "8788:8788"  # Direct access
+      # - "127.0.0.1:8788:8788"  # Localhost only (use with reverse proxy)
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+
+    # Volume mounts
+    volumes:
+      # Persistent data directory (required)
+      - ./data:/data
+
+      # Docker socket (choose one option below)
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Direct mount (simple but less secure)
+      # Socket proxy is recommended for production - see documentation
+
+      # Optional: Docker Compose files directory (for auto-discovery)
+      # - /path/to/compose/files:/compose:ro
+
+      # Optional: Project directories (for "My Projects" auto-discovery)
+      # - /path/to/projects:/projects:ro
+
+# Optional: PostgreSQL database (uncomment to use instead of SQLite)
+# postgres:
+#   image: postgres:17-alpine
+#   container_name: tidewatch-db
+#   environment:
+#     - POSTGRES_DB=tidewatch
+#     - POSTGRES_USER=tidewatch
+#     - POSTGRES_PASSWORD=secure-password-here
+#   volumes:
+#     - postgres-data:/var/lib/postgresql/data
+#   networks:
+#     - default
+#   restart: unless-stopped
+
+# Networks
+networks:
+  default:
+    driver: bridge
+  # proxy:  # Uncomment if using reverse proxy
+  #   external: true
+
+# Volumes (if using PostgreSQL)
+# volumes:
+#   postgres-data:

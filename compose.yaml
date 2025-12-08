@@ -1,0 +1,48 @@
+services:
+  tidewatch-dev:
+    container_name: tidewatch-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          pids: 150
+    env_file:
+      - .env
+    environment:
+      DOCKER_HOST: tcp://socket-proxy-rw:2375
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8788/health"]
+      interval: 20s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    image: tidewatch
+    labels:
+      dev.environment: "test"
+      dev.project: "tidewatch"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - docker_api_rw
+      - proxy
+    ports: ["12349:8788"]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./data:/data
+      - /srv/raid0/docker/compose:/compose:rw
+      - /srv/raid0/docker/build:/projects:ro
+
+networks:
+  docker_api_ro:
+    external: true
+  docker_api_rw:
+    external: true
+  proxy:
+    external: true

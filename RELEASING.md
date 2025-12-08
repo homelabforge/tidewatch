@@ -1,0 +1,670 @@
+# Tidewatch Release Process
+
+**Purpose**: Step-by-step guide for creating Tidewatch releases following semantic versioning and dev-sop.md standards.
+
+**Audience**: Maintainers
+
+**Last Updated**: 2025-12-06
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Private Repository Workflow](#private-repository-workflow)
+3. [Pre-Release Checklist](#pre-release-checklist)
+4. [Version Numbering](#version-numbering)
+5. [Release Process](#release-process)
+6. [Post-Release](#post-release)
+7. [Rollback Procedures](#rollback-procedures)
+8. [Troubleshooting](#troubleshooting)
+
+---
+
+## Overview
+
+Tidewatch uses **Semantic Versioning** (`MAJOR.MINOR.PATCH`) for all releases.
+
+### Release Automation
+
+Our release process is **semi-automated**:
+- ✅ Automated: Testing (CI), Docker build, GHCR publishing, GitHub release creation, changelog extraction
+- 🔧 Manual: Version bumping, CHANGELOG.md updates, git tag creation, history documentation
+
+### Release Artifacts
+
+Each release produces:
+1. **GitHub Release** with extracted changelog
+2. **Docker Images** on GHCR with 4 tags (`latest`, `MAJOR.MINOR.PATCH`, `MAJOR.MINOR`, `MAJOR`)
+
+---
+
+## Release Workflow
+
+This repository is public and ready for releases.
+
+### Automated Release Process
+
+When you create a new release tag, GitHub Actions will automatically:
+
+1. **Build & Test**: Run full test suite
+2. **Build Docker Images**: Multi-platform builds (amd64, arm64)
+3. **Publish to GHCR**: Push images with version tags
+4. **Create GitHub Release**: Extract changelog and create release notes
+5. **Artifact Attestation**: Generate supply chain security metadata
+
+### Release Tagging
+
+Releases follow semantic versioning (MAJOR.MINOR.PATCH):
+
+1. **Push changes to main**:
+   ```bash
+   git add .
+   git commit -m "feat: Add container auto-discovery"
+   git push origin main
+   ```
+
+2. **CI will run** - tests, linting, type checking
+   - All tests must pass (no `continue-on-error` flags)
+   - Backend: Target 98%+ pass rate
+   - Frontend: Target 97%+ pass rate
+
+3. **Docker build test will run** - verifies Docker image builds
+
+4. **Create tags if needed** for version tracking:
+   ```bash
+   git tag -a v3.4.0 -m "Release v3.4.0"
+   git push origin v3.4.0
+   ```
+
+5. **Release workflow will create GitHub release** (changelog extraction works)
+
+6. **Docker publish workflow will fail** (attestation issue)
+   - Expected behavior while private
+   - Images won't be published to GHCR
+   - Build and test your images locally instead:
+     ```bash
+     docker build -t tidewatch:3.4.0 .
+     docker run --rm -p 8788:8788 tidewatch:3.4.0
+     ```
+
+### When Ready to Go Public
+
+When you're ready to make the repository public and publish Docker images:
+
+#### Step 1: Make Repository Public
+
+1. Go to repository Settings
+2. Scroll to "Danger Zone"
+3. Click "Change repository visibility"
+4. Change to **Public**
+5. Confirm the change
+
+#### Step 2: Configure GHCR Package Visibility
+
+After first successful Docker build:
+
+1. Go to `https://github.com/orgs/homelabforge/packages`
+2. Find the `tidewatch` package
+3. Click "Package settings"
+4. Change visibility to **Public**
+5. Confirm the change
+
+#### Step 3: Re-run Failed Docker Workflows
+
+1. Go to Actions → Docker Build & Publish
+2. Find the failed workflow run for your latest tag
+3. Click "Re-run all jobs"
+4. Workflow should now succeed and publish images
+
+#### Step 4: Verify Public Release
+
+```bash
+# Pull published image
+docker pull ghcr.io/homelabforge/tidewatch:latest
+docker pull ghcr.io/homelabforge/tidewatch:3.4.0
+
+# Test the image
+docker run --rm -p 8788:8788 ghcr.io/homelabforge/tidewatch:latest
+```
+
+### Repository Settings to Verify
+
+Before going public, ensure:
+
+**Settings → Actions → General:**
+- ✅ "Read and write permissions" enabled
+- ✅ "Allow GitHub Actions to create and approve pull requests" enabled
+
+**Settings → Code security:**
+- ✅ Dependabot alerts enabled
+- ✅ Dependabot security updates enabled
+- ✅ CodeQL analysis enabled
+- ✅ Secret scanning enabled
+
+---
+
+## Pre-Release Checklist
+
+Before starting a release, verify:
+
+### Code Quality
+- [ ] All changes committed and pushed to main branch
+- [ ] CI workflow passing (tests, linting, type checking)
+- [ ] Docker build test passing
+- [ ] No open critical bugs or security issues
+- [ ] Backend tests: **98%+ pass rate**
+- [ ] Frontend tests: **97%+ pass rate**
+
+### Testing
+- [ ] Backend pytest runs clean: `pytest backend/tests/unit/ -v`
+- [ ] Frontend vitest runs clean: `npm --prefix frontend test -- --run`
+- [ ] Type checking passes: `npx tsc --noEmit --project frontend/tsconfig.json`
+- [ ] Linting clean: `npm --prefix frontend run lint`
+- [ ] Docker build succeeds: `docker build -t tidewatch:test .`
+- [ ] Test container runs: `docker run --rm tidewatch:test`
+
+### Documentation
+- [ ] CHANGELOG.md updated with all changes in `[Unreleased]` section
+- [ ] README.md is current (features, installation, configuration)
+- [ ] API documentation reflects any endpoint changes
+- [ ] No TODO/FIXME comments in production code
+
+### Security
+- [ ] No secrets or sensitive data in code
+- [ ] No debug/console logs in production code
+- [ ] Security vulnerabilities addressed (Dependabot, CodeQL)
+- [ ] Third-party dependencies reviewed and updated
+
+---
+
+## Version Numbering
+
+Tidewatch follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`).
+
+### When to Bump
+
+**MAJOR (x.0.0)** - Breaking changes:
+- Incompatible API changes
+- Removed endpoints or features
+- Database schema changes requiring manual migration
+- Changed authentication mechanisms
+- Configuration format changes
+
+**Examples:**
+- `3.4.0` → `4.0.0`: Remove REST API v1, keep only v2
+- `3.4.0` → `4.0.0`: Change from JWT to OAuth2
+
+**MINOR (0.x.0)** - New features (backward-compatible):
+- New API endpoints
+- New features or functionality
+- Significant enhancements
+- New optional configuration options
+- New notification services or integrations
+
+**Examples:**
+- `3.4.0` → `3.5.0`: Add Prometheus metrics export
+- `3.4.0` → `3.5.0`: Add webhook support for updates
+
+**PATCH (0.0.x)** - Bug fixes and patches:
+- Bug fixes
+- Security patches
+- Performance improvements (no API changes)
+- Documentation updates
+- Dependency updates (no breaking changes)
+
+**Examples:**
+- `3.4.0` → `3.4.1`: Fix update detection for multi-arch images
+- `3.4.0` → `3.4.2`: Security patch for dependency
+
+### Pre-Release Versions
+
+For alpha, beta, or release candidate versions:
+- `3.5.0-alpha.1` - Early testing, unstable
+- `3.5.0-beta.1` - Feature-complete, testing
+- `3.5.0-rc.1` - Release candidate, final testing
+
+The release workflow automatically detects pre-releases and marks them appropriately.
+
+---
+
+## Release Process
+
+### Step 1: Update Version Numbers
+
+**Update backend version:**
+
+Edit `backend/pyproject.toml`:
+```toml
+[project]
+name = "tidewatch"
+version = "3.5.0"  # Update this line
+```
+
+**Update frontend version:**
+
+Edit `frontend/package.json`:
+```json
+{
+  "name": "tidewatch-frontend",
+  "version": "3.5.0",  # Update this line
+  ...
+}
+```
+
+### Step 2: Update CHANGELOG.md
+
+**Edit CHANGELOG.md:**
+
+1. Change `[Unreleased]` to `[3.5.0] - 2025-12-15` (use actual date)
+2. Ensure all changes are categorized (Added, Changed, Fixed, Security, etc.)
+3. Add new `[Unreleased]` section at top:
+
+```markdown
+# Changelog
+
+## [Unreleased]
+
+## [3.5.0] - 2025-12-15
+
+### Added
+- Prometheus metrics export endpoint
+- Webhook notifications for container updates
+
+### Changed
+- Improved update detection for multi-arch images
+
+### Fixed
+- Fixed auto-restart exponential backoff calculation
+```
+
+### Step 3: Commit Changes
+
+```bash
+git add backend/pyproject.toml frontend/package.json CHANGELOG.md
+git commit -m "chore: Bump version to 3.5.0"
+git push origin main
+```
+
+### Step 4: Verify CI Passes
+
+**Wait for CI to complete:**
+1. Go to GitHub Actions tab
+2. Verify CI workflow passes
+3. Check all three jobs: Backend Tests, Frontend Tests, Docker Build Test
+
+**If CI fails:**
+- Fix issues and commit
+- Wait for CI to pass before continuing
+
+### Step 5: Create Git Tag
+
+**Create and push annotated tag:**
+```bash
+git tag -a v3.5.0 -m "Release v3.5.0"
+git push origin v3.5.0
+```
+
+**Tag format:**
+- Always prefix with `v` (e.g., `v3.5.0`)
+- Use annotated tags (`-a` flag)
+- Include version in message
+
+### Step 6: Monitor Automated Release
+
+**Watch automation:**
+1. **GitHub Actions** - Two workflows will trigger:
+   - `Docker Build & Publish` - Builds and publishes Docker images
+   - `Release` - Creates GitHub release
+
+2. **Check Docker Build** workflow:
+   - Verify image builds successfully
+   - Check GHCR for new images: `ghcr.io/homelabforge/tidewatch:3.5.0`
+   - Verify all 4 tags created: `3.5.0`, `3.5`, `3`, `latest`
+
+3. **Check Release** workflow:
+   - Verify GitHub release created
+   - Confirm changelog extracted correctly
+   - Check release assets (if any)
+
+**Expected duration:** 5-10 minutes total
+
+### Step 7: Test Published Image
+
+**Pull and test the published image:**
+```bash
+# Pull the new image
+docker pull ghcr.io/homelabforge/tidewatch:3.5.0
+
+# Test it runs
+docker run --rm -p 8788:8788 ghcr.io/homelabforge/tidewatch:3.5.0
+
+# Visit http://localhost:8788 and verify:
+# - Application starts
+# - Version shows 3.5.0 in footer/about
+# - Health check passes: curl http://localhost:8788/health
+```
+
+### Step 8: Verify Release
+
+**Verify the release was successful:**
+- Check GitHub Releases page for new release
+- Verify Docker images available on GHCR
+- Test published image works correctly
+
+### Step 9: Update Your Production Deployment (Optional)
+
+**If managing your own production deployment:**
+```bash
+# Update docker-compose.yml to new version
+image: ghcr.io/homelabforge/tidewatch:3.5.0
+
+# Or use latest (auto-updates)
+image: ghcr.io/homelabforge/tidewatch:latest
+
+# Pull and restart
+docker compose pull
+docker compose up -d
+```
+
+---
+
+## Post-Release
+
+### Announcement
+
+1. **GitHub Discussions** - Announce the release with highlights
+2. **Update Website** - Update homelabforge.io/builds/tidewatch if applicable
+3. **Social Media** - Share on relevant platforms (optional)
+
+### Verification
+
+- [ ] GitHub release visible and accurate
+- [ ] Docker images available on GHCR (4 tags)
+- [ ] README.md still accurate
+- [ ] Documentation site updated (if applicable)
+
+### Monitoring
+
+**Watch for issues in first 24-48 hours:**
+- GitHub Issues for bug reports
+- GitHub Discussions for questions
+- Docker pulls and deployment issues
+
+---
+
+## Rollback Procedures
+
+If a critical issue is discovered after release, follow these steps:
+
+### Option 1: Hotfix Release (Recommended)
+
+**For critical bugs or security issues:**
+
+1. Fix the issue on main branch
+2. Bump PATCH version (e.g., `3.5.0` → `3.5.1`)
+3. Update CHANGELOG.md with `[3.5.1]` section documenting the fix
+4. Follow normal release process (Steps 1-9)
+5. Hotfix will automatically become `:latest` tag
+
+**Advantages:**
+- Maintains release history
+- Users on `:latest` auto-update
+- Clear audit trail
+
+### Option 2: Delete Release and Tag (Last Resort)
+
+**Only for catastrophic failures (data loss, security breach):**
+
+1. **Delete GitHub Release:**
+   - Go to GitHub Releases page
+   - Click on problematic release
+   - Delete release
+
+2. **Delete Git Tag:**
+   ```bash
+   # Delete local tag
+   git tag -d v3.5.0
+
+   # Delete remote tag
+   git push origin :refs/tags/v3.5.0
+   ```
+
+3. **Delete Docker Images** (if necessary):
+   - Go to GHCR package page
+   - Delete specific version tag
+   - Note: Cannot delete `:latest` if it's already pulled by users
+
+4. **Revert Version Numbers:**
+   - Revert `pyproject.toml` and `package.json` to previous version
+   - Revert CHANGELOG.md changes
+   - Commit: `git commit -m "chore: Revert to v3.4.0 due to critical issue"`
+
+5. **Communicate:**
+   - Post GitHub Issue explaining the rollback
+   - Update Discussions
+   - Notify users via announcement
+
+**Disadvantages:**
+- Breaks versioning sequence
+- Confuses users who already pulled the image
+- Creates history gaps
+
+---
+
+## Troubleshooting
+
+### CI Workflow Fails
+
+**Symptoms**: CI workflow shows red X on GitHub Actions
+
+**Diagnosis:**
+```bash
+# Check CI logs on GitHub Actions tab
+# Common issues:
+# - Test failures
+# - Linting errors
+# - Type checking failures
+# - Docker build failures
+```
+
+**Solutions:**
+1. Fix the failing tests/lints locally
+2. Run tests: `pytest tests/unit/` and `npm test -- --run`
+3. Commit fixes
+4. Wait for CI to pass
+5. Continue release process
+
+**Note**: Tests use `continue-on-error: true` per dev-sop.md, so they won't block the workflow, but you should still fix them.
+
+### Docker Build Workflow Fails
+
+**Symptoms**: Docker Build & Publish workflow fails after tag push
+
+**Common causes:**
+1. **Authentication failure** - GITHUB_TOKEN permissions
+2. **Dockerfile errors** - Syntax or build issues
+3. **GHCR permissions** - Package not configured
+
+**Solutions:**
+
+**For auth issues:**
+```bash
+# Verify repository settings
+# Settings → Actions → General → Workflow permissions
+# Ensure "Read and write permissions" is enabled
+```
+
+**For Dockerfile issues:**
+```bash
+# Test build locally
+docker build -t tidewatch:test .
+
+# Fix Dockerfile errors
+# Commit and create new tag (e.g., v3.5.1)
+```
+
+**For GHCR permissions:**
+```bash
+# Go to GitHub → Package settings
+# Ensure package is public
+# Verify organization permissions
+```
+
+### Release Workflow Fails
+
+**Symptoms**: Release workflow fails, no GitHub release created
+
+**Common causes:**
+1. **CHANGELOG.md format** - Can't extract version
+2. **Permissions** - Can't create release
+3. **Duplicate release** - Tag already has release
+
+**Solutions:**
+
+**For changelog extraction:**
+- Verify CHANGELOG.md has `## [3.5.0]` section
+- Check format matches Keep a Changelog spec
+- Workflow will fallback to generic message if extraction fails
+
+**For permissions:**
+- Check workflow has `permissions: contents: write`
+- Verify repository settings allow workflow to create releases
+
+**For duplicate releases:**
+- Delete existing release via GitHub UI
+- Re-run workflow or delete and recreate tag
+
+### Wrong Version Tag Published
+
+**Symptoms**: Created tag `v3.5.0` but meant `v3.6.0`
+
+**Solution:**
+```bash
+# Delete wrong tag
+git tag -d v3.5.0
+git push origin :refs/tags/v3.5.0
+
+# Delete GitHub release (via GitHub UI)
+
+# Update version numbers correctly
+# Edit pyproject.toml, package.json, CHANGELOG.md
+
+# Commit corrections
+git add .
+git commit -m "chore: Fix version to 3.6.0"
+git push
+
+# Create correct tag
+git tag -a v3.6.0 -m "Release v3.6.0"
+git push origin v3.6.0
+```
+
+### Docker Image Won't Pull
+
+**Symptoms**: `docker pull ghcr.io/homelabforge/tidewatch:3.5.0` fails
+
+**Diagnosis:**
+```bash
+# Check if image exists on GHCR
+# Visit: https://github.com/orgs/homelabforge/packages/container/tidewatch
+
+# Try with full path
+docker pull ghcr.io/homelabforge/tidewatch:3.5.0
+
+# Check Docker daemon logs
+docker system info
+```
+
+**Solutions:**
+- Verify image published (check GitHub Actions logs)
+- Ensure package is public (not private)
+- Check GHCR is accessible (not down)
+- Try `:latest` tag instead
+
+---
+
+## Release Schedule
+
+### Regular Releases
+
+**Cadence**: As needed, typically:
+- **MAJOR**: Annually or when breaking changes necessary
+- **MINOR**: Monthly or when significant features ready
+- **PATCH**: As needed for bug fixes (1-2 weeks)
+
+### Security Releases
+
+**Critical vulnerabilities**: Immediate patch release
+- CVE with CVSS score ≥7.0
+- Data exposure risks
+- Authentication bypasses
+
+**Process:**
+1. Fix vulnerability on private branch
+2. Test thoroughly
+3. Bump PATCH version
+4. Release immediately
+5. Announce via GitHub Security Advisories
+
+### Dependency Updates
+
+**Automated via Dependabot:**
+- Weekly PRs for backend (pip), frontend (npm), actions, docker
+- Review and merge within 7 days
+- Trigger PATCH release if security-related
+- Batch non-security updates monthly
+
+---
+
+## Release Checklist Template
+
+Copy this checklist for each release:
+
+```markdown
+## Release v3.x.x Checklist
+
+### Pre-Release
+- [ ] All changes committed to main
+- [ ] CI passing (tests, linting, type checking)
+- [ ] Docker build test passing
+- [ ] Version bumped in pyproject.toml and package.json
+- [ ] CHANGELOG.md updated (Unreleased → [3.x.x] - DATE)
+- [ ] README.md accurate
+- [ ] No secrets in code
+- [ ] Security issues addressed
+
+### Release
+- [ ] Changes committed: `git commit -m "chore: Bump version to 3.x.x"`
+- [ ] Changes pushed: `git push origin main`
+- [ ] CI verified passing
+- [ ] Tag created: `git tag -a v3.x.x -m "Release v3.x.x"`
+- [ ] Tag pushed: `git push origin v3.x.x`
+
+### Post-Release
+- [ ] Docker Build workflow completed successfully
+- [ ] Release workflow completed successfully
+- [ ] GitHub release created with correct changelog
+- [ ] Docker images available on GHCR (4 tags)
+- [ ] Tested published image: `docker pull ghcr.io/homelabforge/tidewatch:3.x.x`
+- [ ] Release announced (Discussions, website, etc.)
+
+### Verification (24h)
+- [ ] No critical issues reported
+- [ ] Docker pulls working
+- [ ] Users deploying successfully
+```
+
+---
+
+## References
+
+- **Semantic Versioning**: https://semver.org/
+- **Keep a Changelog**: https://keepachangelog.com/
+- **GitHub Actions Docs**: https://docs.github.com/en/actions
+- **GHCR Docs**: https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
+
+---
+
+**Last Updated**: 2025-12-06
+**Maintained By**: HomelabForge
