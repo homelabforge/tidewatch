@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed TypeScript compilation errors in frontend type definitions
+  - Added missing `id` property to `UserProfile` interface
+  - Fixed CSRF header type incompatibility in API client
+  - Removed unused variables in test files
+- Fixed CodeQL security and code quality issues
+  - Fixed illegal raise of potentially None exception in retry decorators
+  - Removed redundant json import in docker_stats.py
+  - Removed unused imports across backend and frontend
+
+### Changed
+- Updated GitHub Actions workflows to latest versions
+  - actions/upload-artifact v4 → v5
+  - actions/checkout v4 → v6
+  - actions/setup-python v5 → v6
+- Added comprehensive GitHub repository configuration
+  - Issue templates (bug reports, feature requests)
+  - Pull request template with testing checklist
+  - Dependabot configuration for automated dependency updates
+  - GitHub release workflow with changelog extraction
+  - Docker build workflow for multi-platform images
+
 ## [3.4.0] - 2025-12-06
 
 ### Security
