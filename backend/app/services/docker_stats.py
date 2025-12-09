@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 from typing import Dict, Optional
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +344,6 @@ class DockerStatsService:
             if process.returncode != 0:
                 return None
 
-            import json
             state = json.loads(stdout.decode())
 
             return {

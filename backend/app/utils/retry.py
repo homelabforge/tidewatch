@@ -67,7 +67,9 @@ def async_retry(
                     await asyncio.sleep(backoff)
 
             # This should never be reached, but satisfy type checker
-            raise last_exception
+            if last_exception:
+                raise last_exception
+            raise RuntimeError(f"{func.__name__} failed after {max_attempts} attempts with no exception captured")
 
         return wrapper
     return decorator
@@ -124,7 +126,9 @@ def sync_retry(
                     time.sleep(backoff)
 
             # This should never be reached, but satisfy type checker
-            raise last_exception
+            if last_exception:
+                raise last_exception
+            raise RuntimeError(f"{func.__name__} failed after {max_attempts} attempts with no exception captured")
 
         return wrapper
     return decorator

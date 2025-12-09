@@ -587,7 +587,7 @@ describe('Settings', () => {
 
   describe('Setting updates', () => {
     it('saves settings when changed', async () => {
-      const { toast } = await import('sonner')
+      await import('sonner')
       ;(api.settings.set as any).mockResolvedValue({ key: 'check_interval', value: '7200' })
 
       renderSettings()

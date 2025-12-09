@@ -8,7 +8,7 @@ This module provides functions to prevent security vulnerabilities:
 
 import re
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union
 
 
 def sanitize_log_message(msg: Union[str, bytes, int, float, None]) -> str:
