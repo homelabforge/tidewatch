@@ -4,8 +4,6 @@
 
 TideWatch is a comprehensive Docker container update manager that provides real-time monitoring, intelligent scheduling, automated restarts, and seamless integration with multiple notification services. Keep your Docker containers up-to-date while maintaining security and stability across your homelab.
 
-[![CI](https://github.com/homelabforge/tidewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml)
 [![CodeQL](https://github.com/homelabforge/tidewatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-3.4.0-green.svg)](https://github.com/homelabforge/tidewatch/releases)
@@ -644,7 +642,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 - Built for homelabbers and self-hosted enthusiasts
-- AI-assisted development with Claude and GitHub Copilot
+- AI-assisted development with Claude and Codex
 - Part of the [HomelabForge](https://homelabforge.io) ecosystem
 - Inspired by modern container orchestration needs
 
