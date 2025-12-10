@@ -8,11 +8,14 @@ This migration adds:
 These fields allow tracking rejection history similar to approval tracking.
 """
 
+from sqlalchemy import text
+
+
 async def up(db):
     """Add rejection fields to updates table."""
-    await db.execute("ALTER TABLE updates ADD COLUMN rejected_by VARCHAR")
-    await db.execute("ALTER TABLE updates ADD COLUMN rejected_at DATETIME")
-    await db.execute("ALTER TABLE updates ADD COLUMN rejection_reason TEXT")
+    await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_by VARCHAR"))
+    await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_at DATETIME"))
+    await db.execute(text("ALTER TABLE updates ADD COLUMN rejection_reason TEXT"))
     await db.commit()
 
 

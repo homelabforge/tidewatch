@@ -2,6 +2,7 @@
 
 import logging
 import importlib.util
+import inspect
 from pathlib import Path
 from typing import Set, List, Tuple
 from sqlalchemy import text
@@ -108,15 +109,28 @@ class MigrationRunner:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        # Execute upgrade or migrate function
+        # Execute upgrade/migrate/up function (try in order of preference)
+        migration_func = None
         if hasattr(module, "upgrade"):
-            logger.info(f"Running migration: {name}")
-            await module.upgrade()
+            migration_func = module.upgrade
         elif hasattr(module, "migrate"):
-            logger.info(f"Running migration: {name}")
-            await module.migrate()
+            migration_func = module.migrate
+        elif hasattr(module, "up"):
+            migration_func = module.up
+
+        if migration_func is None:
+            raise AttributeError(f"Migration {name} missing upgrade(), migrate(), or up() function")
+
+        logger.info(f"Running migration: {name}")
+        # Check if function expects a db parameter
+        sig = inspect.signature(migration_func)
+        if len(sig.parameters) > 0:
+            # New-style migration - pass connection
+            async with self.engine.begin() as conn:
+                await migration_func(conn)
         else:
-            raise AttributeError(f"Migration {name} missing upgrade() or migrate() function")
+            # Old-style migration - no parameters
+            await migration_func()
 
     async def run_pending_migrations(self) -> None:
         """
