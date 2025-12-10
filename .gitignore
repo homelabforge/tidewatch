@@ -71,6 +71,7 @@ data/security.log
 
 # Docker Compose
 compose.yaml
+compose.dev.yaml
 
 # Testing
 .pytest_cache/
