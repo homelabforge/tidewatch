@@ -22,7 +22,7 @@ class SettingSchema(BaseModel):
     value: str
     category: str
     description: Optional[str] = None
-    encrypted: bool = False
+    encrypted: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
 
