@@ -654,7 +654,7 @@ describe('Dashboard', () => {
 
   describe('Edge cases', () => {
     it('handles null analytics gracefully', async () => {
-      vi.mocked(api.analytics.getSummary).mockResolvedValue(null as any)
+      vi.mocked(api.analytics.getSummary).mockResolvedValue(null as unknown as AnalyticsSummary)
 
       render(<Dashboard />)
 
@@ -674,7 +674,7 @@ describe('Dashboard', () => {
     })
 
     it('handles containers without policy field', async () => {
-      const containersNullPolicy = mockContainers.map(c => ({ ...c, policy: '' as any }))
+      const containersNullPolicy = mockContainers.map(c => ({ ...c, policy: '' as unknown as Container['policy'] }))
       vi.mocked(api.containers.getAll).mockResolvedValue(containersNullPolicy)
 
       render(<Dashboard />)

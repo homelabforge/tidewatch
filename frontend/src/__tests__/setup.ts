@@ -34,8 +34,9 @@ globalThis.IntersectionObserver = class IntersectionObserver {
     return []
   }
   unobserve() {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any
+} as unknown as {
+  new (): IntersectionObserver
+}
 
 // Mock ResizeObserver (for responsive components)
 globalThis.ResizeObserver = class ResizeObserver {
@@ -43,11 +44,11 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any
+} as unknown as {
+  new (): ResizeObserver
+}
 
 // Mock EventSource (CRITICAL for Tidewatch SSE testing)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 globalThis.EventSource = class EventSource {
   static instances: EventSource[] = []
 
@@ -74,8 +75,7 @@ globalThis.EventSource = class EventSource {
 
   addEventListener(
     type: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    listener: (event: any) => void
+    listener: (event: Event | MessageEvent) => void
   ) {
     if (type === 'open' && !this.onopen) {
       this.onopen = listener
@@ -124,12 +124,15 @@ globalThis.EventSource = class EventSource {
     this.instances.forEach(instance => instance.close())
     this.instances = []
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any
+} as unknown as {
+  new (url: string): EventSource
+  simulateEvent: (data: unknown) => void
+  simulateError: () => void
+  clearAll: () => void
+}
 
 // Clear EventSource instances after each test
 afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(globalThis.EventSource as any).clearAll()
+  (globalThis.EventSource as unknown as { clearAll: () => void }).clearAll()
   vi.clearAllMocks()
 })

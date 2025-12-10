@@ -1,16 +1,43 @@
+# ==============================================================================
 # Dockerfile for TideWatch - Intelligent Docker Container Update Manager
 # Multi-stage production build with frontend built from source
+# Frontend: Bun 1.3.4 (migrated from Node.js 24 on 2025-12-10)
+# Backend: Python 3.14
+# ==============================================================================
 
-# Stage 1: Build frontend
-FROM node:24-alpine AS frontend-builder
+# Stage 1: Build frontend with Bun
+FROM oven/bun:1.3.4-alpine AS frontend-builder
 
+# Set working directory
 WORKDIR /app/frontend
 
-COPY frontend/package*.json ./
-RUN npm ci
+# Copy package files (Bun uses bun.lock instead of package-lock.json)
+COPY frontend/package.json frontend/bun.lock ./
 
+# Install dependencies
+# --frozen-lockfile: Ensures reproducible builds (like npm ci)
+RUN bun install --frozen-lockfile
+
+# Copy frontend source
 COPY frontend/ ./
-RUN npm run build
+
+# Build production bundle
+# Bun runs Vite, which produces identical output to Node.js version
+RUN bun run build
+
+# Verify build output exists (fail fast if build failed)
+RUN test -d dist && test -f dist/index.html
+
+# ==============================================================================
+# ROLLBACK OPTION: Uncomment below to revert to Node.js 24
+# ==============================================================================
+# FROM node:24-alpine AS frontend-builder
+# WORKDIR /app/frontend
+# COPY frontend/package*.json ./
+# RUN npm ci
+# COPY frontend/ ./
+# RUN npm run build
+# ==============================================================================
 
 # Stage 2: Build backend
 FROM python:3.14-slim AS backend-builder

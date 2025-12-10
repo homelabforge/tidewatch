@@ -11,6 +11,7 @@ TideWatch is a comprehensive Docker container update manager that provides real-
 [![Docker](https://img.shields.io/badge/Docker-Available-2496ED?logo=docker&logoColor=white)](https://github.com/homelabforge/tidewatch/pkgs/container/tidewatch)
 [![Python 3.14+](https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Bun 1.3.4+](https://img.shields.io/badge/Bun-1.3.4+-FBF0DF?logo=bun&logoColor=black)](https://bun.sh)
 
 🌐 **[Website](https://homelabforge.io/builds/tidewatch/)** | 📖 **[Documentation](https://github.com/homelabforge/tidewatch/wiki)** | 💬 **[Discussions](https://github.com/homelabforge/tidewatch/discussions)**
 
@@ -76,9 +77,11 @@ TideWatch is a comprehensive Docker container update manager that provides real-
 - **Pydantic 2.12.0** - Data validation and settings management
 
 ### Frontend
+- **Bun 1.3.4+** - Fast all-in-one JavaScript runtime
 - **React 19.2** - Latest React with concurrent features
 - **TypeScript 5.9.3** - Type-safe JavaScript
-- **Vite 7.2.2** - Lightning-fast build tool
+- **Vite 7.2.6** - Next-generation frontend bundler
+- **Vitest 4.0.15** - Blazing fast unit test framework
 - **Tailwind CSS 4.1.17** - Utility-first CSS framework with automatic theming
 - **React Router 7.10.1** - Modern routing solution
 - **Recharts 3.5.1** - Composable charting library

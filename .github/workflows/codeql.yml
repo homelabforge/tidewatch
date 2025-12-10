@@ -55,17 +55,17 @@ jobs:
         fi
 
     # JavaScript/TypeScript setup
-    - name: Set up Node.js
+    - name: Set up Bun
       if: matrix.language == 'javascript'
-      uses: actions/setup-node@v4
+      uses: oven-sh/setup-bun@v2
       with:
-        node-version: '20'
+        bun-version: '1.3.4'
 
-    - name: Install npm dependencies
+    - name: Install dependencies
       if: matrix.language == 'javascript'
       run: |
         cd frontend
-        npm ci
+        bun install --frozen-lockfile
 
     # Initialize CodeQL
     - name: Initialize CodeQL
