@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] - 2025-12-10
+
+### Fixed
+- Fixed `ResponseValidationError` in settings API endpoint when `encrypted` field was `null`
+  - Changed `SettingSchema.encrypted` from `bool` to `Optional[bool]` to handle existing database records with null values
+  - Maintains backward compatibility with settings having `true`, `false`, or `null` encrypted values
+
+### Added
+- Added `compose.dev.yaml` to `.gitignore` for local development customization
+  - Developers can now create custom local compose files without affecting git
+
 ## [3.5.0] - 2025-12-10
 
 ### Changed
