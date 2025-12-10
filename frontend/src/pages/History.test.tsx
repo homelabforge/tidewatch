@@ -131,7 +131,7 @@ const mockUpdateHistory: UnifiedHistoryEvent[] = [
 describe('History', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;vi.mocked(api.history.getAll).mockResolvedValue(mockUpdateHistory)
+    ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockUpdateHistory)
   })
 
   describe('Data loading', () => {
@@ -162,7 +162,7 @@ describe('History', () => {
 
     it('handles API error gracefully', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.history.getAll).mockRejectedValue(new Error('API Error'))
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       render(<History />)
 
@@ -419,7 +419,7 @@ describe('History', () => {
 
     it('calls rollback API when confirmed', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.history.rollback).mockResolvedValue({ success: true })
+      ;(api.history.rollback as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true })
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -464,7 +464,7 @@ describe('History', () => {
     })
 
     it('reloads history after successful rollback', async () => {
-      ;vi.mocked(api.history.rollback).mockResolvedValue({ success: true })
+      ;(api.history.rollback as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true })
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -487,7 +487,7 @@ describe('History', () => {
 
     it('handles rollback error', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.history.rollback).mockRejectedValue(new Error('API Error'))
+      ;(api.history.rollback as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -564,7 +564,7 @@ describe('History', () => {
         exit_code: null,
       }))
 
-      ;vi.mocked(api.history.getAll).mockResolvedValue(manyErrors)
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(manyErrors)
 
       const { container } = render(<History />)
 
@@ -579,7 +579,7 @@ describe('History', () => {
 
     it('does not show errors section when no errors exist', async () => {
       const noErrors = mockUpdateHistory.filter((h) => !h.error_message)
-      ;vi.mocked(api.history.getAll).mockResolvedValue(noErrors)
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(noErrors)
 
       render(<History />)
 
@@ -593,7 +593,7 @@ describe('History', () => {
 
   describe('Empty state', () => {
     it('shows empty state when no history available', async () => {
-      ;vi.mocked(api.history.getAll).mockResolvedValue([])
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([])
 
       render(<History />)
 
@@ -639,7 +639,7 @@ describe('History', () => {
           performed_by: null,
         },
       ]
-      ;vi.mocked(api.history.getAll).mockResolvedValue(noPerformer)
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(noPerformer)
 
       render(<History />)
 
@@ -656,7 +656,7 @@ describe('History', () => {
           trigger_reason: 'unknown_reason_type',
         },
       ]
-      ;vi.mocked(api.history.getAll).mockResolvedValue(unknownReason)
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(unknownReason)
 
       render(<History />)
 
@@ -675,7 +675,7 @@ describe('History', () => {
           trigger_reason: null,
         },
       ]
-      ;vi.mocked(api.history.getAll).mockResolvedValue(noReason)
+      ;(api.history.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(noReason)
 
       render(<History />)
 

@@ -150,11 +150,11 @@ const createMockAuthContext = (overrides?: Partial<AuthContextType>): AuthContex
 describe('Settings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;vi.mocked(api.settings.getAll).mockResolvedValue(mockSettings)
-    ;vi.mocked(api.settings.getCategories).mockResolvedValue(mockCategories)
-    ;vi.mocked(api.backup.list).mockResolvedValue({ backups: [], total_size: 0 })
-    ;vi.mocked(api.system.getSchedulerStatus).mockResolvedValue({ running: true, next_run: '2025-01-15T10:00:00Z' })
-    ;vi.mocked(api.auth.oidc.getConfig).mockResolvedValue({
+    ;(api.settings.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockSettings)
+    ;(api.settings.getCategories as ReturnType<typeof vi.fn>).mockResolvedValue(mockCategories)
+    ;(api.backup.list as ReturnType<typeof vi.fn>).mockResolvedValue({ backups: [], total_size: 0 })
+    ;(api.system.getSchedulerStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ running: true, next_run: '2025-01-15T10:00:00Z' })
+    ;(api.auth.oidc.getConfig as ReturnType<typeof vi.fn>).mockResolvedValue({
       enabled: false,
       issuer_url: '',
       client_id: '',
@@ -200,7 +200,7 @@ describe('Settings', () => {
 
     it('handles API error gracefully', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.settings.getAll).mockRejectedValue(new Error('API Error'))
+      ;(api.settings.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       renderSettings()
 
@@ -435,7 +435,7 @@ describe('Settings', () => {
 
     it('creates backup when button clicked', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.backup.create).mockResolvedValue({ filename: 'backup.db' })
+      ;(api.backup.create as ReturnType<typeof vi.fn>).mockResolvedValue({ filename: 'backup.db' })
 
       renderSettings()
 
@@ -462,7 +462,7 @@ describe('Settings', () => {
 
     it('handles backup creation error', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.backup.create).mockRejectedValue(new Error('API Error'))
+      ;(api.backup.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       renderSettings()
 
@@ -588,7 +588,7 @@ describe('Settings', () => {
   describe('Setting updates', () => {
     it('saves settings when changed', async () => {
       await import('sonner')
-      ;vi.mocked(api.settings.set).mockResolvedValue({ key: 'check_interval', value: '7200' })
+      ;(api.settings.set as ReturnType<typeof vi.fn>).mockResolvedValue({ key: 'check_interval', value: '7200' })
 
       renderSettings()
 
@@ -607,7 +607,7 @@ describe('Settings', () => {
   describe('Error handling', () => {
     it('handles settings load error', async () => {
       const { toast } = await import('sonner')
-      ;vi.mocked(api.settings.getCategories).mockRejectedValue(new Error('API Error'))
+      ;(api.settings.getCategories as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       renderSettings()
 
@@ -617,7 +617,7 @@ describe('Settings', () => {
     })
 
     it('handles scheduler status error', async () => {
-      ;vi.mocked(api.system.getSchedulerStatus).mockRejectedValue(new Error('API Error'))
+      ;(api.system.getSchedulerStatus as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       renderSettings()
 
@@ -635,7 +635,7 @@ describe('Settings', () => {
     })
 
     it('handles backup list error', async () => {
-      ;vi.mocked(api.backup.list).mockRejectedValue(new Error('API Error'))
+      ;(api.backup.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       renderSettings()
 
@@ -655,8 +655,8 @@ describe('Settings', () => {
 
   describe('Edge cases', () => {
     it('handles empty settings gracefully', async () => {
-      ;vi.mocked(api.settings.getAll).mockResolvedValue({})
-      ;vi.mocked(api.settings.getCategories).mockResolvedValue([])
+      ;(api.settings.getAll as ReturnType<typeof vi.fn>).mockResolvedValue({})
+      ;(api.settings.getCategories as ReturnType<typeof vi.fn>).mockResolvedValue([])
 
       renderSettings()
 
