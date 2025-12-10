@@ -31,8 +31,27 @@ vi.mock('sonner', () => ({
 }))
 
 // Mock UpdateCard component for simpler testing
+interface UpdateCardProps {
+  update: {
+    id: number;
+    container_name: string;
+    status: string;
+    current_version?: string;
+    available_version?: string;
+    cves_fixed?: string[];
+  };
+  onApprove: (id: number) => void;
+  onReject: (id: number) => void;
+  onApply: (id: number) => void;
+  onSnooze: (id: number) => void;
+  onRemoveContainer: (id: number) => void;
+  onCancelRetry: (id: number) => void;
+  onDelete: (id: number) => void;
+  isApplying?: boolean;
+}
+
 vi.mock('../components/UpdateCard', () => ({
-  default: ({ update, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying }: any) => (
+  default: ({ update, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying }: UpdateCardProps) => (
     <div data-testid={`update-card-${update.id}`}>
       <div>Update for {update.container_name}</div>
       <div>Status: {update.status}</div>
@@ -136,8 +155,8 @@ const mockUpdates = [
 describe('Updates', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(api.updates.getAll as any).mockResolvedValue(mockUpdates)
-    ;(api.updates.getSecurity as any).mockResolvedValue(
+    ;vi.mocked(api.updates.getAll).mockResolvedValue(mockUpdates)
+    ;vi.mocked(api.updates.getSecurity).mockResolvedValue(
       mockUpdates.filter((u) => u.cves_fixed && u.cves_fixed.length > 0)
     )
   })
@@ -171,7 +190,7 @@ describe('Updates', () => {
 
     it('handles API error gracefully', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.getAll as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.getAll).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
@@ -438,7 +457,7 @@ describe('Updates', () => {
 
   describe('Check all action', () => {
     it('calls checkAll API when button clicked', async () => {
-      ;(api.updates.checkAll as any).mockResolvedValue({
+      ;vi.mocked(api.updates.checkAll).mockResolvedValue({
         stats: { checked: 10, updates_found: 5 },
       })
 
@@ -458,7 +477,7 @@ describe('Updates', () => {
 
     it('shows success toast with stats after checking', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.checkAll as any).mockResolvedValue({
+      ;vi.mocked(api.updates.checkAll).mockResolvedValue({
         stats: { checked: 10, updates_found: 5 },
       })
 
@@ -477,7 +496,7 @@ describe('Updates', () => {
     })
 
     it('reloads updates after checking', async () => {
-      ;(api.updates.checkAll as any).mockResolvedValue({
+      ;vi.mocked(api.updates.checkAll).mockResolvedValue({
         stats: { checked: 10, updates_found: 5 },
       })
 
@@ -497,7 +516,7 @@ describe('Updates', () => {
 
     it('handles check all error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.checkAll as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.checkAll).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
@@ -524,7 +543,7 @@ describe('Updates', () => {
   describe('Update actions', () => {
     it('approves update when approve action called', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.approve as any).mockResolvedValue({ success: true })
+      ;vi.mocked(api.updates.approve).mockResolvedValue({ success: true })
 
       render(<Updates />)
 
@@ -543,7 +562,7 @@ describe('Updates', () => {
 
     it('rejects update with reason when reject action called', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.reject as any).mockResolvedValue({ success: true })
+      ;vi.mocked(api.updates.reject).mockResolvedValue({ success: true })
 
       // Mock window.prompt
       const originalPrompt = window.prompt
@@ -569,7 +588,7 @@ describe('Updates', () => {
 
     it('rejects update without reason when prompt cancelled', async () => {
       await import('sonner')
-      ;(api.updates.reject as any).mockResolvedValue({ success: true })
+      ;vi.mocked(api.updates.reject).mockResolvedValue({ success: true })
 
       // Mock window.prompt to return null (cancelled)
       const originalPrompt = window.prompt
@@ -593,8 +612,8 @@ describe('Updates', () => {
 
     it('applies update with confirmation when apply action called', async () => {
       await import('sonner')
-      ;(api.updates.apply as any).mockResolvedValue({ success: true })
-      ;(api.updates.get as any).mockResolvedValue({
+      ;vi.mocked(api.updates.apply).mockResolvedValue({ success: true })
+      ;vi.mocked(api.updates.get).mockResolvedValue({
         id: 1,
         status: 'applied',
       })
@@ -643,8 +662,8 @@ describe('Updates', () => {
     })
 
     it('shows applying state during update application', async () => {
-      ;(api.updates.apply as any).mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)))
-      ;(api.updates.get as any).mockResolvedValue({ id: 1, status: 'applied' })
+      ;vi.mocked(api.updates.apply).mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)))
+      ;vi.mocked(api.updates.get).mockResolvedValue({ id: 1, status: 'applied' })
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -667,7 +686,7 @@ describe('Updates', () => {
 
     it('snoozes notification when snooze action called', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.snooze as any).mockResolvedValue({ message: 'Notification snoozed' })
+      ;vi.mocked(api.updates.snooze).mockResolvedValue({ message: 'Notification snoozed' })
 
       render(<Updates />)
 
@@ -686,7 +705,7 @@ describe('Updates', () => {
 
     it('removes container with confirmation', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.removeContainer as any).mockResolvedValue({ message: 'Container removed' })
+      ;vi.mocked(api.updates.removeContainer).mockResolvedValue({ message: 'Container removed' })
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -713,7 +732,7 @@ describe('Updates', () => {
 
     it('cancels retry when cancel retry action called', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.cancelRetry as any).mockResolvedValue({ success: true })
+      ;vi.mocked(api.updates.cancelRetry).mockResolvedValue({ success: true })
 
       render(<Updates />)
 
@@ -732,7 +751,7 @@ describe('Updates', () => {
 
     it('deletes update with confirmation', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.delete as any).mockResolvedValue({ message: 'Update deleted' })
+      ;vi.mocked(api.updates.delete).mockResolvedValue({ message: 'Update deleted' })
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -761,7 +780,7 @@ describe('Updates', () => {
   describe('Error handling', () => {
     it('handles approve error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.approve as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.approve).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
@@ -779,7 +798,7 @@ describe('Updates', () => {
 
     it('handles reject error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.reject as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.reject).mockRejectedValue(new Error('API Error'))
 
       const originalPrompt = window.prompt
       window.prompt = vi.fn(() => 'Test reason')
@@ -802,7 +821,7 @@ describe('Updates', () => {
 
     it('handles apply error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.apply as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.apply).mockRejectedValue(new Error('API Error'))
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -826,7 +845,7 @@ describe('Updates', () => {
 
     it('handles snooze error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.snooze as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.snooze).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
@@ -844,7 +863,7 @@ describe('Updates', () => {
 
     it('handles remove container error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.removeContainer as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.removeContainer).mockRejectedValue(new Error('API Error'))
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -867,7 +886,7 @@ describe('Updates', () => {
 
     it('handles cancel retry error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.cancelRetry as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.cancelRetry).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
@@ -885,7 +904,7 @@ describe('Updates', () => {
 
     it('handles delete error', async () => {
       const { toast } = await import('sonner')
-      ;(api.updates.delete as any).mockRejectedValue(new Error('API Error'))
+      ;vi.mocked(api.updates.delete).mockRejectedValue(new Error('API Error'))
 
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -909,7 +928,7 @@ describe('Updates', () => {
 
   describe('Empty state', () => {
     it('shows empty state when no updates available', async () => {
-      ;(api.updates.getAll as any).mockResolvedValue([])
+      ;vi.mocked(api.updates.getAll).mockResolvedValue([])
 
       render(<Updates />)
 
@@ -919,7 +938,7 @@ describe('Updates', () => {
     })
 
     it('shows check for updates button in empty state', async () => {
-      ;(api.updates.getAll as any).mockResolvedValue([])
+      ;vi.mocked(api.updates.getAll).mockResolvedValue([])
 
       render(<Updates />)
 
