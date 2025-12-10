@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.2] - 2025-12-10
+
+### Fixed
+- Fixed migration runner to support multiple migration function signatures
+  - Now supports `upgrade()`, `migrate()`, and `up()` function names
+  - Automatically detects if migration function expects a database connection parameter
+  - Fixes startup errors with newer migrations that use different naming conventions
+- Fixed migration 027 to properly wrap SQL statements with `text()` for SQLAlchemy 2.0 compatibility
+- Fixed duplicate migration numbers caused by parallel development
+  - Renamed `006_add_dockerfile_severity.py` → `018_add_dockerfile_severity.py`
+  - Renamed `007_update_restart_log_schema.py` → `028_update_restart_log_schema.py`
+  - Migration sequence now properly ordered: 001-028 without gaps or duplicates
+
 ## [3.5.1] - 2025-12-10
 
 ### Fixed

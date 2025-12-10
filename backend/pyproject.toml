@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tidewatch"
-version = "3.5.1"
+version = "3.5.2"
 description = "Intelligent Docker container update manager"
 requires-python = ">=3.14"
 dependencies = [
