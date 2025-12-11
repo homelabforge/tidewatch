@@ -62,6 +62,9 @@ class Update(Base):
     # Snooze/dismiss support
     snoozed_until = Column(DateTime(timezone=True), nullable=True)
 
+    # Optimistic locking for concurrent update safety
+    version = Column(Integer, default=1, nullable=False)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

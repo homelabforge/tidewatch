@@ -51,9 +51,11 @@ interface UpdateCardProps {
   onCancelRetry?: (id: number) => void;
   onDelete?: (id: number) => void;
   isApplying?: boolean;
+  isApproving?: boolean;
+  isRejecting?: boolean;
 }
 
-export default function UpdateCard({ update, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false }: UpdateCardProps) {
+export default function UpdateCard({ update, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false }: UpdateCardProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const isStale = update.reason_type === 'stale';
 
@@ -77,17 +79,19 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
     return <AlertTriangle size={16} className="text-yellow-400" />;
   };
 
+  const isAnyOperationInProgress = isApplying || isApproving || isRejecting;
+
   return (
     <div className={`relative bg-tide-surface border ${isStale ? 'border-orange-600' : 'border-tide-border'} rounded-lg p-5`}>
       {/* Loading Overlay */}
-      {isApplying && (
+      {isAnyOperationInProgress && (
         <div className="absolute inset-0 bg-tide-surface/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
           <Loader2 className="w-16 h-16 text-primary animate-spin" />
         </div>
       )}
 
       {/* Card Content */}
-      <div className={isApplying ? 'blur-sm' : ''}>
+      <div className={isAnyOperationInProgress ? 'blur-sm' : ''}>
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
@@ -240,7 +244,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onSnooze && (
               <button
                 onClick={() => onSnooze(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-tide-surface-light hover:bg-tide-border text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors border border-tide-border disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Dismiss for 30 days"
               >
@@ -251,7 +255,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onRemoveContainer && (
               <button
                 onClick={() => onRemoveContainer(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-red-600/80 hover:bg-red-600 text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Remove container from database"
               >
@@ -262,7 +266,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onReject && (
               <button
                 onClick={() => onReject(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-tide-surface-light hover:bg-tide-border text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors border border-tide-border disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Keep container in database"
               >
@@ -278,7 +282,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onApprove && (
               <button
                 onClick={() => onApprove(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check size={14} />
@@ -288,7 +292,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onReject && (
               <button
                 onClick={() => onReject(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-tide-surface-light hover:bg-tide-border text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors border border-tide-border disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X size={14} />
@@ -301,7 +305,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
         {update.status === 'approved' && onApply && (
           <button
             onClick={() => onApply(update.id)}
-            disabled={isApplying}
+            disabled={isAnyOperationInProgress}
             className="w-full px-3 py-2 bg-accent hover:bg-accent-dark text-tide-text rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Apply Update
@@ -314,7 +318,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onCancelRetry && (
               <button
                 onClick={() => onCancelRetry(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel Retry
@@ -323,7 +327,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onReject && (
               <button
                 onClick={() => onReject(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/50 text-yellow-400 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Reject
@@ -332,7 +336,7 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
             {onDelete && (
               <button
                 onClick={() => onDelete(update.id)}
-                disabled={isApplying}
+                disabled={isAnyOperationInProgress}
                 className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="h-4 w-4" />

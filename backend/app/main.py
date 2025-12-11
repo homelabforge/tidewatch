@@ -399,12 +399,17 @@ else:
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import subprocess
+    import sys
 
-    uvicorn.run(
+    # Use same server as production (Granian) for consistency
+    cmd = [
+        "granian",
+        "--interface", "asgi",
+        "--host", "0.0.0.0",
+        "--port", "8788",
+        "--reload",  # Auto-reload for development
         "app.main:app",
-        host="0.0.0.0",
-        port=8788,
-        reload=True,
-        log_level="info",
-    )
+    ]
+
+    sys.exit(subprocess.run(cmd).returncode)

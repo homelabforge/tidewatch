@@ -11,7 +11,10 @@ export default function Updates() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'security'>('all');
-  const [applyingUpdateId, setApplyingUpdateId] = useState<number | null>(null);
+  // Track multiple concurrent operations using Sets
+  const [applyingUpdateIds, setApplyingUpdateIds] = useState<Set<number>>(new Set());
+  const [approvingUpdateIds, setApprovingUpdateIds] = useState<Set<number>>(new Set());
+  const [rejectingUpdateIds, setRejectingUpdateIds] = useState<Set<number>>(new Set());
 
   const loadUpdates = useCallback(async () => {
     setLoading(true);
@@ -39,30 +42,74 @@ export default function Updates() {
   }, [loadUpdates]);
 
   const handleApprove = async (id: number) => {
+    // Prevent duplicate clicks
+    if (approvingUpdateIds.has(id)) {
+      return;
+    }
+
+    setApprovingUpdateIds(prev => new Set(prev).add(id));
     try {
       await api.updates.approve(id);
       toast.success('Update approved');
       loadUpdates();
-    } catch {
-      toast.error('Failed to approve update');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to approve update';
+
+      // Check for concurrent modification errors
+      if (message.includes('concurrent modification') || message.includes('Database conflict')) {
+        toast.error('This update was modified by another action. Please refresh and try again.');
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setApprovingUpdateIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const handleReject = async (id: number) => {
+    // Prevent duplicate clicks
+    if (rejectingUpdateIds.has(id)) {
+      return;
+    }
+
     const reason = prompt('Reason for rejection (optional):');
+
+    setRejectingUpdateIds(prev => new Set(prev).add(id));
     try {
       await api.updates.reject(id, reason || undefined);
       toast.success('Update rejected');
       loadUpdates();
-    } catch {
-      toast.error('Failed to reject update');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reject update';
+
+      // Check for concurrent modification errors
+      if (message.includes('concurrent modification') || message.includes('Database conflict')) {
+        toast.error('This update was modified by another action. Please refresh and try again.');
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setRejectingUpdateIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const handleApply = async (id: number) => {
+    // Prevent duplicate clicks
+    if (applyingUpdateIds.has(id)) {
+      return;
+    }
+
     if (!confirm('Are you sure you want to apply this update?')) return;
 
-    setApplyingUpdateId(id);
+    setApplyingUpdateIds(prev => new Set(prev).add(id));
     try {
       await api.updates.apply(id);
 
@@ -96,9 +143,21 @@ export default function Updates() {
       loadUpdates();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to apply update';
-      toast.error(errorMessage);
+
+      // Enhanced error handling for race conditions
+      if (errorMessage.includes('concurrent modification') ||
+          errorMessage.includes('Database conflict') ||
+          errorMessage.includes('status changed during application')) {
+        toast.error('This update was modified during application. Please check its current status.');
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
-      setApplyingUpdateId(null);
+      setApplyingUpdateIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -378,7 +437,9 @@ export default function Updates() {
                 onRemoveContainer={handleRemoveContainer}
                 onCancelRetry={handleCancelRetry}
                 onDelete={handleDelete}
-                isApplying={applyingUpdateId === update.id}
+                isApplying={applyingUpdateIds.has(update.id)}
+                isApproving={approvingUpdateIds.has(update.id)}
+                isRejecting={rejectingUpdateIds.has(update.id)}
               />
             ))}
           </div>

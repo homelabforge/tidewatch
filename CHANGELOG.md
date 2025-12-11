@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.3] - 2025-12-10
+
+### Fixed
+- **CRITICAL: Concurrent Update Race Condition** - Fixed race conditions when multiple updates are applied simultaneously
+  - Root cause: Single `applyingUpdateId` state variable caused concurrent operations to overwrite each other's busy/blur indicators
+  - Database race conditions in `batch_approve_updates()`, `approve_update()`, `batch_reject_updates()` functions due to check-then-commit pattern without transaction locks
+  - Backend: Implemented optimistic locking with `version` column on updates table
+  - Backend: Wrapped all status updates in nested transactions (`db.begin_nested()`) for atomicity
+  - Backend: Added idempotency checks to allow safe retries (approve → approve transitions)
+  - Backend: Proper `OperationalError` handling for concurrent modification detection
+  - Backend: Version increments on every status change for race detection
+  - Frontend: Changed from single `applyingUpdateId` to Set-based tracking (`applyingUpdateIds`, `approvingUpdateIds`, `rejectingUpdateIds`)
+  - Frontend: Duplicate-click prevention with early return if operation already in progress
+  - Frontend: Enhanced error messages for concurrent modification scenarios
+  - Frontend: Independent busy/blur indicators per update card using `isAnyOperationInProgress` helper
+  - Frontend: All buttons disabled during any operation to prevent conflicts
+  - Migration: Created `029_add_optimistic_locking.py` to add version column
+  - Migration: Created `030_add_version_index.py` for performance optimization on (status, version)
+  - Impact: Users can now safely apply multiple updates in parallel without UI state corruption or database errors
+  - Result: Each update maintains its own loading state, operations process correctly in parallel
+  - **Files modified:**
+    - `backend/app/models/update.py` - Added version column (line 66)
+    - `backend/app/api/updates.py` - Fixed 5 functions with nested transactions and idempotency
+    - `backend/app/services/update_engine.py` - Added version increments at lines 331, 471
+    - `frontend/src/pages/Updates.tsx` - Set-based state tracking for concurrent operations
+    - `frontend/src/components/UpdateCard.tsx` - Multiple operation props and unified loading state
+
+### Added
+- **Optimistic Locking Infrastructure** - Version-based concurrency control
+  - New `version` column on updates table (defaults to 1)
+  - Automatic version increment on every status change
+  - Database index on (status, version) for faster concurrent queries
+  - Migration system handles automatic schema updates on container restart
+
 ## [3.5.2] - 2025-12-10
 
 ### Fixed

@@ -172,26 +172,41 @@ async def batch_approve_updates(
 
     for update_id in update_ids:
         try:
-            # Get the update
-            result = await db.execute(select(Update).where(Update.id == update_id))
-            update = result.scalar_one_or_none()
+            # Use nested transaction for atomicity and concurrent safety
+            async with db.begin_nested():
+                # Get the update
+                result = await db.execute(select(Update).where(Update.id == update_id))
+                update = result.scalar_one_or_none()
 
-            if not update:
-                failed.append({"id": update_id, "reason": "Update not found"})
-                continue
+                if not update:
+                    failed.append({"id": update_id, "reason": "Update not found"})
+                    continue
 
-            if update.status != "pending":
-                failed.append({"id": update_id, "reason": f"Invalid status: {update.status}"})
-                continue
+                # Idempotency check - already approved is OK
+                if update.status == "approved":
+                    approved.append({"id": update_id, "container_id": update.container_id})
+                    continue
 
-            # Approve the update
-            update.status = "approved"
-            update.approved_at = datetime.now(timezone.utc)
+                # Only allow pending -> approved transition
+                if update.status != "pending":
+                    failed.append({"id": update_id, "reason": f"Invalid status transition: {update.status} -> approved"})
+                    continue
+
+                # Approve the update with version increment
+                update.status = "approved"
+                update.approved_at = datetime.now(timezone.utc)
+                update.version += 1  # Increment version for optimistic locking
+
+            # Commit the nested transaction
             await db.commit()
             await db.refresh(update)
 
             approved.append({"id": update_id, "container_id": update.container_id})
 
+        except OperationalError as e:
+            # Database lock/conflict - likely concurrent modification
+            logger.warning(f"Database conflict approving update {update_id}: {e}")
+            failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
             logger.error(f"Error approving update {update_id}: {e}")
             failed.append({"id": update_id, "reason": str(e)})
@@ -228,28 +243,43 @@ async def batch_reject_updates(
 
     for update_id in update_ids:
         try:
-            # Get the update
-            result = await db.execute(select(Update).where(Update.id == update_id))
-            update = result.scalar_one_or_none()
+            # Use nested transaction for atomicity and concurrent safety
+            async with db.begin_nested():
+                # Get the update
+                result = await db.execute(select(Update).where(Update.id == update_id))
+                update = result.scalar_one_or_none()
 
-            if not update:
-                failed.append({"id": update_id, "reason": "Update not found"})
-                continue
+                if not update:
+                    failed.append({"id": update_id, "reason": "Update not found"})
+                    continue
 
-            if update.status not in ["pending", "approved"]:
-                failed.append({"id": update_id, "reason": f"Invalid status: {update.status}"})
-                continue
+                # Idempotency check - already rejected is OK
+                if update.status == "rejected":
+                    rejected.append({"id": update_id, "container_id": update.container_id})
+                    continue
 
-            # Reject the update
-            update.status = "rejected"
-            update.rejected_at = datetime.now(timezone.utc)
-            if reason and hasattr(update, "rejection_reason"):
-                update.rejection_reason = reason
+                # Only allow pending/approved -> rejected transition
+                if update.status not in ["pending", "approved"]:
+                    failed.append({"id": update_id, "reason": f"Invalid status transition: {update.status} -> rejected"})
+                    continue
+
+                # Reject the update with version increment
+                update.status = "rejected"
+                update.rejected_at = datetime.now(timezone.utc)
+                if reason and hasattr(update, "rejection_reason"):
+                    update.rejection_reason = reason
+                update.version += 1  # Increment version for optimistic locking
+
+            # Commit the nested transaction
             await db.commit()
             await db.refresh(update)
 
             rejected.append({"id": update_id, "container_id": update.container_id})
 
+        except OperationalError as e:
+            # Database lock/conflict - likely concurrent modification
+            logger.warning(f"Database conflict rejecting update {update_id}: {e}")
+            failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
             logger.error(f"Error rejecting update {update_id}: {e}")
             failed.append({"id": update_id, "reason": str(e)})
@@ -306,23 +336,34 @@ async def approve_update(
     Returns:
         Success message
     """
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
-    update = result.scalar_one_or_none()
-
-    if not update:
-        raise HTTPException(status_code=404, detail="Update not found")
-
-    if update.status != "pending":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Update is already {update.status}"
+    # Use nested transaction for atomicity and concurrent safety
+    async with db.begin_nested():
+        result = await db.execute(
+            select(Update).where(Update.id == update_id)
         )
+        update = result.scalar_one_or_none()
 
-    update.status = "approved"
-    update.approved_by = approval.approved_by or "user"
-    update.approved_at = datetime.now(timezone.utc)
+        if not update:
+            raise HTTPException(status_code=404, detail="Update not found")
+
+        # Idempotency check - already approved is OK
+        if update.status == "approved":
+            return {
+                "success": True,
+                "message": f"Update already approved for container {update.container_id}"
+            }
+
+        # Only allow pending -> approved transition
+        if update.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve update with status: {update.status}"
+            )
+
+        update.status = "approved"
+        update.approved_by = approval.approved_by or "user"
+        update.approved_at = datetime.now(timezone.utc)
+        update.version += 1  # Increment version for optimistic locking
 
     await db.commit()
 
@@ -414,6 +455,7 @@ async def reject_update(
         update.rejected_at = datetime.now(timezone.utc)
         update.rejected_by = admin.get("email") if admin else "system"
         update.rejection_reason = reason
+        update.version += 1  # Increment version for optimistic locking
 
         # Clear update_available flag on container
         result = await db.execute(

@@ -328,6 +328,7 @@ class UpdateEngine:
             # Success! Wrap status updates in transaction for atomicity
             async with db.begin_nested():
                 update.status = "applied"
+                update.version += 1  # Increment version for optimistic locking
                 container.current_tag = update.to_tag
 
                 if container.current_tag == "latest":
@@ -467,6 +468,7 @@ class UpdateEngine:
             async with db.begin_nested():
                 update.last_error = str(e)
                 update.retry_count = (update.retry_count or 0) + 1
+                update.version += 1  # Increment version for optimistic locking
 
                 # Calculate next retry time using exponential backoff
                 if update.retry_count < (update.max_retries or 3):
