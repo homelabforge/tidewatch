@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Info, Activity, FileText, Clock, Settings, CircleCheckBig, RefreshCw, AlertCircle, CheckCircle2, XCircle, History, ArrowRight, RotateCw, TrendingUp, Power, Shield, Ban, Wand2, Undo2, Pause, Play, Network, Calendar, Copy, Download, ChevronDown, ChevronUp, Search, FileDown, Package, Star, ShieldAlert, Container as ContainerIcon, Server } from 'lucide-react';
-import { Container, ContainerMetrics, UpdateHistory, RestartState, EnableRestartConfig, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse } from '../types';
+import { X, Info, Activity, FileText, Clock, Settings, CircleCheckBig, RefreshCw, AlertCircle, CheckCircle2, XCircle, History, ArrowRight, RotateCw, TrendingUp, Power, Shield, Ban, Wand2, Undo2, Pause, Play, Network, Calendar, Copy, Download, ChevronDown, ChevronUp, Search, FileDown, Package, Star, ShieldAlert, Container as ContainerIcon, Server, Eye, EyeOff } from 'lucide-react';
+import { Container, ContainerMetrics, UpdateHistory, RestartState, EnableRestartConfig, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse, AppDependency, DockerfileDependency, HttpServer } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { api } from '../services/api';
 import { toast } from 'sonner';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import StatusBadge from './StatusBadge';
+import DependencyIgnoreModal from './DependencyIgnoreModal';
+import DependencyUpdatePreviewModal from './DependencyUpdatePreviewModal';
 
 interface ContainerModalProps {
   container: Container;
@@ -99,6 +101,23 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   // HTTP Servers state
   const [httpServers, setHttpServers] = useState<HttpServersResponse | null>(null);
   const [loadingHttpServers, setLoadingHttpServers] = useState(false);
+
+  // Dependencies sub-tab state
+  const [dependenciesSubTab, setDependenciesSubTab] = useState<'infra' | 'dependencies' | 'dev-dependencies'>('infra');
+
+  // Ignore modal state
+  const [ignoreModalOpen, setIgnoreModalOpen] = useState(false);
+  const [dependencyToIgnore, setDependencyToIgnore] = useState<{
+    dependency: AppDependency | DockerfileDependency | HttpServer;
+    type: 'app' | 'dockerfile' | 'http_server';
+  } | null>(null);
+
+  // Preview modal state
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [dependencyToPreview, setDependencyToPreview] = useState<{
+    dependency: AppDependency | DockerfileDependency | HttpServer;
+    type: 'app' | 'dockerfile' | 'http_server';
+  } | null>(null);
 
   // Settings state
   const [myProjectsEnabled, setMyProjectsEnabled] = useState(true);
@@ -201,6 +220,23 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   };
 
   const handlePolicyChange = async (newPolicy: string) => {
+    // Warn about auto policy (all updates including breaking changes)
+    if (newPolicy === 'auto') {
+      const confirmed = window.confirm(
+        '⚠️ Warning: Auto Policy\n\n' +
+        'The "Auto" policy will automatically apply ALL updates, including MAJOR version updates that may contain breaking changes.\n\n' +
+        'Consider using:\n' +
+        '• "Patch Only" - Only patch updates (safest)\n' +
+        '• "Minor + Patch" - Minor and patch updates (no breaking changes)\n' +
+        '• "Security Only" - Only security updates\n\n' +
+        'Are you sure you want to enable the Auto policy?'
+      );
+
+      if (!confirmed) {
+        return; // User cancelled
+      }
+    }
+
     setPolicy(newPolicy);
     await saveSettings({ policy: newPolicy });
   };
@@ -516,6 +552,169 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     }
   }, [container.id]);
 
+  // Ignore/Unignore handlers
+  const handleIgnoreDependency = (
+    dependency: AppDependency | DockerfileDependency | HttpServer,
+    type: 'app' | 'dockerfile' | 'http_server'
+  ) => {
+    setDependencyToIgnore({ dependency, type });
+    setIgnoreModalOpen(true);
+  };
+
+  const handleConfirmIgnore = async (reason?: string) => {
+    if (!dependencyToIgnore) return;
+
+    try {
+      const { dependency, type } = dependencyToIgnore;
+
+      if (type === 'app') {
+        await api.dependencies.ignoreAppDependency((dependency as AppDependency).id, reason);
+        await loadAppDependencies();
+        toast.success(`Ignored update for ${(dependency as AppDependency).name}`);
+      } else if (type === 'dockerfile') {
+        await api.dependencies.ignoreDockerfile((dependency as DockerfileDependency).id, reason);
+        await loadDockerfileDependencies();
+        toast.success(`Ignored update for ${(dependency as DockerfileDependency).image_name}`);
+      } else if (type === 'http_server') {
+        await api.dependencies.ignoreHttpServer((dependency as HttpServer).id, reason);
+        await loadHttpServers();
+        toast.success(`Ignored update for ${(dependency as HttpServer).name}`);
+      }
+    } catch (error) {
+      console.error('Failed to ignore dependency:', error);
+      toast.error('Failed to ignore update');
+    }
+  };
+
+  const handleUnignoreDependency = async (
+    dependency: AppDependency | DockerfileDependency | HttpServer,
+    type: 'app' | 'dockerfile' | 'http_server'
+  ) => {
+    try {
+      if (type === 'app') {
+        await api.dependencies.unignoreAppDependency((dependency as AppDependency).id);
+        await loadAppDependencies();
+        toast.success(`Unignored update for ${(dependency as AppDependency).name}`);
+      } else if (type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile((dependency as DockerfileDependency).id);
+        await loadDockerfileDependencies();
+        toast.success(`Unignored update for ${(dependency as DockerfileDependency).image_name}`);
+      } else if (type === 'http_server') {
+        await api.dependencies.unignoreHttpServer((dependency as HttpServer).id);
+        await loadHttpServers();
+        toast.success(`Unignored update for ${(dependency as HttpServer).name}`);
+      }
+    } catch (error) {
+      console.error('Failed to unignore dependency:', error);
+      toast.error('Failed to unignore update');
+    }
+  };
+
+  // Preview and Update handlers
+  const handlePreviewUpdate = (
+    dependency: AppDependency | DockerfileDependency | HttpServer,
+    type: 'app' | 'dockerfile' | 'http_server'
+  ) => {
+    setDependencyToPreview({ dependency, type });
+    setPreviewModalOpen(true);
+  };
+
+  const handlePreviewLoad = async () => {
+    if (!dependencyToPreview) throw new Error('No dependency to preview');
+
+    const { dependency, type } = dependencyToPreview;
+
+    if (type === 'app') {
+      const dep = dependency as AppDependency;
+      console.log('Preview app dependency:', { id: dep.id, name: dep.name, latest_version: dep.latest_version });
+      if (!dep.id) {
+        throw new Error(`Dependency ${dep.name} is missing ID field`);
+      }
+      return await api.dependencies.previewAppDependencyUpdate(dep.id, dep.latest_version || '');
+    } else if (type === 'dockerfile') {
+      const dep = dependency as DockerfileDependency;
+      console.log('Preview dockerfile dependency:', { id: dep.id, image: dep.image_name, latest_tag: dep.latest_tag });
+      if (!dep.id) {
+        throw new Error(`Dependency ${dep.image_name} is missing ID field`);
+      }
+      return await api.dependencies.previewDockerfileUpdate(dep.id, dep.latest_tag || '');
+    } else if (type === 'http_server') {
+      const dep = dependency as HttpServer;
+      console.log('Preview http server:', { id: dep.id, name: dep.name, latest_version: dep.latest_version });
+      if (!dep.id) {
+        throw new Error(`HTTP server ${dep.name} is missing ID field`);
+      }
+      return await api.dependencies.previewHttpServerUpdate(dep.id, dep.latest_version || '');
+    }
+
+    throw new Error('Invalid dependency type');
+  };
+
+  const handleDirectUpdate = async (
+    dependency: AppDependency | DockerfileDependency | HttpServer,
+    type: 'app' | 'dockerfile' | 'http_server'
+  ) => {
+    try {
+      if (type === 'app') {
+        const dep = dependency as AppDependency;
+        const newVersion = dep.latest_version || '';
+        await api.dependencies.updateAppDependency(dep.id, newVersion);
+        await loadAppDependencies();
+        toast.success(`Updated ${dep.name} to ${newVersion}`);
+      } else if (type === 'dockerfile') {
+        const dep = dependency as DockerfileDependency;
+        const newVersion = dep.latest_tag || '';
+        await api.dependencies.updateDockerfile(dep.id, newVersion);
+        await loadDockerfileDependencies();
+        toast.success(`Updated ${dep.image_name} to ${newVersion}`);
+      } else if (type === 'http_server') {
+        const dep = dependency as HttpServer;
+        const newVersion = dep.latest_version || '';
+        await api.dependencies.updateHttpServer(dep.id, newVersion);
+        await loadHttpServers();
+        toast.success(`Updated ${dep.name} to ${newVersion}`);
+      }
+    } catch (error) {
+      console.error('Failed to update dependency:', error);
+      toast.error('Failed to update dependency');
+    }
+  };
+
+  const handleConfirmUpdate = async () => {
+    if (!dependencyToPreview) return;
+
+    try {
+      const { dependency, type } = dependencyToPreview;
+
+      if (type === 'app') {
+        const dep = dependency as AppDependency;
+        const newVersion = dep.latest_version || '';
+        await api.dependencies.updateAppDependency(dep.id, newVersion);
+        await loadAppDependencies();
+        toast.success(`Updated ${dep.name} to ${newVersion}`);
+      } else if (type === 'dockerfile') {
+        const dep = dependency as DockerfileDependency;
+        const newVersion = dep.latest_tag || '';
+        await api.dependencies.updateDockerfile(dep.id, newVersion);
+        await loadDockerfileDependencies();
+        toast.success(`Updated ${dep.image_name} to ${newVersion}`);
+      } else if (type === 'http_server') {
+        const dep = dependency as HttpServer;
+        const newVersion = dep.latest_version || '';
+        await api.dependencies.updateHttpServer(dep.id, newVersion);
+        await loadHttpServers();
+        toast.success(`Updated ${dep.name} to ${newVersion}`);
+      }
+
+      setPreviewModalOpen(false);
+      setDependencyToPreview(null);
+    } catch (error) {
+      console.error('Failed to update dependency:', error);
+      toast.error('Failed to update dependency');
+      throw error; // Re-throw so the modal can handle the error state
+    }
+  };
+
   // useEffect hooks that depend on load functions
   useEffect(() => {
     if (activeTab === 'metrics') {
@@ -576,6 +775,40 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     } catch (error) {
       console.error('Rollback error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to rollback');
+    }
+  };
+
+  const handleUnignoreFromHistory = async (item: UpdateHistory) => {
+    if (!item.dependency_id || !item.dependency_type) {
+      toast.error('Missing dependency information');
+      return;
+    }
+
+    try {
+      if (item.dependency_type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile(item.dependency_id);
+        await loadDockerfileDependencies();
+        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      } else if (item.dependency_type === 'http_server') {
+        await api.dependencies.unignoreHttpServer(item.dependency_id);
+        await loadHttpServers();
+        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      } else if (item.dependency_type === 'app_dependency') {
+        await api.dependencies.unignoreAppDependency(item.dependency_id);
+        await loadAppDependencies();
+        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      }
+
+      // Reload history to show updated status
+      await loadUpdateHistory();
+
+      // Trigger parent refresh
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error('Unignore error:', error);
+      toast.error('Failed to unignore dependency');
     }
   };
 
@@ -733,6 +966,220 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     }
   };
 
+  // Helper function to render dependencies list based on type
+  const renderDependenciesList = (type: 'production' | 'development' | 'optional') => {
+    const filteredDeps = appDependencies?.dependencies.filter(dep => dep.dependency_type === type) || [];
+
+    const severityColors = {
+      critical: 'bg-red-500/20 text-red-400 border-red-500/30',
+      high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      low: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      info: 'bg-gray-500/20 text-tide-text-muted border-gray-500/30',
+    };
+
+    const ecosystemIcons: Record<string, string> = {
+      npm: '📦',
+      pypi: '🐍',
+      composer: '🐘',
+      cargo: '🦀',
+      go: '🐹',
+    };
+
+    const updatesCount = filteredDeps.filter(dep => dep.update_available).length;
+    const securityCount = filteredDeps.filter(dep => dep.security_advisories > 0).length;
+
+    return (
+      <>
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
+            <p className="text-sm text-tide-text-muted">Total</p>
+            <p className="text-2xl font-bold text-tide-text mt-1">{filteredDeps.length}</p>
+          </div>
+          <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
+            <p className="text-sm text-tide-text-muted">Updates Available</p>
+            <p className="text-2xl font-bold text-accent mt-1">{updatesCount}</p>
+          </div>
+          <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
+            <p className="text-sm text-tide-text-muted">Security Issues</p>
+            <p className="text-2xl font-bold text-red-400 mt-1">{securityCount}</p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        {filteredDeps.length > 0 && (
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setDependencyFilter('all')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                dependencyFilter === 'all'
+                  ? 'bg-primary text-tide-text'
+                  : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
+              }`}
+            >
+              All ({filteredDeps.length})
+            </button>
+            <button
+              onClick={() => setDependencyFilter('updates')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                dependencyFilter === 'updates'
+                  ? 'bg-primary text-tide-text'
+                  : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
+              }`}
+            >
+              Updates ({updatesCount})
+            </button>
+            <button
+              onClick={() => setDependencyFilter('security')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                dependencyFilter === 'security'
+                  ? 'bg-primary text-tide-text'
+                  : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
+              }`}
+            >
+              Security ({securityCount})
+            </button>
+          </div>
+        )}
+
+        {/* Dependencies List */}
+        {loadingAppDependencies ? (
+          <div className="text-center py-12">
+            <RefreshCw className="animate-spin mx-auto mb-4 text-primary" size={48} />
+            <p className="text-tide-text-muted">Loading dependencies...</p>
+          </div>
+        ) : filteredDeps.length > 0 ? (
+          <div className="space-y-2">
+            {filteredDeps
+              .filter((dep) => {
+                if (dependencyFilter === 'updates' && !dep.update_available) return false;
+                if (dependencyFilter === 'security' && dep.security_advisories === 0) return false;
+                return true;
+              })
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((dep) => (
+                <div
+                  key={`${dep.ecosystem}-${dep.name}`}
+                  className="bg-tide-surface rounded-lg p-4 border border-tide-border flex items-center justify-between"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{ecosystemIcons[dep.ecosystem] || '📦'}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-tide-text font-medium">{dep.name}</p>
+                        </div>
+                        <p className="text-sm text-tide-text-muted">
+                          {dep.ecosystem} • Current: {dep.current_version}
+                          {dep.latest_version && dep.update_available && (
+                            <span className="text-accent ml-2">→ {dep.latest_version}</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!dep.ignored && dep.update_available && (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${severityColors[dep.severity as keyof typeof severityColors] || severityColors.info}`}>
+                        {dep.severity === 'critical' && 'Critical Update'}
+                        {dep.severity === 'high' && 'High Priority'}
+                        {dep.severity === 'medium' && 'Major Update'}
+                        {dep.severity === 'low' && 'Minor Update'}
+                        {dep.severity === 'info' && 'Patch Update'}
+                      </span>
+                    )}
+                    {!dep.ignored && !dep.update_available && dep.last_checked && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                        Up to date
+                      </span>
+                    )}
+                    {dep.ignored && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                        Up to date
+                      </span>
+                    )}
+                    {dep.security_advisories > 0 && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                        <ShieldAlert size={12} className="mr-1" />
+                        {dep.security_advisories} {dep.security_advisories === 1 ? 'Advisory' : 'Advisories'}
+                      </span>
+                    )}
+                    {dep.socket_score !== null && (
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          dep.socket_score >= 70
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : dep.socket_score >= 40
+                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}
+                      >
+                        Socket: {dep.socket_score}
+                      </span>
+                    )}
+                    {!dep.ignored && dep.update_available && (
+                      <>
+                        <button
+                          onClick={() => handlePreviewUpdate(dep, 'app')}
+                          className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                          title="Preview update changes"
+                        >
+                          <Eye size={14} />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => handleDirectUpdate(dep, 'app')}
+                          className="px-2.5 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary"
+                          title="Update dependency immediately"
+                        >
+                          <Download size={14} />
+                          Update
+                        </button>
+                        <button
+                          onClick={() => handleIgnoreDependency(dep, 'app')}
+                          className="px-2.5 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary/30"
+                          title="Ignore this update"
+                        >
+                          <Ban size={14} />
+                          Ignore
+                        </button>
+                      </>
+                    )}
+                    {dep.ignored && (
+                      <button
+                        onClick={() => handleUnignoreDependency(dep, 'app')}
+                        className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                        title="Unignore this update"
+                      >
+                        <RotateCw size={14} />
+                        Unignore
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 bg-tide-surface border border-tide-border rounded-lg">
+            <Package className="mx-auto mb-4 text-gray-600" size={48} />
+            <p className="text-tide-text-muted">No {type} dependencies found</p>
+            <p className="text-sm text-tide-text-muted mt-1">
+              No {type} dependencies detected in your project
+            </p>
+          </div>
+        )}
+
+        {/* Last Scan Info */}
+        {appDependencies?.last_scan && (
+          <div className="text-sm text-tide-text-muted text-center mt-4">
+            Last scanned: {formatDistanceToNow(new Date(appDependencies.last_scan), { addSuffix: true })}
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
@@ -836,7 +1283,8 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
 
           {/* Tab Content */}
           <div className="p-6 max-h-[70vh] overflow-y-auto">
-            {activeTab === 'overview' && (
+            <>
+              {activeTab === 'overview' && (
               <div className="space-y-6">
                 {/* Status Card */}
                 {container.update_available ? (
@@ -1458,21 +1906,59 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                         {/* Header with status */}
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-3">
-                            {item.status === 'completed' && (
+                            {item.event_type === 'dependency_ignore' && (
+                              <EyeOff className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                            )}
+                            {item.event_type === 'dependency_unignore' && (
+                              <Eye className="w-5 h-5 text-teal-400 flex-shrink-0" />
+                            )}
+                            {item.status === 'completed' && !item.event_type?.includes('dependency') && (
                               <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
                             )}
-                            {item.status === 'failed' && (
+                            {item.status === 'failed' && !item.event_type?.includes('dependency') && (
                               <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                             )}
                             {item.status === 'rolled_back' && (
                               <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
                             )}
                             <div>
-                              <div className="flex items-center gap-2 text-tide-text font-medium">
-                                <span className="font-mono text-sm">{item.from_tag}</span>
-                                <ArrowRight className="w-4 h-4 text-tide-text-muted" />
-                                <span className="font-mono text-sm">{item.to_tag}</span>
-                              </div>
+                              {item.event_type === 'dependency_ignore' || item.event_type === 'dependency_unignore' ? (
+                                <div className="text-tide-text font-medium">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold">{item.dependency_name}</span>
+                                    <span className="font-mono text-xs text-tide-text-muted">{item.from_tag}</span>
+                                    <ArrowRight className="w-3 h-3 text-tide-text-muted" />
+                                    <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                                  </div>
+                                  <p className="text-xs text-tide-text-muted mt-1">
+                                    {item.event_type === 'dependency_ignore' ? 'Ignored' : 'Unignored'}
+                                    {' • '}
+                                    {item.dependency_type === 'dockerfile' && 'Dockerfile dependency'}
+                                    {item.dependency_type === 'http_server' && 'HTTP server'}
+                                    {item.dependency_type === 'app_dependency' && 'App dependency'}
+                                  </p>
+                                </div>
+                              ) : item.event_type === 'dependency_update' ? (
+                                <div className="text-tide-text font-medium">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold">{item.dependency_name}</span>
+                                    <span className="font-mono text-xs text-tide-text-muted">{item.from_tag}</span>
+                                    <ArrowRight className="w-3 h-3 text-tide-text-muted" />
+                                    <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                                  </div>
+                                  <p className="text-xs text-tide-text-muted mt-1">
+                                    {item.dependency_type === 'dockerfile' && 'Dockerfile dependency'}
+                                    {item.dependency_type === 'http_server' && 'HTTP server'}
+                                    {item.dependency_type === 'app_dependency' && 'App dependency'}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 text-tide-text font-medium">
+                                  <span className="font-mono text-sm">{item.from_tag}</span>
+                                  <ArrowRight className="w-4 h-4 text-tide-text-muted" />
+                                  <span className="font-mono text-sm">{item.to_tag}</span>
+                                </div>
+                              )}
                               <p className="text-xs text-tide-text-muted mt-1">
                                 {formatDistanceToNow(new Date(item.started_at), { addSuffix: true })}
                               </p>
@@ -1480,8 +1966,17 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                           </div>
                           <div className="flex flex-col items-end gap-2">
                             <div className="flex items-center gap-2">
-                              <StatusBadge status={item.status} />
-                              {item.can_rollback && (item.status === 'completed' || item.status === 'success') && !item.rolled_back_at && (
+                              <StatusBadge status={item.status} event_type={item.event_type || undefined} />
+                              {item.event_type === 'dependency_ignore' && (
+                                <button
+                                  onClick={() => handleUnignoreFromHistory(item)}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/10 hover:bg-teal-500/20 text-teal-500 rounded-lg transition-colors text-xs"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  Unignore
+                                </button>
+                              )}
+                              {item.can_rollback && (item.status === 'completed' || item.status === 'success') && !item.rolled_back_at && !item.event_type?.includes('dependency') && (
                                 <button
                                   onClick={() => handleRollback(item.id)}
                                   className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg transition-colors text-xs"
@@ -1558,9 +2053,55 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
             )}
 
             {activeTab === 'dependencies' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column - Dockerfile Dependencies & HTTP Servers */}
-                <div className="space-y-6">
+              <div>
+                {/* Sub-tabs for Dependencies */}
+                <div className="flex gap-2 mb-6 border-b border-tide-border">
+                  <button
+                    onClick={() => setDependenciesSubTab('infra')}
+                    className={`px-4 py-3 font-medium transition-colors relative ${
+                      dependenciesSubTab === 'infra'
+                        ? 'text-primary'
+                        : 'text-tide-text-muted hover:text-tide-text'
+                    }`}
+                  >
+                    HTTP Server & Dockerfile
+                    {dependenciesSubTab === 'infra' && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setDependenciesSubTab('dependencies')}
+                    className={`px-4 py-3 font-medium transition-colors relative ${
+                      dependenciesSubTab === 'dependencies'
+                        ? 'text-primary'
+                        : 'text-tide-text-muted hover:text-tide-text'
+                    }`}
+                  >
+                    Dependencies
+                    {dependenciesSubTab === 'dependencies' && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setDependenciesSubTab('dev-dependencies')}
+                    className={`px-4 py-3 font-medium transition-colors relative ${
+                      dependenciesSubTab === 'dev-dependencies'
+                        ? 'text-primary'
+                        : 'text-tide-text-muted hover:text-tide-text'
+                    }`}
+                  >
+                    Dev Dependencies
+                    {dependenciesSubTab === 'dev-dependencies' && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
+                    )}
+                  </button>
+                </div>
+
+                {/* Sub-tab Content */}
+                <>
+                  {/* Infrastructure Tab - HTTP Server & Dockerfile */}
+                  {dependenciesSubTab === 'infra' && (
+                    <div className="space-y-6">
                   {/* HTTP Servers Section */}
                   <div>
                     <div className="mb-4 flex items-start justify-between">
@@ -1646,7 +2187,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    {server.update_available && (
+                                    {!server.ignored && server.update_available && (
                                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${severityColors[server.severity]}`}>
                                         {server.severity === 'critical' && 'Critical Update'}
                                         {server.severity === 'high' && 'High Priority'}
@@ -1655,10 +2196,53 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                                         {server.severity === 'info' && 'Patch Update'}
                                       </span>
                                     )}
-                                    {!server.update_available && server.current_version && (
+                                    {!server.ignored && !server.update_available && server.current_version && (
                                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                                         Up to date
                                       </span>
+                                    )}
+                                    {server.ignored && (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                                        Up to date
+                                      </span>
+                                    )}
+                                    {!server.ignored && server.update_available && (
+                                      <>
+                                        <button
+                                          onClick={() => handlePreviewUpdate(server, 'http_server')}
+                                          className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                                          title="Preview update changes"
+                                        >
+                                          <Eye size={14} />
+                                          Preview
+                                        </button>
+                                        <button
+                                          onClick={() => handleDirectUpdate(server, 'http_server')}
+                                          className="px-2.5 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary"
+                                          title="Update HTTP server immediately"
+                                        >
+                                          <Download size={14} />
+                                          Update
+                                        </button>
+                                        <button
+                                          onClick={() => handleIgnoreDependency(server, 'http_server')}
+                                          className="px-2.5 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary/30"
+                                          title="Ignore this update"
+                                        >
+                                          <Ban size={14} />
+                                          Ignore
+                                        </button>
+                                      </>
+                                    )}
+                                    {server.ignored && (
+                                      <button
+                                        onClick={() => handleUnignoreDependency(server, 'http_server')}
+                                        className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                                        title="Unignore this update"
+                                      >
+                                        <RotateCw size={14} />
+                                        Unignore
+                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -1765,7 +2349,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              {dep.update_available && (() => {
+                              {!dep.ignored && dep.update_available && (() => {
                                 const severityColors = {
                                   critical: 'bg-red-500/20 text-red-400 border-red-500/30',
                                   high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
@@ -1783,10 +2367,53 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                                   </span>
                                 );
                               })()}
-                              {!dep.update_available && dep.last_checked && (
+                              {!dep.ignored && !dep.update_available && dep.last_checked && (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                                   Up to date
                                 </span>
+                              )}
+                              {dep.ignored && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                                  Up to date
+                                </span>
+                              )}
+                              {!dep.ignored && dep.update_available && (
+                                <>
+                                  <button
+                                    onClick={() => handlePreviewUpdate(dep, 'dockerfile')}
+                                    className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                                    title="Preview update changes"
+                                  >
+                                    <Eye size={14} />
+                                    Preview
+                                  </button>
+                                  <button
+                                    onClick={() => handleDirectUpdate(dep, 'dockerfile')}
+                                    className="px-2.5 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary"
+                                    title="Update Dockerfile immediately"
+                                  >
+                                    <Download size={14} />
+                                    Update
+                                  </button>
+                                  <button
+                                    onClick={() => handleIgnoreDependency(dep, 'dockerfile')}
+                                    className="px-2.5 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-primary/30"
+                                    title="Ignore this update"
+                                  >
+                                    <Ban size={14} />
+                                    Ignore
+                                  </button>
+                                </>
+                              )}
+                              {dep.ignored && (
+                                <button
+                                  onClick={() => handleUnignoreDependency(dep, 'dockerfile')}
+                                  className="px-2.5 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-tide-border"
+                                  title="Unignore this update"
+                                >
+                                  <RotateCw size={14} />
+                                  Unignore
+                                </button>
                               )}
                             </div>
                           </div>
@@ -1809,18 +2436,18 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                       Last scanned: {formatDistanceToNow(new Date(dockerfileDependencies.last_scan), { addSuffix: true })}
                     </div>
                   )}
+                  </div>
                 </div>
-              </div>
+                  )}
 
-                {/* Right Column - Application Dependencies */}
-                <div className="space-y-6">
-                  {/* Application Dependencies Section */}
+                {/* Dependencies Tab - Production Dependencies */}
+                {dependenciesSubTab === 'dependencies' && (
                   <div>
                     <div className="mb-4 flex items-start justify-between">
                       <div>
-                        <h3 className="text-xl font-semibold text-tide-text">Application Dependencies</h3>
+                        <h3 className="text-xl font-semibold text-tide-text">Production Dependencies</h3>
                         <p className="text-sm text-tide-text-muted mt-1">
-                          Track dependencies used by your application and available updates. Dependencies are scanned automatically when you open this tab.
+                          Track production dependencies used by your application and available updates.
                         </p>
                       </div>
                       <button
@@ -1829,9 +2456,9 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                           try {
                             await api.containers.scanAppDependencies(container.id);
                             await loadAppDependencies();
-                            toast.success('Application dependencies rescanned successfully');
+                            toast.success('Dependencies rescanned successfully');
                           } catch {
-                            toast.error('Failed to rescan application dependencies');
+                            toast.error('Failed to rescan dependencies');
                           } finally {
                             setScanningAppDeps(false);
                           }
@@ -1844,216 +2471,46 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                       </button>
                     </div>
 
-                {/* Stats */}
-                {appDependencies && (
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
-                      <p className="text-sm text-tide-text-muted">Total Dependencies</p>
-                      <p className="text-2xl font-bold text-tide-text mt-1">{appDependencies.total}</p>
-                    </div>
-                    <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
-                      <p className="text-sm text-tide-text-muted">Updates Available</p>
-                      <p className="text-2xl font-bold text-accent mt-1">{appDependencies.with_updates}</p>
-                    </div>
-                    <div className="bg-tide-surface rounded-lg p-4 border border-tide-border">
-                      <p className="text-sm text-tide-text-muted">Security Issues</p>
-                      <p className="text-2xl font-bold text-red-400 mt-1">{appDependencies.with_security_issues}</p>
-                    </div>
+                    {renderDependenciesList('production')}
                   </div>
                 )}
 
-                {/* Filters */}
-                {appDependencies && appDependencies.dependencies.length > 0 && (
-                  <>
-                    <div className="flex gap-2 mb-3">
+                {/* Dev Dependencies Tab */}
+                {dependenciesSubTab === 'dev-dependencies' && (
+                  <div>
+                    <div className="mb-4 flex items-start justify-between">
+                      <div>
+                        <h3 className="text-xl font-semibold text-tide-text">Development Dependencies</h3>
+                        <p className="text-sm text-tide-text-muted mt-1">
+                          Track development dependencies used during build and test processes.
+                        </p>
+                      </div>
                       <button
-                        onClick={() => setDependencyFilter('all')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          dependencyFilter === 'all'
-                            ? 'bg-primary text-tide-text'
-                            : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
-                        }`}
+                        onClick={async () => {
+                          setScanningAppDeps(true);
+                          try {
+                            await api.containers.scanAppDependencies(container.id);
+                            await loadAppDependencies();
+                            toast.success('Dependencies rescanned successfully');
+                          } catch {
+                            toast.error('Failed to rescan dependencies');
+                          } finally {
+                            setScanningAppDeps(false);
+                          }
+                        }}
+                        disabled={scanningAppDeps || loadingAppDependencies}
+                        className="px-3 py-1.5 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
                       >
-                        All ({appDependencies.total})
-                      </button>
-                      <button
-                        onClick={() => setDependencyFilter('updates')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          dependencyFilter === 'updates'
-                            ? 'bg-primary text-tide-text'
-                            : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
-                        }`}
-                      >
-                        Updates ({appDependencies.with_updates})
-                      </button>
-                      <button
-                        onClick={() => setDependencyFilter('security')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          dependencyFilter === 'security'
-                            ? 'bg-primary text-tide-text'
-                            : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
-                        }`}
-                      >
-                        Security ({appDependencies.with_security_issues})
+                        <RefreshCw size={14} className={scanningAppDeps ? 'animate-spin' : ''} />
+                        Rescan
                       </button>
                     </div>
 
-                    {/* Dependency Type Filters */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setDependencyTypeFilter('all')}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          dependencyTypeFilter === 'all'
-                            ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30'
-                            : 'bg-tide-surface text-tide-text-muted hover:bg-tide-surface-light border border-tide-border'
-                        }`}
-                      >
-                        All Types
-                      </button>
-                      <button
-                        onClick={() => setDependencyTypeFilter('production')}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          dependencyTypeFilter === 'production'
-                            ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30'
-                            : 'bg-tide-surface text-tide-text-muted hover:bg-tide-surface-light border border-tide-border'
-                        }`}
-                      >
-                        Production
-                      </button>
-                      <button
-                        onClick={() => setDependencyTypeFilter('development')}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          dependencyTypeFilter === 'development'
-                            ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30'
-                            : 'bg-tide-surface text-tide-text-muted hover:bg-tide-surface-light border border-tide-border'
-                        }`}
-                      >
-                        Development
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {/* Dependencies List */}
-                {loadingAppDependencies ? (
-                  <div className="text-center py-12">
-                    <RefreshCw className="animate-spin mx-auto mb-4 text-primary" size={48} />
-                    <p className="text-tide-text-muted">Loading dependencies...</p>
-                  </div>
-                ) : appDependencies && appDependencies.dependencies.length > 0 ? (
-                  <div className="space-y-2">
-                    {[...appDependencies.dependencies]
-                      .filter((dep) => {
-                        // Apply update/security filter
-                        if (dependencyFilter === 'updates' && !dep.update_available) return false;
-                        if (dependencyFilter === 'security' && dep.security_advisories === 0) return false;
-
-                        // Apply dependency type filter
-                        if (dependencyTypeFilter !== 'all' && dep.dependency_type !== dependencyTypeFilter) return false;
-
-                        return true;
-                      })
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((dep) => {
-                        const severityColors = {
-                          critical: 'bg-red-500/20 text-red-400 border-red-500/30',
-                          high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-                          medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-                          low: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-                          info: 'bg-gray-500/20 text-tide-text-muted border-gray-500/30',
-                        };
-
-                        const ecosystemIcons: Record<string, string> = {
-                          npm: '📦',
-                          pypi: '🐍',
-                          composer: '🐘',
-                          cargo: '🦀',
-                          go: '🐹',
-                        };
-
-                        return (
-                          <div
-                            key={`${dep.ecosystem}-${dep.name}`}
-                            className="bg-tide-surface rounded-lg p-4 border border-tide-border flex items-center justify-between"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3">
-                                <span className="text-2xl">{ecosystemIcons[dep.ecosystem] || '📦'}</span>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-tide-text font-medium">{dep.name}</p>
-                                    <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/30">
-                                      {dep.dependency_type === 'production' ? 'PROD' :
-                                       dep.dependency_type === 'development' ? 'DEV' :
-                                       dep.dependency_type === 'optional' ? 'OPT' : 'PEER'}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-tide-text-muted">
-                                    {dep.ecosystem} • Current: {dep.current_version}
-                                    {dep.latest_version && dep.update_available && (
-                                      <span className="text-accent ml-2">→ {dep.latest_version}</span>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {dep.update_available && (
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${severityColors[dep.severity as keyof typeof severityColors] || severityColors.info}`}>
-                                  {dep.severity === 'critical' && 'Critical Update'}
-                                  {dep.severity === 'high' && 'High Priority'}
-                                  {dep.severity === 'medium' && 'Major Update'}
-                                  {dep.severity === 'low' && 'Minor Update'}
-                                  {dep.severity === 'info' && 'Patch Update'}
-                                </span>
-                              )}
-                              {!dep.update_available && dep.last_checked && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                                  Up to date
-                                </span>
-                              )}
-                              {dep.security_advisories > 0 && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
-                                  <ShieldAlert size={12} className="mr-1" />
-                                  {dep.security_advisories} {dep.security_advisories === 1 ? 'Advisory' : 'Advisories'}
-                                </span>
-                              )}
-                              {dep.socket_score !== null && (
-                                <span
-                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    dep.socket_score >= 70
-                                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                      : dep.socket_score >= 40
-                                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                                      : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                                  }`}
-                                >
-                                  Socket: {dep.socket_score}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 bg-tide-surface border border-tide-border rounded-lg">
-                    <Package className="mx-auto mb-4 text-gray-600" size={48} />
-                    <p className="text-tide-text-muted">No dependencies found</p>
-                    <p className="text-sm text-tide-text-muted mt-1">
-                      No package files (package.json, pyproject.toml, composer.json, etc.) detected in your project
-                    </p>
+                    {renderDependenciesList('development')}
                   </div>
                 )}
 
-                {/* Last Scan Info */}
-                {appDependencies?.last_scan && (
-                  <div className="text-sm text-tide-text-muted text-center mt-4">
-                    Last scanned: {formatDistanceToNow(new Date(appDependencies.last_scan), { addSuffix: true })}
-                  </div>
-                )}
-                  </div>
-                </div>
+                </>
               </div>
             )}
 
@@ -2308,9 +2765,11 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                   <p className="text-sm text-tide-text-muted mb-4">Choose how updates should be handled for this container.</p>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { value: 'auto', label: 'Auto', desc: 'Apply updates automatically', icon: TrendingUp },
-                      { value: 'manual', label: 'Manual', desc: 'Require manual approval', icon: Power },
+                      { value: 'patch-only', label: 'Patch Only', desc: 'Auto-apply patch updates (1.2.3 → 1.2.4)', icon: CheckCircle2 },
+                      { value: 'minor-and-patch', label: 'Minor + Patch', desc: 'Auto-apply minor/patch (no breaking)', icon: TrendingUp },
+                      { value: 'auto', label: 'Auto (⚠️ All)', desc: 'ALL updates (including breaking)', icon: AlertCircle },
                       { value: 'security', label: 'Security Only', desc: 'Auto-apply security updates', icon: Shield },
+                      { value: 'manual', label: 'Manual', desc: 'Require manual approval', icon: Power },
                       { value: 'disabled', label: 'Disabled', desc: 'No automatic checks', icon: Ban }
                     ].map((item) => (
                       <button
@@ -2705,9 +3164,37 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                 </div>
               </div>
             )}
+            </>
           </div>
         </div>
       </div>
+
+      {/* Dependency Ignore Modal */}
+      {ignoreModalOpen && dependencyToIgnore && (
+        <DependencyIgnoreModal
+          dependency={dependencyToIgnore.dependency}
+          dependencyType={dependencyToIgnore.type}
+          onClose={() => {
+            setIgnoreModalOpen(false);
+            setDependencyToIgnore(null);
+          }}
+          onConfirm={handleConfirmIgnore}
+        />
+      )}
+
+      {/* Dependency Update Preview Modal */}
+      {previewModalOpen && dependencyToPreview && (
+        <DependencyUpdatePreviewModal
+          dependency={dependencyToPreview.dependency}
+          dependencyType={dependencyToPreview.type}
+          onClose={() => {
+            setPreviewModalOpen(false);
+            setDependencyToPreview(null);
+          }}
+          onConfirmUpdate={handleConfirmUpdate}
+          onPreview={handlePreviewLoad}
+        />
+      )}
     </div>
   );
 }

@@ -312,19 +312,69 @@ class DockerfileParser:
         """
         Save Dockerfile dependencies to the database.
 
-        Replaces existing dependencies for this container.
+        Updates existing dependencies while preserving ignored status.
+        Creates new dependencies if they don't exist.
+        Removes dependencies that are no longer in the Dockerfile.
         """
         try:
-            # Delete existing dependencies for this container
-            await session.execute(
-                delete(DockerfileDependency).where(
+            # Get existing dependencies for this container
+            result = await session.execute(
+                select(DockerfileDependency).where(
                     DockerfileDependency.container_id == container_id
                 )
             )
+            existing_deps = {
+                (dep.image_name, dep.dockerfile_path, dep.line_number, dep.stage_name): dep
+                for dep in result.scalars().all()
+            }
 
-            # Add new dependencies
-            for dep in dependencies:
-                session.add(dep)
+            # Track which existing deps we've seen
+            seen_keys = set()
+
+            # Update or create each new dependency
+            for new_dep in dependencies:
+                key = (new_dep.image_name, new_dep.dockerfile_path, new_dep.line_number, new_dep.stage_name)
+                seen_keys.add(key)
+
+                if key in existing_deps:
+                    # Update existing dependency while preserving ignored status
+                    existing = existing_deps[key]
+
+                    # Update version and availability info
+                    existing.current_tag = new_dep.current_tag
+                    existing.latest_tag = new_dep.latest_tag
+                    existing.update_available = new_dep.update_available
+                    existing.severity = new_dep.severity
+                    existing.last_checked = new_dep.last_checked
+                    existing.registry = new_dep.registry
+                    existing.full_image = new_dep.full_image
+                    existing.dependency_type = new_dep.dependency_type
+
+                    # PRESERVE ignored fields - only reset ignore if version has moved past ignored version
+                    if existing.ignored and existing.ignored_version:
+                        # If the latest version has changed beyond what was ignored, clear the ignore
+                        if new_dep.latest_tag != existing.ignored_version:
+                            logger.info(
+                                f"Clearing ignore for {existing.image_name} - "
+                                f"new version {new_dep.latest_tag} available (was ignoring {existing.ignored_version})"
+                            )
+                            existing.ignored = False
+                            existing.ignored_version = None
+                            existing.ignored_by = None
+                            existing.ignored_at = None
+                            existing.ignored_reason = None
+
+                    logger.debug(f"Updated existing dependency: {existing.image_name} at line {existing.line_number}")
+                else:
+                    # Add new dependency
+                    session.add(new_dep)
+                    logger.debug(f"Created new dependency: {new_dep.image_name} at line {new_dep.line_number}")
+
+            # Remove dependencies that are no longer in the Dockerfile
+            for key, existing in existing_deps.items():
+                if key not in seen_keys:
+                    logger.debug(f"Removing old dependency: {existing.image_name} at line {existing.line_number}")
+                    await session.delete(existing)
 
             await session.commit()
 
@@ -462,15 +512,151 @@ class DockerfileParser:
             current_parts = extract_version(current_tag)
             latest_parts = extract_version(latest_tag)
 
-            # Major version change
+            # Major version change (breaking changes expected per semver)
             if latest_parts[0] > current_parts[0]:
-                return "medium"  # Maps to "Major Update" in UI
-            # Minor version change
+                return "high"  # Maps to "Major Update" in UI
+            # Minor version change (backwards-compatible features)
             elif latest_parts[1] > current_parts[1]:
                 return "low"  # Maps to "Minor Update" in UI
-            # Patch version change
+            # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"  # Maps to "Patch Update" in UI
         except (ValueError, IndexError, AttributeError):
             # If we can't parse versions, default to info
             return "info"
+
+    @staticmethod
+    def update_from_instruction(
+        dockerfile_path: Path,
+        image_name: str,
+        new_tag: str,
+        line_number: Optional[int] = None,
+        stage_name: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """
+        Update FROM instruction in Dockerfile.
+
+        Args:
+            dockerfile_path: Path to Dockerfile
+            image_name: Image name (e.g., "python", "node")
+            new_tag: New tag to use (e.g., "3.15-slim")
+            line_number: Specific line number to target (optional)
+            stage_name: Stage name for multi-stage builds (optional)
+
+        Returns:
+            Tuple of (success: bool, updated_content: str)
+        """
+        try:
+            with open(dockerfile_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            updated = False
+            for i, line in enumerate(lines, start=1):
+                # Skip if line number specified and this isn't it
+                if line_number and i != line_number:
+                    continue
+
+                # Check if this is a FROM instruction for our image
+                match = re.match(
+                    r'^(FROM\s+)([^\s:]+):?([^\s]+)?(\s+AS\s+([^\s]+))?(.*)$',
+                    line,
+                    re.IGNORECASE
+                )
+
+                if match:
+                    current_image = match.group(2)
+                    current_stage = match.group(5)
+
+                    # Check if this matches our target
+                    if current_image == image_name:
+                        # If stage_name specified, verify it matches
+                        if stage_name and current_stage != stage_name:
+                            continue
+
+                        # Build new FROM line preserving formatting
+                        new_line = f"{match.group(1)}{image_name}:{new_tag}"
+                        if current_stage:
+                            new_line += f" AS {current_stage}"
+                        new_line += match.group(6)  # Any trailing content
+                        new_line += "\n"
+
+                        lines[i - 1] = new_line
+                        updated = True
+
+                        # If line number was specified, we're done
+                        if line_number:
+                            break
+
+            if not updated:
+                logger.warning(
+                    f"Could not find FROM instruction for {image_name} "
+                    f"in {dockerfile_path} (line: {line_number}, stage: {stage_name})"
+                )
+                return False, ""
+
+            return True, ''.join(lines)
+
+        except (OSError, PermissionError) as e:
+            logger.error(f"File system error updating Dockerfile {dockerfile_path}: {e}")
+            return False, ""
+        except UnicodeDecodeError as e:
+            logger.error(f"Encoding error updating Dockerfile {dockerfile_path}: {e}")
+            return False, ""
+
+    @staticmethod
+    def update_label_value(
+        dockerfile_path: Path,
+        label_key: str,
+        new_value: str
+    ) -> Tuple[bool, str]:
+        """
+        Update LABEL value in Dockerfile (e.g., for HTTP server version).
+
+        Supports formats:
+        - LABEL http.server.version="2.6.0"
+        - LABEL http.server.version "2.6.0"
+
+        Args:
+            dockerfile_path: Path to Dockerfile
+            label_key: Label key to update (e.g., "http.server.version")
+            new_value: New value for label
+
+        Returns:
+            Tuple of (success: bool, updated_content: str)
+        """
+        try:
+            with open(dockerfile_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            updated = False
+            for i, line in enumerate(lines):
+                # Match LABEL instructions with this key
+                # Handles: LABEL key="value" or LABEL key "value"
+                pattern = rf'^(LABEL\s+{re.escape(label_key)}\s*=?\s*["\']?)([^"\'\s]+)(["\']?.*)$'
+                match = re.match(pattern, line, re.IGNORECASE)
+
+                if match:
+                    # Preserve quoting style
+                    prefix = match.group(1)
+                    suffix = match.group(3)
+
+                    # Build new line
+                    new_line = f"{prefix}{new_value}{suffix}\n"
+                    lines[i] = new_line
+                    updated = True
+                    break  # Only update first match
+
+            if not updated:
+                logger.warning(
+                    f"Could not find LABEL {label_key} in {dockerfile_path}"
+                )
+                return False, ""
+
+            return True, ''.join(lines)
+
+        except (OSError, PermissionError) as e:
+            logger.error(f"File system error updating Dockerfile label {dockerfile_path}: {e}")
+            return False, ""
+        except UnicodeDecodeError as e:
+            logger.error(f"Encoding error updating Dockerfile label {dockerfile_path}: {e}")
+            return False, ""

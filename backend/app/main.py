@@ -81,23 +81,36 @@ async def lifespan(app: FastAPI):
     logger.info("Default settings initialized")
 
     # Clean up stuck update history records from previous crashes
+    # Using raw SQL to avoid issues with model columns that may not exist yet during migrations
     async with AsyncSessionLocal() as db:
-        from app.models.history import UpdateHistory
-        from sqlalchemy import select, update
+        from sqlalchemy import text
         from datetime import datetime, timezone
 
-        # Find all in_progress records
+        # Find all in_progress records using raw SQL
         result = await db.execute(
-            select(UpdateHistory).where(UpdateHistory.status == "in_progress")
+            text("SELECT id FROM update_history WHERE status = :status"),
+            {"status": "in_progress"}
         )
-        stuck_records = result.scalars().all()
+        stuck_records = result.fetchall()
 
         if stuck_records:
             logger.warning(f"Found {len(stuck_records)} stuck update history records, marking as failed")
-            for record in stuck_records:
-                record.status = "failed"
-                record.error_message = "Update interrupted by application restart"
-                record.completed_at = datetime.now(timezone.utc)
+            # Update records using raw SQL
+            await db.execute(
+                text("""
+                    UPDATE update_history
+                    SET status = :new_status,
+                        error_message = :error_msg,
+                        completed_at = :completed_at
+                    WHERE status = :old_status
+                """),
+                {
+                    "new_status": "failed",
+                    "error_msg": "Update interrupted by application restart",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "old_status": "in_progress"
+                }
+            )
             await db.commit()
             logger.info(f"Cleaned up {len(stuck_records)} stuck update history records")
 

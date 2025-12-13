@@ -13,9 +13,16 @@ from sqlalchemy import text
 
 async def up(db):
     """Add rejection fields to updates table."""
-    await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_by VARCHAR"))
-    await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_at DATETIME"))
-    await db.execute(text("ALTER TABLE updates ADD COLUMN rejection_reason TEXT"))
+    # Check if columns exist before adding (idempotent)
+    result = await db.execute(text("PRAGMA table_info(updates)"))
+    columns = {row[1] for row in result.fetchall()}
+
+    if "rejected_by" not in columns:
+        await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_by VARCHAR"))
+    if "rejected_at" not in columns:
+        await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_at DATETIME"))
+    if "rejection_reason" not in columns:
+        await db.execute(text("ALTER TABLE updates ADD COLUMN rejection_reason TEXT"))
     await db.commit()
 
 

@@ -5,6 +5,7 @@ from typing import Optional, List, Dict
 import json
 
 from pydantic import BaseModel, Field, field_validator
+from app.schemas.dependency import DockerfileDependencySchema, AppDependencySchema, HttpServerSchema as HttpServerSchemaFromDependency
 
 
 class ContainerSchema(BaseModel):
@@ -77,6 +78,7 @@ class HistoryItemSchema(BaseModel):
     from_tag: str
     to_tag: str
     status: str
+    event_type: Optional[str] = None  # 'update', 'dependency_ignore', 'dependency_unignore'
     update_type: Optional[str] = None
     reason: Optional[str] = None
     reason_type: Optional[str] = None
@@ -90,6 +92,11 @@ class HistoryItemSchema(BaseModel):
     started_at: datetime
     completed_at: Optional[datetime] = None
     rolled_back_at: Optional[datetime] = None
+
+    # Dependency-specific fields (present for dependency ignore/unignore events)
+    dependency_type: Optional[str] = None  # 'dockerfile', 'http_server', 'app_dependency'
+    dependency_id: Optional[int] = None
+    dependency_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -165,53 +172,15 @@ class ContainerSummary(BaseModel):
     security_policy_count: int
 
 
-class AppDependency(BaseModel):
-    """Application dependency information."""
-
-    name: str
-    ecosystem: str  # npm, pypi, composer, cargo, go
-    current_version: str
-    latest_version: Optional[str] = None
-    update_available: bool = False
-    security_advisories: int = 0
-    socket_score: Optional[float] = None  # Socket.dev security score (0-100)
-    severity: str = "info"  # critical, high, medium, low, info
-    dependency_type: str = "production"  # production, development, optional, peer
-    last_checked: Optional[datetime] = None
-
-
 class AppDependenciesResponse(BaseModel):
     """Response containing all application dependencies for a container."""
 
-    dependencies: List[AppDependency] = Field(default_factory=list)
+    dependencies: List[AppDependencySchema] = Field(default_factory=list)
     total: int = 0
     with_updates: int = 0
     with_security_issues: int = 0
     last_scan: Optional[datetime] = None
     scan_status: str = "idle"  # idle, scanning, error
-
-
-class DockerfileDependencySchema(BaseModel):
-    """Dockerfile dependency information."""
-
-    id: int
-    container_id: int
-    dependency_type: str  # base_image, build_arg, runtime_image
-    image_name: str
-    current_tag: str
-    registry: str
-    full_image: str
-    latest_tag: Optional[str] = None
-    update_available: bool = False
-    severity: str = "info"  # critical, high, medium, low, info (maps to patch, minor, major)
-    last_checked: Optional[datetime] = None
-    dockerfile_path: str
-    line_number: Optional[int] = None
-    stage_name: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class DockerfileDependenciesResponse(BaseModel):
@@ -224,22 +193,10 @@ class DockerfileDependenciesResponse(BaseModel):
     scan_status: str = "idle"  # idle, scanning, error
 
 
-class HttpServerSchema(BaseModel):
-    """HTTP server information."""
-
-    name: str
-    current_version: Optional[str] = None
-    latest_version: Optional[str] = None
-    update_available: bool = False
-    severity: str = "info"  # critical, high, medium, low, info
-    detection_method: str = "unknown"  # process, version_command
-    last_checked: Optional[datetime] = None
-
-
 class HttpServersResponse(BaseModel):
     """Response containing all HTTP servers detected in a container."""
 
-    servers: List[HttpServerSchema] = Field(default_factory=list)
+    servers: List[HttpServerSchemaFromDependency] = Field(default_factory=list)
     total: int = 0
     with_updates: int = 0
     last_scan: Optional[datetime] = None

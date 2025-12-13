@@ -1,11 +1,17 @@
 interface StatusBadgeProps {
   status: string;
   className?: string;
+  event_type?: string;
 }
 
-export default function StatusBadge({ status, className = '' }: StatusBadgeProps) {
-  const getStatusColor = (status: string) => {
+export default function StatusBadge({ status, className = '', event_type }: StatusBadgeProps) {
+  const getStatusColor = (status: string, eventType?: string) => {
     const normalizedStatus = status.toLowerCase();
+    const normalizedEventType = eventType?.toLowerCase();
+
+    // Dependency ignore/unignore statuses
+    if (normalizedEventType === 'dependency_ignore') return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    if (normalizedEventType === 'dependency_unignore') return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
 
     // Restart-specific statuses
     if (normalizedStatus.includes('restarted')) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
@@ -28,7 +34,13 @@ export default function StatusBadge({ status, className = '' }: StatusBadgeProps
     return 'bg-tide-border-light/20 text-tide-text-muted border-gray-500/30';
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status: string, eventType?: string) => {
+    const normalizedEventType = eventType?.toLowerCase();
+
+    // Special labels for dependency ignore/unignore
+    if (normalizedEventType === 'dependency_ignore') return 'Ignored';
+    if (normalizedEventType === 'dependency_unignore') return 'Unignored';
+
     // Convert snake_case to Title Case with spaces
     return status
       .split('_')
@@ -37,8 +49,8 @@ export default function StatusBadge({ status, className = '' }: StatusBadgeProps
   };
 
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(status)} ${className}`}>
-      {getStatusLabel(status)}
+    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(status, event_type)} ${className}`}>
+      {getStatusLabel(status, event_type)}
     </span>
   );
 }

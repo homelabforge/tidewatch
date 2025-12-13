@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.4] - 2025-12-14
+
+### Fixed
+- **pyproject.toml Array Format Support** - Fixed dependency updates failing for modern Python projects using PEP 621 format
+  - Root cause: Parser only supported Poetry key-value format (`package = "^1.2.3"`), not PEP 621 array format (`"package>=1.2.3",`)
+  - Backend: Added dual-format regex patterns to handle both array and key-value dependency declarations
+  - Backend: Implemented smart section detection for `[project.dependencies]`, `[project.optional-dependencies]`, and Poetry sections
+  - Backend: Fixed section parameter mapping - now correctly passes dependency type (production/development) to TOML parser
+  - Backend: Also fixed Cargo.toml section mapping for Rust dependencies (dependencies vs dev-dependencies)
+  - Frontend: Removed unused "Optional Dependencies" tab after database analysis confirmed zero dependencies with that type
+  - Impact: Users can now update dependencies in all modern pyproject.toml formats (PEP 621, Poetry, mixed)
+  - Result: Successful update of ruff from 0.7.0 to 0.14.9 in VulnForge project
+  - **Files modified:**
+    - `backend/app/utils/manifest_parsers.py` - Updated `update_pyproject_toml()` with array format support (lines 158-276)
+    - `backend/app/services/dependency_update_service.py` - Fixed section parameter mapping (lines 599-608, 616-624)
+    - `frontend/src/components/ContainerModal.tsx` - Removed unused "Optional Dependencies" tab (line 106, ~50 lines deleted)
+
+### Improved
+- **Dependency Version Operator Support** - Enhanced parser to handle all pip version specifiers
+  - Supports: `>=`, `<=`, `>`, `<`, `==`, `!=`, `~=` (compatible release)
+  - Preserves existing operators when updating versions
+  - Maintains formatting (indentation, quotes, trailing commas)
+
+### Database
+- Database analysis showed: 92 development dependencies, 38 production dependencies, 0 optional dependencies
+- Confirmed correct categorization of `[project.optional-dependencies]` dev group as "development" type
+- No schema changes required for this fix
+
 ## [3.5.3] - 2025-12-10
 
 ### Fixed

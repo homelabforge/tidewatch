@@ -1,7 +1,7 @@
 """API routers for TideWatch."""
 
 from fastapi import APIRouter
-from app.api import settings, containers, updates, history, backup, widget, events, analytics, restarts, system, cleanup, auth, oidc, scan, webhooks
+from app.api import settings, containers, updates, history, backup, widget, events, analytics, restarts, system, cleanup, auth, oidc, scan, webhooks, dependencies
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -20,6 +20,7 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(cleanup.router, prefix="/cleanup", tags=["cleanup"])
 api_router.include_router(scan.router, prefix="/scan", tags=["scan"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(dependencies.router, tags=["dependencies"])
 api_router.include_router(events.router, tags=["events"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(widget.router, tags=["widget"])

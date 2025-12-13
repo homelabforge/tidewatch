@@ -4,6 +4,16 @@ from app.schemas.setting import SettingSchema, SettingUpdate, SettingCategory
 from app.schemas.container import ContainerSchema, ContainerUpdate, ContainerSummary
 from app.schemas.update import UpdateSchema, UpdateApproval, UpdateReasoning
 from app.schemas.history import HistorySchema, HistorySummary
+from app.schemas.dependency import (
+    HttpServerSchema,
+    AppDependencySchema,
+    DockerfileDependencySchema,
+    IgnoreRequest,
+    UnignoreRequest,
+    UpdateRequest,
+    PreviewResponse,
+    UpdateResponse,
+)
 
 __all__ = [
     "SettingSchema",
@@ -17,4 +27,12 @@ __all__ = [
     "UpdateReasoning",
     "HistorySchema",
     "HistorySummary",
+    "HttpServerSchema",
+    "AppDependencySchema",
+    "DockerfileDependencySchema",
+    "IgnoreRequest",
+    "UnignoreRequest",
+    "UpdateRequest",
+    "PreviewResponse",
+    "UpdateResponse",
 ]

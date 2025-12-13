@@ -18,6 +18,7 @@ from app.services.settings_service import SettingsService
 from app.services.event_bus import event_bus
 from app.services.changelog import ChangelogFetcher, ChangelogClassifier
 from app.services.compose_parser import ComposeParser
+from app.utils.version import get_version_change_type
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +54,30 @@ class UpdateChecker:
             return False, "container policy requires manual approval"
 
         if container.policy == "auto":
-            return True, "container policy allows all updates"
+            return True, "container policy allows all updates (including breaking changes)"
 
         if container.policy == "security":
             if update.reason_type == "security":
                 return True, "security policy approves security updates"
             else:
                 return False, "security policy requires manual approval for non-security updates"
+
+        # Semver-aware policies
+        if container.policy == "patch-only":
+            change_type = get_version_change_type(update.from_tag, update.to_tag)
+            if change_type == "patch":
+                return True, "patch-only policy approves patch updates"
+            else:
+                return False, f"patch-only policy requires manual approval for {change_type or 'unknown'} updates"
+
+        if container.policy == "minor-and-patch":
+            change_type = get_version_change_type(update.from_tag, update.to_tag)
+            if change_type in ["minor", "patch"]:
+                return True, f"minor-and-patch policy approves {change_type} updates"
+            elif change_type == "major":
+                return False, "minor-and-patch policy requires manual approval for major updates (breaking changes)"
+            else:
+                return False, "minor-and-patch policy requires manual approval for unknown version changes"
 
         return False, "unknown policy"
 

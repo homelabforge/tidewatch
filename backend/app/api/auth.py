@@ -110,11 +110,20 @@ async def setup_admin_account(
 
 @router.post("/cancel-setup")
 async def cancel_setup(db: AsyncSession = Depends(get_db)):
-    """Cancel setup and disable authentication (public endpoint).
+    """Cancel setup and disable authentication (only during initial setup).
 
-    This endpoint allows users to cancel the setup process from the setup page
-    without requiring authentication. It sets auth_mode back to 'none'.
+    This endpoint allows users to cancel the setup process from the setup page.
+    It can only be called before setup is complete to prevent unauthorized
+    auth mode changes.
     """
+    # Only allow canceling if setup is not complete yet
+    setup_complete = await is_setup_complete(db)
+    if setup_complete:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot cancel setup after it has been completed"
+        )
+
     # Set auth_mode to none
     await SettingsService.set(db, "auth_mode", "none")
 

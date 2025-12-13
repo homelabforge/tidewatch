@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
+from sqlalchemy.orm import undefer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
 
@@ -24,7 +25,7 @@ def transform_update_to_event(update: UpdateHistory) -> UnifiedHistoryEventSchem
     """Transform UpdateHistory model to unified event schema."""
     return UnifiedHistoryEventSchema(
         id=update.id,
-        event_type="update",
+        event_type=update.event_type or "update",  # Use actual event_type from database
         container_id=update.container_id,
         container_name=update.container_name,
         status=update.status,
@@ -45,6 +46,10 @@ def transform_update_to_event(update: UpdateHistory) -> UnifiedHistoryEventSchem
         backup_path=update.backup_path,
         cves_fixed=update.cves_fixed or [],
         rolled_back_at=update.rolled_back_at,
+        # Dependency-specific fields
+        dependency_type=update.dependency_type,
+        dependency_id=update.dependency_id,
+        dependency_name=update.dependency_name,
     )
 
 
@@ -131,8 +136,13 @@ async def list_history(
     # Fetch more from each table to ensure we have enough after merging
     fetch_limit = min(limit * 3, 500)
 
-    # Query updates
-    update_query = select(UpdateHistory).order_by(UpdateHistory.created_at.desc())
+    # Query updates - undefer event_type to load it eagerly
+    update_query = select(UpdateHistory).options(
+        undefer(UpdateHistory.event_type),
+        undefer(UpdateHistory.dependency_type),
+        undefer(UpdateHistory.dependency_id),
+        undefer(UpdateHistory.dependency_name),
+    ).order_by(UpdateHistory.created_at.desc())
     if container_id:
         update_query = update_query.where(UpdateHistory.container_id == container_id)
     if status:
@@ -262,7 +272,14 @@ async def get_history(
         History record
     """
     result = await db.execute(
-        select(UpdateHistory).where(UpdateHistory.id == history_id)
+        select(UpdateHistory)
+        .options(
+            undefer(UpdateHistory.event_type),
+            undefer(UpdateHistory.dependency_type),
+            undefer(UpdateHistory.dependency_id),
+            undefer(UpdateHistory.dependency_name),
+        )
+        .where(UpdateHistory.id == history_id)
     )
     history = result.scalar_one_or_none()
 

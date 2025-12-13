@@ -63,6 +63,38 @@ export default function History() {
     }
   };
 
+  const handleUnignore = async (item: UnifiedHistoryEvent) => {
+    console.log('Unignore clicked - Full item:', item);
+    console.log('Dependency fields:', {
+      id: item.dependency_id,
+      type: item.dependency_type,
+      container: item.container_id,
+      name: item.dependency_name
+    });
+
+    if (!item.dependency_id || !item.dependency_type || !item.container_id) {
+      toast.error(`Missing dependency information (ID: ${item.dependency_id}, Type: ${item.dependency_type}, Container: ${item.container_id})`);
+      return;
+    }
+
+    try {
+      // Call the appropriate unignore endpoint based on dependency type
+      if (item.dependency_type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile(item.dependency_id);
+      } else if (item.dependency_type === 'http_server') {
+        await api.dependencies.unignoreHttpServer(item.dependency_id);
+      } else if (item.dependency_type === 'app_dependency') {
+        await api.dependencies.unignoreAppDependency(item.dependency_id);
+      }
+
+      toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      loadHistory();
+    } catch (error) {
+      console.error('Unignore error:', error);
+      toast.error('Failed to unignore dependency');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-tide-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -149,6 +181,30 @@ export default function History() {
                               <ArrowRight size={14} className="text-tide-text-muted" />
                               <span className="font-mono text-primary">{item.to_tag}</span>
                             </div>
+                          ) : item.event_type === 'dependency_update' ? (
+                            // Dependency Update Event: Show dependency name and version change
+                            <div className="flex items-center gap-2 text-sm text-tide-text">
+                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
+                              <span className="font-mono text-xs">{item.from_tag}</span>
+                              <ArrowRight size={12} className="text-tide-text-muted" />
+                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                            </div>
+                          ) : item.event_type === 'dependency_ignore' ? (
+                            // Dependency Ignore Event: Show dependency name and version change
+                            <div className="flex items-center gap-2 text-sm text-tide-text">
+                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
+                              <span className="font-mono text-xs">{item.from_tag}</span>
+                              <ArrowRight size={12} className="text-tide-text-muted" />
+                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                            </div>
+                          ) : item.event_type === 'dependency_unignore' ? (
+                            // Dependency Unignore Event: Show dependency name and version change
+                            <div className="flex items-center gap-2 text-sm text-tide-text">
+                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
+                              <span className="font-mono text-xs">{item.from_tag}</span>
+                              <ArrowRight size={12} className="text-tide-text-muted" />
+                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                            </div>
                           ) : (
                             // Restart Event: Show trigger reason
                             <div className="flex items-center gap-2 text-sm text-tide-text">
@@ -167,7 +223,7 @@ export default function History() {
 
                         {/* Status */}
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <StatusBadge status={item.status} />
+                          <StatusBadge status={item.status} event_type={item.event_type} />
                         </td>
 
                         {/* Started */}
@@ -192,7 +248,7 @@ export default function History() {
                           <div className="text-sm text-tide-text">{item.performed_by || 'System'}</div>
                         </td>
 
-                        {/* Actions - Only for updates */}
+                        {/* Actions */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           {item.event_type === 'update' && item.rollback_available && (
                             <button
@@ -201,6 +257,15 @@ export default function History() {
                             >
                               <RotateCcw size={12} />
                               Rollback
+                            </button>
+                          )}
+                          {item.event_type === 'dependency_ignore' && (
+                            <button
+                              onClick={() => handleUnignore(item)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-400 rounded text-xs font-medium transition-colors border border-teal-500/30"
+                            >
+                              <RefreshCw size={12} />
+                              Unignore
                             </button>
                           )}
                         </td>

@@ -47,9 +47,11 @@ function getCsrfToken(): string | null {
 
 // Helper function to update CSRF token from response headers
 function updateCsrfToken(response: Response): void {
-  const token = response.headers.get('X-CSRF-Token');
+  // Headers.get() is case-insensitive per spec, but be explicit
+  const token = response.headers.get('x-csrf-token') || response.headers.get('X-CSRF-Token');
   if (token) {
     csrfToken = token;
+    console.log('[CSRF] Token updated:', token.substring(0, 10) + '...');
   }
 }
 
@@ -66,6 +68,9 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const csrfToken = getCsrfToken();
     if (csrfToken) {
       headers['X-CSRF-Token'] = csrfToken;
+      console.log(`[CSRF] Including token in ${method} ${endpoint}:`, csrfToken.substring(0, 10) + '...');
+    } else {
+      console.warn(`[CSRF] No token available for ${method} ${endpoint}`);
     }
   }
 
@@ -547,6 +552,87 @@ export const authApi = {
   },
 };
 
+// Dependencies API
+const dependenciesApi = {
+  // Dockerfile Dependencies
+  ignoreDockerfile: (id: number, reason?: string) =>
+    apiCall(`/dependencies/dockerfile/${id}/ignore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  unignoreDockerfile: (id: number) =>
+    apiCall(`/dependencies/dockerfile/${id}/unignore`, {
+      method: 'POST',
+    }),
+
+  previewDockerfileUpdate: (id: number, newVersion: string) =>
+    apiCall(`/dependencies/dockerfile/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+
+  updateDockerfile: async (id: number, newVersion: string) => {
+    const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/dockerfile/${id}/update`, {
+      method: 'POST',
+      body: JSON.stringify({ new_version: newVersion }),
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Update failed');
+    }
+    return response;
+  },
+
+  // HTTP Servers
+  ignoreHttpServer: (id: number, reason?: string) =>
+    apiCall(`/dependencies/http-servers/${id}/ignore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  unignoreHttpServer: (id: number) =>
+    apiCall(`/dependencies/http-servers/${id}/unignore`, {
+      method: 'POST',
+    }),
+
+  previewHttpServerUpdate: (id: number, newVersion: string) =>
+    apiCall(`/dependencies/http-servers/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+
+  updateHttpServer: async (id: number, newVersion: string) => {
+    const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/http-servers/${id}/update`, {
+      method: 'POST',
+      body: JSON.stringify({ new_version: newVersion }),
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Update failed');
+    }
+    return response;
+  },
+
+  // App Dependencies
+  ignoreAppDependency: (id: number, reason?: string) =>
+    apiCall(`/dependencies/app-dependencies/${id}/ignore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  unignoreAppDependency: (id: number) =>
+    apiCall(`/dependencies/app-dependencies/${id}/unignore`, {
+      method: 'POST',
+    }),
+
+  previewAppDependencyUpdate: (id: number, newVersion: string) =>
+    apiCall(`/dependencies/app-dependencies/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+
+  updateAppDependency: async (id: number, newVersion: string) => {
+    const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/app-dependencies/${id}/update`, {
+      method: 'POST',
+      body: JSON.stringify({ new_version: newVersion }),
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Update failed');
+    }
+    return response;
+  },
+};
+
 // Export combined API
 export const api = {
   containers: containerApi,
@@ -558,6 +644,7 @@ export const api = {
   restarts: restartApi,
   analytics: analyticsApi,
   auth: authApi,
+  dependencies: dependenciesApi,
 };
 
 export default api;

@@ -1,5 +1,6 @@
 """Containers API endpoints."""
 
+import logging
 import subprocess
 import asyncio
 from typing import List, Optional, Dict, Any
@@ -11,6 +12,8 @@ from sqlalchemy.exc import OperationalError
 from app.db import get_db
 from app.services.auth import require_auth
 from app.utils.security import sanitize_log_message
+
+logger = logging.getLogger(__name__)
 from app.models.container import Container
 from app.models.update import Update
 from app.models.history import UpdateHistory
@@ -23,12 +26,10 @@ from app.schemas.container import (
     PolicyUpdate,
     UpdateWindowUpdate,
     AppDependenciesResponse,
-    AppDependency,
     DockerfileDependenciesResponse,
-    DockerfileDependencySchema,
     HttpServersResponse,
-    HttpServerSchema,
 )
+from app.schemas.dependency import DockerfileDependencySchema, AppDependencySchema, HttpServerSchema
 from app.services.compose_parser import ComposeParser
 from app.services.dependency_manager import DependencyManager
 from app.services.update_window import UpdateWindow
@@ -141,9 +142,15 @@ async def get_container_details(
     )
     current_update = update_result.scalar_one_or_none()
 
-    # Get update history (last 20 entries)
+    # Get update history (last 20 entries) with deferred fields loaded
+    from sqlalchemy.orm import undefer
     history_result = await db.execute(
-        select(UpdateHistory).where(
+        select(UpdateHistory).options(
+            undefer(UpdateHistory.event_type),
+            undefer(UpdateHistory.dependency_type),
+            undefer(UpdateHistory.dependency_id),
+            undefer(UpdateHistory.dependency_name),
+        ).where(
             UpdateHistory.container_id == container_id
         ).order_by(desc(UpdateHistory.started_at)).limit(20)
     )
@@ -1000,44 +1007,58 @@ async def get_app_dependencies(
         )
 
     try:
-        # Scan dependencies
-        dependencies = await scanner.scan_container_dependencies(
-            container.compose_file,
-            container.service_name
-        )
+        # Try to fetch persisted dependencies first
+        dependencies = await scanner.get_persisted_dependencies(db, container_id)
+
+        # If no dependencies found, scan and persist
+        if not dependencies:
+            logger.info(f"No persisted dependencies found for container {container_id}, scanning...")
+            # Scan dependencies
+            scanned_deps = await scanner.scan_container_dependencies(
+                container.compose_file,
+                container.service_name
+            )
+
+            # Persist to database
+            if scanned_deps:
+                await scanner.persist_dependencies(db, container_id, scanned_deps)
+                # Fetch the persisted dependencies with IDs
+                dependencies = await scanner.get_persisted_dependencies(db, container_id)
+            else:
+                dependencies = []
 
         # Calculate stats
         total = len(dependencies)
         with_updates = sum(1 for dep in dependencies if dep.update_available)
         with_security = sum(1 for dep in dependencies if dep.security_advisories > 0)
 
+        # Get last checked time from first dependency if available
+        last_scan = dependencies[0].last_checked if dependencies else datetime.utcnow()
+
         return AppDependenciesResponse(
-            dependencies=dependencies,
+            dependencies=[
+                AppDependencySchema.model_validate(dep)
+                for dep in dependencies
+            ],
             total=total,
             with_updates=with_updates,
             with_security_issues=with_security,
-            last_scan=datetime.utcnow(),
+            last_scan=last_scan,
             scan_status="idle"
         )
     except (OSError, PermissionError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access dependency files"
         )
     except (ValueError, KeyError, AttributeError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse dependencies"
         )
     except (ImportError, ModuleNotFoundError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
@@ -1079,36 +1100,34 @@ async def scan_app_dependencies(
         )
 
     try:
-        # Trigger scan (same as GET, but this allows for future async scanning)
+        # Trigger scan
         dependencies = await scanner.scan_container_dependencies(
             container.compose_file,
             container.service_name
         )
 
+        # Persist to database
+        if dependencies:
+            await scanner.persist_dependencies(db, container_id, dependencies)
+
         return {
-            "message": "Dependency scan completed",
+            "message": "Dependency scan completed and persisted",
             "dependencies_found": len(dependencies),
             "updates_available": sum(1 for dep in dependencies if dep.update_available)
         }
     except (OSError, PermissionError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access dependency files"
         )
     except (ValueError, KeyError, AttributeError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse dependencies"
         )
     except (ImportError, ModuleNotFoundError) as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
         raise HTTPException(
             status_code=500,
@@ -1119,12 +1138,14 @@ async def scan_app_dependencies(
 @router.get("/{container_id}/dockerfile-dependencies", response_model=DockerfileDependenciesResponse)
 async def get_dockerfile_dependencies(
     container_id: int,
+    include_ignored: bool = Query(True, description="Include ignored dependencies"),
     admin: Optional[dict] = Depends(require_auth),
     db: AsyncSession = Depends(get_db)
 ) -> DockerfileDependenciesResponse:
     """Get Dockerfile dependencies for a container.
 
     Returns all base images and build images found in the container's Dockerfile.
+    Ignored dependencies are included by default and marked with ignored=True for UI display.
     """
     try:
         from app.services.dockerfile_parser import DockerfileParser
@@ -1138,7 +1159,14 @@ async def get_dockerfile_dependencies(
 
         # Get dependencies from database
         parser = DockerfileParser()
-        dependencies = await parser.get_container_dockerfile_dependencies(db, container_id)
+        all_dependencies = await parser.get_container_dockerfile_dependencies(db, container_id)
+
+        # Always include ignored dependencies (frontend handles display logic)
+        # The include_ignored parameter is kept for backwards compatibility but defaults to True
+        if not include_ignored:
+            dependencies = [dep for dep in all_dependencies if not dep.ignored]
+        else:
+            dependencies = all_dependencies
 
         return DockerfileDependenciesResponse(
             dependencies=[
@@ -1146,7 +1174,7 @@ async def get_dockerfile_dependencies(
                 for dep in dependencies
             ],
             total=len(dependencies),
-            with_updates=sum(1 for dep in dependencies if dep.update_available),
+            with_updates=sum(1 for dep in dependencies if dep.update_available and not dep.ignored),
             last_scan=dependencies[0].last_checked if dependencies else None,
             scan_status="idle"
         )

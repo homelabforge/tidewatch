@@ -1,12 +1,13 @@
 """Update history model for audit trail."""
 
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text, JSON
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func
 from app.db import Base
 
 
 class UpdateHistory(Base):
-    """Audit trail of all container updates."""
+    """Audit trail of all container updates and dependency actions."""
 
     __tablename__ = "update_history"
 
@@ -41,6 +42,13 @@ class UpdateHistory(Base):
     # Rollback support
     can_rollback = Column(Boolean, default=True)
     rolled_back_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Dependency update/ignore tracking (deferred to avoid loading issues during migrations)
+    event_type = deferred(Column(String, nullable=True))  # 'update', 'restart', 'dependency_update', 'dependency_ignore'
+    dependency_type = deferred(Column(String, nullable=True))  # 'dockerfile', 'http_server', 'app_dependency'
+    dependency_id = deferred(Column(Integer, nullable=True, index=True))  # Reference to specific dependency
+    dependency_name = deferred(Column(String, nullable=True))  # For display purposes
+    file_path = deferred(Column(String, nullable=True))  # Path to file that was updated (Dockerfile, package.json, etc.)
 
     started_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # Indexed for date filtering
     completed_at = Column(DateTime(timezone=True), nullable=True)

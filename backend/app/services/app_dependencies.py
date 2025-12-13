@@ -9,17 +9,76 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 import logging
 
-from app.schemas.container import AppDependency
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.app_dependency import AppDependency as AppDependencyModel
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AppDependency:
+    """Application dependency information (used for scanning)."""
+
+    name: str
+    ecosystem: str  # npm, pypi, composer, cargo, go
+    current_version: str
+    latest_version: Optional[str] = None
+    update_available: bool = False
+    security_advisories: int = 0
+    socket_score: Optional[float] = None  # Socket.dev security score (0-100)
+    severity: str = "info"  # critical, high, medium, low, info
+    dependency_type: str = "production"  # production, development, optional, peer
+    manifest_file: str = "unknown"  # Path to manifest file (package.json, requirements.txt, etc.)
+    last_checked: Optional[datetime] = None
 
 
 class DependencyScanner:
     """Scanner for detecting and analyzing application dependencies."""
 
+    # Allowed base path for file updates (must match dependency_update_service.py)
+    ALLOWED_BASE_PATH = Path("/srv/raid0/docker/build")
+
     def __init__(self, projects_directory: str = "/projects"):
         self.timeout = httpx.Timeout(10.0)
         self.projects_directory = Path(projects_directory)
+
+    def _normalize_manifest_path(self, file_path: Path) -> str:
+        """
+        Normalize manifest file path to be relative to ALLOWED_BASE_PATH.
+
+        Converts /projects/... to relative path from /srv/raid0/docker/build.
+        For example:
+        - /projects/tidewatch/frontend/package.json -> tidewatch/frontend/package.json
+        - /srv/raid0/docker/build/tidewatch/backend/pyproject.toml -> tidewatch/backend/pyproject.toml
+
+        Args:
+            file_path: Absolute path to manifest file
+
+        Returns:
+            Relative path string from ALLOWED_BASE_PATH
+        """
+        try:
+            # Convert to absolute path
+            abs_path = file_path.resolve()
+
+            # Replace /projects with ALLOWED_BASE_PATH if necessary
+            path_str = str(abs_path)
+            if path_str.startswith("/projects/"):
+                # Convert /projects/foo to /srv/raid0/docker/build/foo
+                relative_part = path_str[len("/projects/"):]
+                return relative_part
+            elif path_str.startswith(str(self.ALLOWED_BASE_PATH)):
+                # Already under ALLOWED_BASE_PATH, get relative part
+                return str(abs_path.relative_to(self.ALLOWED_BASE_PATH))
+            else:
+                # Fallback - return the path as-is
+                logger.warning(f"Manifest path {file_path} not under /projects or {self.ALLOWED_BASE_PATH}")
+                return str(file_path)
+        except Exception as e:
+            logger.error(f"Error normalizing manifest path {file_path}: {e}")
+            return str(file_path)
 
     async def scan_container_dependencies(
         self, compose_file: str, service_name: str, manual_path: Optional[str] = None
@@ -119,7 +178,7 @@ class DependencyScanner:
             if package_json.exists():
                 logger.info(f"Found package.json at {package_json}")
                 content = package_json.read_text()
-                dependencies.extend(await self._parse_package_json(content))
+                dependencies.extend(await self._parse_package_json(content, package_json))
 
         return dependencies
 
@@ -143,7 +202,7 @@ class DependencyScanner:
             if file_path.exists():
                 logger.info(f"Found Python dependency file at {file_path}")
                 content = file_path.read_text()
-                dependencies.extend(await parser(content))
+                dependencies.extend(await parser(content, file_path))
 
         return dependencies
 
@@ -159,7 +218,7 @@ class DependencyScanner:
             if composer_json.exists():
                 logger.info(f"Found composer.json at {composer_json}")
                 content = composer_json.read_text()
-                return await self._parse_composer_json(content)
+                return await self._parse_composer_json(content, composer_json)
 
         return []
 
@@ -175,7 +234,7 @@ class DependencyScanner:
             if go_mod.exists():
                 logger.info(f"Found go.mod at {go_mod}")
                 content = go_mod.read_text()
-                return await self._parse_go_mod_content(content)
+                return await self._parse_go_mod_content(content, go_mod)
 
         return []
 
@@ -191,15 +250,18 @@ class DependencyScanner:
             if cargo_toml.exists():
                 logger.info(f"Found Cargo.toml at {cargo_toml}")
                 content = cargo_toml.read_text()
-                return await self._parse_cargo_toml_content(content)
+                return await self._parse_cargo_toml_content(content, cargo_toml)
 
         return []
 
-    async def _parse_package_json(self, content: str) -> List[AppDependency]:
+    async def _parse_package_json(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse package.json content."""
         try:
             data = json.loads(content)
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
 
             # Parse each dependency type separately to tag them
             dep_types = [
@@ -222,6 +284,7 @@ class DependencyScanner:
                         latest_version=latest,
                         update_available=latest is not None and latest != clean_version,
                         dependency_type=dep_type,
+                        manifest_file=manifest_file,
                         last_checked=datetime.utcnow(),
                     )
                     dep.severity = self._calculate_severity(
@@ -241,6 +304,7 @@ class DependencyScanner:
                     latest_version=None,  # Engines don't have "latest" - they're constraints
                     update_available=False,
                     dependency_type="production",
+                    manifest_file=manifest_file,
                     last_checked=datetime.utcnow(),
                 )
                 dependencies.append(dep)
@@ -259,6 +323,7 @@ class DependencyScanner:
                         latest_version=None,  # Package managers can be updated independently
                         update_available=False,
                         dependency_type="production",
+                        manifest_file=manifest_file,
                         last_checked=datetime.utcnow(),
                     )
                     dependencies.append(dep)
@@ -271,7 +336,7 @@ class DependencyScanner:
             logger.error(f"Invalid package.json structure: {e}")
             return []
 
-    async def _parse_toml_deps(self, section_content: str, dep_type: str) -> List[AppDependency]:
+    async def _parse_toml_deps(self, section_content: str, dep_type: str, manifest_file: str) -> List[AppDependency]:
         """Parse TOML dependency section and return list of dependencies."""
         dependencies = []
         for line in section_content.split("\n"):
@@ -303,6 +368,7 @@ class DependencyScanner:
                 latest_version=latest,
                 update_available=latest is not None and latest != clean_version,
                 dependency_type=dep_type,
+                manifest_file=manifest_file,
                 last_checked=datetime.utcnow(),
             )
             dep.severity = self._calculate_severity(
@@ -312,10 +378,13 @@ class DependencyScanner:
 
         return dependencies
 
-    async def _parse_pyproject_content(self, content: str) -> List[AppDependency]:
+    async def _parse_pyproject_content(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse pyproject.toml content."""
         try:
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
 
             # Parse [project.dependencies] - production
             prod_section = re.search(
@@ -324,7 +393,7 @@ class DependencyScanner:
                 re.DOTALL,
             )
             if prod_section:
-                deps = await self._parse_toml_deps(prod_section.group(1), "production")
+                deps = await self._parse_toml_deps(prod_section.group(1), "production", manifest_file)
                 dependencies.extend(deps)
 
             # Parse [project.optional-dependencies.*] - optional/development (subtable format)
@@ -333,7 +402,7 @@ class DependencyScanner:
                 group_name = match.group(1)
                 # Treat 'dev' group as development, others as optional
                 dep_type = "development" if group_name == "dev" else "optional"
-                deps = await self._parse_toml_deps(match.group(2), dep_type)
+                deps = await self._parse_toml_deps(match.group(2), dep_type, manifest_file)
                 dependencies.extend(deps)
 
             # Parse [project.optional-dependencies] with inline groups (e.g., dev = [...])
@@ -352,7 +421,7 @@ class DependencyScanner:
                     group_deps = group_match.group(2)
                     # Treat 'dev' group as development, others as optional
                     dep_type = "development" if group_name == "dev" else "optional"
-                    deps = await self._parse_toml_deps(group_deps, dep_type)
+                    deps = await self._parse_toml_deps(group_deps, dep_type, manifest_file)
                     dependencies.extend(deps)
 
             # Parse [tool.poetry.dependencies] - production
@@ -362,7 +431,7 @@ class DependencyScanner:
                 re.DOTALL,
             )
             if poetry_section:
-                deps = await self._parse_toml_deps(poetry_section.group(1), "production")
+                deps = await self._parse_toml_deps(poetry_section.group(1), "production", manifest_file)
                 dependencies.extend(deps)
 
             # Parse [tool.poetry.group.*.dependencies] - development/optional
@@ -371,7 +440,7 @@ class DependencyScanner:
                 group_name = match.group(1)
                 # Treat 'dev' group as development, others as optional
                 dep_type = "development" if group_name == "dev" else "optional"
-                deps = await self._parse_toml_deps(match.group(2), dep_type)
+                deps = await self._parse_toml_deps(match.group(2), dep_type, manifest_file)
                 dependencies.extend(deps)
 
             return dependencies
@@ -379,10 +448,14 @@ class DependencyScanner:
             logger.error(f"Invalid pyproject.toml structure: {e}")
             return []
 
-    async def _parse_requirements_content(self, content: str) -> List[AppDependency]:
+    async def _parse_requirements_content(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse requirements.txt content."""
         try:
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
+
             for line in content.split("\n"):
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -403,6 +476,7 @@ class DependencyScanner:
                     current_version=clean_version,
                     latest_version=latest,
                     update_available=latest is not None and latest != clean_version,
+                    manifest_file=manifest_file,
                     last_checked=datetime.utcnow(),
                 )
                 dep.severity = self._calculate_severity(
@@ -415,11 +489,14 @@ class DependencyScanner:
             logger.error(f"Invalid requirements.txt structure: {e}")
             return []
 
-    async def _parse_composer_json(self, content: str) -> List[AppDependency]:
+    async def _parse_composer_json(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse composer.json content."""
         try:
             data = json.loads(content)
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
 
             # Parse each dependency type separately to tag them
             dep_types = [
@@ -443,6 +520,7 @@ class DependencyScanner:
                         latest_version=latest,
                         update_available=latest is not None and latest != clean_version,
                         dependency_type=dep_type,
+                        manifest_file=manifest_file,
                         last_checked=datetime.utcnow(),
                     )
                     dep.severity = self._calculate_severity(
@@ -458,10 +536,14 @@ class DependencyScanner:
             logger.error(f"Invalid composer.json structure: {e}")
             return []
 
-    async def _parse_go_mod_content(self, content: str) -> List[AppDependency]:
+    async def _parse_go_mod_content(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse go.mod content."""
         try:
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
+
             require_match = re.search(r"require\s*\((.*?)\)", content, re.DOTALL)
             if require_match:
                 for line in require_match.group(1).split("\n"):
@@ -481,6 +563,7 @@ class DependencyScanner:
                             current_version=clean_version,
                             latest_version=latest,
                             update_available=latest is not None and latest != clean_version,
+                            manifest_file=manifest_file,
                             last_checked=datetime.utcnow(),
                         )
                         dep.severity = self._calculate_severity(
@@ -493,10 +576,14 @@ class DependencyScanner:
             logger.error(f"Invalid go.mod structure: {e}")
             return []
 
-    async def _parse_cargo_toml_content(self, content: str) -> List[AppDependency]:
+    async def _parse_cargo_toml_content(self, content: str, file_path: Path) -> List[AppDependency]:
         """Parse Cargo.toml content."""
         try:
             dependencies = []
+
+            # Normalize the manifest file path
+            manifest_file = self._normalize_manifest_path(file_path)
+
             dep_section = re.search(
                 r"\[dependencies\](.*?)(?=\[|$)", content, re.DOTALL
             )
@@ -527,6 +614,7 @@ class DependencyScanner:
                         current_version=clean_version,
                         latest_version=latest,
                         update_available=latest is not None and latest != clean_version,
+                        manifest_file=manifest_file,
                         last_checked=datetime.utcnow(),
                     )
                     dep.severity = self._calculate_severity(
@@ -564,13 +652,13 @@ class DependencyScanner:
             while len(latest_parts) < 3:
                 latest_parts.append(0)
 
-            # Major version change
+            # Major version change (breaking changes expected per semver)
             if latest_parts[0] > current_parts[0]:
-                return "medium"
-            # Minor version change
+                return "high"
+            # Minor version change (backwards-compatible features)
             elif latest_parts[1] > current_parts[1]:
                 return "low"
-            # Patch version change
+            # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"
         except:
@@ -684,6 +772,159 @@ class DependencyScanner:
         except (ValueError, KeyError) as e:
             logger.debug(f"Invalid response fetching Go version for {module}: {e}")
         return None
+
+    async def persist_dependencies(
+        self, db: AsyncSession, container_id: int, dependencies: List[AppDependency]
+    ) -> int:
+        """
+        Persist scanned app dependencies to the database.
+
+        Updates existing dependencies while preserving ignored status.
+        Creates new dependencies if they don't exist.
+        Removes dependencies that are no longer detected.
+
+        Args:
+            db: Database session
+            container_id: Container ID
+            dependencies: List of scanned dependencies
+
+        Returns:
+            Number of dependencies persisted
+        """
+        try:
+            # Get existing dependencies for this container
+            result = await db.execute(
+                select(AppDependencyModel).where(
+                    AppDependencyModel.container_id == container_id
+                )
+            )
+            existing_deps = {
+                (dep.name, dep.ecosystem, dep.manifest_file): dep
+                for dep in result.scalars().all()
+            }
+
+            # Track which existing deps we've seen
+            seen_keys = set()
+
+            # Update or create each new dependency
+            for new_dep in dependencies:
+                # Use manifest_file from dependency if set, otherwise fall back to ecosystem-based guess
+                manifest_file = new_dep.manifest_file if new_dep.manifest_file != "unknown" else self._get_manifest_file_for_dependency(new_dep)
+
+                key = (new_dep.name, new_dep.ecosystem, manifest_file)
+                seen_keys.add(key)
+
+                if key in existing_deps:
+                    # Update existing dependency while preserving ignored status
+                    existing = existing_deps[key]
+
+                    # Update version and availability info
+                    existing.current_version = new_dep.current_version
+                    existing.latest_version = new_dep.latest_version
+                    existing.update_available = new_dep.update_available
+                    existing.severity = new_dep.severity
+                    existing.dependency_type = new_dep.dependency_type
+                    existing.security_advisories = new_dep.security_advisories
+                    existing.socket_score = new_dep.socket_score
+                    existing.last_checked = datetime.utcnow()
+
+                    # PRESERVE ignored fields - only reset ignore if version has moved past ignored version
+                    if existing.ignored and existing.ignored_version:
+                        # If the latest version has changed beyond what was ignored, clear the ignore
+                        if new_dep.latest_version != existing.ignored_version:
+                            logger.info(
+                                f"Clearing ignore for {existing.name} ({existing.ecosystem}) - "
+                                f"new version {new_dep.latest_version} available (was ignoring {existing.ignored_version})"
+                            )
+                            existing.ignored = False
+                            existing.ignored_version = None
+                            existing.ignored_by = None
+                            existing.ignored_at = None
+                            existing.ignored_reason = None
+
+                    logger.debug(f"Updated existing dependency: {existing.name} ({existing.ecosystem})")
+                else:
+                    # Add new dependency
+                    db_dep = AppDependencyModel(
+                        container_id=container_id,
+                        name=new_dep.name,
+                        ecosystem=new_dep.ecosystem,
+                        current_version=new_dep.current_version,
+                        latest_version=new_dep.latest_version,
+                        update_available=new_dep.update_available,
+                        dependency_type=new_dep.dependency_type,
+                        security_advisories=new_dep.security_advisories,
+                        socket_score=new_dep.socket_score,
+                        severity=new_dep.severity,
+                        manifest_file=manifest_file,
+                        last_checked=datetime.utcnow(),
+                    )
+                    db.add(db_dep)
+                    logger.debug(f"Created new dependency: {new_dep.name} ({new_dep.ecosystem})")
+
+            # Remove dependencies that are no longer detected
+            for key, existing in existing_deps.items():
+                if key not in seen_keys:
+                    logger.debug(f"Removing old dependency: {existing.name} ({existing.ecosystem})")
+                    await db.delete(existing)
+
+            await db.commit()
+            logger.info(f"Persisted {len(dependencies)} app dependencies for container {container_id}")
+            return len(dependencies)
+
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Failed to persist app dependencies for container {container_id}: {e}")
+            raise
+
+    def _get_manifest_file_for_dependency(self, dep: AppDependency) -> str:
+        """
+        Determine the manifest file path for a dependency based on its ecosystem.
+
+        Args:
+            dep: App dependency
+
+        Returns:
+            Relative path to manifest file
+        """
+        ecosystem_manifest_map = {
+            "npm": "package.json",
+            "pypi": "requirements.txt",  # or pyproject.toml, but we'll use requirements.txt as default
+            "composer": "composer.json",
+            "go": "go.mod",
+            "cargo": "Cargo.toml",
+            "engine": "package.json",
+            "package-manager": "package.json",
+        }
+        return ecosystem_manifest_map.get(dep.ecosystem, "unknown")
+
+    async def get_persisted_dependencies(
+        self, db: AsyncSession, container_id: int
+    ) -> List[AppDependency]:
+        """
+        Fetch persisted app dependencies from the database.
+
+        Args:
+            db: Database session
+            container_id: Container ID
+
+        Returns:
+            List of app dependencies
+        """
+        try:
+            result = await db.execute(
+                select(AppDependencyModel)
+                .where(AppDependencyModel.container_id == container_id)
+                .order_by(AppDependencyModel.name)
+            )
+            db_deps = result.scalars().all()
+
+            # Return database models directly (will be converted to schemas in API layer)
+            return list(db_deps)
+
+        except Exception as e:
+            logger.error(f"Failed to fetch persisted app dependencies for container {container_id}: {e}")
+            raise
 
 
 # Global scanner instance

@@ -82,6 +82,7 @@ export interface UpdateHistory {
   from_tag: string;
   to_tag: string;
   status: string;
+  event_type?: string | null; // 'update', 'dependency_ignore', 'dependency_unignore'
   update_type: string | null;
   reason: string | null;
   reason_type: string | null;
@@ -97,12 +98,17 @@ export interface UpdateHistory {
   started_at: string;
   completed_at: string | null;
   rolled_back_at: string | null;
+
+  // Dependency-specific fields (present for dependency ignore/unignore events)
+  dependency_type?: string | null; // 'dockerfile', 'http_server', 'app_dependency'
+  dependency_id?: number | null;
+  dependency_name?: string | null;
 }
 
 export interface UnifiedHistoryEvent {
   // Common fields
   id: number;
-  event_type: 'update' | 'restart';
+  event_type: 'update' | 'restart' | 'dependency_ignore' | 'dependency_unignore';
   container_id: number;
   container_name: string;
   status: string;
@@ -131,6 +137,11 @@ export interface UnifiedHistoryEvent {
   exit_code?: number | null;
   health_check_passed?: boolean | null;
   final_container_status?: string | null;
+
+  // Dependency-specific fields (present when event_type includes 'dependency')
+  dependency_type?: 'dockerfile' | 'http_server' | 'app_dependency' | null;
+  dependency_id?: number | null;
+  dependency_name?: string | null;
 }
 
 // Settings types
@@ -378,6 +389,7 @@ export interface ServerEvent {
 
 // App Dependencies types
 export interface AppDependency {
+  id: number;
   name: string;
   ecosystem: string; // npm, pypi, composer, cargo, go, engine, package-manager
   current_version: string;
@@ -387,6 +399,12 @@ export interface AppDependency {
   socket_score: number | null; // Socket.dev security score (0-100)
   severity: string; // critical, high, medium, low, info
   dependency_type: 'production' | 'development' | 'optional' | 'peer'; // production, development, optional, peer
+  manifest_file: string;
+  ignored: boolean;
+  ignored_version: string | null;
+  ignored_by: string | null;
+  ignored_at: string | null;
+  ignored_reason: string | null;
   last_checked: string | null;
 }
 
@@ -411,6 +429,11 @@ export interface DockerfileDependency {
   latest_tag: string | null;
   update_available: boolean;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  ignored: boolean;
+  ignored_version: string | null;
+  ignored_by: string | null;
+  ignored_at: string | null;
+  ignored_reason: string | null;
   last_checked: string | null;
   dockerfile_path: string;
   line_number: number | null;
@@ -429,12 +452,20 @@ export interface DockerfileDependenciesResponse {
 
 // HTTP Server types
 export interface HttpServer {
+  id: number;
   name: string;
   current_version: string | null;
   latest_version: string | null;
   update_available: boolean;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   detection_method: 'process' | 'version_command' | 'unknown';
+  dockerfile_path: string | null;
+  line_number: number | null;
+  ignored: boolean;
+  ignored_version: string | null;
+  ignored_by: string | null;
+  ignored_at: string | null;
+  ignored_reason: string | null;
   last_checked: string | null;
 }
 

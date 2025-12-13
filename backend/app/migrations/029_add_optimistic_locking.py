@@ -20,18 +20,23 @@ from app.db import engine
 async def upgrade():
     """Add version column for optimistic locking."""
     async with engine.begin() as conn:
-        # Add version column with default value of 1
-        await conn.execute(text("""
-            ALTER TABLE updates
-            ADD COLUMN version INTEGER DEFAULT 1 NOT NULL
-        """))
+        # Check if column exists before adding (idempotent)
+        result = await conn.execute(text("PRAGMA table_info(updates)"))
+        columns = {row[1] for row in result.fetchall()}
 
-        # Initialize existing rows to version 1
-        await conn.execute(text("""
-            UPDATE updates
-            SET version = 1
-            WHERE version IS NULL
-        """))
+        if "version" not in columns:
+            # Add version column with default value of 1
+            await conn.execute(text("""
+                ALTER TABLE updates
+                ADD COLUMN version INTEGER DEFAULT 1 NOT NULL
+            """))
+
+            # Initialize existing rows to version 1
+            await conn.execute(text("""
+                UPDATE updates
+                SET version = 1
+                WHERE version IS NULL
+            """))
 
 
 async def downgrade():

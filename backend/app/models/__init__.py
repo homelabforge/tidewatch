@@ -8,6 +8,8 @@ from app.models.restart_state import ContainerRestartState
 from app.models.restart_log import ContainerRestartLog
 from app.models.metrics_history import MetricsHistory
 from app.models.dockerfile_dependency import DockerfileDependency
+from app.models.http_server import HttpServer
+from app.models.app_dependency import AppDependency
 from app.models.secret_key import SecretKey
 from app.models.oidc_state import OIDCState
 from app.models.oidc_pending_link import OIDCPendingLink
@@ -23,6 +25,8 @@ __all__ = [
     "ContainerRestartLog",
     "MetricsHistory",
     "DockerfileDependency",
+    "HttpServer",
+    "AppDependency",
     "SecretKey",
     "OIDCState",
     "OIDCPendingLink",

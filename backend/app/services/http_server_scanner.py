@@ -94,36 +94,53 @@ class HttpServerScanner:
         try:
             container = self.docker_client.containers.get(container_name)
 
-            # Check if container is running
+            # Method 0: Check container labels (works even when stopped)
+            label_servers = await self._detect_from_labels(container)
+
+            # If container is not running, only use label detection
             if container.status != 'running':
-                logger.warning(f"Container {container_name} is not running")
-                return servers
+                logger.info(f"Container {container_name} is {container.status}, using label-based detection only")
+                servers = label_servers
+            else:
+                # Container is running - use all detection methods
+                # Method 1: Check container config (works on stopped too, but redundant with labels)
+                config_servers = await self._detect_from_container_config(container)
 
-            # Method 1: Check processes
-            process_servers = await self._detect_from_processes(container)
+                # Method 2: Check processes
+                process_servers = await self._detect_from_processes(container)
 
-            # Method 2: Try version commands for known servers
-            version_servers = await self._detect_from_version_commands(container)
+                # Method 3: Try version commands for known servers
+                version_servers = await self._detect_from_version_commands(container)
 
-            # Merge results, preferring version command data
-            servers_dict = {}
+                # Merge results, preferring more detailed detection methods
+                servers_dict = {}
 
-            # Add process-detected servers first
-            for server in process_servers:
-                servers_dict[server['name']] = server
-
-            # Update with version-detected servers (overwrites if same name)
-            for server in version_servers:
-                if server['name'] in servers_dict:
-                    # Update existing entry with version info
-                    servers_dict[server['name']]['current_version'] = server.get('current_version')
-                    servers_dict[server['name']]['detection_method'] = 'version_command'
-                else:
-                    # Add new server
+                # Add label-detected servers first (base data)
+                for server in label_servers:
                     servers_dict[server['name']] = server
 
-            # Convert back to list
-            servers = list(servers_dict.values())
+                # Add config-detected servers (may add new servers)
+                for server in config_servers:
+                    if server['name'] not in servers_dict:
+                        servers_dict[server['name']] = server
+
+                # Add process-detected servers (may add new servers)
+                for server in process_servers:
+                    if server['name'] not in servers_dict:
+                        servers_dict[server['name']] = server
+
+                # Update with version-detected servers (best data, includes version)
+                for server in version_servers:
+                    if server['name'] in servers_dict:
+                        # Update existing entry with version info
+                        servers_dict[server['name']]['current_version'] = server.get('current_version')
+                        servers_dict[server['name']]['detection_method'] = 'version_command'
+                    else:
+                        # Add new server
+                        servers_dict[server['name']] = server
+
+                # Convert back to list
+                servers = list(servers_dict.values())
 
             # Get latest versions for detected servers
             for server in servers:
@@ -314,17 +331,79 @@ class HttpServerScanner:
             while len(latest_parts) < 3:
                 latest_parts.append(0)
 
-            # Major version change
+            # Major version change (breaking changes expected per semver)
             if latest_parts[0] > current_parts[0]:
-                return "medium"
-            # Minor version change
+                return "high"
+            # Minor version change (backwards-compatible features)
             elif latest_parts[1] > current_parts[1]:
                 return "low"
-            # Patch version change
+            # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"
         except:
             return "info"
+
+    async def _detect_from_labels(self, container) -> List[Dict[str, any]]:
+        """Detect HTTP servers from container labels."""
+        servers = []
+
+        try:
+            labels = container.labels or {}
+
+            # Check for http.server.* labels
+            server_name = labels.get('http.server.name')
+            if server_name:
+                server_info = {
+                    'name': server_name.lower(),
+                    'current_version': labels.get('http.server.version'),
+                    'detection_method': 'labels',
+                    'last_checked': datetime.utcnow(),
+                }
+                servers.append(server_info)
+                logger.info(f"Detected {server_name} from labels in {container.name}")
+
+        except (AttributeError, TypeError) as e:
+            logger.debug(f"Failed to detect from labels: {e}")
+
+        return servers
+
+    async def _detect_from_container_config(self, container) -> List[Dict[str, any]]:
+        """Detect HTTP servers from container config without exec."""
+        servers = []
+
+        try:
+            # Get container config
+            config = container.attrs.get('Config', {})
+
+            # Check CMD and Entrypoint
+            cmd_parts = config.get('Cmd', []) or []
+            entrypoint_parts = config.get('Entrypoint', []) or []
+
+            # Combine into single command string
+            full_cmd = ' '.join(entrypoint_parts + cmd_parts)
+
+            # Check against patterns
+            for server_name, pattern in self.process_patterns.items():
+                if re.search(pattern, full_cmd, re.IGNORECASE):
+                    server_info = {
+                        'name': server_name,
+                        'current_version': None,
+                        'detection_method': 'container_config',
+                        'last_checked': datetime.utcnow(),
+                    }
+
+                    # Try to extract version from command args (rare but possible)
+                    version_match = re.search(r'--version[=\s]+(\d+\.\d+\.\d+)', full_cmd)
+                    if version_match:
+                        server_info['current_version'] = version_match.group(1)
+
+                    servers.append(server_info)
+                    logger.info(f"Detected {server_name} from container config in {container.name}")
+
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"Failed to detect from container config: {e}")
+
+        return servers
 
 
 # Global scanner instance

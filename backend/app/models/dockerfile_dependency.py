@@ -1,6 +1,6 @@
 """Dockerfile dependency model for tracking base images and other Docker dependencies."""
 
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text
 from sqlalchemy.sql import func
 from app.db import Base
 
@@ -33,9 +33,19 @@ class DockerfileDependency(Base):
     line_number = Column(Integer, nullable=True)  # Line number in Dockerfile where dependency is defined
     stage_name = Column(String, nullable=True)  # Multi-stage build stage name (e.g., "frontend-builder")
 
+    # Ignore tracking (version-specific)
+    ignored = Column(Boolean, default=False, index=True)
+    ignored_version = Column(String, nullable=True)  # Which version transition was ignored
+    ignored_by = Column(String, nullable=True)  # Who ignored the update
+    ignored_at = Column(DateTime(timezone=True), nullable=True)  # When it was ignored
+    ignored_reason = Column(Text, nullable=True)  # Optional reason for ignoring
+
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Optimistic locking
+    version = Column(Integer, default=1, nullable=False)
 
     def __repr__(self):
         return f"<DockerfileDependency(container_id={self.container_id}, image={self.full_image}, type={self.dependency_type})>"
