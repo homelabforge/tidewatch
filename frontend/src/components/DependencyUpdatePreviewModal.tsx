@@ -23,6 +23,8 @@ interface DependencyUpdatePreviewModalProps {
 
 export default function DependencyUpdatePreviewModal({
   dependency,
+  // dependencyType is passed for type safety but not currently used
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dependencyType,
   onClose,
   onConfirmUpdate,
@@ -33,10 +35,6 @@ export default function DependencyUpdatePreviewModal({
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changelogExpanded, setChangelogExpanded] = useState(false);
-
-  useEffect(() => {
-    loadPreview();
-  }, []);
 
   const loadPreview = async () => {
     setLoading(true);
@@ -51,6 +49,11 @@ export default function DependencyUpdatePreviewModal({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUpdate = async () => {
     setUpdating(true);

@@ -92,7 +92,6 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   const [loadingAppDependencies, setLoadingAppDependencies] = useState(false);
   const [scanningAppDeps, setScanningAppDeps] = useState(false);
   const [dependencyFilter, setDependencyFilter] = useState<'all' | 'updates' | 'security'>('updates');
-  const [dependencyTypeFilter, setDependencyTypeFilter] = useState<'all' | 'production' | 'development' | 'optional' | 'peer'>('all');
 
   // Dockerfile Dependencies state
   const [dockerfileDependencies, setDockerfileDependencies] = useState<DockerfileDependenciesResponse | null>(null);

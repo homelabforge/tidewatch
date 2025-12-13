@@ -12,7 +12,7 @@ Supports multiple package managers and manifest formats:
 import json
 import re
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 import logging
 
 logger = logging.getLogger(__name__)
