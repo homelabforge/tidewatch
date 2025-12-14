@@ -54,8 +54,12 @@ class TestGetAllSettingsEndpoint:
             assert "*" in sensitive_setting["value"]
             assert "supersecretpasswordhash123" not in sensitive_setting["value"]
 
-    async def test_get_all_settings_requires_auth(self, client):
+    async def test_get_all_settings_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/settings")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -113,8 +117,12 @@ class TestGetSettingEndpoint:
         assert "*" in data["value"]
         assert "verylongsecretpasswordhash12345" not in data["value"]
 
-    async def test_get_setting_requires_auth(self, client):
+    async def test_get_setting_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/settings/check_interval")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -176,8 +184,12 @@ class TestUpdateSettingEndpoint:
         """Test integer validation (check_interval: 1-1440)."""
         pass
 
-    async def test_update_setting_requires_auth(self, client):
+    async def test_update_setting_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.put(
             "/api/v1/settings/check_interval",
             json={"value": "120"}
@@ -267,8 +279,12 @@ class TestBulkUpdateSettingsEndpoint:
             elif setting["key"] == "auto_update_enabled":
                 assert setting["value"] == "false"
 
-    async def test_bulk_update_requires_auth(self, client):
+    async def test_bulk_update_requires_auth(self, client, db):
         """Test requires authentication (CSRF validation happens first, returns 403)."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post(
             "/api/v1/settings/batch",
             json=[{"key": "check_interval", "value": "240"}]
