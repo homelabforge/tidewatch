@@ -265,7 +265,6 @@ class TestContainerDetailsEndpoint:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -286,7 +285,6 @@ class TestContainerDetailsEndpoint:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -305,7 +303,6 @@ class TestContainerDetailsEndpoint:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -321,7 +318,6 @@ class TestContainerDetailsEndpoint:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -337,7 +333,6 @@ class TestContainerDetailsEndpoint:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -360,7 +355,6 @@ class TestContainerPolicyManagement:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running",
             policy="manual"
         )
         db.add(container)
@@ -382,7 +376,6 @@ class TestContainerPolicyManagement:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running",
             policy="auto"
         )
         db.add(container)
@@ -404,7 +397,6 @@ class TestContainerPolicyManagement:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running",
             policy="auto"
         )
         db.add(container)

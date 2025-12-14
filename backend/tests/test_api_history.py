@@ -25,7 +25,6 @@ class TestGetHistoryEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -61,7 +60,6 @@ class TestGetHistoryEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -102,13 +100,11 @@ class TestGetHistoryEndpoint:
             name="test-container-1",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         container2 = Container(
             name="test-container-2",
             image="redis:6.0",
             current_tag="6.0",
-            status="running"
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -278,7 +274,6 @@ class TestGetHistoryEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -354,7 +349,6 @@ class TestGetHistoryEventEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -395,7 +389,6 @@ class TestGetHistoryEventEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -431,7 +424,6 @@ class TestGetHistoryEventEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -475,7 +467,6 @@ class TestRollbackEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -523,7 +514,6 @@ class TestRollbackEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
@@ -562,7 +552,6 @@ class TestRollbackEndpoint:
             name="test-container",
             image="nginx:1.20",
             current_tag="1.20",
-            status="running"
         )
         db.add(container)
         await db.commit()
