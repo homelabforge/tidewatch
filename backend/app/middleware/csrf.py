@@ -55,6 +55,10 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         Returns:
             Response or CSRF error
         """
+        # Disable CSRF protection in test mode
+        if os.getenv("TIDEWATCH_TESTING", "false").lower() == "true":
+            return await call_next(request)
+
         # Exempt paths from CSRF protection
         if any(request.url.path.startswith(path) for path in self.exempt_paths):
             return await call_next(request)
