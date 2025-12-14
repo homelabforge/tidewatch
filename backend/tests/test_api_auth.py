@@ -533,8 +533,12 @@ class TestProfileUpdateEndpoint:
         data = response.json()
         assert data["email"] == "valid@example.com"
 
-    async def test_update_profile_requires_auth(self, client):
+    async def test_update_profile_requires_auth(self, client, db):
         """Test profile update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         profile_data = {
             "email": "test@example.com",
         }
@@ -636,8 +640,12 @@ class TestPasswordChangeEndpoint:
         # Or may fail depending on business logic
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
 
-    async def test_change_password_requires_auth(self, client):
+    async def test_change_password_requires_auth(self, client, db):
         """Test password change requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         password_data = {
             "current_password": "OldPassword123!",
             "new_password": "NewPassword456!",
@@ -651,11 +659,6 @@ class TestPasswordChangeEndpoint:
         """Test password change fails with expired token (403 CSRF or 401 expired token)."""
         from datetime import timedelta
         from app.services.auth import create_access_token
-        from app.services.settings_service import SettingsService
-
-        # Setup auth mode
-        await SettingsService.set(db, "auth_mode", "local")
-        await db.commit()
 
         # Create a token that expired 1 second ago
         token = create_access_token(
