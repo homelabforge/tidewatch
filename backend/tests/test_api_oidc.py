@@ -51,8 +51,12 @@ class TestOIDCConfigEndpoint:
         assert "very-long-secret-key-that-should-be-masked" not in data["client_secret"]
         assert "*" in data["client_secret"]
 
-    async def test_get_config_requires_auth(self, client):
+    async def test_get_config_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/auth/oidc/config")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -105,8 +109,12 @@ class TestUpdateOIDCConfigEndpoint:
         secret = await SettingsService.get(db, "oidc_client_secret")
         assert secret == "original-secret"
 
-    async def test_update_config_requires_auth(self, client):
+    async def test_update_config_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         config_data = {
             "enabled": True,
             "issuer_url": "https://auth.example.com",
@@ -156,8 +164,12 @@ class TestOIDCTestEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_oidc_test_requires_auth(self, client):
+    async def test_oidc_test_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         config_data = {
             "enabled": True,
             "issuer_url": "https://auth.example.com",
