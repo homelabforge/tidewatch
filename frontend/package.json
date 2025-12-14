@@ -1,6 +1,6 @@
 {
   "name": "tidewatch-frontend",
-  "version": "3.5.3",
+  "version": "3.5.4",
   "type": "module",
   "bun": "^1.3.4",
   "private": true,
