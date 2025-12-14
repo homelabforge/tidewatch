@@ -1,7 +1,5 @@
 <div align="center">
   
-# TideWatch
-
 Intelligent Docker Container Update Management
 
 [![Docker Build](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml/badge.svg)](https://github.com/homelabforge/tidewatch/actions/workflows/docker-build.yml)
