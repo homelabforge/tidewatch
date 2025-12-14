@@ -80,8 +80,12 @@ class TestCreateBackupEndpoint:
             assert "settings" in backup_data_captured
             assert len(backup_data_captured["settings"]) >= 3
 
-    async def test_create_backup_requires_auth(self, client):
+    async def test_create_backup_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post("/api/v1/backup/create")
 
@@ -147,8 +151,12 @@ class TestListBackupsEndpoint:
             assert data["backups"][0]["filename"] == "tidewatch-settings-2025-01-01-120000.json"
             assert data["backups"][1]["is_safety"] is True
 
-    async def test_list_backups_requires_auth(self, client):
+    async def test_list_backups_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/backup/list")
 
@@ -271,8 +279,12 @@ class TestRestoreBackupEndpoint:
             # Assert
             assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_restore_requires_auth(self, client):
+    async def test_restore_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post("/api/v1/backup/restore/test.json")
 
@@ -334,8 +346,12 @@ class TestBackupStatsEndpoint:
             assert data["backups"]["count"] == 2
             assert data["backups"]["total_size_mb"] == round((10240 + 20480) / 1024 / 1024, 2)
 
-    async def test_stats_requires_auth(self, client):
+    async def test_stats_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/backup/stats")
 

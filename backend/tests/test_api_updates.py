@@ -147,8 +147,12 @@ class TestListUpdatesEndpoint:
             for i in range(len(data) - 1):
                 assert data[i]["created_at"] >= data[i + 1]["created_at"]
 
-    async def test_list_updates_requires_auth(self, client):
+    async def test_list_updates_requires_auth(self, client, db):
         """Test listing updates requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/updates")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -218,8 +222,12 @@ class TestGetUpdateEndpoint:
         """Test get update includes CVE data if available."""
         pass
 
-    async def test_get_update_requires_auth(self, client):
+    async def test_get_update_requires_auth(self, client, db):
         """Test get update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/updates/1")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -293,8 +301,12 @@ class TestCheckUpdatesEndpoint:
         """Test check updates emits event bus notification."""
         pass
 
-    async def test_check_updates_requires_auth(self, client):
+    async def test_check_updates_requires_auth(self, client, db):
         """Test check updates requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post("/api/v1/updates/check")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -480,8 +492,12 @@ class TestApproveUpdateEndpoint:
         assert update.approved_at is not None
         assert isinstance(update.approved_at, datetime)
 
-    async def test_approve_update_requires_auth(self, client):
+    async def test_approve_update_requires_auth(self, client, db):
         """Test approve update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post(
             "/api/v1/updates/1/approve",
             json={"approved_by": "admin"}
@@ -622,8 +638,12 @@ class TestRejectUpdateEndpoint:
         assert update.rejected_by is not None
         assert update.rejected_at is not None
 
-    async def test_reject_update_requires_auth(self, client):
+    async def test_reject_update_requires_auth(self, client, db):
         """Test reject update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post("/api/v1/updates/1/reject")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -840,8 +860,12 @@ class TestApplyUpdateEndpoint:
         """Test concurrent apply requests are handled safely."""
         pass
 
-    async def test_apply_update_requires_auth(self, client):
+    async def test_apply_update_requires_auth(self, client, db):
         """Test apply update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post(
             "/api/v1/updates/1/apply",
             json={"triggered_by": "user"}
@@ -973,8 +997,12 @@ class TestDeleteUpdateEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_delete_update_requires_auth(self, client):
+    async def test_delete_update_requires_auth(self, client, db):
         """Test delete update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.delete("/api/v1/updates/1")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED

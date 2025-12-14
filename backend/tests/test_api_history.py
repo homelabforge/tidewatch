@@ -323,8 +323,12 @@ class TestGetHistoryEndpoint:
                 next_item = datetime.fromisoformat(update_events[i+1]["started_at"].replace('Z', '+00:00'))
                 assert current >= next_item
 
-    async def test_get_history_requires_auth(self, client):
+    async def test_get_history_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/history")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -595,8 +599,12 @@ class TestRollbackEndpoint:
         """Test rollback emits event bus notification."""
         pass
 
-    async def test_rollback_requires_auth(self, client):
+    async def test_rollback_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post("/api/v1/history/1/rollback")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 

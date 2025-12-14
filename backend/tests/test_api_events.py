@@ -14,8 +14,12 @@ from fastapi import status
 class TestEventStreamEndpoint:
     """Test suite for GET /api/v1/events/stream endpoint."""
 
-    async def test_stream_requires_auth(self, client):
+    async def test_stream_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/events/stream")
 

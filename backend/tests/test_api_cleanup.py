@@ -86,8 +86,12 @@ class TestCleanupImagesEndpoint:
             assert "settings" in data
             mock_preview.assert_called_once()
 
-    async def test_cleanup_requires_auth(self, client):
+    async def test_cleanup_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post("/api/v1/cleanup/images")
 
@@ -144,8 +148,12 @@ class TestCleanupContainersEndpoint:
             assert "-test" in call_args[0]
             assert "rollback" in call_args[0]
 
-    async def test_cleanup_containers_requires_auth(self, client):
+    async def test_cleanup_containers_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post("/api/v1/cleanup/containers")
 
@@ -179,8 +187,12 @@ class TestCleanupStatsEndpoint:
             assert data["stats"]["containers"]["active"] == 5
             mock_stats.assert_called_once()
 
-    async def test_stats_requires_auth(self, client):
+    async def test_stats_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/cleanup/stats")
 
@@ -212,8 +224,12 @@ class TestCleanupSettingsEndpoint:
         assert data["settings"]["days"] == 14
         assert data["settings"]["enabled"] is True
 
-    async def test_cleanup_settings_requires_auth(self, client):
+    async def test_cleanup_settings_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
 
         # Act
         response = await client.get("/api/v1/cleanup/settings")

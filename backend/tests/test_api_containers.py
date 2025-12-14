@@ -417,8 +417,12 @@ class TestContainerPolicyManagement:
         """Test invalid policy value returns 400."""
         pass
 
-    async def test_update_policy_requires_auth(self, client):
+    async def test_update_policy_requires_auth(self, client, db):
         """Test policy update requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.put(
             "/api/v1/containers/1/policy",
             json={"policy": "auto"}
@@ -528,8 +532,12 @@ class TestContainerExclusion:
         assert f"excluded2-{id(self)}" in names
         assert "included" not in names
 
-    async def test_exclusion_requires_auth(self, client):
+    async def test_exclusion_requires_auth(self, client, db):
         """Test exclusion mutation requires authentication (CSRF runs first, returns 403)."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Try to exclude without authentication - CSRF middleware runs before auth, returns 403
         response = await client.post("/api/v1/containers/1/exclude")
         assert response.status_code == status.HTTP_403_FORBIDDEN
@@ -682,8 +690,12 @@ class TestContainerStats:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.skip(reason="Stats endpoints require Docker client mocking")
-    async def test_container_stats_requires_auth(self, client):
+    async def test_container_stats_requires_auth(self, client, db):
         """Test container stats require authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         pass
 
 
@@ -713,8 +725,12 @@ class TestContainerSync:
         """Test sync updates container status."""
         pass
 
-    async def test_sync_requires_auth(self, client):
+    async def test_sync_requires_auth(self, client, db):
         """Test sync requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.post("/api/v1/containers/sync")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
