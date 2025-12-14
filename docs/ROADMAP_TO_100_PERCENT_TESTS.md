@@ -198,10 +198,10 @@ def mock_registry_client():
 
 ## Phase 2: Security Utilities Testing 🔐 (IN PROGRESS ✅)
 
-**Status:** IN PROGRESS - 2 of 5 critical files complete
-**Time Spent:** ~2 hours
+**Status:** IN PROGRESS - 3 of 5 critical files complete
+**Time Spent:** ~3 hours
 **Priority:** HIGHEST - Critical security features
-**Impact:** +95 tests added so far, significantly increased security coverage
+**Impact:** +140 tests added, significantly increased security coverage
 
 ### Files Completed ✅
 
@@ -243,13 +243,30 @@ def mock_registry_client():
 - ✅ **Error handling**: Malformed files, missing files, encoding errors
 - ✅ **Atomicity**: Original file preserved on error
 
+#### 2.3: version.py (112 lines) - SEMVER UTILITIES ✅
+**File:** `/srv/raid0/docker/build/tidewatch/backend/app/utils/version.py`
+**Test file:** `tests/test_version.py` ✅
+**Priority:** P1 - Version comparison and semver parsing
+
+**Results:**
+- ✅ 45 tests passing
+- ✅ 97.06% coverage (33/34 lines)
+- ✅ Comprehensive semver testing
+
+**Test coverage:**
+- ✅ **Version parsing**: major.minor.patch format
+- ✅ **Change detection**: major, minor, patch version changes
+- ✅ **Prefix handling**: v prefix removal
+- ✅ **Suffix handling**: -alpine, -slim, _build, etc.
+- ✅ **Edge cases**: Missing parts, invalid formats, empty strings
+- ✅ **Real-world scenarios**: Docker tags, Python versions, calendar versioning
+
 ### Files Remaining
 
-#### 2.3: file_operations.py (372 lines) - TODO
-#### 2.4: version.py (112 lines) - TODO
+#### 2.4: file_operations.py (372 lines) - TODO
 #### 2.5: error_handling.py (149 lines) - TODO
 
-**Phase 2 Progress:** 95 tests added (61 + 34)
+**Phase 2 Progress:** 140 tests added (61 + 34 + 45)
 
 ---
 
@@ -261,20 +278,21 @@ def mock_registry_client():
 |----------|--------|--------|
 | **Phase 0: Infrastructure** | ✅ Complete | CSRF bypass, JWT format, DB isolation |
 | **Phase 1: Fixture Conversion** | ✅ Complete | make_container, make_update fixtures |
-| **Phase 2: Security Utilities** | 🚧 In Progress | 2/5 files complete (95 tests added) |
+| **Phase 2: Security Utilities** | 🚧 In Progress | 3/5 files complete (140 tests added) |
 | **Auth API** | ✅ Complete | 44/47 passing (93.6%) |
 | **Restart API** | ✅ Complete | 16/16 passing (100%) |
 | **Container API** | ✅ Complete | All tests passing |
 | **Settings API** | ✅ Complete | All tests passing |
 | **URL Validation** | ✅ Complete | 93.94% coverage (61 tests) |
 | **Manifest Parsers** | ✅ Complete | 86.43% coverage (34 tests) |
+| **Version Utilities** | ✅ Complete | 97.06% coverage (45 tests) |
 
 ### Current Metrics
 
-- **Tests Passing:** 713 (up from 618 baseline, +95 in Phase 2)
-- **Test Suite Runtime:** 34.64s (no hanging!)
+- **Tests Passing:** 758 (up from 618 baseline, +140 in Phase 2)
+- **Test Suite Runtime:** 34.84s (no hanging!)
 - **Core 4 Modules:** 108/108 passing (100% pass rate)
-- **Security Coverage:** Significantly improved (SSRF, file modification safety)
+- **Security Coverage:** Significantly improved (SSRF, file modification, version parsing)
 - **Infrastructure:** Solid, production-ready test framework
 
 ### Next Immediate Actions
