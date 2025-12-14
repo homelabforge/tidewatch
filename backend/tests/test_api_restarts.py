@@ -50,8 +50,12 @@ class TestGetRestartStateEndpoint:
         # Assert
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_get_restart_state_requires_auth(self, client):
+    async def test_get_restart_state_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/restarts/1/state")
 
@@ -164,8 +168,12 @@ class TestManualRestartEndpoint:
             assert data["success"] is False
             assert "failed" in data["message"].lower()
 
-    async def test_manual_restart_requires_auth(self, client):
+    async def test_manual_restart_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post(
             "/api/v1/restarts/1/manual-restart",
@@ -245,8 +253,12 @@ class TestResetRestartStateEndpoint:
         # Assert
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_reset_restart_state_requires_auth(self, client):
+    async def test_reset_restart_state_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post(
             "/api/v1/restarts/1/reset",
@@ -298,8 +310,12 @@ class TestPauseRestartEndpoint:
         assert "paused" in data["message"].lower()
         assert data["state"]["pause_reason"] == "Maintenance"
 
-    async def test_pause_restart_requires_auth(self, client):
+    async def test_pause_restart_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post(
             "/api/v1/restarts/1/pause",
@@ -352,8 +368,12 @@ class TestResumeRestartEndpoint:
         assert data["state"]["paused_until"] is None
         assert data["state"]["pause_reason"] is None
 
-    async def test_resume_restart_requires_auth(self, client):
+    async def test_resume_restart_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.post("/api/v1/restarts/1/resume")
 
@@ -401,8 +421,12 @@ class TestRestartStatsEndpoint:
         assert data["total_containers"] == 3
         assert "containers_with_failures" in data
 
-    async def test_restart_stats_requires_auth(self, client):
+    async def test_restart_stats_requires_auth(self, client, db):
         """Test requires authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Act
         response = await client.get("/api/v1/restarts/stats")
 
