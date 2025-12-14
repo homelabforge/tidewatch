@@ -28,41 +28,61 @@ class TestEventStreamEndpoint:
 
     async def test_stream_connection_opens(self, authenticated_client):
         """Test SSE connection opens successfully."""
-        # Mock event bus
         mock_queue = asyncio.Queue()
 
         with patch('app.api.events.event_bus.subscribe', new_callable=AsyncMock) as mock_subscribe, \
-             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock) as mock_unsub:
+             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock) as mock_unsub, \
+             patch('app.api.events.Request.is_disconnected', new_callable=AsyncMock, return_value=True):
 
-            # Put a message to immediately close the stream
-            await mock_queue.put(json.dumps({"type": "test", "data": "hello"}))
             mock_subscribe.return_value = mock_queue
 
-            # Act
-            response = await authenticated_client.get("/api/v1/events/stream")
+            # Act - Open stream connection with a short timeout for the first chunk
+            async with authenticated_client.stream(
+                "GET",
+                "/api/v1/events/stream",
+                timeout=2.0,
+            ) as response:
+                # Assert - Check headers immediately
+                assert response.status_code == status.HTTP_200_OK
+                assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
-            # Assert
-            assert response.status_code == status.HTTP_200_OK
-            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
-            mock_subscribe.assert_called_once()
+                # Read the first line; Request.is_disconnected is patched to end the stream after it
+                line_iter = response.aiter_lines()
+                first_line = await asyncio.wait_for(anext(line_iter), timeout=1.0)
+
+                assert first_line.startswith('data: {"type":"connected"}')
+
+            mock_subscribe.assert_awaited_once()
+            mock_unsub.assert_awaited_once_with(mock_queue)
 
     async def test_stream_sends_connected_event(self, authenticated_client):
         """Test stream sends initial connected event."""
-        # Mock event bus
         mock_queue = asyncio.Queue()
 
         with patch('app.api.events.event_bus.subscribe', new_callable=AsyncMock) as mock_subscribe, \
-             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock):
+             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock) as mock_unsub, \
+             patch('app.api.events.Request.is_disconnected', new_callable=AsyncMock, return_value=True):
 
             mock_subscribe.return_value = mock_queue
 
-            # Act - Start streaming in background
-            response = await authenticated_client.get("/api/v1/events/stream")
+            # Act - Open stream and read connected event
+            async with authenticated_client.stream(
+                "GET",
+                "/api/v1/events/stream",
+                timeout=2.0,
+            ) as response:
+                assert response.status_code == status.HTTP_200_OK
 
-            # Assert
-            assert response.status_code == status.HTTP_200_OK
-            # The stream should start with a connected event
-            # Note: Full SSE content verification would require streaming the response
+                # Read exactly the first event (data line + blank separator)
+                line_iter = response.aiter_lines()
+                first_line = await asyncio.wait_for(anext(line_iter), timeout=1.0)
+                second_line = await asyncio.wait_for(anext(line_iter), timeout=1.0)
+
+            assert first_line == 'data: {"type":"connected"}'
+            assert second_line == ""
+
+            mock_subscribe.assert_awaited_once()
+            mock_unsub.assert_awaited_once_with(mock_queue)
 
     async def test_stream_publishes_events(self, authenticated_client):
         """Test event bus publishes events to stream."""
