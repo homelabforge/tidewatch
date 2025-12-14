@@ -61,17 +61,15 @@ async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
         class_=AsyncSession,
         expire_on_commit=False,
         autoflush=False,
+        autocommit=False,
     )
 
     async with async_session_maker() as session:
-        # Start transaction manually (not using context manager)
-        # so we can rollback in finally block
-        await session.begin()
-        try:
-            yield session
-        finally:
-            # Always rollback to ensure clean state for next test
-            await session.rollback()
+        # Don't manually begin transaction - let SQLAlchemy manage it
+        # This allows commits within fixtures to actually persist
+        yield session
+        # Rollback any uncommitted changes
+        await session.rollback()
 
 
 @pytest.fixture
@@ -153,8 +151,11 @@ async def admin_user(db):
 @pytest.fixture
 async def authenticated_client(client, admin_user):
     """AsyncClient with valid JWT token and CSRF token."""
-    # Set JWT token for authentication
-    token = create_access_token({"sub": admin_user["username"]})
+    # Set JWT token for authentication (must match login endpoint's token format)
+    token = create_access_token({
+        "sub": "admin",  # TideWatch uses "admin" as the subject
+        "username": admin_user["username"]
+    })
     client.headers = {"Authorization": f"Bearer {token}"}
 
     # Get CSRF token by making a GET request
