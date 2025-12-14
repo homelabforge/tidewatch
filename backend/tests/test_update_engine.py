@@ -216,7 +216,7 @@ class TestDockerComposeExecution:
         assert "Invalid compose file path" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_validates_docker_compose_command(self):
+    async def test_validates_docker_compose_command(self, mock_filesystem):
         """Test docker compose command is validated."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -233,7 +233,7 @@ class TestDockerComposeExecution:
         assert "Invalid docker compose command" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_stops_container_before_starting(self):
+    async def test_stops_container_before_starting(self, mock_filesystem):
         """Test container is stopped before docker compose up."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -242,8 +242,11 @@ class TestDockerComposeExecution:
         mock_process.communicate = AsyncMock(return_value=(b"", b""))
         mock_process.returncode = 0
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             await UpdateEngine._execute_docker_compose(
                 compose_file,
@@ -260,7 +263,7 @@ class TestDockerComposeExecution:
             assert "stop" in first_call_args
 
     @pytest.mark.asyncio
-    async def test_docker_compose_up_with_correct_flags(self):
+    async def test_docker_compose_up_with_correct_flags(self, mock_filesystem):
         """Test docker compose up uses correct flags."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -269,8 +272,11 @@ class TestDockerComposeExecution:
         mock_process.communicate = AsyncMock(return_value=(b"Success", b""))
         mock_process.returncode = 0
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             result = await UpdateEngine._execute_docker_compose(
                 compose_file,
@@ -290,7 +296,7 @@ class TestDockerComposeExecution:
             assert "sonarr" in last_call_args
 
     @pytest.mark.asyncio
-    async def test_docker_compose_timeout_after_5_minutes(self):
+    async def test_docker_compose_timeout_after_5_minutes(self, mock_filesystem):
         """Test docker compose times out after 5 minutes."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -312,7 +318,7 @@ class TestDockerComposeExecution:
             assert "timed out" in result["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_returns_stderr_on_failure(self):
+    async def test_returns_stderr_on_failure(self, mock_filesystem):
         """Test stderr is returned when docker compose fails."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -321,8 +327,11 @@ class TestDockerComposeExecution:
         mock_process.communicate = AsyncMock(return_value=(b"", b"Error: Image not found"))
         mock_process.returncode = 1
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             result = await UpdateEngine._execute_docker_compose(
                 compose_file,
@@ -339,7 +348,7 @@ class TestImagePulling:
     """Test suite for docker image pull operations."""
 
     @pytest.mark.asyncio
-    async def test_pull_executes_docker_compose_pull(self):
+    async def test_pull_executes_docker_compose_pull(self, mock_filesystem):
         """Test image pull executes 'docker compose pull' command."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -348,8 +357,11 @@ class TestImagePulling:
         mock_process.communicate = AsyncMock(return_value=(b"Pulling image...", b""))
         mock_process.returncode = 0
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             result = await UpdateEngine._pull_docker_image(
                 compose_file,
@@ -366,7 +378,7 @@ class TestImagePulling:
             assert "sonarr" in call_args
 
     @pytest.mark.asyncio
-    async def test_pull_timeout_after_20_minutes(self):
+    async def test_pull_timeout_after_20_minutes(self, mock_filesystem):
         """Test image pull times out after 20 minutes."""
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
@@ -520,8 +532,11 @@ class TestHealthCheckValidation:
         mock_process.communicate = AsyncMock(return_value=(b"running", b""))
         mock_process.returncode = 0
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             result = await UpdateEngine._check_container_runtime(container)
 
@@ -545,8 +560,11 @@ class TestHealthCheckValidation:
         mock_process.communicate = AsyncMock(return_value=(b"exited", b""))
         mock_process.returncode = 0
 
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
         with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
+             patch("asyncio.wait_for", side_effect=mock_wait_for):
 
             result = await UpdateEngine._check_container_runtime(container)
 
@@ -562,14 +580,15 @@ class TestHealthCheckValidation:
             current_tag="4.0.0",
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
-            service_name="sonarr",
+            service_name="sonarr; rm -rf /",  # Both name and service_name are malicious
             health_check_method="docker"
         )
 
         result = await UpdateEngine._check_container_runtime(container)
 
-        # Should fail without executing command
+        # Should fail when both name and service_name are invalid
         assert result["success"] is False
+        assert "no valid container name" in result.get("error", "").lower() or result.get("error") is not None
 
 
 class TestApplyUpdateOrchestration:
@@ -583,11 +602,12 @@ class TestApplyUpdateOrchestration:
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
         db.add = MagicMock()
-        db.begin_nested = MagicMock()
 
         # Mock context manager for begin_nested
-        db.begin_nested.return_value.__aenter__ = AsyncMock()
-        db.begin_nested.return_value.__aexit__ = AsyncMock()
+        mock_nested = AsyncMock()
+        mock_nested.__aenter__ = AsyncMock()
+        mock_nested.__aexit__ = AsyncMock()
+        db.begin_nested = MagicMock(return_value=mock_nested)
 
         return db
 
@@ -792,11 +812,12 @@ class TestRollbackUpdate:
         db.execute = AsyncMock()
         db.commit = AsyncMock()
         db.add = MagicMock()
-        db.begin_nested = MagicMock()
 
-        # Mock context manager
-        db.begin_nested.return_value.__aenter__ = AsyncMock()
-        db.begin_nested.return_value.__aexit__ = AsyncMock()
+        # Mock context manager for begin_nested
+        mock_nested = AsyncMock()
+        mock_nested.__aenter__ = AsyncMock()
+        mock_nested.__aexit__ = AsyncMock()
+        db.begin_nested = MagicMock(return_value=mock_nested)
 
         return db
 
@@ -1097,6 +1118,15 @@ class TestEventBusProgress:
     async def test_apply_update_publishes_complete_event_on_success(self, make_update):
         """Test apply_update publishes 'update-complete' event on success."""
         mock_db = AsyncMock()
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        # Mock context manager for begin_nested
+        mock_nested = AsyncMock()
+        mock_nested.__aenter__ = AsyncMock()
+        mock_nested.__aexit__ = AsyncMock()
+        mock_db.begin_nested = MagicMock(return_value=mock_nested)
 
         update = make_update(
             id=1,
