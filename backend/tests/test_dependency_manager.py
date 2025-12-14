@@ -1,607 +1,726 @@
 """Tests for dependency manager (app/services/dependency_manager.py).
 
-Tests topological sorting and dependency resolution:
-- Topological sort correctness (Kahn's algorithm)
+Tests container dependency management and update ordering:
+- Topological sort for dependency ordering
 - Circular dependency detection
-- Cache key generation and reuse
-- Missing container handling
-- Invalid JSON dependencies
-- Partial dependency updates
+- Dependency graph caching
+- Update order calculation
 - Dependency validation
+- Forward/reverse dependency management
+- Cache eviction and clearing
 """
 
 import pytest
 import json
-import hashlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
-from app.services.dependency_manager import DependencyManager, _dependency_cache
-from app.models.container import Container
+from app.services.dependency_manager import DependencyManager
 
 
-class TestDependencyManagerTopologicalSort:
-    """Test suite for topological sorting algorithm."""
+class TestGetUpdateOrder:
+    """Test suite for get_update_order() method."""
 
-    def test_simple_linear_dependencies(self):
-        """Test simple linear dependency chain: A -> B -> C."""
+    async def test_returns_empty_for_empty_list(self, db):
+        """Test returns empty list for empty input."""
+        result = await DependencyManager.get_update_order(db, [])
+        assert result == []
+
+    async def test_orders_independent_containers_alphabetically(
+        self, db, make_container
+    ):
+        """Test orders independent containers alphabetically."""
+        # Create containers with no dependencies
+        container1 = make_container(name="web", image="nginx", current_tag="latest")
+        container2 = make_container(name="api", image="node", current_tag="18")
+        container3 = make_container(name="cache", image="redis", current_tag="7")
+        db.add_all([container1, container2, container3])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(
+            db, ["web", "api", "cache"]
+        )
+
+        # Independent containers should be sorted alphabetically
+        assert result == ["api", "cache", "web"]
+
+    async def test_orders_linear_dependency_chain(self, db, make_container):
+        """Test orders containers with linear dependency chain."""
+        # db -> api -> web (web depends on api, api depends on db)
+        db_container = make_container(name="db", image="postgres", current_tag="16", dependencies=None)
+        api_container = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+        )
+        web_container = make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["api"])
+        )
+        db.add_all([db_container, api_container, web_container])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(
+            db, ["web", "api", "db"]
+        )
+
+        # Should order: db -> api -> web
+        assert result == ["db", "api", "web"]
+
+    async def test_orders_complex_dependency_tree(self, db, make_container):
+        """Test orders containers with complex dependency tree."""
+        # Dependency graph:
+        #   db (no deps)
+        #   cache (no deps)
+        #   api (depends on db)
+        #   worker (depends on db, cache)
+        #   web (depends on api, cache)
+
+        db_container = make_container(name="db", image="postgres", current_tag="16")
+        cache_container = make_container(name="cache", image="redis", current_tag="7")
+        api_container = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"]))
+        worker_container = make_container(name="worker", image="python", current_tag="3.11", dependencies=json.dumps(["db", "cache"]))
+        web_container = make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["api", "cache"]))
+
+        db.add_all([db_container, cache_container, api_container, worker_container, web_container])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(
+            db, ["web", "worker", "api", "cache", "db"]
+        )
+
+        # Verify ordering constraints
+        db_idx = result.index("db")
+        cache_idx = result.index("cache")
+        api_idx = result.index("api")
+        worker_idx = result.index("worker")
+        web_idx = result.index("web")
+
+        # db and cache must come before their dependents
+        assert db_idx < api_idx
+        assert db_idx < worker_idx
+        assert cache_idx < worker_idx
+        assert cache_idx < web_idx
+
+        # api must come before web
+        assert api_idx < web_idx
+
+    async def test_ignores_external_dependencies(self, db, make_container):
+        """Test ignores dependencies not in update list."""
+        # web depends on api and external, but external is not in update list
+        api_container = make_container(name="api", image="node", current_tag="18")
+        web_container = make_container(
+            name="web",
+            image="nginx",
+            current_tag="latest",
+            dependencies=json.dumps(["api", "external-service"])
+        )
+        db.add_all([api_container, web_container])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(
+            db, ["web", "api"]
+        )
+
+        # Should only consider api dependency
+        assert result == ["api", "web"]
+
+    async def test_handles_missing_containers(self, db, make_container):
+        """Test handles containers not found in database."""
+        container = make_container(name="web", image="nginx", current_tag="latest")
+        db.add(container)
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(
+            db, ["web", "nonexistent"]
+        )
+
+        # Should include all requested containers
+        assert "web" in result
+        assert "nonexistent" in result
+
+    async def test_uses_cache_for_repeated_calls(self, db, make_container):
+        """Test uses cache for repeated dependency resolution."""
+        container1 = make_container(name="db", image="postgres", current_tag="16")
+        container2 = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"]))
+        db.add_all([container1, container2])
+        await db.commit()
+
+        # Clear cache first
+        DependencyManager.clear_dependency_cache()
+
+        # First call
+        result1 = await DependencyManager.get_update_order(db, ["api", "db"])
+
+        # Second call with same dependencies
+        with patch.object(DependencyManager, '_topological_sort') as mock_sort:
+            result2 = await DependencyManager.get_update_order(db, ["api", "db"])
+
+            # Should not call topological_sort (cache hit)
+            mock_sort.assert_not_called()
+
+        assert result1 == result2
+
+    async def test_evicts_oldest_cache_entry(self, db, make_container):
+        """Test evicts oldest cache entry when cache is full."""
+        # Create many containers to fill cache beyond 100 entries
+        DependencyManager.clear_dependency_cache()
+
+        # Create 102 containers to ensure we can have 101 unique patterns
+        containers = [make_container(name=f"container{i}", image="alpine", current_tag="3") for i in range(102)]
+        db.add_all(containers)
+        await db.commit()
+
+        # Fill cache with 101 different dependency patterns
+        for i in range(101):
+            # Create unique dependency pattern each time by including different container sets
+            names = [f"container{j}" for j in range(i, i + 1)]  # Each pattern has exactly 1 container, different each time
+            await DependencyManager.get_update_order(db, names)
+
+        # Cache should be limited to 100 entries
+        from app.services.dependency_manager import _dependency_cache
+        assert len(_dependency_cache) == 100
+
+    async def test_falls_back_to_original_order_on_cycle(
+        self, db, make_container
+    ):
+        """Test falls back to original order if circular dependency detected."""
+        # Create circular dependency: a -> b -> c -> a
+        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["c"]))
+        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"]))
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"]))
+        db.add_all([container_a, container_b, container_c])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(db, ["a", "b", "c"])
+
+        # Should fall back to original order
+        assert result == ["a", "b", "c"]
+
+    async def test_handles_invalid_json_dependencies(
+        self, db, make_container, caplog
+    ):
+        """Test handles invalid JSON in dependencies field."""
+        container1 = make_container(name="db", image="postgres", current_tag="16")
+        container2 = make_container(
+            name="api",
+            image="node",
+            current_tag="18",
+            dependencies="not-valid-json"
+        )
+        db.add_all([container1, container2])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(db, ["api", "db"])
+
+        # Should treat api as having no dependencies
+        assert result == ["api", "db"] or result == ["db", "api"]
+
+        # Should log warning
+        assert "Invalid dependencies JSON" in caplog.text
+
+
+class TestTopologicalSort:
+    """Test suite for _topological_sort() method."""
+
+    def test_sorts_simple_graph(self):
+        """Test sorts simple dependency graph."""
         dependencies = {
-            "app-a": set(),  # No dependencies
-            "app-b": {"app-a"},  # Depends on A
-            "app-c": {"app-b"},  # Depends on B
+            "a": set(),
+            "b": {"a"},
+            "c": {"b"}
         }
 
         result = DependencyManager._topological_sort(dependencies)
 
-        # A must come before B, B before C
-        assert result.index("app-a") < result.index("app-b")
-        assert result.index("app-b") < result.index("app-c")
-        assert result == ["app-a", "app-b", "app-c"]
+        assert result == ["a", "b", "c"]
 
-    def test_multiple_independent_containers(self):
-        """Test containers with no dependencies are sorted alphabetically."""
+    def test_sorts_graph_with_multiple_roots(self):
+        """Test sorts graph with multiple independent roots."""
         dependencies = {
-            "nginx": set(),
-            "redis": set(),
-            "postgres": set(),
+            "a": set(),
+            "b": set(),
+            "c": {"a", "b"}
         }
 
         result = DependencyManager._topological_sort(dependencies)
 
-        # All independent - should be sorted alphabetically
-        assert result == ["nginx", "postgres", "redis"]
+        # a and b should come before c (alphabetically ordered)
+        assert result[:2] == ["a", "b"]
+        assert result[2] == "c"
 
-    def test_diamond_dependency_pattern(self):
-        """Test diamond dependency: A -> B,C and B,C -> D."""
+    def test_sorts_diamond_dependency(self):
+        """Test sorts diamond-shaped dependency."""
+        # d depends on b and c, both b and c depend on a
         dependencies = {
-            "database": set(),  # Base
-            "api": {"database"},  # Depends on database
-            "worker": {"database"},  # Also depends on database
-            "frontend": {"api", "worker"},  # Depends on both
+            "a": set(),
+            "b": {"a"},
+            "c": {"a"},
+            "d": {"b", "c"}
         }
 
         result = DependencyManager._topological_sort(dependencies)
 
-        # Database must come first
-        assert result[0] == "database"
+        # a must be first
+        assert result[0] == "a"
+        # b and c must come before d
+        assert result.index("b") < result.index("d")
+        assert result.index("c") < result.index("d")
 
-        # API and worker before frontend
-        assert result.index("api") < result.index("frontend")
-        assert result.index("worker") < result.index("frontend")
-
-        # Frontend must be last
-        assert result[-1] == "frontend"
-
-    def test_circular_dependency_detection(self):
-        """Test circular dependencies raise ValueError."""
+    def test_raises_on_circular_dependency(self):
+        """Test raises ValueError on circular dependency."""
         dependencies = {
-            "app-a": {"app-b"},  # A depends on B
-            "app-b": {"app-a"},  # B depends on A (cycle!)
+            "a": {"b"},
+            "b": {"c"},
+            "c": {"a"}
         }
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Circular dependency detected"):
             DependencyManager._topological_sort(dependencies)
 
-        assert "Circular dependency" in str(exc_info.value)
-        assert "app-a" in str(exc_info.value) or "app-b" in str(exc_info.value)
-
-    def test_three_way_circular_dependency(self):
-        """Test circular dependency with 3 containers."""
+    def test_raises_on_self_dependency(self):
+        """Test raises ValueError on self dependency."""
         dependencies = {
-            "app-a": {"app-c"},  # A -> C
-            "app-b": {"app-a"},  # B -> A
-            "app-c": {"app-b"},  # C -> B (cycle: A -> C -> B -> A)
+            "a": {"a"}
         }
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Circular dependency detected"):
             DependencyManager._topological_sort(dependencies)
 
-        assert "Circular dependency" in str(exc_info.value)
-
-    def test_complex_dependency_graph(self):
-        """Test complex real-world dependency graph."""
-        dependencies = {
-            "postgres": set(),
-            "redis": set(),
-            "rabbitmq": set(),
-            "api": {"postgres", "redis"},
-            "worker": {"postgres", "rabbitmq"},
-            "scheduler": {"postgres", "redis", "rabbitmq"},
-            "frontend": {"api"},
-        }
-
-        result = DependencyManager._topological_sort(dependencies)
-
-        # Base services first
-        base_services = {"postgres", "redis", "rabbitmq"}
-        for service in base_services:
-            assert service in result[:3]
-
-        # API, worker, scheduler before frontend
-        assert result.index("api") < result.index("frontend")
-
-        # Frontend last
-        assert result[-1] == "frontend"
-
-    def test_partial_dependencies_within_list(self):
-        """Test containers with dependencies not in the update list."""
-        dependencies = {
-            "api": {"postgres", "redis"},  # postgres/redis not in list
-            "worker": {"api"},
-        }
-
-        result = DependencyManager._topological_sort(dependencies)
-
-        # API should come before worker
-        assert result.index("api") < result.index("worker")
-
-    def test_single_container_no_dependencies(self):
-        """Test single container with no dependencies."""
-        dependencies = {"nginx": set()}
-
-        result = DependencyManager._topological_sort(dependencies)
-
-        assert result == ["nginx"]
-
-    def test_empty_dependency_graph(self):
-        """Test empty dependency graph returns empty list."""
+    def test_handles_empty_graph(self):
+        """Test handles empty dependency graph."""
         dependencies = {}
 
         result = DependencyManager._topological_sort(dependencies)
 
         assert result == []
 
-    def test_deterministic_ordering(self):
-        """Test same dependencies produce same order."""
+    def test_handles_single_node(self):
+        """Test handles single node with no dependencies."""
         dependencies = {
-            "app-c": set(),
-            "app-a": set(),
-            "app-b": set(),
+            "a": set()
         }
 
+        result = DependencyManager._topological_sort(dependencies)
+
+        assert result == ["a"]
+
+    def test_deterministic_ordering(self):
+        """Test produces deterministic ordering."""
+        dependencies = {
+            "z": set(),
+            "y": set(),
+            "x": set(),
+            "w": {"x", "y", "z"}
+        }
+
+        # Run multiple times
         result1 = DependencyManager._topological_sort(dependencies)
         result2 = DependencyManager._topological_sort(dependencies)
+        result3 = DependencyManager._topological_sort(dependencies)
 
-        # Should be consistent (alphabetically sorted when no dependencies)
-        assert result1 == result2
-        assert result1 == ["app-a", "app-b", "app-c"]
+        # Should always produce same result
+        assert result1 == result2 == result3
 
 
-class TestDependencyManagerCaching:
-    """Test suite for dependency resolution caching."""
+class TestGenerateCacheKey:
+    """Test suite for _generate_cache_key() method."""
 
-    def setup_method(self):
-        """Clear cache before each test."""
-        DependencyManager.clear_dependency_cache()
+    def test_generates_consistent_key_for_same_graph(self):
+        """Test generates consistent key for same dependency graph."""
+        dependencies = {
+            "a": {"b"},
+            "b": {"c"},
+            "c": set()
+        }
 
-    def test_cache_key_generation(self):
-        """Test cache key is deterministic for same dependencies."""
+        key1 = DependencyManager._generate_cache_key(dependencies)
+        key2 = DependencyManager._generate_cache_key(dependencies)
+
+        assert key1 == key2
+
+    def test_generates_same_key_for_different_order(self):
+        """Test generates same key regardless of dict order."""
         dependencies1 = {
-            "app-a": {"app-b"},
-            "app-b": set(),
+            "a": {"b"},
+            "c": set(),
+            "b": {"c"}
         }
 
         dependencies2 = {
-            "app-b": set(),
-            "app-a": {"app-b"},
+            "c": set(),
+            "b": {"c"},
+            "a": {"b"}
         }
 
         key1 = DependencyManager._generate_cache_key(dependencies1)
         key2 = DependencyManager._generate_cache_key(dependencies2)
 
-        # Same dependencies in different order = same key
+        # Should be same despite different insertion order
         assert key1 == key2
 
-    def test_cache_key_is_md5_hash(self):
-        """Test cache key is valid MD5 hash."""
-        dependencies = {"app-a": set()}
+    def test_generates_different_key_for_different_graph(self):
+        """Test generates different key for different graphs."""
+        dependencies1 = {
+            "a": {"b"},
+            "b": set()
+        }
 
-        key = DependencyManager._generate_cache_key(dependencies)
+        dependencies2 = {
+            "a": {"c"},
+            "c": set()
+        }
 
-        # MD5 hex is 32 characters
-        assert len(key) == 32
-        assert all(c in "0123456789abcdef" for c in key)
-
-    def test_different_dependencies_different_keys(self):
-        """Test different dependencies produce different keys."""
-        dep1 = {"app-a": {"app-b"}}
-        dep2 = {"app-a": {"app-c"}}
-
-        key1 = DependencyManager._generate_cache_key(dep1)
-        key2 = DependencyManager._generate_cache_key(dep2)
+        key1 = DependencyManager._generate_cache_key(dependencies1)
+        key2 = DependencyManager._generate_cache_key(dependencies2)
 
         assert key1 != key2
 
-    def test_clear_dependency_cache(self):
-        """Test cache clearing works."""
-        global _dependency_cache
+    def test_generates_different_key_for_different_sets(self):
+        """Test generates different key for different dependency sets."""
+        dependencies1 = {
+            "a": {"b", "c"}
+        }
 
-        # Add something to cache
-        _dependency_cache["test_key"] = ["app-a", "app-b"]
+        dependencies2 = {
+            "a": {"b"}
+        }
 
-        DependencyManager.clear_dependency_cache()
+        key1 = DependencyManager._generate_cache_key(dependencies1)
+        key2 = DependencyManager._generate_cache_key(dependencies2)
 
-        assert len(_dependency_cache) == 0
+        assert key1 != key2
 
-    @pytest.mark.asyncio
-    async def test_cache_hit_returns_cached_result(self):
-        """Test cache hit returns cached result without recomputation."""
-        mock_db = AsyncMock()
 
-        # Mock database response
-        mock_containers = [
-            MagicMock(name="app-a", dependencies=None),
-            MagicMock(name="app-b", dependencies='["app-a"]'),
-        ]
+class TestUpdateContainerDependencies:
+    """Test suite for update_container_dependencies() method."""
 
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
+    async def test_updates_container_dependencies(self, db, make_container):
+        """Test updates container dependencies."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        container_b = make_container(name="b", image="busybox", current_tag="1")
+        db.add_all([container_a, container_b])
+        await db.commit()
 
-        # First call - cache miss
-        result1 = await DependencyManager.get_update_order(
-            mock_db, ["app-a", "app-b"]
+        await DependencyManager.update_container_dependencies(
+            db, "a", ["b"]
         )
 
-        # Second call - should hit cache
-        result2 = await DependencyManager.get_update_order(
-            mock_db, ["app-a", "app-b"]
+        # Refresh and check
+        await db.refresh(container_a)
+        deps = json.loads(container_a.dependencies)
+        assert deps == ["b"]
+
+    async def test_updates_reverse_dependencies(self, db, make_container):
+        """Test updates reverse dependencies (dependents)."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        container_b = make_container(name="b", image="busybox", current_tag="1")
+        db.add_all([container_a, container_b])
+        await db.commit()
+
+        await DependencyManager.update_container_dependencies(
+            db, "a", ["b"]
         )
 
-        assert result1 == result2
-        # Database should only be queried once (first call)
-        assert mock_db.execute.call_count == 1
+        # Check reverse dependency
+        await db.refresh(container_b)
+        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        assert "a" in dependents
 
-    @pytest.mark.asyncio
-    async def test_cache_eviction_at_100_entries(self):
-        """Test cache evicts oldest entry when exceeding 100 items."""
-        global _dependency_cache
+    async def test_removes_old_dependencies(self, db, make_container):
+        """Test removes old dependencies when updated."""
+        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"]))
+        container_b = make_container(name="b", image="busybox", current_tag="1", dependents=json.dumps(["a"]))
+        container_c = make_container(name="c", image="caddy", current_tag="2")
+        db.add_all([container_a, container_b, container_c])
+        await db.commit()
 
-        # Manually populate cache with 100 entries
-        for i in range(100):
-            _dependency_cache[f"key_{i}"] = [f"app-{i}"]
-
-        # Add 101st entry
-        _dependency_cache["key_100"] = ["app-100"]
-
-        # Trigger eviction logic by adding through the API
-        mock_db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = [
-            MagicMock(name="new-app", dependencies=None)
-        ]
-        mock_db.execute = AsyncMock(return_value=mock_result)
-
-        await DependencyManager.get_update_order(mock_db, ["new-app"])
-
-        # Cache should not exceed 100 entries
-        assert len(_dependency_cache) <= 101  # Might have evicted
-
-
-class TestDependencyManagerGetUpdateOrder:
-    """Test suite for get_update_order method."""
-
-    def setup_method(self):
-        """Clear cache before each test."""
-        DependencyManager.clear_dependency_cache()
-
-    @pytest.mark.asyncio
-    async def test_empty_container_list(self):
-        """Test empty container list returns empty result."""
-        mock_db = AsyncMock()
-
-        result = await DependencyManager.get_update_order(mock_db, [])
-
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_containers_with_json_dependencies(self):
-        """Test containers with valid JSON dependencies."""
-        mock_db = AsyncMock()
-
-        mock_containers = [
-            MagicMock(name="postgres", dependencies=None),
-            MagicMock(name="api", dependencies='["postgres"]'),
-        ]
-
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
-
-        result = await DependencyManager.get_update_order(
-            mock_db, ["postgres", "api"]
+        # Update a to depend on c instead of b
+        await DependencyManager.update_container_dependencies(
+            db, "a", ["c"]
         )
 
-        assert result == ["postgres", "api"]
+        # Check b no longer has a as dependent
+        await db.refresh(container_b)
+        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        assert "a" not in dependents
 
-    @pytest.mark.asyncio
-    async def test_container_not_in_database(self):
-        """Test missing container is handled gracefully."""
-        mock_db = AsyncMock()
+        # Check c has a as dependent
+        await db.refresh(container_c)
+        dependents = json.loads(container_c.dependents) if container_c.dependents else []
+        assert "a" in dependents
 
-        # Only postgres exists, api is missing
-        mock_containers = [
-            MagicMock(name="postgres", dependencies=None),
-        ]
+    async def test_clears_dependency_cache(self, db, make_container):
+        """Test clears dependency cache when updated."""
+        container = make_container(name="a", image="alpine", current_tag="3")
+        db.add(container)
+        await db.commit()
 
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
+        # Fill cache
+        await DependencyManager.get_update_order(db, ["a"])
 
-        result = await DependencyManager.get_update_order(
-            mock_db, ["postgres", "api", "missing"]
-        )
+        with patch.object(DependencyManager, 'clear_dependency_cache') as mock_clear:
+            await DependencyManager.update_container_dependencies(db, "a", [])
+            mock_clear.assert_called_once()
 
-        # Should still include all containers
-        assert "postgres" in result
-        assert "api" in result
-        assert "missing" in result
+    async def test_raises_on_container_not_found(self, db):
+        """Test raises ValueError if container not found."""
+        with pytest.raises(ValueError, match="Container nonexistent not found"):
+            await DependencyManager.update_container_dependencies(
+                db, "nonexistent", []
+            )
 
-    @pytest.mark.asyncio
-    async def test_invalid_json_dependencies(self):
-        """Test container with invalid JSON dependencies."""
-        mock_db = AsyncMock()
+    async def test_handles_invalid_json_in_old_dependencies(
+        self, db, make_container
+    ):
+        """Test handles invalid JSON in existing dependencies."""
+        container = make_container(name="a", image="alpine", current_tag="3", dependencies="invalid-json")
+        db.add(container)
+        await db.commit()
 
-        mock_containers = [
-            MagicMock(name="app", dependencies="not-valid-json"),
-        ]
+        # Should not raise
+        await DependencyManager.update_container_dependencies(db, "a", ["b"])
 
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
+    async def test_handles_missing_dependent_container(
+        self, db, make_container, caplog
+    ):
+        """Test handles missing container when updating dependents."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        db.add(container_a)
+        await db.commit()
 
-        # Should not crash, treat as no dependencies
-        result = await DependencyManager.get_update_order(mock_db, ["app"])
+        # Update to depend on non-existent container
+        # (should be caught by validation, but test robustness)
+        await DependencyManager._add_to_dependents(db, "nonexistent", "a")
 
-        assert result == ["app"]
-
-    @pytest.mark.asyncio
-    async def test_dependencies_not_in_update_list(self):
-        """Test dependencies are filtered to update list only."""
-        mock_db = AsyncMock()
-
-        # API depends on postgres and redis, but only api is being updated
-        mock_containers = [
-            MagicMock(name="api", dependencies='["postgres", "redis"]'),
-        ]
-
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
-
-        result = await DependencyManager.get_update_order(mock_db, ["api"])
-
-        # Should only include api (dependencies not in update list)
-        assert result == ["api"]
-
-    @pytest.mark.asyncio
-    async def test_circular_dependency_falls_back_to_original_order(self):
-        """Test circular dependency falls back to original order."""
-        mock_db = AsyncMock()
-
-        mock_containers = [
-            MagicMock(name="app-a", dependencies='["app-b"]'),
-            MagicMock(name="app-b", dependencies='["app-a"]'),
-        ]
-
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = mock_containers
-        mock_db.execute = AsyncMock(return_value=mock_result)
-
-        # Should fall back to original order instead of crashing
-        result = await DependencyManager.get_update_order(
-            mock_db, ["app-a", "app-b"]
-        )
-
-        assert result == ["app-a", "app-b"]
+        # Should log warning
+        assert "Cannot add dependent a to non-existent container nonexistent" in caplog.text
 
 
-class TestDependencyManagerValidation:
-    """Test suite for dependency validation."""
+class TestValidateDependencies:
+    """Test suite for validate_dependencies() method."""
 
-    @pytest.mark.asyncio
-    async def test_validate_dependencies_all_exist(self):
-        """Test validation succeeds when all dependencies exist."""
-        mock_db = AsyncMock()
-
-        # Mock: postgres and redis exist
-        mock_result = MagicMock()
-        mock_result.fetchall.return_value = [("postgres",), ("redis",)]
-
-        # Mock: all containers for cycle check
-        all_containers = [
-            MagicMock(name="postgres", dependencies=None),
-            MagicMock(name="redis", dependencies=None),
-            MagicMock(name="api", dependencies='["postgres"]'),
-        ]
-
-        mock_db.execute = AsyncMock(side_effect=[
-            mock_result,
-            MagicMock(scalars=lambda: MagicMock(all=lambda: all_containers))
-        ])
+    async def test_validates_existing_dependencies(self, db, make_container):
+        """Test validates that all dependencies exist."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        container_b = make_container(name="b", image="busybox", current_tag="1")
+        db.add_all([container_a, container_b])
+        await db.commit()
 
         is_valid, error = await DependencyManager.validate_dependencies(
-            mock_db, "api", ["postgres", "redis"]
+            db, "a", ["b"]
         )
 
         assert is_valid is True
         assert error is None
 
-    @pytest.mark.asyncio
-    async def test_validate_dependencies_missing_container(self):
-        """Test validation fails when dependency doesn't exist."""
-        mock_db = AsyncMock()
-
-        # Mock: only postgres exists
-        mock_result = MagicMock()
-        mock_result.fetchall.return_value = [("postgres",)]
-
-        mock_db.execute = AsyncMock(return_value=mock_result)
+    async def test_rejects_missing_dependencies(self, db, make_container):
+        """Test rejects dependencies that don't exist."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        db.add(container_a)
+        await db.commit()
 
         is_valid, error = await DependencyManager.validate_dependencies(
-            mock_db, "api", ["postgres", "nonexistent"]
+            db, "a", ["nonexistent"]
         )
 
         assert is_valid is False
-        assert "not found" in error
-        assert "nonexistent" in error
+        assert "Dependencies not found: nonexistent" in error
 
-    @pytest.mark.asyncio
-    async def test_validate_dependencies_detects_cycle(self):
-        """Test validation detects circular dependencies."""
-        mock_db = AsyncMock()
+    async def test_rejects_circular_dependencies(self, db, make_container):
+        """Test rejects dependencies that create cycles."""
+        # Create: a -> b -> c
+        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"]))
+        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["c"]))
+        container_c = make_container(name="c", image="caddy", current_tag="2")
+        db.add_all([container_a, container_b, container_c])
+        await db.commit()
 
-        # Mock: dependencies exist
-        mock_result1 = MagicMock()
-        mock_result1.fetchall.return_value = [("app-a",), ("app-b",)]
-
-        # Mock: containers with cycle
-        all_containers = [
-            MagicMock(name="app-a", dependencies='["app-b"]'),
-            MagicMock(name="app-b", dependencies=None),  # Will be updated to depend on app-a
-        ]
-
-        mock_db.execute = AsyncMock(side_effect=[
-            mock_result1,
-            MagicMock(scalars=lambda: MagicMock(all=lambda: all_containers))
-        ])
-
-        # Try to make app-b depend on app-a (creates cycle)
+        # Try to make c -> a (creates cycle)
         is_valid, error = await DependencyManager.validate_dependencies(
-            mock_db, "app-b", ["app-a"]
+            db, "c", ["a"]
         )
 
         assert is_valid is False
-        assert "Circular" in error or "circular" in error
+        assert "Circular dependency detected" in error
 
+    async def test_allows_complex_valid_graph(self, db, make_container):
+        """Test allows complex but valid dependency graph."""
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        container_b = make_container(name="b", image="busybox", current_tag="1")
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["a"]))
+        container_d = make_container(name="d", image="debian", current_tag="12", dependencies=json.dumps(["b"]))
+        db.add_all([container_a, container_b, container_c, container_d])
+        await db.commit()
 
-class TestDependencyManagerUpdateDependencies:
-    """Test suite for updating container dependencies."""
-
-    @pytest.mark.asyncio
-    async def test_update_dependencies_stores_json(self):
-        """Test dependencies are stored as JSON."""
-        mock_db = AsyncMock()
-
-        mock_container = MagicMock(name="api", dependencies=None)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_container
-
-        mock_db.execute = AsyncMock(return_value=mock_result)
-        mock_db.commit = AsyncMock()
-
-        await DependencyManager.update_container_dependencies(
-            mock_db, "api", ["postgres", "redis"]
+        # Add e that depends on both c and d (diamond pattern)
+        is_valid, error = await DependencyManager.validate_dependencies(
+            db, "e", ["c", "d"]
         )
 
-        # Check JSON was stored
-        stored_deps = json.loads(mock_container.dependencies)
-        assert set(stored_deps) == {"postgres", "redis"}
+        assert is_valid is True
+        assert error is None
 
-    @pytest.mark.asyncio
-    async def test_update_dependencies_clears_cache(self):
-        """Test updating dependencies clears cache."""
-        global _dependency_cache
+    async def test_handles_empty_dependencies(self, db, make_container):
+        """Test handles empty dependency list."""
+        container = make_container(name="a", image="alpine", current_tag="3")
+        db.add(container)
+        await db.commit()
 
-        # Populate cache
-        _dependency_cache["test"] = ["app-a"]
-
-        mock_db = AsyncMock()
-        mock_container = MagicMock(name="api", dependencies=None)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_container
-
-        mock_db.execute = AsyncMock(return_value=mock_result)
-        mock_db.commit = AsyncMock()
-
-        await DependencyManager.update_container_dependencies(
-            mock_db, "api", ["postgres"]
+        is_valid, error = await DependencyManager.validate_dependencies(
+            db, "a", []
         )
 
-        # Cache should be cleared
-        assert len(_dependency_cache) == 0
+        assert is_valid is True
+        assert error is None
 
-    @pytest.mark.asyncio
-    async def test_update_dependencies_raises_for_missing_container(self):
-        """Test updating missing container raises ValueError."""
-        mock_db = AsyncMock()
+    async def test_handles_invalid_json_in_existing_deps(
+        self, db, make_container
+    ):
+        """Test handles invalid JSON in existing container dependencies."""
+        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies="invalid")
+        container_b = make_container(name="b", image="busybox", current_tag="1")
+        db.add_all([container_a, container_b])
+        await db.commit()
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        is_valid, error = await DependencyManager.validate_dependencies(
+            db, "b", ["a"]
+        )
 
-        mock_db.execute = AsyncMock(return_value=mock_result)
-
-        with pytest.raises(ValueError) as exc_info:
-            await DependencyManager.update_container_dependencies(
-                mock_db, "nonexistent", ["postgres"]
-            )
-
-        assert "not found" in str(exc_info.value)
+        # Should still validate successfully
+        assert is_valid is True
 
 
-class TestDependencyManagerIntegration:
-    """Integration tests for dependency manager."""
+class TestClearDependencyCache:
+    """Test suite for clear_dependency_cache() method."""
 
-    def setup_method(self):
-        """Clear cache before each test."""
+    def test_clears_cache(self):
+        """Test clears the dependency cache."""
+        from app.services.dependency_manager import _dependency_cache
+
+        # Add some entries
+        _dependency_cache["key1"] = ["a", "b"]
+        _dependency_cache["key2"] = ["c", "d"]
+
         DependencyManager.clear_dependency_cache()
 
-    @pytest.mark.asyncio
-    async def test_full_workflow_simple_dependencies(self):
-        """Test complete workflow with simple dependencies."""
-        mock_db = AsyncMock()
+        assert len(_dependency_cache) == 0
 
-        # Create mock containers
-        postgres = MagicMock(name="postgres", dependencies=None)
-        redis = MagicMock(name="redis", dependencies=None)
-        api = MagicMock(name="api", dependencies='["postgres", "redis"]')
-        frontend = MagicMock(name="frontend", dependencies='["api"]')
+    def test_handles_empty_cache(self):
+        """Test handles clearing empty cache."""
+        DependencyManager.clear_dependency_cache()
 
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = [postgres, redis, api, frontend]
+        # Should not raise
+        from app.services.dependency_manager import _dependency_cache
+        assert len(_dependency_cache) == 0
 
-        mock_db.execute = AsyncMock(return_value=mock_result)
 
-        result = await DependencyManager.get_update_order(
-            mock_db, ["postgres", "redis", "api", "frontend"]
-        )
+class TestAutoDetectDependencies:
+    """Test suite for auto_detect_dependencies() method."""
 
-        # Verify correct order
-        assert result.index("postgres") < result.index("api")
-        assert result.index("redis") < result.index("api")
-        assert result.index("api") < result.index("frontend")
+    async def test_returns_empty_list_placeholder(self, db):
+        """Test returns empty list (placeholder implementation)."""
+        result = await DependencyManager.auto_detect_dependencies(db, "test")
 
-    @pytest.mark.asyncio
-    async def test_realistic_microservices_architecture(self):
-        """Test realistic microservices dependency graph."""
-        mock_db = AsyncMock()
+        assert result == []
 
-        containers = [
-            MagicMock(name="postgres", dependencies=None),
-            MagicMock(name="redis", dependencies=None),
-            MagicMock(name="rabbitmq", dependencies=None),
-            MagicMock(name="auth-service", dependencies='["postgres", "redis"]'),
-            MagicMock(name="user-service", dependencies='["postgres", "auth-service"]'),
-            MagicMock(name="api-gateway", dependencies='["auth-service", "user-service"]'),
-            MagicMock(name="frontend", dependencies='["api-gateway"]'),
+    async def test_logs_not_implemented_message(self, db, caplog):
+        """Test logs message about not implemented."""
+        import logging
+        caplog.set_level(logging.DEBUG)
+
+        await DependencyManager.auto_detect_dependencies(db, "test")
+
+        assert "Auto-detect dependencies not yet implemented" in caplog.text
+
+
+class TestDependencyManagerEdgeCases:
+    """Test edge cases and real-world scenarios."""
+
+    async def test_handles_very_large_dependency_graph(self, db, make_container):
+        """Test handles large dependency graph."""
+        # Create 50 containers with various dependencies
+        containers = []
+        for i in range(50):
+            deps = []
+            if i > 0:
+                # Each container depends on previous one
+                deps = [f"container{i-1}"]
+
+            container = make_container(
+                name=f"container{i}",
+                image="test",
+                current_tag="latest",
+                dependencies=json.dumps(deps) if deps else None
+            )
+            containers.append(container)
+
+        db.add_all(containers)
+        await db.commit()
+
+        names = [f"container{i}" for i in range(50)]
+        result = await DependencyManager.get_update_order(db, names)
+
+        # Should be in order 0, 1, 2, ..., 49
+        expected = [f"container{i}" for i in range(50)]
+        assert result == expected
+
+    async def test_handles_multiple_dependency_layers(self, db, make_container):
+        """Test handles multiple layers of dependencies."""
+        # Layer 0: db, cache
+        # Layer 1: api (db), queue (cache)
+        # Layer 2: worker (api, queue)
+        # Layer 3: web (worker)
+
+        layer0 = [
+            make_container(name="db", image="postgres", current_tag="16"),
+            make_container(name="cache", image="redis", current_tag="7")
+        ]
+        layer1 = [
+            make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])),
+            make_container(name="queue", image="rabbitmq", current_tag="3", dependencies=json.dumps(["cache"]))
+        ]
+        layer2 = [
+            make_container(name="worker", image="python", current_tag="3.11", dependencies=json.dumps(["api", "queue"]))
+        ]
+        layer3 = [
+            make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["worker"]))
         ]
 
-        mock_result = MagicMock()
-        mock_result.scalars().all.return_value = containers
+        db.add_all(layer0 + layer1 + layer2 + layer3)
+        await db.commit()
 
-        mock_db.execute = AsyncMock(return_value=mock_result)
+        result = await DependencyManager.get_update_order(
+            db, ["web", "worker", "api", "queue", "db", "cache"]
+        )
 
-        container_names = [c.name for c in containers]
-        result = await DependencyManager.get_update_order(mock_db, container_names)
+        # Verify layer ordering
+        db_idx = result.index("db")
+        cache_idx = result.index("cache")
+        api_idx = result.index("api")
+        queue_idx = result.index("queue")
+        worker_idx = result.index("worker")
+        web_idx = result.index("web")
 
-        # Base services first
-        for base in ["postgres", "redis", "rabbitmq"]:
-            assert base in result[:3]
+        # Layer 0 before layer 1
+        assert db_idx < api_idx
+        assert cache_idx < queue_idx
 
-        # Frontend last
-        assert result[-1] == "frontend"
+        # Layer 1 before layer 2
+        assert api_idx < worker_idx
+        assert queue_idx < worker_idx
 
-        # Auth before user service
-        assert result.index("auth-service") < result.index("user-service")
+        # Layer 2 before layer 3
+        assert worker_idx < web_idx
 
-        # User service before api gateway
-        assert result.index("user-service") < result.index("api-gateway")
+    async def test_partial_update_with_dependencies(self, db, make_container):
+        """Test updating subset of containers with dependencies."""
+        # Full graph: a -> b -> c -> d
+        # Only update b and c
+
+        container_a = make_container(name="a", image="alpine", current_tag="3")
+        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"]))
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"]))
+        container_d = make_container(name="d", image="debian", current_tag="12", dependencies=json.dumps(["c"]))
+
+        db.add_all([container_a, container_b, container_c, container_d])
+        await db.commit()
+
+        result = await DependencyManager.get_update_order(db, ["c", "b"])
+
+        # Should order b before c, ignoring a and d
+        assert result == ["b", "c"]
