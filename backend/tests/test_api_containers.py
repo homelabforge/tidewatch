@@ -17,7 +17,7 @@ async def test_list_containers_empty(authenticated_client):
 
 
 @pytest.mark.asyncio
-async def test_list_containers_with_data(authenticated_client, db, sample_container_data):
+async def test_list_containers_with_data(authenticated_client, db, sample_container_data, make_container):
     """Test listing containers with data."""
     # Add a container to the database
     container = make_container(**sample_container_data)
@@ -35,7 +35,7 @@ async def test_list_containers_with_data(authenticated_client, db, sample_contai
 
 
 @pytest.mark.asyncio
-async def test_list_containers_pagination(authenticated_client, db, sample_container_data):
+async def test_list_containers_pagination(authenticated_client, db, sample_container_data, make_container):
     """Test container list pagination."""
     # Add multiple containers
     for i in range(5):
@@ -59,7 +59,7 @@ async def test_list_containers_pagination(authenticated_client, db, sample_conta
 
 
 @pytest.mark.asyncio
-async def test_get_container_by_id(authenticated_client, db, sample_container_data):
+async def test_get_container_by_id(authenticated_client, db, sample_container_data, make_container):
     """Test getting a specific container by ID."""
     container = make_container(**sample_container_data)
     db.add(container)
@@ -84,7 +84,7 @@ async def test_get_container_not_found(authenticated_client, db):
 
 
 @pytest.mark.asyncio
-async def test_update_container_policy(authenticated_client, db, sample_container_data):
+async def test_update_container_policy(authenticated_client, db, sample_container_data, make_container):
     """Test updating a container's policy."""
     container = make_container(**sample_container_data)
     db.add(container)
@@ -256,9 +256,10 @@ class TestContainerDetailsEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert "name" in data
+        assert "container" in data
+        assert "name" in data["container"]
         # Environment vars might not be in all response schemas
-        assert data["name"] == "test-container"
+        assert data["container"]["name"] == f"test-container-{id(self)}"
 
     async def test_get_container_volumes(self, authenticated_client, db, make_container):
         """Test returns container volume mounts."""
@@ -276,7 +277,8 @@ class TestContainerDetailsEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         # Volumes might be in the response
-        assert "name" in data
+        assert "container" in data
+        assert "name" in data["container"]
 
     async def test_get_container_networks(self, authenticated_client, db, make_container):
         """Test returns container network configuration."""
@@ -324,7 +326,8 @@ class TestContainerDetailsEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         # Health status might be in the details
-        assert data["name"] == "test-container"
+        assert "container" in data
+        assert data["container"]["name"] == f"test-container-{id(self)}"
 
 
 class TestContainerPolicyManagement:
@@ -404,7 +407,7 @@ class TestContainerPolicyManagement:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await authenticated_client.put(
+        response = await client.put(
             "/api/v1/containers/1/policy",
             json={"policy": "auto"}
         )
@@ -514,18 +517,18 @@ class TestContainerExclusion:
         assert "included" not in names
 
     async def test_exclusion_requires_auth(self, client, db):
-        """Test exclusion mutation requires authentication (CSRF runs first, returns 403)."""
+        """Test exclusion mutation requires authentication (CSRF bypassed in test mode, returns 401)."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        # Try to exclude without authentication - CSRF middleware runs before auth, returns 403
-        response = await authenticated_client.post("/api/v1/containers/1/exclude")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Try to exclude without authentication - CSRF disabled in test mode, returns 401
+        response = await client.post("/api/v1/containers/1/exclude")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        # Try to include without authentication - CSRF middleware runs before auth, returns 403
-        response = await authenticated_client.post("/api/v1/containers/1/include")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Try to include without authentication - CSRF disabled in test mode, returns 401
+        response = await client.post("/api/v1/containers/1/include")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestContainerLabels:
@@ -662,7 +665,11 @@ class TestContainerStats:
 
     async def test_get_container_history_requires_auth(self, client, db):
         """Test history endpoint requires authentication."""
-        response = await authenticated_client.get("/api/v1/containers/1/history")
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
+        response = await client.get("/api/v1/containers/1/history")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     async def test_get_container_history_invalid_container(self, authenticated_client):
@@ -712,7 +719,7 @@ class TestContainerSync:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await authenticated_client.post("/api/v1/containers/sync")
+        response = await client.post("/api/v1/containers/sync")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
