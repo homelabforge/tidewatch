@@ -20,7 +20,7 @@ async def test_list_containers_empty(authenticated_client):
 async def test_list_containers_with_data(authenticated_client, db, sample_container_data):
     """Test listing containers with data."""
     # Add a container to the database
-    container = Container(**sample_container_data)
+    container = make_container(**sample_container_data)
     db.add(container)
     await db.commit()
     await db.refresh(container)
@@ -41,7 +41,7 @@ async def test_list_containers_pagination(authenticated_client, db, sample_conta
     for i in range(5):
         container_data = sample_container_data.copy()
         container_data["name"] = f"test-container-{i}"
-        container = Container(**container_data)
+        container = make_container(**container_data)
         db.add(container)
     await db.commit()
 
@@ -61,7 +61,7 @@ async def test_list_containers_pagination(authenticated_client, db, sample_conta
 @pytest.mark.asyncio
 async def test_get_container_by_id(authenticated_client, db, sample_container_data):
     """Test getting a specific container by ID."""
-    container = Container(**sample_container_data)
+    container = make_container(**sample_container_data)
     db.add(container)
     await db.commit()
     await db.refresh(container)
@@ -86,7 +86,7 @@ async def test_get_container_not_found(authenticated_client, db):
 @pytest.mark.asyncio
 async def test_update_container_policy(authenticated_client, db, sample_container_data):
     """Test updating a container's policy."""
-    container = Container(**sample_container_data)
+    container = make_container(**sample_container_data)
     db.add(container)
     await db.commit()
     await db.refresh(container)
@@ -115,10 +115,10 @@ class TestContainerFilteringEndpoint:
         """Test filtering containers by status (running, stopped, paused)."""
         pass
 
-    async def test_filter_by_policy(self, authenticated_client, db):
+    async def test_filter_by_policy(self, authenticated_client, db, make_container):
         """Test filtering containers by update policy."""
         # Create containers with different policies
-        container1 = Container(
+        container1 = make_container(
             name=f"auto-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -127,7 +127,7 @@ class TestContainerFilteringEndpoint:
             service_name="nginx",
             policy="auto"
         )
-        container2 = Container(
+        container2 = make_container(
             name=f"manual-container-{id(self)}",
             image="redis:6",
             current_tag="6",
@@ -136,7 +136,7 @@ class TestContainerFilteringEndpoint:
             service_name="redis",
             policy="manual"
         )
-        container3 = Container(
+        container3 = make_container(
             name=f"disabled-container-{id(self)}",
             image="postgres:13",
             current_tag="13",
@@ -161,10 +161,10 @@ class TestContainerFilteringEndpoint:
         """Test filtering containers by Docker labels."""
         pass
 
-    async def test_search_by_name(self, authenticated_client, db):
+    async def test_search_by_name(self, authenticated_client, db, make_container):
         """Test searching containers by name."""
         # Create containers with different names
-        container1 = Container(
+        container1 = make_container(
             name=f"web-frontend-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -172,7 +172,7 @@ class TestContainerFilteringEndpoint:
             compose_file="/compose/test.yml",
             service_name="web"
         )
-        container2 = Container(
+        container2 = make_container(
             name=f"web-backend-{id(self)}",
             image="node:16",
             current_tag="16",
@@ -180,7 +180,7 @@ class TestContainerFilteringEndpoint:
             compose_file="/compose/test.yml",
             service_name="api"
         )
-        container3 = Container(
+        container3 = make_container(
             name=f"database-{id(self)}",
             image="postgres:13",
             current_tag="13",
@@ -198,10 +198,10 @@ class TestContainerFilteringEndpoint:
         assert len(data) == 2
         assert all("web" in c["name"] for c in data)
 
-    async def test_search_by_image(self, authenticated_client, db):
+    async def test_search_by_image(self, authenticated_client, db, make_container):
         """Test searching containers by image name."""
         # Create containers with different images
-        container1 = Container(
+        container1 = make_container(
             name=f"nginx1-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -209,7 +209,7 @@ class TestContainerFilteringEndpoint:
             compose_file="/compose/test.yml",
             service_name=f"nginx1-{id(self)}"
         )
-        container2 = Container(
+        container2 = make_container(
             name=f"nginx2-{id(self)}",
             image="nginx:1.21",
             current_tag="1.21",
@@ -217,7 +217,7 @@ class TestContainerFilteringEndpoint:
             compose_file="/compose/test.yml",
             service_name=f"nginx2-{id(self)}"
         )
-        container3 = Container(
+        container3 = make_container(
             name=f"redis1-{id(self)}",
             image="redis:6",
             current_tag="6",
@@ -239,10 +239,10 @@ class TestContainerFilteringEndpoint:
 class TestContainerDetailsEndpoint:
     """Test suite for detailed container information."""
 
-    async def test_get_container_environment_vars(self, authenticated_client, db):
+    async def test_get_container_environment_vars(self, authenticated_client, db, make_container):
         """Test returns container environment variables (masked)."""
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -260,9 +260,9 @@ class TestContainerDetailsEndpoint:
         # Environment vars might not be in all response schemas
         assert data["name"] == "test-container"
 
-    async def test_get_container_volumes(self, authenticated_client, db):
+    async def test_get_container_volumes(self, authenticated_client, db, make_container):
         """Test returns container volume mounts."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -278,9 +278,9 @@ class TestContainerDetailsEndpoint:
         # Volumes might be in the response
         assert "name" in data
 
-    async def test_get_container_networks(self, authenticated_client, db):
+    async def test_get_container_networks(self, authenticated_client, db, make_container):
         """Test returns container network configuration."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -293,9 +293,9 @@ class TestContainerDetailsEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_get_container_ports(self, authenticated_client, db):
+    async def test_get_container_ports(self, authenticated_client, db, make_container):
         """Test returns container port mappings."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -308,9 +308,9 @@ class TestContainerDetailsEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_get_container_health_status(self, authenticated_client, db):
+    async def test_get_container_health_status(self, authenticated_client, db, make_container):
         """Test returns container health check status."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -330,9 +330,9 @@ class TestContainerDetailsEndpoint:
 class TestContainerPolicyManagement:
     """Test suite for container policy management."""
 
-    async def test_update_policy_to_auto(self, authenticated_client, db):
+    async def test_update_policy_to_auto(self, authenticated_client, db, make_container):
         """Test updating policy to auto."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -351,9 +351,9 @@ class TestContainerPolicyManagement:
         data = response.json()
         assert data["policy"] == "auto"
 
-    async def test_update_policy_to_manual(self, authenticated_client, db):
+    async def test_update_policy_to_manual(self, authenticated_client, db, make_container):
         """Test updating policy to manual."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -372,9 +372,9 @@ class TestContainerPolicyManagement:
         data = response.json()
         assert data["policy"] == "manual"
 
-    async def test_update_policy_to_disabled(self, authenticated_client, db):
+    async def test_update_policy_to_disabled(self, authenticated_client, db, make_container):
         """Test updating policy to disabled."""
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -415,10 +415,10 @@ class TestContainerPolicyManagement:
 class TestContainerExclusion:
     """Test suite for container exclusion management."""
 
-    async def test_exclude_container_from_updates(self, authenticated_client, db):
+    async def test_exclude_container_from_updates(self, authenticated_client, db, make_container):
         """Test excluding container from updates."""
         # Create container with manual policy
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -442,10 +442,10 @@ class TestContainerExclusion:
         await db.refresh(container)
         assert container.policy == "disabled"
 
-    async def test_include_excluded_container(self, authenticated_client, db):
+    async def test_include_excluded_container(self, authenticated_client, db, make_container):
         """Test including previously excluded container."""
         # Create excluded container
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -469,10 +469,10 @@ class TestContainerExclusion:
         await db.refresh(container)
         assert container.policy == "manual"
 
-    async def test_list_excluded_containers(self, authenticated_client, db):
+    async def test_list_excluded_containers(self, authenticated_client, db, make_container):
         """Test listing all excluded containers."""
         # Create mix of excluded and included containers
-        container1 = Container(
+        container1 = make_container(
             name=f"excluded1-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -481,7 +481,7 @@ class TestContainerExclusion:
             service_name=f"nginx1-{id(self)}",
             policy="disabled"
         )
-        container2 = Container(
+        container2 = make_container(
             name=f"included-{id(self)}",
             image="redis:6",
             current_tag="6",
@@ -490,7 +490,7 @@ class TestContainerExclusion:
             service_name="redis",
             policy="manual"
         )
-        container3 = Container(
+        container3 = make_container(
             name=f"excluded2-{id(self)}",
             image="postgres:13",
             current_tag="13",
@@ -560,14 +560,14 @@ class TestContainerStats:
         """Test retrieving container restart count."""
         pass
 
-    async def test_get_container_update_history(self, authenticated_client, db):
+    async def test_get_container_update_history(self, authenticated_client, db, make_container):
         """Test retrieving container update history."""
         from app.models.container import Container
         from app.models.history import UpdateHistory
         from datetime import datetime, timezone
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="history-test-container",
             image="nginx",
             current_tag="1.20",
@@ -615,14 +615,14 @@ class TestContainerStats:
         assert data[0]["to_tag"] == "1.20"
         assert data[1]["to_tag"] == "1.19"
 
-    async def test_get_container_history_pagination(self, authenticated_client, db):
+    async def test_get_container_history_pagination(self, authenticated_client, db, make_container):
         """Test history endpoint pagination."""
         from app.models.container import Container
         from app.models.history import UpdateHistory
         from datetime import datetime, timezone
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="pagination-test-container",
             image="nginx",
             current_tag="1.25",
