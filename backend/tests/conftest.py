@@ -87,6 +87,39 @@ def sample_container_data():
 
 
 @pytest.fixture
+def make_container():
+    """Factory fixture to create Container instances with valid required fields.
+
+    Usage:
+        container = make_container(name="my-container", image="nginx:1.20")
+
+    All required fields have sensible defaults:
+    - registry: "docker.io"
+    - compose_file: "/compose/test.yml"
+    - service_name: Derived from name or "test-service"
+    """
+    def _make_container(**kwargs):
+        from app.models.container import Container
+
+        # Set defaults for required fields
+        defaults = {
+            "registry": "docker.io",
+            "compose_file": "/compose/test.yml",
+            "service_name": kwargs.get("name", "test-service"),
+        }
+
+        # Merge defaults with provided kwargs (kwargs take precedence)
+        container_data = {**defaults, **kwargs}
+
+        # Remove 'status' if accidentally provided (not a valid field)
+        container_data.pop("status", None)
+
+        return Container(**container_data)
+
+    return _make_container
+
+
+@pytest.fixture
 def sample_update_data():
     """Sample update data for testing."""
     return {
@@ -97,6 +130,42 @@ def sample_update_data():
         "reason_type": "update",
         "reason_summary": "New version available",
     }
+
+
+@pytest.fixture
+def make_update():
+    """Factory fixture to create Update instances with valid required fields.
+
+    Usage:
+        update = make_update(container_id=1, from_tag="1.0", to_tag="1.1")
+
+    All required fields have sensible defaults:
+    - container_name: Derived from container_id or "test-container"
+    - registry: "docker.io"
+    - reason_type: "update"
+    """
+    def _make_update(**kwargs):
+        from app.models.update import Update
+
+        # Set defaults for required fields
+        defaults = {
+            "container_name": f"container-{kwargs.get('container_id', 1)}",
+            "registry": "docker.io",
+            "reason_type": "update",
+        }
+
+        # Merge defaults with provided kwargs (kwargs take precedence)
+        update_data = {**defaults, **kwargs}
+
+        # Map legacy field names to correct ones
+        if "current_tag" in update_data:
+            update_data["from_tag"] = update_data.pop("current_tag")
+        if "new_tag" in update_data:
+            update_data["to_tag"] = update_data.pop("new_tag")
+
+        return Update(**update_data)
+
+    return _make_update
 
 
 @pytest.fixture

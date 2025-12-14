@@ -19,38 +19,32 @@ from fastapi import status
 class TestListUpdatesEndpoint:
     """Test suite for GET /api/v1/updates endpoint."""
 
-    async def test_list_updates_all(self, authenticated_client, db):
+    async def test_list_updates_all(self, authenticated_client, db, make_container, make_update):
         """Test listing all updates."""
-        # Create some test updates
-        from app.models.update import Update
-        from app.models.container import Container
-        from datetime import datetime, timezone
-
         # Create a test container first
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
-            current_tag="1.20",
-            status="running"
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         # Create test updates
-        update1 = Update(
+        update1 = make_update(
             container_id=container.id,
-            current_tag="1.20",
-            new_tag="1.21",
-            status="pending",
-            created_at=datetime.now(timezone.utc)
+            container_name=container.name,
+            from_tag="1.20",
+            to_tag="1.21",
+            status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container.id,
-            current_tag="1.21",
-            new_tag="1.22",
-            status="approved",
-            created_at=datetime.now(timezone.utc)
+            container_name=container.name,
+            from_tag="1.21",
+            to_tag="1.22",
+            status="approved"
         )
         db.add(update1)
         db.add(update2)
