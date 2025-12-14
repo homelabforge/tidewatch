@@ -8,20 +8,16 @@ from app.models.container import Container
 
 
 @pytest.mark.asyncio
-async def test_list_containers_empty(db):
+async def test_list_containers_empty(authenticated_client):
     """Test listing containers when database is empty."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # Override the dependency to use our test database
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    response = await authenticated_client.get("/api/v1/containers/")
 
-        response = await client.get("/api/v1/containers/")
-
-        assert response.status_code == 200
-        assert response.json() == []
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 @pytest.mark.asyncio
-async def test_list_containers_with_data(db, sample_container_data):
+async def test_list_containers_with_data(authenticated_client, db, sample_container_data):
     """Test listing containers with data."""
     # Add a container to the database
     container = Container(**sample_container_data)
@@ -29,20 +25,17 @@ async def test_list_containers_with_data(db, sample_container_data):
     await db.commit()
     await db.refresh(container)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    response = await authenticated_client.get("/api/v1/containers/")
 
-        response = await client.get("/api/v1/containers/")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["name"] == "test-container"
-        assert data[0]["image"] == "nginx:1.20"
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["name"] == "test-container"
+    assert data[0]["image"] == "nginx:1.20"
 
 
 @pytest.mark.asyncio
-async def test_list_containers_pagination(db, sample_container_data):
+async def test_list_containers_pagination(authenticated_client, db, sample_container_data):
     """Test container list pagination."""
     # Add multiple containers
     for i in range(5):
@@ -52,73 +45,61 @@ async def test_list_containers_pagination(db, sample_container_data):
         db.add(container)
     await db.commit()
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    # Test pagination
+    response = await authenticated_client.get("/api/v1/containers/?skip=0&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
 
-        # Test pagination
-        response = await client.get("/api/v1/containers/?skip=0&limit=2")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-
-        # Test skip
-        response = await client.get("/api/v1/containers/?skip=2&limit=2")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
+    # Test skip
+    response = await authenticated_client.get("/api/v1/containers/?skip=2&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
 
 
 @pytest.mark.asyncio
-async def test_get_container_by_id(db, sample_container_data):
+async def test_get_container_by_id(authenticated_client, db, sample_container_data):
     """Test getting a specific container by ID."""
     container = Container(**sample_container_data)
     db.add(container)
     await db.commit()
     await db.refresh(container)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    response = await authenticated_client.get(f"/api/v1/containers/{container.id}")
 
-        response = await client.get(f"/api/v1/containers/{container.id}")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "test-container"
-        assert data["id"] == container.id
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "test-container"
+    assert data["id"] == container.id
 
 
 @pytest.mark.asyncio
-async def test_get_container_not_found(db):
+async def test_get_container_not_found(authenticated_client, db):
     """Test getting a non-existent container returns 404."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    response = await authenticated_client.get("/api/v1/containers/999")
 
-        response = await client.get("/api/v1/containers/999")
-
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_update_container_policy(db, sample_container_data):
+async def test_update_container_policy(authenticated_client, db, sample_container_data):
     """Test updating a container's policy."""
     container = Container(**sample_container_data)
     db.add(container)
     await db.commit()
     await db.refresh(container)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        app.dependency_overrides[app.db.get_db] = lambda: db
+    # Update policy
+    response = await authenticated_client.put(
+        f"/api/v1/containers/{container.id}/policy",
+        json={"policy": "auto"}
+    )
 
-        # Update policy
-        response = await client.put(
-            f"/api/v1/containers/{container.id}/policy",
-            json={"policy": "auto"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["policy"] == "auto"
+    assert response.status_code == 200
+    data = response.json()
+    assert data["policy"] == "auto"
 
 
 # ============================================================================
@@ -423,7 +404,7 @@ class TestContainerPolicyManagement:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await client.put(
+        response = await authenticated_client.put(
             "/api/v1/containers/1/policy",
             json={"policy": "auto"}
         )
@@ -539,11 +520,11 @@ class TestContainerExclusion:
         await db.commit()
 
         # Try to exclude without authentication - CSRF middleware runs before auth, returns 403
-        response = await client.post("/api/v1/containers/1/exclude")
+        response = await authenticated_client.post("/api/v1/containers/1/exclude")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
         # Try to include without authentication - CSRF middleware runs before auth, returns 403
-        response = await client.post("/api/v1/containers/1/include")
+        response = await authenticated_client.post("/api/v1/containers/1/include")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -681,7 +662,7 @@ class TestContainerStats:
 
     async def test_get_container_history_requires_auth(self, client, db):
         """Test history endpoint requires authentication."""
-        response = await client.get("/api/v1/containers/1/history")
+        response = await authenticated_client.get("/api/v1/containers/1/history")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     async def test_get_container_history_invalid_container(self, authenticated_client):
@@ -731,7 +712,7 @@ class TestContainerSync:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await client.post("/api/v1/containers/sync")
+        response = await authenticated_client.post("/api/v1/containers/sync")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
