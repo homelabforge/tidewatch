@@ -17,13 +17,39 @@ from fastapi import status
 class TestAuthStatusEndpoint:
     """Test suite for GET /api/v1/auth/status endpoint."""
 
-    async def test_get_status_before_setup(self, client):
-        """Test status returns setup_complete=false before initial setup."""
+    async def test_get_status_before_setup(self, client, db):
+        """Test status returns setup_complete=false before initial setup when auth is enabled.
+
+        When auth_mode is 'none', setup is considered complete (no account needed).
+        When auth_mode is 'local' or 'oidc', setup is incomplete until admin account exists.
+        """
+        # Set auth mode to local to require setup
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         response = await client.get("/api/v1/auth/status")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["setup_complete"] is False
+        assert data["auth_mode"] == "local"
+        assert data["oidc_enabled"] is False
+
+    async def test_get_status_with_auth_none(self, client, db):
+        """Test status returns setup_complete=true when auth_mode is none.
+
+        When authentication is disabled (none), no setup is required.
+        """
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "none")
+        await db.commit()
+
+        response = await client.get("/api/v1/auth/status")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["setup_complete"] is True  # No setup needed when auth is disabled
         assert data["auth_mode"] == "none"
         assert data["oidc_enabled"] is False
 

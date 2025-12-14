@@ -129,15 +129,20 @@ async def client(app, db):
 @pytest.fixture
 async def admin_user(db):
     """Create admin credentials in settings for authentication tests."""
-    # Set admin password hash in settings (TideWatch uses settings-based auth)
+    # Set admin credentials in settings (TideWatch uses settings-based auth)
     password_hash = hash_password("AdminPassword123!")
+    await SettingsService.set(db, "admin_username", "admin")
+    await SettingsService.set(db, "admin_email", "admin@example.com")
     await SettingsService.set(db, "admin_password_hash", password_hash)
+    await SettingsService.set(db, "admin_full_name", "Admin User")
+    await db.commit()
 
     # Return dict with admin info (matching TideWatch's single-user model)
     return {
         "username": "admin",
         "email": "admin@example.com",
-        "password": "AdminPassword123!"
+        "password": "AdminPassword123!",
+        "full_name": "Admin User"
     }
 
 
