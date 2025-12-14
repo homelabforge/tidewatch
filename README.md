@@ -13,9 +13,12 @@ Intelligent Docker Container Update Management
 [![Bun 1.3.4](https://img.shields.io/badge/Bun-1.3.4-000000?logo=bun&logoColor=white)](https://bun.sh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+---
+
 ![TideWatch Dashboard](docs/screenshots/dashboard.png)
 
 </div>
+
 ---
 
 ## Key Features
