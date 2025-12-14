@@ -17,15 +17,13 @@ from datetime import datetime, timezone
 class TestGetRestartStateEndpoint:
     """Test suite for GET /api/v1/restarts/{container_id}/state endpoint."""
 
-    async def test_get_restart_state_existing(self, authenticated_client, db):
+    async def test_get_restart_state_existing(self, authenticated_client, db, make_container):
         """Test returns restart state for existing container."""
         # Arrange - Create container
-        from app.models.container import Container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
-            registry="docker.io",
             policy="manual"
         )
         db.add(container)
@@ -66,15 +64,13 @@ class TestGetRestartStateEndpoint:
 class TestManualRestartEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/manual-restart endpoint."""
 
-    async def test_manual_restart_success(self, authenticated_client, db):
+    async def test_manual_restart_success(self, authenticated_client, db, make_container):
         """Test manually triggers container restart."""
         # Arrange - Create container
-        from app.models.container import Container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
-            registry="docker.io",
             policy="manual"
         )
         db.add(container)
@@ -101,15 +97,13 @@ class TestManualRestartEndpoint:
             assert "restarted" in data["message"].lower()
             mock_restart.assert_called_once()
 
-    async def test_manual_restart_with_skip_backoff(self, authenticated_client, db):
+    async def test_manual_restart_with_skip_backoff(self, authenticated_client, db, make_container):
         """Test manual restart can skip backoff."""
         # Arrange - Create container
-        from app.models.container import Container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
-            registry="docker.io",
             policy="manual"
         )
         db.add(container)
@@ -134,15 +128,13 @@ class TestManualRestartEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_manual_restart_failure(self, authenticated_client, db):
+    async def test_manual_restart_failure(self, authenticated_client, db, make_container):
         """Test handles restart failure."""
         # Arrange - Create container
-        from app.models.container import Container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
-            registry="docker.io",
             policy="manual"
         )
         db.add(container)
@@ -187,13 +179,13 @@ class TestManualRestartEndpoint:
 class TestResetRestartStateEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/reset endpoint."""
 
-    async def test_reset_restart_state(self, authenticated_client, db):
+    async def test_reset_restart_state(self, authenticated_client, db, make_container):
         """Test resets restart state clearing failures."""
         # Arrange - Create container and restart state
         from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
@@ -229,15 +221,13 @@ class TestResetRestartStateEndpoint:
         assert data["state"]["current_backoff_seconds"] == 0.0
         assert data["state"]["max_retries_reached"] is False
 
-    async def test_reset_restart_state_no_state(self, authenticated_client, db):
+    async def test_reset_restart_state_no_state(self, authenticated_client, db, make_container):
         """Test returns 404 if restart state doesn't exist."""
         # Arrange - Create container without restart state
-        from app.models.container import Container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
-            registry="docker.io",
             policy="manual"
         )
         db.add(container)
@@ -272,13 +262,13 @@ class TestResetRestartStateEndpoint:
 class TestPauseRestartEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/pause endpoint."""
 
-    async def test_pause_restart(self, authenticated_client, db):
+    async def test_pause_restart(self, authenticated_client, db, make_container):
         """Test pauses auto-restart for duration."""
         # Arrange - Create container and restart state
         from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
@@ -329,14 +319,14 @@ class TestPauseRestartEndpoint:
 class TestResumeRestartEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/resume endpoint."""
 
-    async def test_resume_restart(self, authenticated_client, db):
+    async def test_resume_restart(self, authenticated_client, db, make_container):
         """Test resumes auto-restart after pause."""
         # Arrange - Create container and paused restart state
         from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
         from datetime import datetime, timedelta, timezone
 
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx",
             current_tag="1.20",
@@ -384,14 +374,14 @@ class TestResumeRestartEndpoint:
 class TestRestartStatsEndpoint:
     """Test suite for GET /api/v1/restarts/stats endpoint."""
 
-    async def test_get_restart_stats(self, authenticated_client, db):
+    async def test_get_restart_stats(self, authenticated_client, db, make_container):
         """Test returns aggregate restart statistics."""
         # Arrange - Create some restart states
         from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
         for i in range(3):
-            container = Container(
+            container = make_container(
                 name=f"container-{i}",
                 image="nginx",
                 current_tag="1.20",
