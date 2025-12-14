@@ -25,7 +25,7 @@ class TestAutoApprovalLogic:
     """Test suite for auto-approval policy logic."""
 
     @pytest.mark.asyncio
-    async def test_auto_approve_disabled_globally(self):
+    async def test_auto_approve_disabled_globally(self, make_update):
         """Test auto-approval disabled when global setting is off."""
         container = Container(
             name="test",
@@ -37,7 +37,7 @@ class TestAutoApprovalLogic:
             policy="auto"  # Container allows auto, but global is disabled
         )
 
-        update = Update(
+        update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -52,7 +52,7 @@ class TestAutoApprovalLogic:
         assert "disabled globally" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_container_policy_disabled(self):
+    async def test_auto_approve_container_policy_disabled(self, make_update):
         """Test auto-approval disabled when container policy is disabled."""
         container = Container(
             name="test",
@@ -64,7 +64,7 @@ class TestAutoApprovalLogic:
             policy="disabled"
         )
 
-        update = Update(
+        update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -79,7 +79,7 @@ class TestAutoApprovalLogic:
         assert "container policy is disabled" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_container_policy_manual(self):
+    async def test_auto_approve_container_policy_manual(self, make_update):
         """Test auto-approval disabled when container policy is manual."""
         container = Container(
             name="test",
@@ -91,7 +91,7 @@ class TestAutoApprovalLogic:
             policy="manual"
         )
 
-        update = Update(
+        update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -106,7 +106,7 @@ class TestAutoApprovalLogic:
         assert "manual approval" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_container_policy_auto(self):
+    async def test_auto_approve_container_policy_auto(self, make_update):
         """Test auto-approval enabled when container policy is auto."""
         container = Container(
             name="test",
@@ -118,7 +118,7 @@ class TestAutoApprovalLogic:
             policy="auto"
         )
 
-        update = Update(
+        update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -133,7 +133,7 @@ class TestAutoApprovalLogic:
         assert "allows all updates" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_approves_security_updates(self):
+    async def test_auto_approve_security_policy_approves_security_updates(self, make_update):
         """Test security policy approves security updates only."""
         container = Container(
             name="test",
@@ -145,7 +145,7 @@ class TestAutoApprovalLogic:
             policy="security"
         )
 
-        security_update = Update(
+        security_update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -160,7 +160,7 @@ class TestAutoApprovalLogic:
         assert "approves security updates" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_rejects_feature_updates(self):
+    async def test_auto_approve_security_policy_rejects_feature_updates(self, make_update):
         """Test security policy rejects non-security updates."""
         container = Container(
             name="test",
@@ -172,7 +172,7 @@ class TestAutoApprovalLogic:
             policy="security"
         )
 
-        feature_update = Update(
+        feature_update = make_update(
             container_id=1,
             from_tag="1.0.0",
             to_tag="1.1.0",
@@ -276,7 +276,7 @@ class TestUpdateDetection:
             assert mock_container.latest_tag == "1.25.3"
 
     @pytest.mark.asyncio
-    async def test_check_container_duplicate_update_returns_existing(self, mock_db, mock_container):
+    async def test_check_container_duplicate_update_returns_existing(self, mock_db, mock_container, make_update):
         """Test check_container returns existing update if already present."""
         # Mock registry client
         mock_client = AsyncMock()
@@ -284,7 +284,7 @@ class TestUpdateDetection:
         mock_client.close = AsyncMock()
 
         # Mock existing update
-        existing_update = Update(
+        existing_update = make_update(
             id=1,
             container_id=1,
             from_tag="1.25.0",
@@ -441,7 +441,7 @@ class TestCheckAllContainers:
             assert stats["errors"] == 0
 
     @pytest.mark.asyncio
-    async def test_check_all_containers_counts_updates(self, mock_db):
+    async def test_check_all_containers_counts_updates(self, mock_db, make_update):
         """Test check_all_containers counts found updates."""
         containers = [
             Container(
@@ -461,7 +461,7 @@ class TestCheckAllContainers:
         mock_db.execute = AsyncMock(return_value=container_result)
 
         # Mock check_container to return an update
-        mock_update = Update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0")
+        mock_update = make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0")
 
         with patch.object(UpdateChecker, "check_container", return_value=mock_update):
             stats = await UpdateChecker.check_all_containers(mock_db)
@@ -699,11 +699,11 @@ class TestQueryHelpers:
         return db
 
     @pytest.mark.asyncio
-    async def test_get_pending_updates_returns_pending_only(self, mock_db):
+    async def test_get_pending_updates_returns_pending_only(self, mock_db, make_update):
         """Test get_pending_updates returns only pending updates."""
         pending_updates = [
-            Update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending"),
-            Update(id=2, container_id=2, from_tag="2.0.0", to_tag="2.1.0", status="pending")
+            make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending"),
+            make_update(id=2, container_id=2, from_tag="2.0.0", to_tag="2.1.0", status="pending")
         ]
 
         result = MagicMock()
@@ -716,10 +716,10 @@ class TestQueryHelpers:
         assert all(u.status == "pending" for u in updates)
 
     @pytest.mark.asyncio
-    async def test_get_auto_approvable_updates_filters_by_policy(self, mock_db):
+    async def test_get_auto_approvable_updates_filters_by_policy(self, mock_db, make_update):
         """Test get_auto_approvable_updates filters by container policy."""
         auto_updates = [
-            Update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending")
+            make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending")
         ]
 
         result = MagicMock()

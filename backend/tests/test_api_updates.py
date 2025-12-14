@@ -68,7 +68,7 @@ class TestListUpdatesEndpoint:
         for update in data:
             assert update["status"] == "pending"
 
-    async def test_list_updates_filter_by_container(self, authenticated_client, db):
+    async def test_list_updates_filter_by_container(self, authenticated_client, db, make_update):
         """Test filtering updates by container_id."""
         from app.models.container import Container
         from app.models.update import Update
@@ -96,7 +96,7 @@ class TestListUpdatesEndpoint:
         await db.refresh(container2)
 
         # Create updates for each container
-        update1 = Update(
+        update1 = make_update(
             container_id=container1.id,
             container_name=container1.name,
             from_tag="1.0",
@@ -105,7 +105,7 @@ class TestListUpdatesEndpoint:
             reason_type="feature",
             status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container2.id,
             container_name=container2.name,
             from_tag="2.0",
@@ -175,7 +175,7 @@ class TestListUpdatesEndpoint:
 class TestGetUpdateEndpoint:
     """Test suite for GET /api/v1/updates/{id} endpoint."""
 
-    async def test_get_update_valid_id(self, authenticated_client, db):
+    async def test_get_update_valid_id(self, authenticated_client, db, make_update):
         """Test getting update by valid ID returns update object."""
         from app.models.update import Update
         from app.models.container import Container
@@ -192,7 +192,7 @@ class TestGetUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -324,7 +324,7 @@ class TestCheckUpdatesEndpoint:
 class TestApproveUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/approve endpoint."""
 
-    async def test_approve_update_pending(self, authenticated_client, db):
+    async def test_approve_update_pending(self, authenticated_client, db, make_update):
         """Test approving pending update changes status to approved."""
         from app.models.update import Update
         from app.models.container import Container
@@ -341,7 +341,7 @@ class TestApproveUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -368,7 +368,7 @@ class TestApproveUpdateEndpoint:
         assert update.approved_by == "admin"
         assert update.approved_at is not None
 
-    async def test_approve_update_already_approved(self, authenticated_client, db):
+    async def test_approve_update_already_approved(self, authenticated_client, db, make_update):
         """Test approving already approved update returns 400."""
         from app.models.update import Update
         from app.models.container import Container
@@ -385,7 +385,7 @@ class TestApproveUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -407,7 +407,7 @@ class TestApproveUpdateEndpoint:
         data = response.json()
         assert "already approved" in data["detail"].lower()
 
-    async def test_approve_update_already_applied(self, authenticated_client, db):
+    async def test_approve_update_already_applied(self, authenticated_client, db, make_update):
         """Test approving already applied update returns 400."""
         from app.models.update import Update
         from app.models.container import Container
@@ -424,7 +424,7 @@ class TestApproveUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -446,7 +446,7 @@ class TestApproveUpdateEndpoint:
         data = response.json()
         assert "already applied" in data["detail"].lower()
 
-    async def test_approve_update_adds_timestamp(self, authenticated_client, db):
+    async def test_approve_update_adds_timestamp(self, authenticated_client, db, make_update):
         """Test approve adds approval timestamp and user."""
         from app.models.update import Update
         from app.models.container import Container
@@ -463,7 +463,7 @@ class TestApproveUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -509,7 +509,7 @@ class TestApproveUpdateEndpoint:
 class TestRejectUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/reject endpoint."""
 
-    async def test_reject_update_pending(self, authenticated_client, db):
+    async def test_reject_update_pending(self, authenticated_client, db, make_update):
         """Test rejecting pending update changes status to rejected."""
         from app.models.update import Update
         from app.models.container import Container
@@ -528,7 +528,7 @@ class TestRejectUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -555,7 +555,7 @@ class TestRejectUpdateEndpoint:
         assert container.update_available is False
         assert container.latest_tag is None
 
-    async def test_reject_update_already_rejected(self, authenticated_client, db):
+    async def test_reject_update_already_rejected(self, authenticated_client, db, make_update):
         """Test rejecting already rejected update returns 400."""
         from app.models.update import Update
         from app.models.container import Container
@@ -572,7 +572,7 @@ class TestRejectUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -590,7 +590,7 @@ class TestRejectUpdateEndpoint:
         data = response.json()
         assert "already rejected" in data["detail"].lower()
 
-    async def test_reject_update_adds_reason(self, authenticated_client, db):
+    async def test_reject_update_adds_reason(self, authenticated_client, db, make_update):
         """Test reject adds rejection reason."""
         from app.models.update import Update
         from app.models.container import Container
@@ -609,7 +609,7 @@ class TestRejectUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.20",
@@ -652,7 +652,7 @@ class TestRejectUpdateEndpoint:
 class TestApplyUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/apply endpoint."""
 
-    async def test_apply_update_approved(self, authenticated_client, db, mock_docker_client):
+    async def test_apply_update_approved(self, authenticated_client, db, mock_docker_client, make_update):
         """Test applying approved update triggers update engine."""
         from app.models.update import Update
         from app.models.container import Container
@@ -670,7 +670,7 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -708,7 +708,7 @@ class TestApplyUpdateEndpoint:
             # Verify UpdateEngine.apply_update was called
             mock_apply.assert_called_once()
 
-    async def test_apply_update_pending_rejected(self, authenticated_client, db):
+    async def test_apply_update_pending_rejected(self, authenticated_client, db, make_update):
         """Test applying pending update returns 400 (must approve first)."""
         from app.models.update import Update
         from app.models.container import Container
@@ -726,7 +726,7 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -749,7 +749,7 @@ class TestApplyUpdateEndpoint:
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    async def test_apply_update_failed_retry(self, authenticated_client, db):
+    async def test_apply_update_failed_retry(self, authenticated_client, db, make_update):
         """Test applying failed update allows retry."""
         from app.models.update import Update
         from app.models.container import Container
@@ -767,7 +767,7 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -799,7 +799,7 @@ class TestApplyUpdateEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_apply_update_creates_history(self, authenticated_client, db):
+    async def test_apply_update_creates_history(self, authenticated_client, db, make_update):
         """Test apply creates history entry."""
         from app.models.update import Update
         from app.models.container import Container
@@ -817,7 +817,7 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -873,7 +873,7 @@ class TestApplyUpdateEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_apply_update_container_deleted(self, authenticated_client, db):
+    async def test_apply_update_container_deleted(self, authenticated_client, db, make_update):
         """Test apply when container was deleted returns 400."""
         from app.models.update import Update
         from app.models.container import Container
@@ -891,7 +891,7 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -923,7 +923,7 @@ class TestApplyUpdateEndpoint:
 class TestDeleteUpdateEndpoint:
     """Test suite for DELETE /api/v1/updates/{id} endpoint."""
 
-    async def test_delete_update_pending(self, authenticated_client, db):
+    async def test_delete_update_pending(self, authenticated_client, db, make_update):
         """Test deleting pending update returns 200."""
         from app.models.update import Update
         from app.models.container import Container
@@ -940,7 +940,7 @@ class TestDeleteUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -964,7 +964,7 @@ class TestDeleteUpdateEndpoint:
         deleted_update = result.scalar_one_or_none()
         assert deleted_update is None
 
-    async def test_delete_update_applied_rejected(self, authenticated_client, db):
+    async def test_delete_update_applied_rejected(self, authenticated_client, db, make_update):
         """Test deleting applied/rejected updates is allowed."""
         from app.models.update import Update
         from app.models.container import Container
@@ -981,7 +981,7 @@ class TestDeleteUpdateEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
@@ -1011,7 +1011,7 @@ class TestDeleteUpdateEndpoint:
 class TestBatchOperations:
     """Test suite for batch approve/reject endpoints."""
 
-    async def test_batch_approve_multiple(self, authenticated_client, db):
+    async def test_batch_approve_multiple(self, authenticated_client, db, make_update):
         """Test batch approve approves multiple updates."""
         from app.models.container import Container
         from app.models.update import Update
@@ -1030,7 +1030,7 @@ class TestBatchOperations:
         await db.refresh(container)
 
         # Create multiple pending updates
-        update1 = Update(
+        update1 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.0",
@@ -1039,7 +1039,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.1",
@@ -1048,7 +1048,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="pending"
         )
-        update3 = Update(
+        update3 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.2",
@@ -1077,7 +1077,7 @@ class TestBatchOperations:
         assert data["summary"]["approved_count"] == 3
         assert data["summary"]["failed_count"] == 0
 
-    async def test_batch_approve_mixed_statuses(self, authenticated_client, db):
+    async def test_batch_approve_mixed_statuses(self, authenticated_client, db, make_update):
         """Test batch approve with mixed statuses returns partial success."""
         from app.models.container import Container
         from app.models.update import Update
@@ -1096,7 +1096,7 @@ class TestBatchOperations:
         await db.refresh(container)
 
         # Create updates with different statuses
-        update1 = Update(
+        update1 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.0",
@@ -1105,7 +1105,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.1",
@@ -1114,7 +1114,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="approved"
         )
-        update3 = Update(
+        update3 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.2",
@@ -1140,7 +1140,7 @@ class TestBatchOperations:
         assert data["summary"]["approved_count"] == 2  # update1 and update3
         assert data["summary"]["failed_count"] == 1  # update2
 
-    async def test_batch_approve_returns_summary(self, authenticated_client, db):
+    async def test_batch_approve_returns_summary(self, authenticated_client, db, make_update):
         """Test batch approve returns approval summary."""
         from app.models.container import Container
         from app.models.update import Update
@@ -1159,7 +1159,7 @@ class TestBatchOperations:
         await db.refresh(container)
 
         # Create pending updates
-        update1 = Update(
+        update1 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.0",
@@ -1168,7 +1168,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.1",
@@ -1198,7 +1198,7 @@ class TestBatchOperations:
         assert data["summary"]["total"] == 2
         assert data["summary"]["approved_count"] == 2
 
-    async def test_batch_reject_multiple(self, authenticated_client, db):
+    async def test_batch_reject_multiple(self, authenticated_client, db, make_update):
         """Test batch reject rejects multiple updates."""
         from app.models.container import Container
         from app.models.update import Update
@@ -1217,7 +1217,7 @@ class TestBatchOperations:
         await db.refresh(container)
 
         # Create pending updates
-        update1 = Update(
+        update1 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.0",
@@ -1226,7 +1226,7 @@ class TestBatchOperations:
             reason_type="feature",
             status="pending"
         )
-        update2 = Update(
+        update2 = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.1",

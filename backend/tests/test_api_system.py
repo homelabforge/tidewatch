@@ -230,7 +230,7 @@ class TestPrometheusMetricsEndpoint:
         assert "tidewatch_containers_monitored" in content
 
     @pytest.mark.skip("Update model has complex NOT NULL constraints")
-    async def test_metrics_includes_update_stats(self, client, db):
+    async def test_metrics_includes_update_stats(self, client, db, make_update):
         """Test metrics includes update counters."""
         # Create test container and update
         container = Container(
@@ -245,7 +245,7 @@ class TestPrometheusMetricsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        update = Update(
+        update = make_update(
             container_id=container.id,
             container_name=container.name,
             from_tag="1.20",
