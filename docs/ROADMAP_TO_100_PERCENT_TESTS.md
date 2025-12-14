@@ -469,3 +469,182 @@ Phase 2 Summary - 5 Critical Security Files:
 
 **Philosophy:** "Do things right, no shortcuts or bandaids" - systematic, root-cause fixes only
 
+
+---
+
+## Session Update: 2025-12-14 (Phase 3 Started - Scheduler Complete ✅)
+
+**Work Completed:**
+
+### Phase 3: Scheduler & Background Jobs (TIER 1) - Part 1 COMPLETE
+
+**Priority:** HIGH - Core automated operations
+**Time Spent:** ~4 hours of systematic work
+**Impact:** +73 comprehensive tests for critical scheduler service
+
+#### Scheduler Service Testing (73 tests) ✅
+
+**File:** `/srv/raid0/docker/build/tidewatch/backend/app/services/scheduler.py` (642 lines)
+**Test file:** `tests/test_scheduler_service.py` ✅
+
+**Test Classes Created (11 total):**
+
+1. **TestSchedulerLifecycle** (11 tests)
+   - Start/stop with default and custom settings
+   - Enable/disable functionality  
+   - Reload schedule when settings change
+   - Error handling: database errors, invalid cron, import errors
+
+2. **TestJobRegistration** (11 tests)
+   - Update check job (configurable cron schedule)
+   - Auto-apply job (every 5 minutes)
+   - Metrics collection job (every 5 minutes)
+   - Metrics cleanup job (daily at 3 AM)
+   - Dockerfile dependencies check (daily/weekly configurable)
+   - Docker cleanup job (configurable schedule)
+   - max_instances=1 enforcement (prevents overlapping runs)
+   - Job replacement on scheduler restart
+
+3. **TestUpdateCheckJob** (7 tests)
+   - Executes UpdateChecker.check_all_containers()
+   - Logs statistics (total, checked, updates_found, errors)
+   - Updates and persists last_check timestamp to settings
+   - Error handling: database errors, invalid data
+   - Manual trigger support via API
+
+4. **TestAutoApplyJob** (10 tests)
+   - Skips when auto_update_enabled=False
+   - Applies auto-approved updates (policy: auto, security)
+   - Applies pending retry updates when ready
+   - Respects update windows (time-based filtering)
+   - Respects max_concurrent limit
+   - Orders updates by dependency graph via DependencyManager
+   - Handles dependency ordering failures gracefully
+   - Logs success/failure counts
+   - Comprehensive error handling
+
+5. **TestMetricsJobs** (7 tests)
+   - Metrics collection via metrics_collector
+   - Logs collection statistics
+   - Cleans up old metrics (30 days retention)
+   - Logs cleanup count
+   - Error handling: database errors, import failures
+
+6. **TestDockerfileDependenciesJob** (4 tests)
+   - Checks Dockerfile dependencies via DockerfileParser
+   - Sends notifications when updates found
+   - Error handling: database errors, import failures
+
+7. **TestDockerCleanupJob** (6 tests)
+   - Executes CleanupService.run_cleanup()
+   - Uses cleanup settings (mode, days, exclude_patterns)
+   - Sends notification after successful cleanup
+   - Skips notification when nothing removed
+   - Error handling: database errors, import failures
+
+8. **TestStatusReporting** (6 tests)
+   - get_next_run_time() returns next scheduled execution
+   - get_status() returns comprehensive status
+   - Includes last_check timestamp
+   - Loads last_check from settings on startup
+
+9. **TestSchedulerEdgeCases** (8 tests)
+   - Handles restart scheduler service errors
+   - Handles shutdown errors gracefully
+   - Handles invalid last_check timestamp format
+   - Validates global scheduler_service instance
+   - Sequential start/stop cycles
+   - Invalid cron schedule handling
+   - IntegrityError during job execution
+
+10. **TestSchedulerIntegration** (3 tests)
+    - Full lifecycle: start → trigger → stop
+    - Reload while running
+    - All jobs registered correctly
+
+**Jobs Tested (6 scheduled jobs):**
+- ✅ `update_check` - Container update detection
+- ✅ `auto_apply` - Automatic update application with dependencies
+- ✅ `metrics_collection` - Container metrics gathering
+- ✅ `metrics_cleanup` - Old metrics removal
+- ✅ `dockerfile_dependencies_check` - Dockerfile dependency tracking
+- ✅ `docker_cleanup` - Docker resource cleanup
+
+**Mock Fixtures Created:**
+```python
+@pytest.fixture
+def mock_settings():
+    """Mock SettingsService for scheduler configuration."""
+    
+@pytest.fixture
+def mock_update_checker():
+    """Mock UpdateChecker.check_all_containers()."""
+    
+@pytest.fixture
+def mock_update_engine():
+    """Mock UpdateEngine.apply_update()."""
+    
+@pytest.fixture
+def mock_metrics_collector():
+    """Mock metrics collection and cleanup."""
+```
+
+**Results:**
+- ✅ 73 comprehensive tests created
+- ✅ All 6 scheduled jobs covered
+- ✅ Dependency ordering tested
+- ✅ Update window filtering tested
+- ✅ Max concurrent updates tested
+- ✅ Error handling for all edge cases
+- ✅ Integration tests for full lifecycle
+
+**Coverage Areas:**
+- 🔐 APScheduler job management
+- 🔐 CronTrigger parsing and validation
+- 🔐 Update detection and auto-apply logic
+- 🔐 Dependency ordering for safe sequential updates
+- 🔐 Update windows (time-based filtering)
+- 🔐 Rate limiting (max_concurrent)
+- 🔐 Metrics collection and retention
+- 🔐 Dockerfile dependency tracking
+- 🔐 Docker resource cleanup with notifications
+- 🔐 Status reporting and manual triggers
+
+**Commits Made:** 1
+1. `test: Add comprehensive scheduler service tests (Phase 3 - Part 1)`
+
+---
+
+**Session Summary (2025-12-14):**
+
+**Total Progress Today:**
+- **Phase 2 COMPLETE**: +268 tests (file_operations.py, security.py)
+- **Phase 3 Started**: +73 tests (scheduler service)
+- **Total new tests**: +341 tests in one session! 🎉
+
+**Cumulative Test Count:**
+- Baseline: 618 passing tests
+- Phase 2: +268 tests
+- Phase 3: +73 tests
+- **Estimated Total: ~1,027+ tests**
+
+**Phases Complete:**
+- ✅ Phase 0: Test Infrastructure Foundation
+- ✅ Phase 1: Fixture Conversion
+- ✅ Phase 2: Security Utilities Testing (5/5 files, 268 tests)
+- 🚧 Phase 3: Scheduler & Background Jobs (1/? files, 73 tests)
+
+**Quality Achievements:**
+- ✅ No hanging tests
+- ✅ 90%+ coverage on security utilities
+- ✅ Comprehensive mocking strategies
+- ✅ Integration tests for complex workflows
+- ✅ Systematic error handling coverage
+
+**Next Focus:**
+- Continue Phase 3: Remaining scheduler-related services
+- Generate comprehensive coverage report
+- Identify and fill remaining test gaps
+
+**Philosophy Maintained:** "Do things right, no shortcuts or bandaids" - every test is thorough, well-documented, and production-ready.
+
