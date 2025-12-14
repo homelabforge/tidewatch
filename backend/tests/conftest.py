@@ -135,6 +135,10 @@ async def admin_user(db):
     await SettingsService.set(db, "admin_email", "admin@example.com")
     await SettingsService.set(db, "admin_password_hash", password_hash)
     await SettingsService.set(db, "admin_full_name", "Admin User")
+
+    # Enable local authentication (required for require_auth to work properly)
+    await SettingsService.set(db, "auth_mode", "local")
+
     await db.commit()
 
     # Return dict with admin info (matching TideWatch's single-user model)

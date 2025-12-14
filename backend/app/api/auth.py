@@ -74,8 +74,11 @@ async def setup_admin_account(
     Only works if no admin account exists yet.
     Automatically enables auth_mode='local' after setup.
     """
-    # Check if setup already complete
-    if await is_setup_complete(db):
+    # Check if admin account already exists (not using is_setup_complete
+    # because that returns True when auth_mode="none", which would prevent
+    # users from creating an admin account to transition to local auth)
+    admin_username = await SettingsService.get(db, "admin_username")
+    if admin_username and admin_username.strip():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Setup already complete. Admin account exists.",
