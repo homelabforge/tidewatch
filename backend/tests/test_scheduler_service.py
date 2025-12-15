@@ -13,7 +13,7 @@ Tests background job scheduling and execution:
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch, call, ANY
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -26,29 +26,38 @@ from app.services.scheduler import SchedulerService, scheduler_service
 def mock_settings():
     """Mock SettingsService for scheduler configuration."""
     with patch('app.services.scheduler.SettingsService') as mock:
-        # Default return values
-        mock.get = AsyncMock(side_effect=lambda db, key, default=None: {
+        # Default return values - stored in dicts that tests can modify
+        get_values = {
             "check_schedule": "0 */6 * * *",
             "dockerfile_scan_schedule": "daily",
             "cleanup_schedule": "0 4 * * *",
             "cleanup_mode": "dangling",
             "cleanup_exclude_patterns": "-dev,rollback",
             "scheduler_last_check": None,
-        }.get(key, default))
-        
-        mock.get_bool = AsyncMock(side_effect=lambda db, key, default=False: {
+        }
+
+        get_bool_values = {
             "check_enabled": True,
             "auto_update_enabled": False,
             "cleanup_old_images": False,
             "cleanup_containers": True,
-        }.get(key, default))
-        
-        mock.get_int = AsyncMock(side_effect=lambda db, key, default=0: {
+        }
+
+        get_int_values = {
             "auto_update_max_concurrent": 3,
             "cleanup_after_days": 7,
-        }.get(key, default))
-        
+        }
+
+        mock.get = AsyncMock(side_effect=lambda db, key, default=None: get_values.get(key, default))
+        mock.get_bool = AsyncMock(side_effect=lambda db, key, default=False: get_bool_values.get(key, default))
+        mock.get_int = AsyncMock(side_effect=lambda db, key, default=0: get_int_values.get(key, default))
         mock.set = AsyncMock()
+
+        # Expose the dicts so tests can modify them
+        mock._get_values = get_values
+        mock._get_bool_values = get_bool_values
+        mock._get_int_values = get_int_values
+
         yield mock
 
 
@@ -123,18 +132,19 @@ class TestSchedulerLifecycle:
 
     async def test_loads_schedule_from_settings(self, scheduler_instance, mock_settings):
         """Test loads schedule from database settings."""
-        mock_settings.get.return_value = "0 */4 * * *"  # Every 4 hours
+        mock_settings._get_values["check_schedule"] = "0 */4 * * *"  # Every 4 hours
 
         await scheduler_instance.start()
 
         assert scheduler_instance._check_schedule == "0 */4 * * *"
-        mock_settings.get.assert_awaited_with(
-            pytest.ANY, "check_schedule", default="0 */6 * * *"
+        # Use assert_any_await since start() calls get() multiple times for different keys
+        mock_settings.get.assert_any_await(
+            ANY, "check_schedule", default="0 */6 * * *"
         )
 
     async def test_does_not_start_when_disabled(self, scheduler_instance, mock_settings):
         """Test does not start scheduler when check_enabled is False."""
-        mock_settings.get_bool.return_value = False
+        mock_settings._get_bool_values["check_enabled"] = False
 
         await scheduler_instance.start()
 
@@ -162,7 +172,7 @@ class TestSchedulerLifecycle:
         original_schedule = scheduler_instance._check_schedule
 
         # Change schedule
-        mock_settings.get.return_value = "0 */2 * * *"  # Every 2 hours
+        mock_settings._get_values["check_schedule"] = "0 */2 * * *"  # Every 2 hours
 
         await scheduler_instance.reload_schedule(db)
 
@@ -174,7 +184,7 @@ class TestSchedulerLifecycle:
         await scheduler_instance.start()
         
         # Keep same schedule
-        mock_settings.get.return_value = "0 */6 * * *"
+        mock_settings._get_values["check_schedule"] = "0 */6 * * *"
         
         with patch.object(scheduler_instance, 'stop') as mock_stop:
             await scheduler_instance.reload_schedule(db)
@@ -193,7 +203,7 @@ class TestSchedulerLifecycle:
 
     async def test_handles_invalid_cron_schedule(self, scheduler_instance, mock_settings):
         """Test handles invalid cron schedule format."""
-        mock_settings.get.return_value = "invalid cron"
+        mock_settings._get_values["check_schedule"] = "invalid cron"
 
         with pytest.raises(ValueError):
             await scheduler_instance.start()
@@ -503,7 +513,7 @@ class TestAutoApplyJob:
             "auto_update_enabled": True,
         }.get(key, default)
         
-        mock_settings.get_int.return_value = 2  # Max 2 concurrent
+        mock_settings._get_int_values["auto_update_max_concurrent"] = 2  # Max 2 concurrent
 
         # Create 5 approved updates
         for i in range(5):
@@ -693,7 +703,7 @@ class TestMetricsJobs:
 
         await scheduler_instance._run_metrics_cleanup()
 
-        mock_metrics_collector.cleanup_old_metrics.assert_awaited_once_with(pytest.ANY, days=30)
+        mock_metrics_collector.cleanup_old_metrics.assert_awaited_once_with(ANY, days=30)
 
     async def test_logs_metrics_cleanup_count(self, scheduler_instance, mock_settings, mock_metrics_collector):
         """Test logs number of records deleted."""
@@ -807,8 +817,8 @@ class TestDockerCleanupJob:
             "cleanup_mode": "all",
             "cleanup_exclude_patterns": "rollback,-dev,backup",
         }.get(key, default)
-        
-        mock_settings.get_int.return_value = 14  # cleanup_after_days
+
+        mock_settings._get_int_values["cleanup_after_days"] = 14
         mock_settings.get_bool.side_effect = lambda db, key, default=False: {
             "cleanup_containers": True,
         }.get(key, default)
@@ -1019,7 +1029,7 @@ class TestSchedulerEdgeCases:
 
     async def test_handles_cron_trigger_creation_error(self, scheduler_instance, mock_settings):
         """Test handles error creating CronTrigger."""
-        mock_settings.get.return_value = "99 99 99 99 99"  # Invalid cron
+        mock_settings._get_values["check_schedule"] = "99 99 99 99 99"  # Invalid cron
 
         with pytest.raises(ValueError):
             await scheduler_instance.start()
@@ -1060,7 +1070,7 @@ class TestSchedulerIntegration:
         original_schedule = scheduler_instance._check_schedule
 
         # Change schedule
-        mock_settings.get.return_value = "0 */12 * * *"
+        mock_settings._get_values["check_schedule"] = "0 */12 * * *"
         await scheduler_instance.reload_schedule(db)
 
         # Should have new schedule

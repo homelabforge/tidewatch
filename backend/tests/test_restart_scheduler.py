@@ -205,6 +205,8 @@ class TestCheckAndScheduleRestart:
         # State with future retry scheduled
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=1,
@@ -227,6 +229,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0
@@ -251,6 +255,8 @@ class TestCheckAndScheduleRestart:
         from datetime import datetime, timezone, timedelta
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2,
@@ -274,6 +280,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=5,
@@ -297,6 +305,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=False,
             max_attempts=5,
             consecutive_failures=0
@@ -319,6 +329,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0
@@ -347,6 +359,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2
@@ -386,6 +400,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=3,
             consecutive_failures=2  # Next failure will be 3rd
@@ -398,7 +414,7 @@ class TestCheckAndScheduleRestart:
         mock_container_monitor.should_retry_restart.return_value = (True, "container_error")
         mock_settings.get_bool.return_value = True
 
-        with patch('app.services.restart_scheduler.NotificationDispatcher') as mock_dispatcher:
+        with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
             mock_notify = AsyncMock()
             mock_dispatcher.return_value.notify_max_retries_reached = mock_notify
 
@@ -424,6 +440,8 @@ class TestCheckAndScheduleRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0
@@ -447,6 +465,8 @@ class TestExecuteRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2,
@@ -477,6 +497,8 @@ class TestExecuteRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2
@@ -506,6 +528,8 @@ class TestExecuteRestart:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2
@@ -520,7 +544,7 @@ class TestExecuteRestart:
         }
         mock_settings.get_bool.return_value = True
 
-        with patch('app.services.restart_scheduler.NotificationDispatcher') as mock_dispatcher:
+        with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
             mock_notify = AsyncMock()
             mock_dispatcher.return_value.notify_restart_failure = mock_notify
 
@@ -564,6 +588,8 @@ class TestCleanupSuccessfulContainers:
         # State with failures but should reset (400 seconds > 300 second success_window)
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
@@ -588,6 +614,8 @@ class TestCleanupSuccessfulContainers:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
@@ -612,6 +640,8 @@ class TestCleanupSuccessfulContainers:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0,
@@ -633,6 +663,8 @@ class TestCleanupSuccessfulContainers:
         # State with no corresponding container
         state = ContainerRestartState(
             container_id=99999,
+            success_window_seconds=300,
+            container_name="deleted-container",
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
@@ -650,8 +682,10 @@ class TestCleanupSuccessfulContainers:
     async def test_handles_database_errors(
         self, restart_scheduler, db, caplog, mock_async_session):
         """Test handles database errors gracefully."""
+        from sqlalchemy.exc import OperationalError
+
         with patch('app.services.restart_scheduler.select') as mock_select:
-            mock_select.side_effect = Exception("Database error")
+            mock_select.side_effect = OperationalError("Database error", None, None)
 
             # Should not raise
             await restart_scheduler._cleanup_successful_containers()
@@ -674,6 +708,8 @@ class TestRestartSchedulerEdgeCases:
         # State with naive datetime (SQLite returns naive)
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=1,
@@ -695,6 +731,8 @@ class TestRestartSchedulerEdgeCases:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0
@@ -737,6 +775,8 @@ class TestRestartSchedulerEdgeCases:
 
         state = ContainerRestartState(
             container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
             enabled=True,
             max_attempts=5,
             consecutive_failures=0
