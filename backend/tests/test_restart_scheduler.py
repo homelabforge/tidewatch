@@ -246,12 +246,15 @@ class TestCheckAndScheduleRestart:
         db.add(container)
         await db.commit()
 
+        # Set last_successful_start far enough in past to make should_reset_backoff=True
+        # Default success_window_seconds is 300, so use 400 seconds ago
+        from datetime import datetime, timezone, timedelta
         state = ContainerRestartState(
             container_id=container.id,
             enabled=True,
             max_attempts=5,
             consecutive_failures=2,
-            should_reset_backoff=True
+            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400)
         )
         mock_restart_service.get_or_create_restart_state.return_value = state
         mock_container_monitor.get_container_state.return_value = {'running': True}
@@ -558,14 +561,13 @@ class TestCleanupSuccessfulContainers:
         db.add(container)
         await db.commit()
 
-        # State with failures but should reset
+        # State with failures but should reset (400 seconds > 300 second success_window)
         state = ContainerRestartState(
             container_id=container.id,
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(hours=2),
-            should_reset_backoff=True
+            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400)
         )
         db.add(state)
         await db.commit()
@@ -589,7 +591,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            should_reset_backoff=True
+            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400)
         )
         db.add(state)
         await db.commit()
@@ -613,7 +615,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=0,
-            should_reset_backoff=False
+            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=100)
         )
         db.add(state)
         await db.commit()
@@ -634,7 +636,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            should_reset_backoff=True
+            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400)
         )
         db.add(state)
         await db.commit()
