@@ -900,8 +900,17 @@ class TestDockerCleanupJob:
 
     async def test_handles_cleanup_service_import_error(self, scheduler_instance, mock_settings):
         """Test handles import error for CleanupService."""
-        with patch('app.services.cleanup_service.CleanupService', side_effect=ImportError("Module not found")):
-            # Should not raise
+        # Patch __import__ to raise ImportError for cleanup_service module
+        import builtins
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if 'cleanup_service' in name:
+                raise ImportError(f"No module named '{name}'")
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=mock_import):
+            # Should not raise - method should handle ImportError gracefully
             await scheduler_instance._run_docker_cleanup()
 
 

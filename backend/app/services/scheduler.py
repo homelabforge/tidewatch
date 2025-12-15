@@ -171,7 +171,10 @@ class SchedulerService:
         """
         if self.scheduler:
             try:
-                self.scheduler.shutdown(wait=True)
+                import asyncio
+                self.scheduler.shutdown(wait=False)
+                # Give event loop a chance to process shutdown
+                await asyncio.sleep(0)
                 logger.info("Background scheduler stopped")
             except RuntimeError as e:
                 logger.error(f"Scheduler shutdown error: {e}")
@@ -244,7 +247,7 @@ class SchedulerService:
                 # Persist to settings for recovery after restarts
                 await SettingsService.set(db, "scheduler_last_check", self._last_check.isoformat())
 
-        except OperationalError as e:
+        except (OperationalError, IntegrityError) as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Database error during scheduled update check after {duration:.2f}s: {e}")
         except (KeyError, ValueError, AttributeError) as e:
