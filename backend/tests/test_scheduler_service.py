@@ -757,6 +757,8 @@ class TestDockerfileDependenciesJob:
             image_name="python",
             current_tag="3.11",
             latest_tag="3.12",
+            full_image="python:3.11",
+            dockerfile_path="/app/Dockerfile",
             dependency_type="base_image",
             update_available=True
         )
