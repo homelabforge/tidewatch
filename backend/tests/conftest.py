@@ -194,6 +194,8 @@ def make_update():
         # Set defaults for required fields
         defaults = {
             "container_name": f"container-{kwargs.get('container_id', 1)}",
+            "from_tag": "1.0.0",  # Default from tag
+            "to_tag": "1.1.0",  # Default to tag
             "registry": "docker.io",
             "reason_type": "update",
         }
