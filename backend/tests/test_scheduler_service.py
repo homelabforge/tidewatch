@@ -631,10 +631,10 @@ class TestAutoApplyJob:
 
         with patch('app.services.update_engine.UpdateEngine') as mock_engine:
             # First succeeds, second fails
-            mock_engine.apply_update.side_effect = [
+            mock_engine.apply_update = AsyncMock(side_effect=[
                 {'success': True},
                 {'success': False, 'message': 'Container not running'}
-            ]
+            ])
 
             await scheduler_instance._run_auto_apply()
 
@@ -742,12 +742,18 @@ class TestDockerfileDependenciesJob:
 
             parser_instance.check_all_for_updates.assert_awaited_once()
 
-    async def test_sends_notifications_for_updates(self, scheduler_instance, mock_settings, db):
+    async def test_sends_notifications_for_updates(self, scheduler_instance, mock_settings, db, make_container):
         """Test sends notifications when updates are found."""
         from app.models.dockerfile_dependency import DockerfileDependency
 
+        # Create container for dependency
+        container = make_container(name="web", image="nginx")
+        db.add(container)
+        await db.commit()
+
         # Create dependency with update available
         dep = DockerfileDependency(
+            container_id=container.id,
             image_name="python",
             current_tag="3.11",
             latest_tag="3.12",
