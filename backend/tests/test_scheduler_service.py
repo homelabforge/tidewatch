@@ -417,7 +417,7 @@ class TestAutoApplyJob:
         }.get(key, default)
 
         # Create container with auto policy
-        container = make_container(name="web", policy="auto")
+        container = make_container(name="web", image="nginx", policy="auto")
         db.add(container)
         await db.commit()
 
@@ -433,7 +433,7 @@ class TestAutoApplyJob:
         db.add(update)
         await db.commit()
 
-        with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
             mock_engine.apply_update = AsyncMock(return_value={'success': True})
 
             await scheduler_instance._run_auto_apply()
@@ -447,7 +447,7 @@ class TestAutoApplyJob:
             "auto_update_enabled": True,
         }.get(key, default)
 
-        container = make_container(name="app")
+        container = make_container(name="app", image="myapp")
         db.add(container)
         await db.commit()
 
@@ -464,7 +464,7 @@ class TestAutoApplyJob:
         db.add(update)
         await db.commit()
 
-        with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
             mock_engine.apply_update = AsyncMock(return_value={'success': True})
 
             await scheduler_instance._run_auto_apply()
@@ -480,6 +480,7 @@ class TestAutoApplyJob:
         # Create container with update window (e.g., only at 3 AM)
         container = make_container(
             name="db",
+            image="postgres",
             policy="auto",
             update_window="0 3 * * *"
         )
@@ -495,11 +496,11 @@ class TestAutoApplyJob:
         db.add(update)
         await db.commit()
 
-        with patch('app.services.scheduler.UpdateWindow') as mock_window:
+        with patch('app.services.update_window.UpdateWindow') as mock_window:
             # Mock is_in_window to return False (outside window)
             mock_window.is_in_window.return_value = False
 
-            with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
                 mock_engine.apply_update = AsyncMock()
 
                 await scheduler_instance._run_auto_apply()
@@ -517,7 +518,7 @@ class TestAutoApplyJob:
 
         # Create 5 approved updates
         for i in range(5):
-            container = make_container(name=f"app{i}", policy="auto")
+            container = make_container(name=f"app{i}", image="myapp", policy="auto")
             db.add(container)
             await db.commit()
 
@@ -531,7 +532,7 @@ class TestAutoApplyJob:
 
         await db.commit()
 
-        with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
             mock_engine.apply_update = AsyncMock(return_value={'success': True})
 
             await scheduler_instance._run_auto_apply()
@@ -546,8 +547,8 @@ class TestAutoApplyJob:
         }.get(key, default)
 
         # Create containers
-        db_container = make_container(name="database", policy="auto")
-        api_container = make_container(name="api", policy="auto")
+        db_container = make_container(name="database", image="postgres", policy="auto")
+        api_container = make_container(name="api", image="myapi", policy="auto")
         db.add_all([db_container, api_container])
         await db.commit()
 
@@ -567,11 +568,11 @@ class TestAutoApplyJob:
         db.add_all([db_update, api_update])
         await db.commit()
 
-        with patch('app.services.scheduler.DependencyManager') as mock_dm:
+        with patch('app.services.dependency_manager.DependencyManager') as mock_dm:
             # Mock dependency order: database before api
             mock_dm.get_update_order = AsyncMock(return_value=["database", "api"])
 
-            with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
                 mock_engine.apply_update = AsyncMock(return_value={'success': True})
 
                 await scheduler_instance._run_auto_apply()
@@ -585,7 +586,7 @@ class TestAutoApplyJob:
             "auto_update_enabled": True,
         }.get(key, default)
 
-        container = make_container(name="app", policy="auto")
+        container = make_container(name="app", image="myapp", policy="auto")
         db.add(container)
         await db.commit()
 
@@ -598,11 +599,11 @@ class TestAutoApplyJob:
         db.add(update)
         await db.commit()
 
-        with patch('app.services.scheduler.DependencyManager') as mock_dm:
+        with patch('app.services.dependency_manager.DependencyManager') as mock_dm:
             # Mock ordering failure
             mock_dm.get_update_order.side_effect = ValueError("Cycle detected")
 
-            with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
                 mock_engine.apply_update = AsyncMock(return_value={'success': True})
 
                 await scheduler_instance._run_auto_apply()
@@ -617,8 +618,8 @@ class TestAutoApplyJob:
         }.get(key, default)
 
         # Create 2 containers
-        container1 = make_container(name="app1", policy="auto")
-        container2 = make_container(name="app2", policy="auto")
+        container1 = make_container(name="app1", image="myapp", policy="auto")
+        container2 = make_container(name="app2", image="myapp", policy="auto")
         db.add_all([container1, container2])
         await db.commit()
 
@@ -628,7 +629,7 @@ class TestAutoApplyJob:
         db.add_all([update1, update2])
         await db.commit()
 
-        with patch('app.services.scheduler.UpdateEngine') as mock_engine:
+        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
             # First succeeds, second fails
             mock_engine.apply_update.side_effect = [
                 {'success': True},
@@ -729,7 +730,7 @@ class TestDockerfileDependenciesJob:
 
     async def test_checks_dockerfile_dependencies(self, scheduler_instance, mock_settings):
         """Test runs Dockerfile dependencies check."""
-        with patch('app.services.scheduler.DockerfileParser') as mock_parser:
+        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
             parser_instance = MagicMock()
             parser_instance.check_all_for_updates = AsyncMock(return_value={
                 'total_scanned': 10,
@@ -756,7 +757,7 @@ class TestDockerfileDependenciesJob:
         db.add(dep)
         await db.commit()
 
-        with patch('app.services.scheduler.DockerfileParser') as mock_parser:
+        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
             parser_instance = MagicMock()
             parser_instance.check_all_for_updates = AsyncMock(return_value={
                 'total_scanned': 1,
@@ -778,7 +779,7 @@ class TestDockerfileDependenciesJob:
         """Test handles error during Dockerfile check."""
         from sqlalchemy.exc import OperationalError
         
-        with patch('app.services.scheduler.DockerfileParser') as mock_parser:
+        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
             parser_instance = MagicMock()
             parser_instance.check_all_for_updates = AsyncMock(side_effect=OperationalError("DB error", None, None))
             mock_parser.return_value = parser_instance
@@ -800,7 +801,7 @@ class TestDockerCleanupJob:
 
     async def test_runs_docker_cleanup(self, scheduler_instance, mock_settings):
         """Test runs Docker cleanup job."""
-        with patch('app.services.scheduler.CleanupService') as mock_cleanup:
+        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
             mock_cleanup.run_cleanup = AsyncMock(return_value={
                 'images_removed': 5,
                 'containers_removed': 2,
@@ -823,7 +824,7 @@ class TestDockerCleanupJob:
             "cleanup_containers": True,
         }.get(key, default)
 
-        with patch('app.services.scheduler.CleanupService') as mock_cleanup:
+        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
             mock_cleanup.run_cleanup = AsyncMock(return_value={
                 'images_removed': 0,
                 'containers_removed': 0,
@@ -841,7 +842,7 @@ class TestDockerCleanupJob:
 
     async def test_sends_notification_after_cleanup(self, scheduler_instance, mock_settings):
         """Test sends notification after successful cleanup."""
-        with patch('app.services.scheduler.CleanupService') as mock_cleanup:
+        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
             mock_cleanup.run_cleanup = AsyncMock(return_value={
                 'images_removed': 10,
                 'containers_removed': 5,
@@ -862,7 +863,7 @@ class TestDockerCleanupJob:
 
     async def test_does_not_notify_when_nothing_removed(self, scheduler_instance, mock_settings):
         """Test does not send notification when nothing was removed."""
-        with patch('app.services.scheduler.CleanupService') as mock_cleanup:
+        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
             mock_cleanup.run_cleanup = AsyncMock(return_value={
                 'images_removed': 0,
                 'containers_removed': 0,
@@ -883,7 +884,7 @@ class TestDockerCleanupJob:
         """Test handles error during cleanup."""
         from sqlalchemy.exc import OperationalError
         
-        with patch('app.services.scheduler.CleanupService') as mock_cleanup:
+        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
             mock_cleanup.run_cleanup = AsyncMock(side_effect=OperationalError("DB error", None, None))
 
             # Should not raise

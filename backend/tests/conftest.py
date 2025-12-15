@@ -145,6 +145,8 @@ def make_container():
 
         # Set defaults for required fields
         defaults = {
+            "image": "nginx",  # Default image if not provided
+            "current_tag": "latest",  # Default tag if not provided
             "registry": "docker.io",
             "compose_file": "/compose/test.yml",
             "service_name": kwargs.get("name", "test-service"),
