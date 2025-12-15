@@ -210,7 +210,7 @@ class TestSchedulerLifecycle:
 
     async def test_handles_import_error_during_start(self, scheduler_instance, mock_settings):
         """Test handles import error during scheduler start."""
-        with patch('app.services.scheduler.RestartSchedulerService', side_effect=ImportError("Module not found")):
+        with patch('app.services.restart_scheduler.RestartSchedulerService', side_effect=ImportError("Module not found")):
             with pytest.raises(ImportError):
                 await scheduler_instance.start()
 
