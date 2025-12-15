@@ -655,7 +655,7 @@ class TestAutoApplyJob:
             "auto_update_enabled": True,
         }.get(key, default)
 
-        with patch('app.services.scheduler.UpdateEngine', side_effect=ImportError("Module not found")):
+        with patch('app.services.update_engine.UpdateEngine', side_effect=ImportError("Module not found")):
             # Should not raise
             await scheduler_instance._run_auto_apply()
 
@@ -765,7 +765,7 @@ class TestDockerfileDependenciesJob:
             })
             mock_parser.return_value = parser_instance
 
-            with patch('app.services.scheduler.NotificationDispatcher') as mock_dispatcher:
+            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.notify_dockerfile_update = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -789,7 +789,7 @@ class TestDockerfileDependenciesJob:
 
     async def test_handles_dockerfile_parser_import_error(self, scheduler_instance, mock_settings):
         """Test handles import error for DockerfileParser."""
-        with patch('app.services.scheduler.DockerfileParser', side_effect=ImportError("Module not found")):
+        with patch('app.services.dockerfile_parser.DockerfileParser', side_effect=ImportError("Module not found")):
             # Should not raise
             await scheduler_instance._run_dockerfile_dependencies_check()
 
@@ -849,7 +849,7 @@ class TestDockerCleanupJob:
                 'space_reclaimed_formatted': '2.5 GB'
             })
 
-            with patch('app.services.scheduler.NotificationDispatcher') as mock_dispatcher:
+            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.dispatch = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -870,7 +870,7 @@ class TestDockerCleanupJob:
                 'space_reclaimed_formatted': '0 B'
             })
 
-            with patch('app.services.scheduler.NotificationDispatcher') as mock_dispatcher:
+            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.dispatch = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -892,7 +892,7 @@ class TestDockerCleanupJob:
 
     async def test_handles_cleanup_service_import_error(self, scheduler_instance, mock_settings):
         """Test handles import error for CleanupService."""
-        with patch('app.services.scheduler.CleanupService', side_effect=ImportError("Module not found")):
+        with patch('app.services.cleanup_service.CleanupService', side_effect=ImportError("Module not found")):
             # Should not raise
             await scheduler_instance._run_docker_cleanup()
 
@@ -974,7 +974,7 @@ class TestSchedulerEdgeCases:
 
     async def test_handles_restart_scheduler_service_error(self, scheduler_instance, mock_settings):
         """Test handles error initializing restart scheduler."""
-        with patch('app.services.scheduler.RestartSchedulerService') as mock_restart:
+        with patch('app.services.restart_scheduler.RestartSchedulerService') as mock_restart:
             mock_restart_instance = MagicMock()
             mock_restart_instance.start_monitoring = AsyncMock(side_effect=Exception("Failed to start"))
             mock_restart.return_value = mock_restart_instance
