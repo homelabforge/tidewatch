@@ -135,7 +135,7 @@ class TestSetupEndpoint:
 
         response = await client.post("/api/v1/auth/setup", json=setup_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         detail = response.json()["detail"]
         # Should have validation error for password
         assert any("password" in str(error).lower() for error in detail)
@@ -167,7 +167,7 @@ class TestSetupEndpoint:
 
         response = await client.post("/api/v1/auth/setup", json=setup_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_setup_sanitizes_input(self, client, db):
         """Test setup prevents SQL injection and XSS."""
@@ -180,7 +180,7 @@ class TestSetupEndpoint:
 
         # Should fail validation due to invalid username characters
         response = await client.post("/api/v1/auth/setup", json=setup_data)
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_setup_generates_secret_key(self, client, db):
         """Test setup generates encryption secret key."""
@@ -257,11 +257,11 @@ class TestLoginEndpoint:
         """Test login fails with missing username or password."""
         # Missing password
         response = await client.post("/api/v1/auth/login", json={"username": "admin"})
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
         # Missing username
         response = await client.post("/api/v1/auth/login", json={"password": "pass"})
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_login_disabled_when_auth_none(self, client, db):
         """Test login fails when auth_mode is none (no admin user exists)."""
@@ -555,7 +555,7 @@ class TestProfileUpdateEndpoint:
 
         response = await authenticated_client.put("/api/v1/auth/me", json=profile_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_update_profile_sql_injection(self, authenticated_client):
         """Test profile update prevents SQL injection."""
@@ -627,7 +627,7 @@ class TestPasswordChangeEndpoint:
 
         response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     @pytest.mark.skip(reason="Database fixture isolation issue - admin credentials not visible to API request handler")
     async def test_change_password_same_as_old(self, authenticated_client):

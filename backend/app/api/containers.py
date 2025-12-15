@@ -690,7 +690,7 @@ async def get_container_metrics(
 async def get_container_metrics_history(
     container_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    period: str = Query(default="24h", regex="^(1h|6h|24h|7d|30d)$"),
+    period: str = Query(default="24h", pattern="^(1h|6h|24h|7d|30d)$"),
     db: AsyncSession = Depends(get_db)
 ) -> List[Dict[str, Any]]:
     """Get historical metrics for a container.

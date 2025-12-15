@@ -578,6 +578,9 @@ class TestGetOrCreateRestartState:
         mock_result.scalar_one_or_none.return_value = None
 
         mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.add = MagicMock()  # add() is synchronous, not async
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
 
         container = Container(id=1, name="test")
 

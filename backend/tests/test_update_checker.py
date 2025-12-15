@@ -792,7 +792,7 @@ class TestErrorHandling:
         mock_client.close = AsyncMock()
 
         with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
+             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
 
             update = await UpdateChecker.check_container(mock_db, container)
 
@@ -820,7 +820,7 @@ class TestErrorHandling:
         mock_client.close = AsyncMock()
 
         with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
+             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
 
             update = await UpdateChecker.check_container(mock_db, container)
 
@@ -846,7 +846,7 @@ class TestErrorHandling:
         mock_client.close = AsyncMock()
 
         with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
+             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
 
             await UpdateChecker.check_container(mock_db, container)
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 import tomllib
 import subprocess
 import asyncio
@@ -155,7 +155,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     return {
         "status": overall,
         "components": components,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
 
 

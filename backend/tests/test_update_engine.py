@@ -734,7 +734,7 @@ class TestApplyUpdateOrchestration:
              patch.object(UpdateEngine, "_execute_docker_compose", track_execute), \
              patch.object(UpdateEngine, "_validate_health_check", track_health), \
              patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
+             patch("app.services.event_bus.event_bus.publish", new=AsyncMock()):
 
             await UpdateEngine.apply_update(mock_db, 1, "user")
 
@@ -766,7 +766,7 @@ class TestApplyUpdateOrchestration:
              patch.object(UpdateEngine, "_validate_health_check", mock_health), \
              patch.object(UpdateEngine, "_restore_compose_file", mock_restore), \
              patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
+             patch("app.services.event_bus.event_bus.publish", new=AsyncMock()):
 
             result = await UpdateEngine.apply_update(mock_db, 1, "user")
 

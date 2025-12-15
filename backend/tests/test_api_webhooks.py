@@ -101,7 +101,7 @@ class TestCreateWebhookEndpoint:
 
         response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_create_webhook_ssrf_protection(self, authenticated_client):
         """Test SSRF protection blocks private IPs."""
@@ -152,7 +152,7 @@ class TestCreateWebhookEndpoint:
 
         response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_create_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
