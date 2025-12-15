@@ -1,10 +1,10 @@
 # Tidewatch Test Suite - Roadmap to 100% Completion
 
-**Current Status:** 1017 passing tests (major progress!)
+**Current Status:** 1020 passing tests (bug fixes complete!)
 **Coverage:** ~20% measured (estimated ~60%+ with full coverage run)
 **Target:** 95% pass rate with comprehensive test coverage
 
-**Progress**: Phases 0, 1, 2, 3, 4, 5, 6 COMPLETE ✅ | Phase 7 NEXT 🚀
+**Progress**: Phases 0, 1, 2, 3, 4, 5, 6 COMPLETE ✅ | Bug Fixes COMPLETE ✅ | Phase 7 NEXT 🚀
 
 **Last Updated:** 2025-12-14
 
@@ -1660,4 +1660,210 @@ mock_select.side_effect = OperationalError("statement", "params", "orig")
 ---
 
 **Philosophy Maintained:** "Do things right, no shortcuts" - Every fix addresses root cause, not symptoms. Idempotent API behavior is correct, tests updated to match implementation.
+
+---
+
+## Implementation Bug Fixes (2025-12-14) - COMPLETE ✅
+
+**Objective:** Fix all implementation bugs discovered during Phases 2-6 testing
+**Status:** ✅ COMPLETE - All 4 bugs fixed
+**Impact:** +3 passing tests (1017 → 1020)
+**Time Spent:** ~2 hours
+
+### Bugs Fixed
+
+#### Bug 1: update_engine.py:1066 - validate_service_name Error Handling
+**File:** [app/services/update_engine.py:1066](../backend/app/services/update_engine.py#L1066)
+**Issue:** Used `if not validate_service_name(target)` expecting boolean return, but `validate_service_name()` raises `ValidationError` on invalid input
+
+**Root Cause:**
+```python
+# BEFORE (BROKEN)
+if not validate_service_name(target):
+    logger.warning(f"Invalid container name '{target}', skipping")
+    continue
+```
+
+The function signature shows it raises exceptions, not returns bool:
+```python
+def validate_service_name(name: str) -> str:
+    """Raises: ValidationError: If name contains invalid characters"""
+```
+
+**Fix:**
+```python
+# AFTER (CORRECT)
+try:
+    validate_service_name(target)
+except ValidationError as e:
+    logger.warning(f"Invalid container name '{target}': {e}, skipping for security")
+    continue
+```
+
+**Impact:** Prevents unhandled exceptions during container name validation in health checks
+
+---
+
+#### Bug 2: compose_parser.py:325-331 - Digest Parsing Order
+**File:** [app/services/compose_parser.py:325-331](../backend/app/services/compose_parser.py#L325-L331)
+**Issue:** Split on `:` before checking for `@sha256:` digest syntax, causing incorrect parsing
+
+**Root Cause:**
+```python
+# BEFORE (BROKEN)
+if ":" in image:
+    image, tag = image.rsplit(":", 1)  # Splits nginx@sha256:abc into nginx@sha256, abc
+
+if "@sha256:" in image:
+    image, digest = image.split("@sha256:", 1)  # Never matches!
+    tag = f"sha256:{digest}"
+```
+
+For input `nginx@sha256:abc123...`:
+1. First split: `image='nginx@sha256'`, `tag='abc123...'`
+2. Second check never matches because image is already `'nginx@sha256'`
+
+**Fix:**
+```python
+# AFTER (CORRECT) - Check digest first!
+if "@sha256:" in image:
+    image, digest = image.split("@sha256:", 1)
+    tag = f"sha256:{digest}"
+elif ":" in image:
+    image, tag = image.rsplit(":", 1)
+```
+
+**Impact:** Correctly parses digest format: `nginx@sha256:abc` → `image='nginx'`, `tag='sha256:abc'`
+
+---
+
+#### Bug 3: compose_parser.py:417-427 - Label Key Truncation KeyError
+**File:** [app/services/compose_parser.py:417-427](../backend/app/services/compose_parser.py#L417-L427)
+**Issue:** Truncated `key` variable, then tried accessing `labels[truncated_key]` which doesn't exist
+
+**Root Cause:**
+```python
+# BEFORE (BROKEN)
+if len(key) > MAX_KEY_LENGTH:
+    logger.warning(f"Label key too long, truncating: {key[:50]}...")
+    key = key[:MAX_KEY_LENGTH]  # Truncate the variable
+
+# Later...
+value = str(labels[key])  # KeyError! labels has original key, not truncated
+```
+
+**Fix:**
+```python
+# AFTER (CORRECT)
+original_key = key  # Save before truncating
+
+if len(key) > MAX_KEY_LENGTH:
+    logger.warning(f"Label key too long, truncating: {key[:50]}...")
+    key = key[:MAX_KEY_LENGTH]
+
+# Later...
+value = str(labels[original_key])  # Use original key to access dict
+```
+
+**Impact:** Fixes KeyError when sanitizing labels with keys exceeding 255 characters
+
+---
+
+#### Bug 4: registry_client.py:64 - Prerelease Substring Matching
+**File:** [app/services/registry_client.py:64](../backend/app/services/registry_client.py#L64)
+**Issue:** Used substring matching, causing false positives like 'test' in 'latest'
+
+**Root Cause:**
+```python
+# BEFORE (BROKEN)
+NON_PEP440_PRERELEASE_INDICATORS = [
+    'nightly', 'develop', 'dev', 'test', ...  # 'test' indicator
+]
+
+if any(indicator in tag_lower for indicator in NON_PEP440_PRERELEASE_INDICATORS):
+    return True  # 'test' in 'latest' = True! False positive!
+```
+
+**Fix:**
+```python
+# AFTER (CORRECT) - Word boundary matching via segment splitting
+for indicator in NON_PEP440_PRERELEASE_INDICATORS:
+    if indicator.endswith('-'):
+        # Prefix patterns like 'pr-', 'feat-'
+        if tag_lower.startswith(indicator):
+            return True
+        segments = re.split(r'[-_.]', tag_lower)
+        if any(seg.startswith(indicator) for seg in segments):
+            return True
+    else:
+        # Exact word patterns like 'nightly', 'test'
+        segments = re.split(r'[-_.]', tag_lower)
+        if indicator in segments:  # Exact segment match
+            return True
+```
+
+**Examples:**
+- `'latest'` → segments `['latest']` → 'test' NOT in segments → ✅ False (correct)
+- `'pr-123'` → segments `['pr', '123']` → 'pr' starts with 'pr-' → ✅ True (correct)
+- `'feat-new-api'` → segments `['feat', 'new', 'api']` → 'feat' starts with 'feat-' → ✅ True (correct)
+- `'1.0-test'` → segments `['1', '0', 'test']` → 'test' in segments → ✅ True (correct)
+
+**Impact:** Eliminates false positives while correctly detecting prerelease patterns
+
+---
+
+### Test Results
+
+**Tests Unskipped:**
+1. `test_update_engine.py::test_health_check_validates_container_name` - Now passing ✅
+2. `test_compose_parser.py::test_sanitize_labels_truncates_long_keys` - Now passing ✅
+3. `test_registry_client.py::test_latest_tag_not_prerelease` - Now passing ✅
+
+**Test Updated:**
+- `test_compose_parser.py::test_parse_image_with_digest` - Updated expectations to match correct behavior ✅
+
+**Overall Impact:**
+- **Before:** 1017 passing, 3 skipped (documenting bugs)
+- **After:** 1020 passing, 0 skipped for these bugs
+- **Net:** +3 tests fixed
+
+**Module Coverage:**
+- test_update_engine.py: 44/44 passing (100%)
+- test_compose_parser.py: 70/70 passing (100%)
+- test_registry_client.py: 74/74 passing (100%)
+- **Total:** 188/188 passing (100%)
+
+---
+
+### Files Modified
+
+**Implementation:**
+1. [app/services/update_engine.py](../backend/app/services/update_engine.py#L1066-L1070) - Try/except for ValidationError
+2. [app/services/compose_parser.py](../backend/app/services/compose_parser.py#L324-L331) - Digest-first parsing
+3. [app/services/compose_parser.py](../backend/app/services/compose_parser.py#L416-L430) - Save original_key
+4. [app/services/registry_client.py](../backend/app/services/registry_client.py#L64-L83) - Segment-based matching
+
+**Tests:**
+1. [tests/test_update_engine.py](../backend/tests/test_update_engine.py#L574-L579) - Unskipped + updated docstring
+2. [tests/test_compose_parser.py](../backend/tests/test_compose_parser.py#L259-L270) - Updated test expectations
+3. [tests/test_compose_parser.py](../backend/tests/test_compose_parser.py#L342-L346) - Unskipped + updated docstring
+4. [tests/test_registry_client.py](../backend/tests/test_registry_client.py#L97-L103) - Unskipped + updated docstring
+
+---
+
+### Commit
+
+```
+05e658e fix: Fix implementation bugs discovered during testing
+```
+
+**Commit Summary:**
+- 4 implementation bugs fixed
+- 3 tests unskipped and passing
+- 1 test updated to match correct behavior
+- All bug-related tests now at 100% pass rate
+
+---
+
+**Philosophy Maintained:** "Do things right, no shortcuts" - Fixed root causes, not symptoms. Every bug was thoroughly analyzed and properly fixed with comprehensive test coverage.
 
