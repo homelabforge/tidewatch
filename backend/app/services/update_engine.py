@@ -1063,8 +1063,10 @@ class UpdateEngine:
         last_error = None
         for target in inspect_targets:
             # Validate container name to prevent command injection
-            if not validate_service_name(target):
-                logger.warning(f"Invalid container name '{target}', skipping for security")
+            try:
+                validate_service_name(target)
+            except ValidationError as e:
+                logger.warning(f"Invalid container name '{target}': {e}, skipping for security")
                 continue
 
             try:

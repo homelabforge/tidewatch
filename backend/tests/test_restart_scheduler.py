@@ -14,6 +14,7 @@ Tests intelligent container restart scheduling with APScheduler:
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+from sqlalchemy.exc import OperationalError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -181,7 +182,7 @@ class TestMonitorLoop:
         self, restart_scheduler, db, caplog, mock_async_session):
         """Test handles database errors gracefully."""
         with patch('app.services.restart_scheduler.select') as mock_select:
-            mock_select.side_effect = Exception("Database error")
+            mock_select.side_effect = OperationalError("statement", "params", "orig")
 
             # Should not raise
             await restart_scheduler._monitor_loop()

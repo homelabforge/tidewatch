@@ -94,19 +94,11 @@ class TestPrereleaseDetection:
         assert is_prerelease_tag("v2.0.0") is False
         assert is_prerelease_tag("4.6.0") is False
 
-    @pytest.mark.skip(reason="Bug in registry_client.py:64 - substring matching catches 'test' in 'latest'")
     def test_latest_tag_not_prerelease(self):
         """Test 'latest' tag is not detected as prerelease.
 
-        BUG: Implementation uses substring matching instead of word boundaries.
-        Line 64: `if any(indicator in tag_lower for indicator in NON_PEP440_PRERELEASE_INDICATORS)`
-        This matches 'test' within 'latest', incorrectly marking it as prerelease.
-
-        Fix needed: Use word boundary matching:
-            import re
-            pattern = r'\b(' + '|'.join(re.escape(i) for i in NON_PEP440_PRERELEASE_INDICATORS) + r')\b'
-            if re.search(pattern, tag_lower):
-                return True
+        Implementation correctly uses word boundary matching by splitting on delimiters
+        and checking exact segment matches to avoid false positives like 'test' in 'latest'.
         """
         assert is_prerelease_tag("latest") is False
 

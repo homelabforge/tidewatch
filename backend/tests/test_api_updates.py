@@ -57,7 +57,7 @@ class TestListUpdatesEndpoint:
         assert isinstance(data, list)
         assert len(data) >= 2
 
-    async def test_list_updates_filter_by_status(self, authenticated_client, db):
+    async def test_list_updates_filter_by_status(self, authenticated_client, db, make_container):
         """Test filtering updates by status (pending, approved, applied, failed)."""
         response = await authenticated_client.get("/api/v1/updates?status=pending")
 
@@ -68,13 +68,12 @@ class TestListUpdatesEndpoint:
         for update in data:
             assert update["status"] == "pending"
 
-    async def test_list_updates_filter_by_container(self, authenticated_client, db, make_update):
+    async def test_list_updates_filter_by_container(self, authenticated_client, db, make_update, make_container):
         """Test filtering updates by container_id."""
-        from app.models.container import Container
         from app.models.update import Update
 
         # Create two containers with all required fields
-        container1 = Container(
+        container1 = make_container(
             name="container1",
             image="test:1.0",
             current_tag="1.0",
@@ -82,7 +81,7 @@ class TestListUpdatesEndpoint:
             compose_file="/docker/test.yml",
             service_name="service1"
         )
-        container2 = Container(
+        container2 = make_container(
             name="container2",
             image="test:2.0",
             current_tag="2.0",
@@ -124,7 +123,7 @@ class TestListUpdatesEndpoint:
         assert len(data) >= 1
         assert all(u["container_id"] == container1.id for u in data)
 
-    async def test_list_updates_pagination(self, authenticated_client, db):
+    async def test_list_updates_pagination(self, authenticated_client, db, make_container):
         """Test pagination with limit and offset."""
         # Test with limit
         response = await authenticated_client.get("/api/v1/updates?limit=1")
@@ -136,7 +135,7 @@ class TestListUpdatesEndpoint:
         response = await authenticated_client.get("/api/v1/updates?skip=1&limit=1")
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_list_updates_sorting(self, authenticated_client, db):
+    async def test_list_updates_sorting(self, authenticated_client, db, make_container):
         """Test sorting by created_at descending."""
         response = await authenticated_client.get("/api/v1/updates")
 
@@ -147,7 +146,7 @@ class TestListUpdatesEndpoint:
             for i in range(len(data) - 1):
                 assert data[i]["created_at"] >= data[i + 1]["created_at"]
 
-    async def test_list_updates_requires_auth(self, client, db):
+    async def test_list_updates_requires_auth(self, client, db, make_container):
         """Test listing updates requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -157,7 +156,7 @@ class TestListUpdatesEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_list_updates_empty_result(self, authenticated_client, db):
+    async def test_list_updates_empty_result(self, authenticated_client, db, make_container):
         """Test listing updates when none exist."""
         # Use a status that likely has no updates
         response = await authenticated_client.get("/api/v1/updates?status=nonexistent")
@@ -167,7 +166,7 @@ class TestListUpdatesEndpoint:
         assert isinstance(data, list)
 
     @pytest.mark.skip(reason="CVE data integration not yet fully implemented")
-    async def test_list_updates_includes_cve_data(self, authenticated_client, db):
+    async def test_list_updates_includes_cve_data(self, authenticated_client, db, make_container):
         """Test CVE data is included in response."""
         pass
 
@@ -175,14 +174,13 @@ class TestListUpdatesEndpoint:
 class TestGetUpdateEndpoint:
     """Test suite for GET /api/v1/updates/{id} endpoint."""
 
-    async def test_get_update_valid_id(self, authenticated_client, db, make_update):
+    async def test_get_update_valid_id(self, authenticated_client, db, make_update, make_container):
         """Test getting update by valid ID returns update object."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -208,8 +206,8 @@ class TestGetUpdateEndpoint:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["id"] == update.id
-        assert data["current_tag"] == "1.20"
-        assert data["new_tag"] == "1.21"
+        assert data["from_tag"] == "1.20"
+        assert data["to_tag"] == "1.21"
 
     async def test_get_update_invalid_id(self, authenticated_client):
         """Test getting update by invalid ID returns 404."""
@@ -218,11 +216,11 @@ class TestGetUpdateEndpoint:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.skip(reason="CVE data integration not yet fully implemented")
-    async def test_get_update_includes_cve_data(self, authenticated_client, db):
+    async def test_get_update_includes_cve_data(self, authenticated_client, db, make_container):
         """Test get update includes CVE data if available."""
         pass
 
-    async def test_get_update_requires_auth(self, client, db):
+    async def test_get_update_requires_auth(self, client, db, make_container):
         """Test get update requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -236,12 +234,11 @@ class TestGetUpdateEndpoint:
 class TestCheckUpdatesEndpoint:
     """Test suite for POST /api/v1/updates/check endpoint."""
 
-    async def test_check_updates_single_container(self, authenticated_client, db):
+    async def test_check_updates_single_container(self, authenticated_client, db, make_container):
         """Test checking updates for single container."""
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -259,18 +256,17 @@ class TestCheckUpdatesEndpoint:
         assert data["success"] is True
         assert "update_available" in data
 
-    async def test_check_updates_all_containers(self, authenticated_client, db):
+    async def test_check_updates_all_containers(self, authenticated_client, db, make_container):
         """Test checking updates for all containers (batch check)."""
-        from app.models.container import Container
 
         # Create multiple test containers
-        container1 = Container(
+        container1 = make_container(
             name="test-container-1",
             image="nginx:1.20",
             current_tag="1.20",
             status="running"
         )
-        container2 = Container(
+        container2 = make_container(
             name="test-container-2",
             image="postgres:13",
             current_tag="13",
@@ -292,7 +288,7 @@ class TestCheckUpdatesEndpoint:
         assert "message" in data
 
     @pytest.mark.skip(reason="Concurrent check handling not yet implemented")
-    async def test_check_updates_already_running(self, authenticated_client, db):
+    async def test_check_updates_already_running(self, authenticated_client, db, make_container):
         """Test check updates returns 409 if already running."""
         pass
 
@@ -301,7 +297,7 @@ class TestCheckUpdatesEndpoint:
         """Test check updates emits event bus notification."""
         pass
 
-    async def test_check_updates_requires_auth(self, client, db):
+    async def test_check_updates_requires_auth(self, client, db, make_container):
         """Test check updates requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -324,14 +320,13 @@ class TestCheckUpdatesEndpoint:
 class TestApproveUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/approve endpoint."""
 
-    async def test_approve_update_pending(self, authenticated_client, db, make_update):
+    async def test_approve_update_pending(self, authenticated_client, db, make_update, make_container):
         """Test approving pending update changes status to approved."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and pending update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -355,7 +350,7 @@ class TestApproveUpdateEndpoint:
         # Approve the update
         response = await authenticated_client.post(
             f"/api/v1/updates/{update.id}/approve",
-            json={"approved_by": "admin"}
+            json={"approved": True, "approved_by": "admin"}
         )
 
         assert response.status_code == status.HTTP_200_OK
@@ -368,14 +363,13 @@ class TestApproveUpdateEndpoint:
         assert update.approved_by == "admin"
         assert update.approved_at is not None
 
-    async def test_approve_update_already_approved(self, authenticated_client, db, make_update):
-        """Test approving already approved update returns 400."""
+    async def test_approve_update_already_approved(self, authenticated_client, db, make_update, make_container):
+        """Test approving already approved update is idempotent (returns 200)."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and already-approved update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -397,24 +391,24 @@ class TestApproveUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Try to approve again
+        # Try to approve again - should be idempotent
         response = await authenticated_client.post(
             f"/api/v1/updates/{update.id}/approve",
-            json={"approved_by": "admin"}
+            json={"approved": True, "approved_by": "admin"}
         )
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert "already approved" in data["detail"].lower()
+        assert data["success"] is True
+        assert "already approved" in data["message"].lower()
 
-    async def test_approve_update_already_applied(self, authenticated_client, db, make_update):
+    async def test_approve_update_already_applied(self, authenticated_client, db, make_update, make_container):
         """Test approving already applied update returns 400."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and already-applied update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.21",  # Already updated
@@ -439,21 +433,20 @@ class TestApproveUpdateEndpoint:
         # Try to approve again
         response = await authenticated_client.post(
             f"/api/v1/updates/{update.id}/approve",
-            json={"approved_by": "admin"}
+            json={"approved": True, "approved_by": "admin"}
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
-        assert "already applied" in data["detail"].lower()
+        assert "cannot approve update with status: applied" in data["detail"].lower()
 
-    async def test_approve_update_adds_timestamp(self, authenticated_client, db, make_update):
+    async def test_approve_update_adds_timestamp(self, authenticated_client, db, make_update, make_container):
         """Test approve adds approval timestamp and user."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and pending update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -481,7 +474,7 @@ class TestApproveUpdateEndpoint:
         # Approve with specific user
         response = await authenticated_client.post(
             f"/api/v1/updates/{update.id}/approve",
-            json={"approved_by": "test-admin"}
+            json={"approved": True, "approved_by": "test-admin"}
         )
 
         assert response.status_code == status.HTTP_200_OK
@@ -492,7 +485,7 @@ class TestApproveUpdateEndpoint:
         assert update.approved_at is not None
         assert isinstance(update.approved_at, datetime)
 
-    async def test_approve_update_requires_auth(self, client, db):
+    async def test_approve_update_requires_auth(self, client, db, make_container):
         """Test approve update requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -500,7 +493,7 @@ class TestApproveUpdateEndpoint:
 
         response = await client.post(
             "/api/v1/updates/1/approve",
-            json={"approved_by": "admin"}
+            json={"approved": True, "approved_by": "admin"}
         )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -509,14 +502,13 @@ class TestApproveUpdateEndpoint:
 class TestRejectUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/reject endpoint."""
 
-    async def test_reject_update_pending(self, authenticated_client, db, make_update):
+    async def test_reject_update_pending(self, authenticated_client, db, make_update, make_container):
         """Test rejecting pending update changes status to rejected."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and pending update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -555,14 +547,13 @@ class TestRejectUpdateEndpoint:
         assert container.update_available is False
         assert container.latest_tag is None
 
-    async def test_reject_update_already_rejected(self, authenticated_client, db, make_update):
+    async def test_reject_update_already_rejected(self, authenticated_client, db, make_update, make_container):
         """Test rejecting already rejected update returns 400."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and already-rejected update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -590,14 +581,13 @@ class TestRejectUpdateEndpoint:
         data = response.json()
         assert "already rejected" in data["detail"].lower()
 
-    async def test_reject_update_adds_reason(self, authenticated_client, db, make_update):
+    async def test_reject_update_adds_reason(self, authenticated_client, db, make_update, make_container):
         """Test reject adds rejection reason."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx",
             current_tag="1.20",
@@ -638,7 +628,7 @@ class TestRejectUpdateEndpoint:
         assert update.rejected_by is not None
         assert update.rejected_at is not None
 
-    async def test_reject_update_requires_auth(self, client, db):
+    async def test_reject_update_requires_auth(self, client, db, make_container):
         """Test reject update requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -652,15 +642,14 @@ class TestRejectUpdateEndpoint:
 class TestApplyUpdateEndpoint:
     """Test suite for POST /api/v1/updates/{id}/apply endpoint."""
 
-    async def test_apply_update_approved(self, authenticated_client, db, mock_docker_client, make_update):
+    async def test_apply_update_approved(self, authenticated_client, db, mock_docker_client, make_update, make_container):
         """Test applying approved update triggers update engine."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
         # Create test container and approved update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -708,15 +697,14 @@ class TestApplyUpdateEndpoint:
             # Verify UpdateEngine.apply_update was called
             mock_apply.assert_called_once()
 
-    async def test_apply_update_pending_rejected(self, authenticated_client, db, make_update):
+    async def test_apply_update_pending_rejected(self, authenticated_client, db, make_update, make_container):
         """Test applying pending update returns 400 (must approve first)."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
         # Create test container and pending update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -749,15 +737,14 @@ class TestApplyUpdateEndpoint:
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    async def test_apply_update_failed_retry(self, authenticated_client, db, make_update):
+    async def test_apply_update_failed_retry(self, authenticated_client, db, make_update, make_container):
         """Test applying failed update allows retry."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
         # Create test container and failed update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -799,15 +786,14 @@ class TestApplyUpdateEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_apply_update_creates_history(self, authenticated_client, db, make_update):
+    async def test_apply_update_creates_history(self, authenticated_client, db, make_update, make_container):
         """Test apply creates history entry."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
         # Create test container and approved update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -856,11 +842,11 @@ class TestApplyUpdateEndpoint:
         pass
 
     @pytest.mark.skip(reason="Concurrent handling not yet implemented")
-    async def test_apply_update_concurrent_request(self, authenticated_client, db):
+    async def test_apply_update_concurrent_request(self, authenticated_client, db, make_container):
         """Test concurrent apply requests are handled safely."""
         pass
 
-    async def test_apply_update_requires_auth(self, client, db):
+    async def test_apply_update_requires_auth(self, client, db, make_container):
         """Test apply update requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -873,15 +859,14 @@ class TestApplyUpdateEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_apply_update_container_deleted(self, authenticated_client, db, make_update):
+    async def test_apply_update_container_deleted(self, authenticated_client, db, make_update, make_container):
         """Test apply when container was deleted returns 400."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
         # Create test container and approved update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -923,14 +908,13 @@ class TestApplyUpdateEndpoint:
 class TestDeleteUpdateEndpoint:
     """Test suite for DELETE /api/v1/updates/{id} endpoint."""
 
-    async def test_delete_update_pending(self, authenticated_client, db, make_update):
+    async def test_delete_update_pending(self, authenticated_client, db, make_update, make_container):
         """Test deleting pending update returns 200."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and pending update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -964,14 +948,13 @@ class TestDeleteUpdateEndpoint:
         deleted_update = result.scalar_one_or_none()
         assert deleted_update is None
 
-    async def test_delete_update_applied_rejected(self, authenticated_client, db, make_update):
+    async def test_delete_update_applied_rejected(self, authenticated_client, db, make_update, make_container):
         """Test deleting applied/rejected updates is allowed."""
         from app.models.update import Update
-        from app.models.container import Container
         from datetime import datetime, timezone
 
         # Create test container and rejected update
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -997,7 +980,7 @@ class TestDeleteUpdateEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_delete_update_requires_auth(self, client, db):
+    async def test_delete_update_requires_auth(self, client, db, make_container):
         """Test delete update requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -1011,13 +994,12 @@ class TestDeleteUpdateEndpoint:
 class TestBatchOperations:
     """Test suite for batch approve/reject endpoints."""
 
-    async def test_batch_approve_multiple(self, authenticated_client, db, make_update):
+    async def test_batch_approve_multiple(self, authenticated_client, db, make_update, make_container):
         """Test batch approve approves multiple updates."""
-        from app.models.container import Container
         from app.models.update import Update
 
         # Create container with all required fields
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="test:1.0",
             current_tag="1.0",
@@ -1077,13 +1059,12 @@ class TestBatchOperations:
         assert data["summary"]["approved_count"] == 3
         assert data["summary"]["failed_count"] == 0
 
-    async def test_batch_approve_mixed_statuses(self, authenticated_client, db, make_update):
+    async def test_batch_approve_mixed_statuses(self, authenticated_client, db, make_update, make_container):
         """Test batch approve with mixed statuses returns partial success."""
-        from app.models.container import Container
         from app.models.update import Update
 
         # Create container with all required fields
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="test:1.0",
             current_tag="1.0",
@@ -1129,7 +1110,7 @@ class TestBatchOperations:
         await db.refresh(update2)
         await db.refresh(update3)
 
-        # Batch approve - update2 should fail (already approved)
+        # Batch approve - update2 is already approved but should be idempotent
         response = await authenticated_client.post(
             "/api/v1/updates/batch/approve",
             json={"update_ids": [update1.id, update2.id, update3.id]}
@@ -1137,16 +1118,15 @@ class TestBatchOperations:
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["summary"]["approved_count"] == 2  # update1 and update3
-        assert data["summary"]["failed_count"] == 1  # update2
+        assert data["summary"]["approved_count"] == 3  # All three (update2 is idempotent)
+        assert data["summary"]["failed_count"] == 0  # None fail due to idempotency
 
-    async def test_batch_approve_returns_summary(self, authenticated_client, db, make_update):
+    async def test_batch_approve_returns_summary(self, authenticated_client, db, make_update, make_container):
         """Test batch approve returns approval summary."""
-        from app.models.container import Container
         from app.models.update import Update
 
         # Create container with all required fields
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="test:1.0",
             current_tag="1.0",
@@ -1198,13 +1178,12 @@ class TestBatchOperations:
         assert data["summary"]["total"] == 2
         assert data["summary"]["approved_count"] == 2
 
-    async def test_batch_reject_multiple(self, authenticated_client, db, make_update):
+    async def test_batch_reject_multiple(self, authenticated_client, db, make_update, make_container):
         """Test batch reject rejects multiple updates."""
-        from app.models.container import Container
         from app.models.update import Update
 
         # Create container with all required fields
-        container = Container(
+        container = make_container(
             name=f"test-container-{id(self)}",
             image="test:1.0",
             current_tag="1.0",
@@ -1265,20 +1244,23 @@ class TestBatchOperations:
         assert data["summary"]["rejected_count"] == 0
         assert data["summary"]["failed_count"] == 2
 
-    async def test_batch_operations_require_auth(self, client):
+    async def test_batch_operations_require_auth(self, client, db):
         """Test batch operations require authentication."""
+        from app.services.settings_service import SettingsService
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
         # Test batch approve without auth
         response = await client.post(
             "/api/v1/updates/batch/approve",
             json={"update_ids": [1, 2]}
         )
-        # CSRF middleware runs first, so we get 403 not 401
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
         # Test batch reject without auth
         response = await client.post(
             "/api/v1/updates/batch/reject",
             json={"update_ids": [1, 2]}
         )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 

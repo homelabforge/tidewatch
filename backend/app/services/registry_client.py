@@ -2,6 +2,7 @@
 
 import logging
 import platform
+import re
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta, timezone
@@ -61,8 +62,23 @@ def is_prerelease_tag(tag: str) -> bool:
                     pass
 
     # Second, check for non-PEP 440 patterns in the full tag
-    if any(indicator in tag_lower for indicator in NON_PEP440_PRERELEASE_INDICATORS):
-        return True
+    # Use word boundary matching to avoid false positives (e.g., 'latest' shouldn't match 'test')
+    for indicator in NON_PEP440_PRERELEASE_INDICATORS:
+        # Handle prefix patterns (e.g., 'pr-', 'feat-') - check if tag starts with indicator
+        if indicator.endswith('-'):
+            # For patterns like 'pr-', check if tag starts with 'pr-' (case-insensitive)
+            if tag_lower.startswith(indicator):
+                return True
+            # Also check if any segment after splitting starts with the prefix
+            # e.g., '1.0-pr-123' should match 'pr-'
+            segments = re.split(r'[-_.]', tag_lower)
+            if any(seg.startswith(indicator) for seg in segments):
+                return True
+        else:
+            # For exact word patterns (e.g., 'nightly', 'test'), check exact segment match
+            segments = re.split(r'[-_.]', tag_lower)
+            if indicator in segments:
+                return True
 
     return False
 

@@ -321,14 +321,14 @@ class ComposeParser:
         tag = "latest"
         registry = "docker.io"
 
-        # Split off tag if present
-        if ":" in image:
-            image, tag = image.rsplit(":", 1)
-
-        # Check for digest instead of tag
+        # Check for digest first (before splitting on :)
+        # This handles formats like nginx@sha256:abc...
         if "@sha256:" in image:
             image, digest = image.split("@sha256:", 1)
             tag = f"sha256:{digest}"
+        # Split off tag if present (but only if no digest)
+        elif ":" in image:
+            image, tag = image.rsplit(":", 1)
 
         # Determine registry
         parts = image.split("/")
@@ -412,6 +412,9 @@ class ComposeParser:
                 logger.warning(f"Skipping non-string label key: {type(key)}")
                 continue
 
+            # Save original key before any modifications
+            original_key = key
+
             # Enforce key length limit
             if len(key) > MAX_KEY_LENGTH:
                 logger.warning(f"Label key too long ({len(key)} chars), truncating: {key[:50]}...")
@@ -423,8 +426,8 @@ class ComposeParser:
                 logger.warning(f"Skipping label with control characters in key: {key[:50]}")
                 continue
 
-            # Convert value to string and enforce length limit
-            value = str(labels[key])
+            # Convert value to string and enforce length limit (use original key)
+            value = str(labels[original_key])
             if len(value) > MAX_VALUE_LENGTH:
                 logger.warning(f"Label value too long ({len(value)} chars), truncating for key: {key}")
                 value = value[:MAX_VALUE_LENGTH]

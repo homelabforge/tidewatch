@@ -259,19 +259,15 @@ class TestParseImageString:
     def test_parse_image_with_digest(self):
         """Test parsing image with SHA256 digest.
 
-        NOTE: Current implementation has a bug where it splits on ':' before checking for digest,
-        so 'nginx@sha256:abc...' becomes image='nginx@sha256' and tag='abc...'.
-        This should be fixed to handle digests before tag splitting.
+        Implementation correctly handles digests by checking for '@sha256:' before splitting on ':'.
         """
         registry, image, tag = ComposeParser._parse_image_string(
             "nginx@sha256:abc123def45678901234567890123456789012345678901234567890123456"
         )
 
         assert registry == "dockerhub"
-        # BUG: Should be "nginx" but implementation splits incorrectly
-        assert image == "nginx@sha256"
-        # BUG: Should be "sha256:abc..." but gets just the hash part
-        assert tag == "abc123def45678901234567890123456789012345678901234567890123456"
+        assert image == "nginx"
+        assert tag == "sha256:abc123def45678901234567890123456789012345678901234567890123456"
 
     def test_parse_quay_image(self):
         """Test parsing Quay.io registry image."""
@@ -343,20 +339,10 @@ class TestLabelParsing:
         # Should only have first 100 (sorted by key)
         assert len(sanitized) <= 100
 
-    @pytest.mark.skip(reason="Bug in compose_parser.py:427 - KeyError when accessing truncated key")
     def test_sanitize_labels_truncates_long_keys(self):
         """Test label sanitization truncates keys exceeding 255 chars.
 
-        BUG: Implementation at compose_parser.py:417-427 has a bug:
-        - Line 418 truncates the key: key = key[:MAX_KEY_LENGTH]
-        - Line 427 tries to access original key: value = str(labels[key])
-        - This causes KeyError because labels dict still has the original (long) key
-
-        Fix needed: Save original key before truncating:
-            original_key = key
-            if len(key) > MAX_KEY_LENGTH:
-                key = key[:MAX_KEY_LENGTH]
-            value = str(labels[original_key])
+        Implementation correctly saves original_key before truncating to avoid KeyError.
         """
         long_key = "a" * 300
         labels = {long_key: "value"}

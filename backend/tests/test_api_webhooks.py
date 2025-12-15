@@ -155,7 +155,7 @@ class TestCreateWebhookEndpoint:
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     async def test_create_webhook_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
@@ -169,7 +169,7 @@ class TestCreateWebhookEndpoint:
 
         response = await client.post("/api/v1/webhooks", json=webhook_data)
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestGetWebhookEndpoint:
@@ -267,7 +267,7 @@ class TestUpdateWebhookEndpoint:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     async def test_update_webhook_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
@@ -276,7 +276,7 @@ class TestUpdateWebhookEndpoint:
 
         response = await client.put("/api/v1/webhooks/1", json=update_data)
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestDeleteWebhookEndpoint:
@@ -309,14 +309,14 @@ class TestDeleteWebhookEndpoint:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_delete_webhook_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
         response = await client.delete("/api/v1/webhooks/1")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestTestWebhookEndpoint:
@@ -389,11 +389,11 @@ class TestTestWebhookEndpoint:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_test_webhook_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
         response = await client.post("/api/v1/webhooks/1/test")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED

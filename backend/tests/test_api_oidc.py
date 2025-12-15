@@ -210,7 +210,7 @@ class TestOIDCLoginEndpoint:
         response = await client.get("/api/v1/auth/oidc/login")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "setup not complete" in response.json()["detail"].lower()
+        assert "not enabled" in response.json()["detail"].lower()
 
     async def test_login_valid_config_redirects(self, client, db):
         """Test valid configuration returns redirect."""

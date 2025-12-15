@@ -15,16 +15,15 @@ from datetime import datetime, timezone, timedelta
 class TestGetHistoryEndpoint:
     """Test suite for GET /api/v1/history endpoint."""
 
-    async def test_get_history_all(self, authenticated_client, db):
+    async def test_get_history_all(self, authenticated_client, db, make_container):
         """Test listing all history entries."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -50,16 +49,15 @@ class TestGetHistoryEndpoint:
         assert isinstance(data, list)
         assert len(data) >= 3
 
-    async def test_get_history_pagination(self, authenticated_client, db):
+    async def test_get_history_pagination(self, authenticated_client, db, make_container):
         """Test pagination with limit and offset."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -90,21 +88,20 @@ class TestGetHistoryEndpoint:
         data = response.json()
         assert len(data) <= 5
 
-    async def test_get_history_filter_by_container(self, authenticated_client, db):
+    async def test_get_history_filter_by_container(self, authenticated_client, db, make_container):
         """Test filtering by container_id."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create two test containers
-        container1 = Container(
+        container1 = make_container(
             name="test-container-1",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
-        container2 = Container(
+        container2 = make_container(
             name="test-container-2",
             image="redis:6.0",
-            current_tag="6.0",
+            current_tag="6.0"
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -140,13 +137,12 @@ class TestGetHistoryEndpoint:
             if event["event_type"] == "update":
                 assert event["container_id"] == container1.id
 
-    async def test_get_history_filter_by_status(self, authenticated_client, db):
+    async def test_get_history_filter_by_status(self, authenticated_client, db, make_container):
         """Test filtering by status (success, failed, rolled_back)."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"status-filter-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -197,13 +193,12 @@ class TestGetHistoryEndpoint:
         assert len(success_events) >= 2
         assert all(e["status"] == "success" for e in success_events)
 
-    async def test_get_history_filter_by_date_range(self, authenticated_client, db):
+    async def test_get_history_filter_by_date_range(self, authenticated_client, db, make_container):
         """Test filtering by date range."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"date-filter-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -264,16 +259,15 @@ class TestGetHistoryEndpoint:
             assert event_time >= now - timedelta(days=2)
             assert event_time <= now
 
-    async def test_get_history_sort_by_created_at(self, authenticated_client, db):
+    async def test_get_history_sort_by_created_at(self, authenticated_client, db, make_container):
         """Test sorting by created_at descending."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -343,16 +337,15 @@ class TestGetHistoryEndpoint:
 class TestGetHistoryEventEndpoint:
     """Test suite for GET /api/v1/history/{id} endpoint."""
 
-    async def test_get_history_event_valid_id(self, authenticated_client, db):
+    async def test_get_history_event_valid_id(self, authenticated_client, db, make_container):
         """Test get history entry by valid ID."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -383,16 +376,15 @@ class TestGetHistoryEventEndpoint:
         response = await authenticated_client.get("/api/v1/history/999999")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_get_history_event_includes_error_details(self, authenticated_client, db):
+    async def test_get_history_event_includes_error_details(self, authenticated_client, db, make_container):
         """Test includes error details if failed."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -418,16 +410,15 @@ class TestGetHistoryEventEndpoint:
         assert data["status"] == "failed"
         assert data["error_message"] == "Failed to pull image: connection timeout"
 
-    async def test_get_history_event_includes_rollback_info(self, authenticated_client, db):
+    async def test_get_history_event_includes_rollback_info(self, authenticated_client, db, make_container):
         """Test includes rollback info if rolled back."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -460,17 +451,16 @@ class TestGetHistoryEventEndpoint:
 class TestRollbackEndpoint:
     """Test suite for POST /api/v1/history/{id}/rollback endpoint."""
 
-    async def test_rollback_successful_update(self, authenticated_client, db, mock_docker_client):
+    async def test_rollback_successful_update(self, authenticated_client, db, mock_docker_client, make_container):
         """Test rollback of successful update initiates rollback."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
         from unittest.mock import patch, AsyncMock
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -507,17 +497,16 @@ class TestRollbackEndpoint:
             assert data["success"] is True
             mock_rollback.assert_called_once()
 
-    async def test_rollback_failed_update(self, authenticated_client, db):
+    async def test_rollback_failed_update(self, authenticated_client, db, make_container):
         """Test rollback of failed update returns 400."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
         from unittest.mock import patch, AsyncMock
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -545,17 +534,16 @@ class TestRollbackEndpoint:
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    async def test_rollback_already_rolled_back(self, authenticated_client, db):
+    async def test_rollback_already_rolled_back(self, authenticated_client, db, make_container):
         """Test rollback of already rolled back update returns 400."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
         from unittest.mock import patch, AsyncMock
 
         # Create test container
-        container = Container(
+        container = make_container(
             name="test-container",
             image="nginx:1.20",
-            current_tag="1.20",
+            current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -612,13 +600,12 @@ class TestRollbackEndpoint:
 class TestHistoryStatsEndpoint:
     """Test suite for GET /api/v1/history/stats endpoint."""
 
-    async def test_stats_success_rate(self, authenticated_client, db):
+    async def test_stats_success_rate(self, authenticated_client, db, make_container):
         """Test returns success rate percentage."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"stats-test-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -662,13 +649,12 @@ class TestHistoryStatsEndpoint:
         assert "success_rate" in data
         assert data["success_rate"] == 70.0
 
-    async def test_stats_total_updates(self, authenticated_client, db):
+    async def test_stats_total_updates(self, authenticated_client, db, make_container):
         """Test returns total updates applied."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"total-test-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -701,13 +687,12 @@ class TestHistoryStatsEndpoint:
         assert "total_updates" in data
         assert data["total_updates"] >= 5
 
-    async def test_stats_average_update_time(self, authenticated_client, db):
+    async def test_stats_average_update_time(self, authenticated_client, db, make_container):
         """Test returns average update time."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"avgtime-test-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -741,13 +726,12 @@ class TestHistoryStatsEndpoint:
         assert "avg_update_time" in data
         assert data["avg_update_time"] == 120.0
 
-    async def test_stats_failed_count(self, authenticated_client, db):
+    async def test_stats_failed_count(self, authenticated_client, db, make_container):
         """Test returns failed updates count."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test container
-        container = Container(
+        container = make_container(
             name=f"failed-test-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -780,13 +764,12 @@ class TestHistoryStatsEndpoint:
         assert "failed_count" in data
         assert data["failed_count"] >= 3
 
-    async def test_stats_most_updated_containers(self, authenticated_client, db):
+    async def test_stats_most_updated_containers(self, authenticated_client, db, make_container):
         """Test returns most frequently updated containers."""
         from app.models.history import UpdateHistory
-        from app.models.container import Container
 
         # Create test containers
-        container1 = Container(
+        container1 = make_container(
             name=f"most-updated-1-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
@@ -794,7 +777,7 @@ class TestHistoryStatsEndpoint:
             compose_file="/compose/test.yml",
             service_name="nginx1"
         )
-        container2 = Container(
+        container2 = make_container(
             name=f"most-updated-2-{id(self)}",
             image="redis:6",
             current_tag="6",

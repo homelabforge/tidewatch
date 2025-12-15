@@ -92,7 +92,7 @@ class TestScanContainerEndpoint:
         assert "disabled" in response.json()["detail"].lower()
 
     async def test_scan_container_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -114,8 +114,7 @@ class TestScanContainerEndpoint:
 
         response = await client.post(f"/api/v1/scan/container/{container.id}")
 
-        # CSRF middleware returns 403 before auth is checked
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestScanAllContainersEndpoint:
@@ -223,7 +222,7 @@ class TestScanAllContainersEndpoint:
         assert len(data) == 1
 
     async def test_scan_all_requires_auth(self, client, db):
-        """Test requires authentication (returns 403 due to CSRF middleware)."""
+        """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
         await SettingsService.set(db, "auth_mode", "local")
@@ -231,8 +230,7 @@ class TestScanAllContainersEndpoint:
 
         response = await client.post("/api/v1/scan/all")
 
-        # CSRF middleware returns 403 before auth is checked
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestGetScanResultsEndpoint:
