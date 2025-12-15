@@ -7,11 +7,20 @@ from typing import Optional
 
 # Sensitive setting keys that should be masked in API responses
 SENSITIVE_KEYS = {
+    "admin_password_hash",
     "dockerhub_token",
     "ghcr_token",
     "vulnforge_api_key",
     "vulnforge_password",
     "ntfy_api_key",
+    "gotify_token",
+    "pushover_api_token",
+    "pushover_user_key",
+    "telegram_bot_token",
+    "email_smtp_password",
+    "smtp_password",
+    "oidc_client_secret",
+    "encryption_key",
 }
 
 

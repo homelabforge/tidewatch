@@ -35,7 +35,6 @@ class TestGetAllSettingsEndpoint:
             assert "key" in data[0]
             assert "value" in data[0]
 
-    @pytest.mark.skip(reason="Sensitive value masking not yet implemented at API level")
     async def test_get_all_settings_masks_sensitive(self, authenticated_client, db):
         """Test masks sensitive values (API keys, tokens)."""
         from app.services.settings_service import SettingsService
@@ -102,7 +101,6 @@ class TestGetSettingEndpoint:
         data = response.json()
         assert "not found" in data["detail"].lower()
 
-    @pytest.mark.skip(reason="Sensitive value masking not yet implemented at API level")
     async def test_get_setting_sensitive_masked(self, authenticated_client, db):
         """Test sensitive key returns masked value."""
         from app.services.settings_service import SettingsService
@@ -363,7 +361,6 @@ class TestSettingsValidation:
 class TestSensitiveDataMasking:
     """Test suite for sensitive data masking."""
 
-    @pytest.mark.skip(reason="Sensitive value masking not yet implemented at API level")
     async def test_encryption_key_not_in_plaintext(self, authenticated_client, db):
         """Test encryption key is never returned in plaintext."""
         from app.services.settings_service import SettingsService
@@ -410,7 +407,6 @@ class TestSensitiveDataMasking:
             if "*" in data["value"]:
                 assert "my-email-password-123" not in data["value"]
 
-    @pytest.mark.skip(reason="Sensitive value masking not yet implemented at API level")
     async def test_oidc_client_secret_masked(self, authenticated_client, db):
         """Test OIDC client secret is masked."""
         from app.services.settings_service import SettingsService
