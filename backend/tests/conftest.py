@@ -248,6 +248,7 @@ async def admin_user(db):
     await SettingsService.set(db, "admin_email", "admin@example.com")
     await SettingsService.set(db, "admin_password_hash", password_hash)
     await SettingsService.set(db, "admin_full_name", "Admin User")
+    await SettingsService.set(db, "admin_auth_method", "local")
 
     # Enable local authentication (required for require_auth to work properly)
     await SettingsService.set(db, "auth_mode", "local")
