@@ -284,14 +284,241 @@ async def authenticated_client(client, admin_user):
     return client
 
 
+class MockDockerContainer:
+    """Mock Docker container with state machine for testing."""
+
+    def __init__(self, id: str, name: str, image: str, status: str = "running", labels: dict = None):
+        self.id = id
+        self.name = name
+        self.image = image
+        self.status = status
+        self.labels = labels or {}
+        self.attrs = {
+            "Id": id,
+            "Name": name if name.startswith("/") else f"/{name}",
+            "State": {
+                "Status": status,
+                "Running": status == "running",
+                "Paused": status == "paused",
+                "Restarting": False,
+                "OOMKilled": False,
+                "Dead": False,
+                "Pid": 12345 if status == "running" else 0,
+                "ExitCode": 0,
+                "StartedAt": "2025-01-01T00:00:00.000000000Z",
+                "FinishedAt": "0001-01-01T00:00:00Z" if status == "running" else "2025-01-01T01:00:00.000000000Z",
+            },
+            "Config": {
+                "Image": image,
+                "Labels": self.labels,
+                "Hostname": name,
+            },
+            "Image": f"sha256:{'0' * 64}",
+        }
+
+    def start(self):
+        """Start the container."""
+        if self.status in ["exited", "created"]:
+            self.status = "running"
+            self.attrs["State"]["Status"] = "running"
+            self.attrs["State"]["Running"] = True
+            self.attrs["State"]["Pid"] = 12345
+
+    def stop(self, timeout=10):
+        """Stop the container."""
+        if self.status == "running":
+            self.status = "exited"
+            self.attrs["State"]["Status"] = "exited"
+            self.attrs["State"]["Running"] = False
+            self.attrs["State"]["Pid"] = 0
+
+    def restart(self, timeout=10):
+        """Restart the container."""
+        self.stop(timeout)
+        self.status = "restarting"
+        self.attrs["State"]["Status"] = "restarting"
+        self.attrs["State"]["Restarting"] = True
+        # Simulate restart completion
+        self.start()
+        self.attrs["State"]["Restarting"] = False
+
+    def pause(self):
+        """Pause the container."""
+        if self.status == "running":
+            self.status = "paused"
+            self.attrs["State"]["Status"] = "paused"
+            self.attrs["State"]["Paused"] = True
+
+    def unpause(self):
+        """Unpause the container."""
+        if self.status == "paused":
+            self.status = "running"
+            self.attrs["State"]["Status"] = "running"
+            self.attrs["State"]["Paused"] = False
+
+    def remove(self, force=False):
+        """Remove the container."""
+        import docker.errors
+        if self.status == "running" and not force:
+            raise docker.errors.APIError("Cannot remove running container without force=True")
+        # Container would be removed from the client's list
+
+    def reload(self):
+        """Reload container state from daemon (no-op in mock)."""
+        pass
+
+
+class MockDockerClient:
+    """Enhanced mock Docker client for comprehensive testing."""
+
+    def __init__(self):
+        self._containers = []
+        self._images = []
+        self._volumes = []
+        self._networks = []
+
+        # Container management
+        from unittest.mock import MagicMock
+        self.containers = MagicMock()
+        self.images = MagicMock()
+        self.volumes = MagicMock()
+        self.networks = MagicMock()
+
+        # Wire up container methods
+        self.containers.list = self._list_containers
+        self.containers.get = self._get_container
+        self.containers.run = self._run_container
+        self.containers.create = self._create_container
+
+        # Wire up image methods
+        self.images.list = MagicMock(return_value=self._images)
+        self.images.get = MagicMock(side_effect=self._get_image)
+
+        # Wire up volume methods
+        self.volumes.list = MagicMock(return_value=self._volumes)
+
+        # Wire up network methods
+        self.networks.list = MagicMock(return_value=self._networks)
+
+    def _list_containers(self, all=False, filters=None):
+        """List containers with optional filters."""
+        containers = self._containers.copy()
+
+        # Apply status filter
+        if filters and "status" in filters:
+            statuses = filters["status"] if isinstance(filters["status"], list) else [filters["status"]]
+            containers = [c for c in containers if c.status in statuses]
+
+        # Apply label filter
+        if filters and "label" in filters:
+            labels = filters["label"] if isinstance(filters["label"], list) else [filters["label"]]
+            containers = [c for c in containers if any(
+                f"{k}={v}" in labels or k in labels
+                for k, v in c.labels.items()
+            )]
+
+        # Apply name filter
+        if filters and "name" in filters:
+            names = filters["name"] if isinstance(filters["name"], list) else [filters["name"]]
+            containers = [c for c in containers if any(n in c.name for n in names)]
+
+        # Filter by running status if all=False
+        if not all:
+            containers = [c for c in containers if c.status == "running"]
+
+        return containers
+
+    def _get_container(self, container_id):
+        """Get a container by ID or name."""
+        import docker.errors
+        for container in self._containers:
+            if container.id == container_id or container.name == container_id:
+                return container
+        raise docker.errors.NotFound(f"Container {container_id} not found")
+
+    def _run_container(self, image, **kwargs):
+        """Create and start a container."""
+        container = self._create_container(image, **kwargs)
+        container.start()
+        return container
+
+    def _create_container(self, image, **kwargs):
+        """Create a container."""
+        import secrets
+        container_id = secrets.token_hex(32)
+        name = kwargs.get("name", f"container-{len(self._containers)}")
+        labels = kwargs.get("labels", {})
+
+        container = MockDockerContainer(container_id, name, image, status="created", labels=labels)
+        self._containers.append(container)
+        return container
+
+    def _get_image(self, image_name):
+        """Get an image by name."""
+        import docker.errors
+        for image in self._images:
+            if image_name in getattr(image, "tags", []):
+                return image
+        raise docker.errors.ImageNotFound(f"Image {image_name} not found")
+
+    def add_container(self, id: str, name: str, image: str, status: str = "running", labels: dict = None):
+        """Helper to add a mock container for testing."""
+        container = MockDockerContainer(id, name, image, status, labels)
+        self._containers.append(container)
+        return container
+
+    def add_image(self, tags: list, id: str = None):
+        """Helper to add a mock image for testing."""
+        from unittest.mock import MagicMock
+        image = MagicMock()
+        image.id = id or f"sha256:{'0' * 64}"
+        image.tags = tags
+        self._images.append(image)
+        return image
+
+    def ping(self):
+        """Ping the Docker daemon."""
+        return True
+
+    def version(self):
+        """Get Docker daemon version info."""
+        return {
+            "Version": "24.0.0",
+            "ApiVersion": "1.43",
+            "Platform": {"Name": "Docker Engine - Community"},
+        }
+
+    def info(self):
+        """Get Docker daemon system info."""
+        return {
+            "Containers": len(self._containers),
+            "ContainersRunning": len([c for c in self._containers if c.status == "running"]),
+            "ContainersPaused": len([c for c in self._containers if c.status == "paused"]),
+            "ContainersStopped": len([c for c in self._containers if c.status == "exited"]),
+            "Images": len(self._images),
+        }
+
+
 @pytest.fixture
 def mock_docker_client():
-    """Mock Docker client for container operations."""
-    from unittest.mock import MagicMock, patch
-    with patch('docker.from_env') as mock:
-        docker_client = MagicMock()
-        mock.return_value = docker_client
-        yield docker_client
+    """Enhanced mock Docker client for container operations.
+
+    Provides a comprehensive mock with:
+    - Container state management (running, stopped, paused)
+    - Container lifecycle operations (start, stop, restart, remove)
+    - Container filtering by status, labels, name
+    - Helper methods to add test containers and images
+
+    Usage:
+        def test_example(mock_docker_client):
+            # Add test containers
+            container = mock_docker_client.add_container("abc123", "nginx", "nginx:latest")
+
+            # Use as Docker client
+            containers = mock_docker_client.containers.list()
+            assert len(containers) == 1
+    """
+    return MockDockerClient()
 
 
 @pytest.fixture
