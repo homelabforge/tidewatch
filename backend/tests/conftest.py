@@ -73,6 +73,48 @@ async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
+def mock_async_session_local(db):
+    """Mock AsyncSessionLocal to return test database session.
+
+    This fixture is essential for testing services that create their own
+    database sessions using AsyncSessionLocal() (like scheduler, restart_scheduler).
+    It ensures they use the test's in-memory database instead of trying to
+    access the production database.
+
+    Usage:
+        @pytest.mark.asyncio
+        async def test_something(db, mock_async_session_local):
+            # Service will now use the test db when it calls AsyncSessionLocal()
+            await scheduler_service.start()
+    """
+    from unittest.mock import MagicMock, patch
+
+    class MockAsyncSessionLocal:
+        """Mock async context manager for database sessions."""
+
+        def __call__(self):
+            """Return self to act as context manager."""
+            return self
+
+        async def __aenter__(self):
+            """Enter context manager, return test db session."""
+            return db
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            """Exit context manager."""
+            # Don't close the session - let the test fixture manage it
+            return False
+
+    # Create instance of mock
+    mock_session_local = MockAsyncSessionLocal()
+
+    # Patch all AsyncSessionLocal imports in scheduler-related modules
+    with patch('app.services.scheduler.AsyncSessionLocal', mock_session_local), \
+         patch('app.services.restart_scheduler.AsyncSessionLocal', mock_session_local):
+        yield mock_session_local
+
+
+@pytest.fixture
 def sample_container_data():
     """Sample container data for testing."""
     return {

@@ -605,9 +605,13 @@ class SchedulerService:
         if not self.scheduler:
             return None
 
-        job = self.scheduler.get_job("update_check")
-        if job:
-            return job.next_run_time
+        try:
+            job = self.scheduler.get_job("update_check")
+            if job:
+                return job.next_run_time
+        except (JobLookupError, Exception) as e:
+            logger.warning(f"Failed to get job: {e}")
+            return None
 
         return None
 

@@ -85,8 +85,10 @@ def mock_metrics_collector():
         'skipped': 0
     })
     mock.cleanup_old_metrics = AsyncMock(return_value=150)
-    
-    with patch('app.services.scheduler.metrics_collector', mock):
+
+    # metrics_collector is imported inside try/except blocks in the methods
+    # Patch at the import location
+    with patch('app.services.metrics_collector.metrics_collector', mock):
         yield mock
 
 
@@ -94,6 +96,17 @@ def mock_metrics_collector():
 def scheduler_instance():
     """Create fresh scheduler instance for each test."""
     return SchedulerService()
+
+
+@pytest.fixture(autouse=True)
+def auto_mock_db(mock_async_session_local, db):
+    """Automatically apply database mocking to all tests in this module.
+
+    This ensures SchedulerService.start() and all job methods use the test database
+    instead of trying to create their own AsyncSessionLocal() connections.
+    """
+    # The fixture dependencies ensure mocking is active
+    pass
 
 
 class TestSchedulerLifecycle:
@@ -667,7 +680,10 @@ class TestMetricsJobs:
 
     async def test_handles_metrics_collector_import_error(self, scheduler_instance, mock_settings):
         """Test handles import error for metrics_collector."""
-        with patch('app.services.scheduler.metrics_collector', side_effect=ImportError("Module not found")):
+        # Patch the import to raise ImportError
+        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs:
+                   __import__(name, *args, **kwargs) if 'metrics_collector' not in name
+                   else (_ for _ in ()).throw(ImportError("Module not found"))):
             # Should not raise
             await scheduler_instance._run_metrics_collection()
 
