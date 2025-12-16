@@ -10,11 +10,11 @@ interface EventStreamEvent {
 }
 
 interface UseEventStreamOptions {
-  onUpdateAvailable?: (data: Record<string, unknown>) => void;
-  onUpdateApplied?: (data: Record<string, unknown>) => void;
-  onUpdateFailed?: (data: Record<string, unknown>) => void;
-  onContainerRestarted?: (data: Record<string, unknown>) => void;
-  onHealthCheckFailed?: (data: Record<string, unknown>) => void;
+  onUpdateAvailable?: (data: Record<string, unknown> | undefined) => void;
+  onUpdateApplied?: (data: Record<string, unknown> | undefined) => void;
+  onUpdateFailed?: (data: Record<string, unknown> | undefined) => void;
+  onContainerRestarted?: (data: Record<string, unknown> | undefined) => void;
+  onHealthCheckFailed?: (data: Record<string, unknown> | undefined) => void;
   enableToasts?: boolean;
 }
 
@@ -35,10 +35,10 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY);
   const isMountedRef = useRef(true);
-  const connectRef = useRef<() => void>();
+  const connectRef = useRef<(() => void) | undefined>(undefined);
 
   const handleEvent = useCallback((event: EventStreamEvent) => {
     const { type, data } = event;
@@ -70,7 +70,7 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
         onUpdateFailed?.(data);
         if (enableToasts) {
           toast.error(`Update failed for ${data?.container_name || 'container'}`, {
-            description: data?.error || 'Unknown error occurred',
+            description: String(data?.error ?? 'Unknown error occurred'),
           });
         }
         break;
@@ -88,7 +88,7 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
         onHealthCheckFailed?.(data);
         if (enableToasts) {
           toast.warning(`Health check failed for ${data?.container_name || 'container'}`, {
-            description: data?.error || 'Container may be unhealthy',
+            description: String(data?.error ?? 'Container may be unhealthy'),
           });
         }
         break;

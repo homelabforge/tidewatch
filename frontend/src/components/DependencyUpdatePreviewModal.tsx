@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Eye, Download, ArrowRight, FileText, AlertCircle, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppDependency, DockerfileDependency, HttpServer } from '../types';
 
-interface PreviewData {
+export interface PreviewData {
   current_line: string;
   new_line: string;
   file_path: string;
@@ -25,7 +25,7 @@ export default function DependencyUpdatePreviewModal({
   dependency,
   // dependencyType is passed for type safety but not currently used
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  dependencyType,
+  dependencyType: _dependencyType,
   onClose,
   onConfirmUpdate,
   onPreview,

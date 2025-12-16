@@ -138,9 +138,6 @@ describe('Dashboard', () => {
       status: 'pending',
       approved_by: null,
       approved_at: null,
-      rejected_by: null,
-      rejected_at: null,
-      rejection_reason: null,
       retry_count: 0,
       max_retries: 3,
       next_retry_at: null,
@@ -439,6 +436,8 @@ describe('Dashboard', () => {
     it('calls container sync on Scan button click', async () => {
       const { toast } = await import('sonner')
       vi.mocked(api.containers.sync).mockResolvedValue({
+        message: 'Sync completed',
+        success: true,
         containers_found: 5,
         stats: { added: 2, updated: 1, removed: 0, unchanged: 2 },
       })
@@ -486,6 +485,8 @@ describe('Dashboard', () => {
     it('calls update check on Check Updates button click', async () => {
       const { toast } = await import('sonner')
       vi.mocked(api.updates.checkAll).mockResolvedValue({
+        success: true,
+        message: 'Check completed',
         stats: { checked: 10, updates_found: 3 },
       })
 

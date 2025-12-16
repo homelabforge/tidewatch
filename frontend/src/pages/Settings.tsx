@@ -454,7 +454,7 @@ export default function Settings() {
 
   const handleTestConnection = async (type: 'docker' | 'dockerhub' | 'ghcr' | 'vulnforge' | 'ntfy' | 'gotify' | 'pushover' | 'slack' | 'discord' | 'telegram' | 'email') => {
     const setTestingState = {
-      docker: setTestingDocker,
+      docker: setTestingDockerHub,
       dockerhub: setTestingDockerHub,
       ghcr: setTestingGHCR,
       vulnforge: setTestingVulnForge,
@@ -652,7 +652,7 @@ export default function Settings() {
                                       {typeof settings[setting.key] !== 'boolean' && (
                                         <input
                                           type={typeof settings[setting.key] === 'number' ? 'number' : 'text'}
-                                          value={settings[setting.key] || ''}
+                                          value={String(settings[setting.key] || '')}
                                           onChange={(e) => {
                                             const value = typeof settings[setting.key] === 'number'
                                               ? parseInt(e.target.value) || 0
@@ -898,7 +898,7 @@ export default function Settings() {
                           Timezone
                         </label>
                         <select
-                          value={settings.timezone || 'UTC'}
+                          value={String(settings.timezone || 'UTC')}
                           onChange={(e) => updateSetting('timezone', e.target.value)}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
                         >
@@ -925,7 +925,7 @@ export default function Settings() {
                         <input
                           type="text"
                           placeholder="e.g., America/Phoenix"
-                          value={settings.timezone || ''}
+                          value={String(settings.timezone || '')}
                           onChange={(e) => updateSetting('timezone', e.target.value)}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
                         />
@@ -949,7 +949,7 @@ export default function Settings() {
                 <div className="bg-tide-surface/50 border border-tide-border rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <RefreshCw className={`w-5 h-5 ${schedulerStatus.running ? 'text-green-500' : 'text-tide-text-muted'}`} />
+                      <RefreshCw className={`w-5 h-5 ${Boolean(schedulerStatus.running) ? 'text-green-500' : 'text-tide-text-muted'}`} />
                       <div>
                         <h3 className="text-sm font-semibold text-tide-text">Update Scheduler</h3>
                         <p className="text-xs text-tide-text-muted">Background update checking service</p>
@@ -966,19 +966,19 @@ export default function Settings() {
                           )}
                         </p>
                       </div>
-                      {schedulerStatus.next_run && (
+                      {Boolean(schedulerStatus.next_run) && (
                         <div className="text-right">
                           <p className="text-xs text-tide-text-muted">Next Run</p>
                           <p className="text-sm font-medium text-tide-text">
-                            {formatDistanceToNow(new Date(schedulerStatus.next_run), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(String(schedulerStatus.next_run)), { addSuffix: true })}
                           </p>
                         </div>
                       )}
-                      {schedulerStatus.last_check && (
+                      {Boolean(schedulerStatus.last_check) && (
                         <div className="text-right">
                           <p className="text-xs text-tide-text-muted">Last Check</p>
                           <p className="text-sm font-medium text-tide-text">
-                            {formatDistanceToNow(new Date(schedulerStatus.last_check), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(String(schedulerStatus.last_check)), { addSuffix: true })}
                           </p>
                         </div>
                       )}
@@ -1053,7 +1053,7 @@ export default function Settings() {
                                       {typeof settings[setting.key] !== 'boolean' && (
                                         <input
                                           type={typeof settings[setting.key] === 'number' ? 'number' : 'text'}
-                                          value={settings[setting.key] || ''}
+                                          value={String(settings[setting.key] || '')}
                                           onChange={(e) => {
                                             const value = typeof settings[setting.key] === 'number'
                                               ? parseInt(e.target.value) || 0
@@ -1122,7 +1122,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.check_schedule || ''}
+                          value={String(settings.check_schedule || '')}
                           onChange={(e) => handleTextChange('check_schedule', e.target.value)}
                           disabled={saving}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -1177,13 +1177,13 @@ export default function Settings() {
                           <label className="block text-sm font-medium text-tide-text">
                             Max Concurrent Updates
                           </label>
-                          <span className="text-sm text-tide-text-muted">{settings.auto_update_max_concurrent || 3}</span>
+                          <span className="text-sm text-tide-text-muted">{String(settings.auto_update_max_concurrent || 3)}</span>
                         </div>
                         <input
                           type="range"
                           min="1"
                           max="10"
-                          value={settings.auto_update_max_concurrent || 3}
+                          value={String(Number(settings.auto_update_max_concurrent || 3))}
                           onChange={(e) => updateSetting('auto_update_max_concurrent', parseInt(e.target.value))}
                           disabled={saving}
                           className="w-full h-2 bg-tide-bg rounded-lg appearance-none cursor-pointer accent-teal-500"
@@ -1214,13 +1214,13 @@ export default function Settings() {
                           <label className="block text-sm font-medium text-tide-text">
                             Max Retry Attempts
                           </label>
-                          <span className="text-sm text-tide-text-muted">{settings.update_retry_max_attempts || 4}</span>
+                          <span className="text-sm text-tide-text-muted">{String(settings.update_retry_max_attempts || 4)}</span>
                         </div>
                         <input
                           type="range"
                           min="0"
                           max="10"
-                          value={settings.update_retry_max_attempts || 4}
+                          value={String(Number(settings.update_retry_max_attempts || 4))}
                           onChange={(e) => updateSetting('update_retry_max_attempts', parseInt(e.target.value))}
                           disabled={saving}
                           className="w-full h-2 bg-tide-bg rounded-lg appearance-none cursor-pointer accent-teal-500"
@@ -1235,14 +1235,14 @@ export default function Settings() {
                           <label className="block text-sm font-medium text-tide-text">
                             Backoff Multiplier
                           </label>
-                          <span className="text-sm text-tide-text-muted">{settings.update_retry_backoff_multiplier || 3}</span>
+                          <span className="text-sm text-tide-text-muted">{String(settings.update_retry_backoff_multiplier || 3)}</span>
                         </div>
                         <input
                           type="range"
                           min="1"
                           max="10"
                           step="0.5"
-                          value={settings.update_retry_backoff_multiplier || 3}
+                          value={String(Number(settings.update_retry_backoff_multiplier || 3))}
                           onChange={(e) => updateSetting('update_retry_backoff_multiplier', parseFloat(e.target.value))}
                           disabled={saving}
                           className="w-full h-2 bg-tide-bg rounded-lg appearance-none cursor-pointer accent-teal-500"
@@ -1274,7 +1274,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.default_update_window || ''}
+                          value={String(settings.default_update_window || '')}
                           onChange={(e) => handleTextChange('default_update_window', e.target.value)}
                           disabled={saving}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-purple-500 focus:outline-none"
@@ -1290,7 +1290,7 @@ export default function Settings() {
                           Window Enforcement
                         </label>
                         <select
-                          value={settings.update_window_enforcement || 'strict'}
+                          value={String(settings.update_window_enforcement || 'strict')}
                           onChange={(e) => updateSetting('update_window_enforcement', e.target.value)}
                           disabled={saving}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-purple-500 focus:outline-none"
@@ -1347,13 +1347,13 @@ export default function Settings() {
                           <label className="block text-sm font-medium text-tide-text">
                             Stale Threshold (Days)
                           </label>
-                          <span className="text-sm text-tide-text-muted">{settings.stale_detection_threshold_days || 7}</span>
+                          <span className="text-sm text-tide-text-muted">{String(settings.stale_detection_threshold_days || 7)}</span>
                         </div>
                         <input
                           type="range"
                           min="1"
                           max="90"
-                          value={settings.stale_detection_threshold_days || 7}
+                          value={String(Number(settings.stale_detection_threshold_days || 7))}
                           onChange={(e) => updateSetting('stale_detection_threshold_days', parseInt(e.target.value))}
                           disabled={saving}
                           className="w-full h-2 bg-tide-bg rounded-lg appearance-none cursor-pointer accent-teal-500"
@@ -1430,13 +1430,13 @@ export default function Settings() {
                           <label className="block text-sm font-medium text-tide-text">
                             Cleanup After Days
                           </label>
-                          <span className="text-sm text-tide-text-muted">{settings.cleanup_after_days || 7}</span>
+                          <span className="text-sm text-tide-text-muted">{String(settings.cleanup_after_days || 7)}</span>
                         </div>
                         <input
                           type="range"
                           min="0"
                           max="90"
-                          value={settings.cleanup_after_days || 7}
+                          value={String(Number(settings.cleanup_after_days || 7))}
                           onChange={(e) => updateSetting('cleanup_after_days', parseInt(e.target.value))}
                           disabled={saving}
                           className="w-full h-2 bg-tide-bg rounded-lg appearance-none cursor-pointer accent-teal-500"
@@ -1452,7 +1452,7 @@ export default function Settings() {
                           Cleanup Mode
                         </label>
                         <select
-                          value={settings.cleanup_mode || 'dangling'}
+                          value={String(settings.cleanup_mode || 'dangling')}
                           onChange={(e) => updateSetting('cleanup_mode', e.target.value)}
                           disabled={saving}
                           className="w-full px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -1497,7 +1497,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.cleanup_schedule || '0 4 * * *'}
+                          value={String(settings.cleanup_schedule || '0 4 * * *')}
                           onChange={(e) => updateSetting('cleanup_schedule', e.target.value)}
                           disabled={saving}
                           placeholder="0 4 * * *"
@@ -1515,7 +1515,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.cleanup_exclude_patterns || '-dev,rollback'}
+                          value={String(settings.cleanup_exclude_patterns || '-dev,rollback')}
                           onChange={(e) => updateSetting('cleanup_exclude_patterns', e.target.value)}
                           disabled={saving}
                           placeholder="-dev,rollback"
@@ -1634,7 +1634,7 @@ export default function Settings() {
                                       {typeof settings[setting.key] !== 'boolean' && (
                                         <input
                                           type={setting.encrypted ? 'password' : typeof settings[setting.key] === 'number' ? 'number' : 'text'}
-                                          value={settings[setting.key] || ''}
+                                          value={String(settings[setting.key] || '')}
                                           onChange={(e) => {
                                             const value = typeof settings[setting.key] === 'number'
                                               ? parseInt(e.target.value) || 0
@@ -1684,7 +1684,7 @@ export default function Settings() {
                             </label>
                             <input
                               type="text"
-                              value={settings.dockerhub_username || ''}
+                              value={String(settings.dockerhub_username || '')}
                               onChange={(e) => handleTextChange('dockerhub_username', e.target.value)}
                               disabled={saving}
                               className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -1699,7 +1699,7 @@ export default function Settings() {
                               </label>
                               <input
                                 type="password"
-                                value={settings.dockerhub_token || ''}
+                                value={String(settings.dockerhub_token || '')}
                                 onChange={(e) => handleTextChange('dockerhub_token', e.target.value)}
                                 disabled={saving}
                                 className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -1728,7 +1728,7 @@ export default function Settings() {
                             </label>
                             <input
                               type="text"
-                              value={settings.ghcr_username || ''}
+                              value={String(settings.ghcr_username || '')}
                               onChange={(e) => handleTextChange('ghcr_username', e.target.value)}
                               disabled={saving}
                               className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -1743,7 +1743,7 @@ export default function Settings() {
                               </label>
                               <input
                                 type="password"
-                                value={settings.ghcr_token || ''}
+                                value={String(settings.ghcr_token || '')}
                                 onChange={(e) => handleTextChange('ghcr_token', e.target.value)}
                                 disabled={saving}
                                 className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -1784,7 +1784,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.compose_directory || ''}
+                          value={String(settings.compose_directory || '')}
                           onChange={(e) => handleTextChange('compose_directory', e.target.value)}
                           disabled={saving}
                           placeholder="/compose"
@@ -1801,7 +1801,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.docker_compose_command || ''}
+                          value={String(settings.docker_compose_command || '')}
                           onChange={(e) => handleTextChange('docker_compose_command', e.target.value)}
                           disabled={saving}
                           placeholder='docker compose -p homelab -f /compose/base.yml -f /compose/backup.yml'
@@ -1860,7 +1860,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.projects_directory || ''}
+                          value={String(settings.projects_directory || '')}
                           onChange={(e) => handleTextChange('projects_directory', e.target.value)}
                           disabled={saving || !settings.my_projects_enabled}
                           placeholder="/projects"
@@ -1902,7 +1902,7 @@ export default function Settings() {
                         </label>
                         <input
                           type="text"
-                          value={settings.my_projects_compose_command || ''}
+                          value={String(settings.my_projects_compose_command || '')}
                           onChange={(e) => handleTextChange('my_projects_compose_command', e.target.value)}
                           disabled={saving || !settings.my_projects_enabled}
                           placeholder='docker compose'
@@ -1934,7 +1934,7 @@ export default function Settings() {
                           )}
                         </button>
                         <p className="text-xs text-tide-text-muted mt-2 text-center">
-                          Manually scan {settings.projects_directory || '/projects'} for dev containers
+                          Manually scan {String(settings.projects_directory || '/projects')} for dev containers
                         </p>
                       </div>
                     </div>
@@ -1985,7 +1985,7 @@ export default function Settings() {
                           Update Check Schedule
                         </label>
                         <select
-                          value={settings.dockerfile_scan_schedule || 'daily'}
+                          value={String(settings.dockerfile_scan_schedule || 'daily')}
                           onChange={(e) => updateSetting('dockerfile_scan_schedule', e.target.value)}
                           disabled={saving}
                           className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none disabled:opacity-50"
@@ -2100,7 +2100,7 @@ export default function Settings() {
                                       {typeof settings[setting.key] !== 'boolean' && (
                                         <input
                                           type={setting.encrypted ? 'password' : typeof settings[setting.key] === 'number' ? 'number' : 'text'}
-                                          value={settings[setting.key] || ''}
+                                          value={String(settings[setting.key] || '')}
                                           onChange={(e) => {
                                             const value = typeof settings[setting.key] === 'number'
                                               ? parseInt(e.target.value) || 0
@@ -2170,7 +2170,7 @@ export default function Settings() {
                           </label>
                           <input
                             type="text"
-                            value={settings.vulnforge_url || ''}
+                            value={String(settings.vulnforge_url || '')}
                             onChange={(e) => handleTextChange('vulnforge_url', e.target.value)}
                             disabled={saving}
                             placeholder="http://vulnforge:8787"
@@ -2261,7 +2261,7 @@ export default function Settings() {
                               </label>
                               <input
                                 type="text"
-                                value={settings.vulnforge_username || ''}
+                                value={String(settings.vulnforge_username || '')}
                                 onChange={(e) => handleTextChange('vulnforge_username', e.target.value)}
                                 disabled={saving}
                                 className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -2273,7 +2273,7 @@ export default function Settings() {
                               </label>
                               <input
                                 type="password"
-                                value={settings.vulnforge_password || ''}
+                                value={String(settings.vulnforge_password || '')}
                                 onChange={(e) => handleTextChange('vulnforge_password', e.target.value)}
                                 disabled={saving}
                                 className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
@@ -2290,7 +2290,7 @@ export default function Settings() {
                             </label>
                             <input
                               type="password"
-                              value={settings.vulnforge_api_key || ''}
+                              value={String(settings.vulnforge_api_key || '')}
                               onChange={(e) => handleTextChange('vulnforge_api_key', e.target.value)}
                               disabled={saving}
                               className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"

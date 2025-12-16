@@ -13,7 +13,7 @@ export default function DependencyIgnoreModal({
   dependency,
   // dependencyType is passed for type safety but not currently used
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  dependencyType,
+  dependencyType: _dependencyType,
   onClose,
   onConfirm,
 }: DependencyIgnoreModalProps) {

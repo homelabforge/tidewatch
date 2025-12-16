@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import StatusBadge from './StatusBadge';
 import DependencyIgnoreModal from './DependencyIgnoreModal';
-import DependencyUpdatePreviewModal from './DependencyUpdatePreviewModal';
+import DependencyUpdatePreviewModal, { type PreviewData } from './DependencyUpdatePreviewModal';
 
 interface ContainerModalProps {
   container: Container;
@@ -618,7 +618,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     setPreviewModalOpen(true);
   };
 
-  const handlePreviewLoad = async () => {
+  const handlePreviewLoad = async (): Promise<PreviewData> => {
     if (!dependencyToPreview) throw new Error('No dependency to preview');
 
     const { dependency, type } = dependencyToPreview;
@@ -1574,7 +1574,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                               <Tooltip
                                 contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                                 labelFormatter={(value) => format(new Date(value as string), 'PPpp')}
-                                formatter={(value: number, name: string) => [formatBytes(value), name]}
+                                formatter={(value, name?: string) => [formatBytes((value as number) || 0), name || '']}
                               />
                               <Legend />
                               <Line type="monotone" dataKey="network_rx" stroke="#8B5CF6" name="RX" />
@@ -1593,7 +1593,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                               <Tooltip
                                 contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                                 labelFormatter={(value) => format(new Date(value as string), 'PPpp')}
-                                formatter={(value: number, name: string) => [formatBytes(value), name]}
+                                formatter={(value, name?: string) => [formatBytes((value as number) || 0), name || '']}
                               />
                               <Legend />
                               <Line type="monotone" dataKey="block_read" stroke="#F59E0B" name="Read" />
@@ -1612,7 +1612,7 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                               <Tooltip
                                 contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                                 labelFormatter={(value) => format(new Date(value as string), 'PPpp')}
-                                formatter={(value: number) => [value, 'Processes']}
+                                formatter={(value) => [(value as number) || 0, 'Processes']}
                               />
                               <Legend />
                               <Line type="monotone" dataKey="pids" stroke="#06B6D4" name="PIDs" />

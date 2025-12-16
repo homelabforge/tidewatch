@@ -61,8 +61,8 @@ globalThis.EventSource = class EventSource {
   OPEN = 1
   CLOSED = 2
 
-  constructor(url: string) {
-    this.url = url
+  constructor(url: string | URL) {
+    this.url = typeof url === 'string' ? url : url.toString()
     EventSource.instances.push(this)
     // Simulate connection opening
     setTimeout(() => {
@@ -124,8 +124,16 @@ globalThis.EventSource = class EventSource {
     this.instances.forEach(instance => instance.close())
     this.instances = []
   }
+  // Add static constants to match EventSource interface
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
 } as unknown as {
-  new (url: string): EventSource
+  new (url: string | URL): EventSource
+  readonly CONNECTING: 0
+  readonly OPEN: 1
+  readonly CLOSED: 2
+  prototype: EventSource
   simulateEvent: (data: unknown) => void
   simulateError: () => void
   clearAll: () => void

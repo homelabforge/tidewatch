@@ -189,7 +189,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
-      if (status.setup_complete && status.auth_mode !== "none") {
+      if (status.setup_complete) {
         try {
           const profile = await authApi.getMe();
           setUser(profile);

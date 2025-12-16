@@ -20,6 +20,7 @@ import type {
   DockerfileDependenciesResponse,
   HttpServersResponse,
 } from '../types';
+import type { PreviewData } from '../components/DependencyUpdatePreviewModal';
 import type {
   AuthStatusResponse,
   SetupRequest,
@@ -59,7 +60,9 @@ function updateCsrfToken(response: Response): void {
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options?.headers,
+    ...(options?.headers instanceof Headers
+      ? Object.fromEntries(options.headers.entries())
+      : options?.headers as Record<string, string>),
   };
 
   // Add CSRF token for unsafe methods (POST, PUT, DELETE, PATCH)
@@ -567,7 +570,7 @@ const dependenciesApi = {
     }),
 
   previewDockerfileUpdate: (id: number, newVersion: string) =>
-    apiCall(`/dependencies/dockerfile/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+    apiCall<PreviewData>(`/dependencies/dockerfile/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
 
   updateDockerfile: async (id: number, newVersion: string) => {
     const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/dockerfile/${id}/update`, {
@@ -593,7 +596,7 @@ const dependenciesApi = {
     }),
 
   previewHttpServerUpdate: (id: number, newVersion: string) =>
-    apiCall(`/dependencies/http-servers/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+    apiCall<PreviewData>(`/dependencies/http-servers/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
 
   updateHttpServer: async (id: number, newVersion: string) => {
     const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/http-servers/${id}/update`, {
@@ -619,7 +622,7 @@ const dependenciesApi = {
     }),
 
   previewAppDependencyUpdate: (id: number, newVersion: string) =>
-    apiCall(`/dependencies/app-dependencies/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
+    apiCall<PreviewData>(`/dependencies/app-dependencies/${id}/preview?new_version=${encodeURIComponent(newVersion)}`),
 
   updateAppDependency: async (id: number, newVersion: string) => {
     const response = await apiCall<{ success: boolean; error?: string }>(`/dependencies/app-dependencies/${id}/update`, {

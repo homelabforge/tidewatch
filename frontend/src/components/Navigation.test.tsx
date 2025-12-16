@@ -132,6 +132,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -149,6 +152,9 @@ describe('Navigation', () => {
           username: 'oidcuser',
           email: 'oidc@example.com',
           full_name: 'OIDC User',
+          auth_method: 'oidc' as const,
+          oidc_provider: 'test-provider',
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -166,6 +172,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -185,6 +194,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -230,6 +242,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -261,6 +276,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -346,6 +364,9 @@ describe('Navigation', () => {
           username: '',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })
@@ -365,6 +386,9 @@ describe('Navigation', () => {
           username: 'testuser',
           email: 'test@example.com',
           full_name: 'Test User',
+          auth_method: 'local' as const,
+          oidc_provider: null,
+          last_login: '2025-01-01T00:00:00Z',
           created_at: '2025-01-01T00:00:00Z',
         },
       })

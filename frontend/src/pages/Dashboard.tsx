@@ -119,14 +119,14 @@ export default function Dashboard() {
 
     // Sort
     filtered.sort((a, b) => {
-      let aVal: unknown = a[sort.field as keyof Container];
-      let bVal: unknown = b[sort.field as keyof Container];
+      const aVal = a[sort.field as keyof Container];
+      const bVal = b[sort.field as keyof Container];
 
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      const aCompare: string | number = typeof aVal === 'string' ? aVal.toLowerCase() : String(aVal || '');
+      const bCompare: string | number = typeof bVal === 'string' ? bVal.toLowerCase() : String(bVal || '');
 
-      if (aVal < bVal) return sort.direction === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sort.direction === 'asc' ? 1 : -1;
+      if (aCompare < bCompare) return sort.direction === 'asc' ? -1 : 1;
+      if (aCompare > bCompare) return sort.direction === 'asc' ? 1 : -1;
       return 0;
     });
 

@@ -10,7 +10,7 @@ vi.mock('../services/api', () => {
     settings: {
       getAll: vi.fn(),
       get: vi.fn(),
-      set: vi.fn(),
+      update: vi.fn(),
       getCategories: vi.fn(),
     },
     backup: {
@@ -143,6 +143,9 @@ const createMockAuthContext = (overrides?: Partial<AuthContextType>): AuthContex
     email: 'admin@test.com',
     full_name: 'Admin User',
     created_at: '2025-01-01T00:00:00Z',
+    auth_method: 'local',
+    oidc_provider: null,
+    last_login: '2025-01-01T00:00:00Z',
   },
   authMode: 'local',
   isAuthenticated: true,
@@ -539,7 +542,7 @@ describe('Settings', () => {
   describe('Setting updates', () => {
     it('saves settings when changed', async () => {
       await import('sonner')
-      ;(api.settings.set as ReturnType<typeof vi.fn>).mockResolvedValue({ key: 'check_interval', value: '7200' })
+      ;(api.settings.update as ReturnType<typeof vi.fn>).mockResolvedValue({ key: 'check_interval', value: '7200' })
 
       renderSettings()
 
