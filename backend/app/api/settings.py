@@ -1,6 +1,6 @@
 """Settings API endpoints."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
@@ -205,7 +205,7 @@ async def test_docker_connection(
                 "containers": containers,
             }
         }
-    except docker.errors.DockerException as e:
+    except docker.errors.DockerException:
         return {
             "success": False,
             "message": "Failed to connect to Docker",
@@ -214,13 +214,13 @@ async def test_docker_connection(
                 "error": "An error occurred"
             }
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError, AttributeError) as e:
+    except (ValueError, KeyError, AttributeError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -315,19 +315,19 @@ async def test_vulnforge_connection(
                 "error": "Connection refused or host unreachable"
             }
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "VulnForge connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",
@@ -413,19 +413,19 @@ async def test_ntfy_connection(
                 "error": "Connection refused or host unreachable"
             }
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "ntfy connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -519,19 +519,19 @@ async def test_dockerhub_connection(
                 "error": "Connection refused or network unreachable"
             }
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Docker Hub connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",
@@ -614,19 +614,19 @@ async def test_gotify_connection(
                 "error": "Connection refused or host unreachable"
             }
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Gotify connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -702,19 +702,19 @@ async def test_pushover_connection(
             "message": "Cannot connect to Pushover API",
             "details": {"error": "Connection refused or network unreachable"}
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Pushover connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -784,19 +784,19 @@ async def test_slack_connection(
             "message": "Cannot connect to Slack",
             "details": {"error": "Connection refused or network unreachable"}
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Slack connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -869,19 +869,19 @@ async def test_discord_connection(
             "message": "Cannot connect to Discord",
             "details": {"error": "Connection refused or network unreachable"}
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Discord connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -964,19 +964,19 @@ async def test_telegram_connection(
             "message": "Cannot connect to Telegram API",
             "details": {"error": "Connection refused or network unreachable"}
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Telegram connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -1060,7 +1060,7 @@ async def test_email_connection(
                 "message": "Check your inbox for the test email"
             }
         }
-    except aiosmtplib.SMTPException as e:
+    except aiosmtplib.SMTPException:
         logger.error("SMTP test failed", exc_info=True)
         return {
             "success": False,
@@ -1081,19 +1081,19 @@ async def test_email_connection(
                 "error": "Connection refused"
             }
         }
-    except TimeoutError as e:
+    except TimeoutError:
         return {
             "success": False,
             "message": "SMTP connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -1206,19 +1206,19 @@ async def test_ghcr_connection(
                 "error": "Connection refused or network unreachable"
             }
         }
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {
             "success": False,
             "message": "GitHub connection timeout",
             "details": {"error": "An error occurred"}
         }
-    except OperationalError as e:
+    except OperationalError:
         return {
             "success": False,
             "message": "Database error",
             "details": {"error": "An error occurred"}
         }
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",

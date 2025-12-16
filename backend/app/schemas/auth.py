@@ -1,6 +1,5 @@
 """Authentication and OIDC schemas."""
 
-from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 import re

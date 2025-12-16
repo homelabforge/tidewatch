@@ -1,6 +1,6 @@
 """Update model for tracking available updates."""
 
-from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index
 from sqlalchemy.sql import func
 from app.db import Base
 

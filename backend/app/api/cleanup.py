@@ -10,7 +10,6 @@ from app.db import get_db
 from app.services.auth import require_auth
 from app.services.cleanup_service import CleanupService
 from app.services.settings_service import SettingsService
-from app.utils.error_handling import safe_error_response
 from app.utils.security import sanitize_log_message
 
 router = APIRouter()

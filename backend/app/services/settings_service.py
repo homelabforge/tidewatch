@@ -4,7 +4,6 @@ import os
 import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import OperationalError
 from app.models import Setting
 from typing import Optional, Dict, Any
 from app.utils.encryption import get_encryption_service, is_encryption_configured

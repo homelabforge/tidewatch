@@ -24,7 +24,7 @@ from app.models.oidc_pending_link import OIDCPendingLink
 from app.services.settings_service import SettingsService
 from app.utils.url_validation import validate_oidc_url
 from app.exceptions import SSRFProtectionError
-from app.utils.security import sanitize_log_message, mask_sensitive
+from app.utils.security import mask_sensitive
 
 logger = logging.getLogger(__name__)
 

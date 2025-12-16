@@ -9,15 +9,12 @@ Tests file operation utilities with security focus:
 """
 
 import os
-import shutil
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from app.utils.file_operations import (
-    ALLOWED_BASE_PATH,
     MAX_VERSION_LENGTH,
     MAX_FILE_SIZE,
     FileOperationError,

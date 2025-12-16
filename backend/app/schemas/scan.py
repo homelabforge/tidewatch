@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import List, Dict, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 
 class ScanResultSchema(BaseModel):

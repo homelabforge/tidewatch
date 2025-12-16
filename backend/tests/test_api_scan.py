@@ -7,7 +7,6 @@ Tests vulnerability scanning endpoints:
 - GET /api/v1/scan/summary - Scan summary statistics
 """
 
-import pytest
 from fastapi import status
 from unittest.mock import AsyncMock, patch
 from app.models.container import Container

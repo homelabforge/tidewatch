@@ -3,11 +3,10 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select
 from pathlib import Path
 from datetime import datetime, UTC
 import tomllib
-import subprocess
 import asyncio
 import shutil
 import logging

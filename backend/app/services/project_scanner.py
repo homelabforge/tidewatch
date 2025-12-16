@@ -1,10 +1,8 @@
 """Service for scanning and discovering dev containers in projects directory."""
 
-import os
-import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError

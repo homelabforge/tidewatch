@@ -87,7 +87,7 @@ def mock_async_session_local(db):
             # Service will now use the test db when it calls AsyncSessionLocal()
             await scheduler_service.start()
     """
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
     class MockAsyncSessionLocal:
         """Mock async context manager for database sessions."""

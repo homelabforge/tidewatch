@@ -4,7 +4,6 @@ Tests analytics and dashboard statistics endpoints:
 - GET /api/v1/analytics/summary - Analytics summary with trends and distributions
 """
 
-import pytest
 from fastapi import status
 from datetime import datetime, timezone, timedelta
 from app.models.container import Container

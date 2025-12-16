@@ -1,7 +1,6 @@
 """Docker Compose file parser for discovering containers."""
 
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional

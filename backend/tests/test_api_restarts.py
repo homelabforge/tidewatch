@@ -8,8 +8,7 @@ Tests container restart management endpoints:
 - POST /api/v1/restarts/{container_id}/resume - Resume restart
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 from fastapi import status
 from datetime import datetime, timezone
 
@@ -182,7 +181,6 @@ class TestResetRestartStateEndpoint:
     async def test_reset_restart_state(self, authenticated_client, db, make_container):
         """Test resets restart state clearing failures."""
         # Arrange - Create container and restart state
-        from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
         container = make_container(
@@ -265,7 +263,6 @@ class TestPauseRestartEndpoint:
     async def test_pause_restart(self, authenticated_client, db, make_container):
         """Test pauses auto-restart for duration."""
         # Arrange - Create container and restart state
-        from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
         container = make_container(
@@ -322,9 +319,8 @@ class TestResumeRestartEndpoint:
     async def test_resume_restart(self, authenticated_client, db, make_container):
         """Test resumes auto-restart after pause."""
         # Arrange - Create container and paused restart state
-        from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
-        from datetime import datetime, timedelta, timezone
+        from datetime import timedelta
 
         container = make_container(
             name="test-container",
@@ -377,7 +373,6 @@ class TestRestartStatsEndpoint:
     async def test_get_restart_stats(self, authenticated_client, db, make_container):
         """Test returns aggregate restart statistics."""
         # Arrange - Create some restart states
-        from app.models.container import Container
         from app.models.restart_state import ContainerRestartState
 
         for i in range(3):

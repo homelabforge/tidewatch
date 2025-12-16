@@ -11,7 +11,7 @@ Tests OIDC/OAuth2 authentication endpoints:
 
 import pytest
 from fastapi import status
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 
 class TestOIDCConfigEndpoint:

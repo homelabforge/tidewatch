@@ -3,7 +3,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.orm import undefer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
@@ -14,7 +14,6 @@ from app.models.history import UpdateHistory
 from app.models.restart_log import ContainerRestartLog
 from app.schemas.history import UpdateHistorySchema, UnifiedHistoryEventSchema
 from app.services.update_engine import UpdateEngine
-from app.utils.error_handling import safe_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +318,7 @@ async def rollback_update(
 
         return result
 
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:
         logger.error(f"Database error during rollback: {e}")

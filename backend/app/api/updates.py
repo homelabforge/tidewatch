@@ -18,7 +18,6 @@ from app.schemas.update import UpdateSchema, UpdateApproval, UpdateApply
 from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
 from app.services.scheduler import scheduler_service
-from app.utils.error_handling import safe_error_response
 from app.utils.security import sanitize_log_message
 
 router = APIRouter()
@@ -408,7 +407,7 @@ async def apply_update(
 
         return result
 
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:
         logger.error(f"Database error applying update: {sanitize_log_message(str(e))}")

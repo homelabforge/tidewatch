@@ -115,7 +115,7 @@ def validate_filename(filename: str) -> Path:
     # Use sanitize_path to prevent path traversal attacks
     try:
         backup_path = sanitize_path(safe_name, BACKUP_DIR, allow_symlinks=False)
-    except (ValueError, FileNotFoundError) as e:
+    except (ValueError, FileNotFoundError):
         raise HTTPException(status_code=400, detail="Invalid file path")
 
     return backup_path

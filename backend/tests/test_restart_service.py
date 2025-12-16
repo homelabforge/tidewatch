@@ -12,7 +12,6 @@ Tests intelligent container restart with exponential backoff:
 """
 
 import pytest
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 

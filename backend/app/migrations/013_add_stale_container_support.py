@@ -8,7 +8,6 @@ stale container notifications for a configurable period.
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 

@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import httpx
 import docker
 from datetime import datetime

@@ -2,9 +2,6 @@
 
 import pytest
 from fastapi import status
-from httpx import AsyncClient, ASGITransport
-from app.main import app
-from app.models.container import Container
 
 
 @pytest.mark.asyncio
@@ -599,7 +596,6 @@ class TestContainerStats:
 
     async def test_get_container_update_history(self, authenticated_client, db, make_container):
         """Test retrieving container update history."""
-        from app.models.container import Container
         from app.models.history import UpdateHistory
         from datetime import datetime, timezone
 
@@ -654,7 +650,6 @@ class TestContainerStats:
 
     async def test_get_container_history_pagination(self, authenticated_client, db, make_container):
         """Test history endpoint pagination."""
-        from app.models.container import Container
         from app.models.history import UpdateHistory
         from datetime import datetime, timezone
 

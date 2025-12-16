@@ -1,18 +1,17 @@
 """Service for scanning and tracking application dependencies."""
 
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 import httpx
 import logging
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.app_dependency import AppDependency as AppDependencyModel
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)

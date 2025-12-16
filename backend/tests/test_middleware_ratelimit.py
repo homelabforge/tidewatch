@@ -11,7 +11,7 @@ Tests token bucket algorithm rate limiting:
 
 import pytest
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

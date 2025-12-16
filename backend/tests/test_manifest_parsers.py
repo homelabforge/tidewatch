@@ -16,8 +16,6 @@ Security focus:
 
 import pytest
 import json
-import tempfile
-from pathlib import Path
 
 from app.utils.manifest_parsers import (
     update_package_json,
@@ -26,7 +24,6 @@ from app.utils.manifest_parsers import (
     update_composer_json,
     update_cargo_toml,
     update_go_mod,
-    ManifestUpdateError,
 )
 
 

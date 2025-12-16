@@ -4,10 +4,9 @@ Tests Server-Sent Events (SSE) endpoint:
 - GET /api/v1/events/stream - SSE event stream
 """
 
-import pytest
 import asyncio
 import json
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 from fastapi import status
 
 

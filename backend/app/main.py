@@ -5,7 +5,7 @@ import os
 import secrets
 import tomllib
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
@@ -357,7 +357,6 @@ async def health_check():
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
-    from fastapi.responses import Response
     from app.services.metrics import collect_metrics, get_metrics, get_content_type
     from app.db import AsyncSessionLocal
 
@@ -374,7 +373,6 @@ from app.api import api_router
 app.include_router(api_router)
 
 # Serve frontend static files (in production)
-from pathlib import Path
 
 static_dir = Path("/app/static")
 

@@ -15,10 +15,8 @@ Single-User Adaptations:
 """
 
 import logging
-import secrets
 import httpx
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession

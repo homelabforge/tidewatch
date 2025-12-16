@@ -25,7 +25,6 @@ from app.schemas.restart import (
     RestartActionResponse,
 )
 from app.services.restart_service import RestartService
-from app.utils.error_handling import safe_error_response
 import logging
 
 logger = logging.getLogger(__name__)

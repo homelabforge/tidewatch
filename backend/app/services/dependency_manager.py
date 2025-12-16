@@ -3,7 +3,6 @@
 import json
 import logging
 from typing import List, Dict, Set, Optional, Tuple
-from functools import lru_cache
 import hashlib
 
 from sqlalchemy import select

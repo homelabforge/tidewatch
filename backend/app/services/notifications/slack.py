@@ -7,7 +7,7 @@ import httpx
 
 from app.services.notifications.base import NotificationService
 from app.utils.url_validation import validate_url_for_ssrf
-from app.utils.security import mask_sensitive, sanitize_log_message
+from app.utils.security import sanitize_log_message
 from app.exceptions import SSRFProtectionError
 
 logger = logging.getLogger(__name__)

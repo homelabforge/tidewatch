@@ -838,8 +838,6 @@ async def restart_container(
     Returns:
         Success message
     """
-    from app.services import SettingsService
-    from pathlib import Path
     from app.utils.validators import (
         validate_container_name,
         validate_compose_file_path,
@@ -859,7 +857,7 @@ async def restart_container(
     # Validate container name to prevent command injection
     try:
         validated_name = validate_container_name(container.name)
-    except ValidationError as e:
+    except ValidationError:
         raise HTTPException(
             status_code=400,
             detail="Invalid container name"

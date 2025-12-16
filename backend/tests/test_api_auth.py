@@ -295,7 +295,6 @@ class TestLoginEndpoint:
 
     async def test_login_sql_injection_attempt(self, client, db, admin_user):
         """Test login prevents SQL injection attacks."""
-        from app.services.settings_service import SettingsService
         # admin_user fixture already sets auth_mode="local" and creates admin
 
         login_data = {
@@ -376,7 +375,6 @@ class TestLogoutEndpoint:
 
     async def test_logout_without_token(self, client, db):
         """Test logout without token succeeds when auth_mode is none."""
-        from app.services.settings_service import SettingsService
         # By default auth_mode="none", so require_auth returns None (no enforcement)
 
         response = await client.post("/api/v1/auth/logout")

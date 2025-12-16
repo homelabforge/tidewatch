@@ -8,7 +8,6 @@ Tests cleanup task endpoints:
 - GET /api/v1/cleanup/settings - Get cleanup settings
 """
 
-import pytest
 from unittest.mock import patch, AsyncMock
 from fastapi import status
 

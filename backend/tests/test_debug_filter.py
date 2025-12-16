@@ -1,6 +1,5 @@
 """Debug test to see what's happening with filtering."""
 import pytest
-from fastapi import status
 from app.models.container import Container
 
 

@@ -10,14 +10,12 @@ Tests JWT authentication, password hashing, and admin management:
 """
 
 import pytest
-import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from authlib.jose import jwt
-from argon2.exceptions import VerifyMismatchError
 from fastapi import HTTPException
 
 from app.services import auth
@@ -34,7 +32,6 @@ from app.services.auth import (
     authenticate_admin,
     get_auth_mode,
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
-    JWT_ALGORITHM,
 )
 
 

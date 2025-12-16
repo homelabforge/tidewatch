@@ -17,7 +17,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 from app.services.compose_parser import (
     ComposeParser,
@@ -25,7 +25,6 @@ from app.services.compose_parser import (
     validate_compose_file_path,
     validate_tag_format
 )
-from app.models.container import Container
 
 
 class TestValidateContainerName:

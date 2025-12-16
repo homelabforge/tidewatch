@@ -9,12 +9,10 @@ Tests webhook management endpoints:
 - POST /api/v1/webhooks/{id}/test - Test webhook delivery
 """
 
-import pytest
 from fastapi import status
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.models.webhook import Webhook
 from app.utils.encryption import encrypt_value
-import httpx
 
 
 class TestListWebhooksEndpoint:

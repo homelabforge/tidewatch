@@ -9,7 +9,6 @@ Tests AES-128 Fernet encryption/decryption for sensitive data:
 - is_encrypted() detection logic
 """
 
-import os
 import pytest
 from cryptography.fernet import Fernet
 
@@ -19,7 +18,6 @@ from app.utils.encryption import (
     encrypt_value,
     decrypt_value,
     is_encryption_configured,
-    _encryption_service,
 )
 
 

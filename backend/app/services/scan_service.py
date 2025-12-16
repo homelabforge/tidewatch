@@ -1,9 +1,9 @@
 """Service layer for vulnerability scanning operations."""
 
 import logging
-from typing import List, Optional
+from typing import List
 from datetime import datetime, timezone
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container

@@ -2,12 +2,10 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import undefer
 
 from app.db import get_db
 from app.models.container import Container
@@ -16,9 +14,6 @@ from app.models.http_server import HttpServer
 from app.models.app_dependency import AppDependency
 from app.models.history import UpdateHistory
 from app.schemas.dependency import (
-    DockerfileDependencySchema,
-    HttpServerSchema,
-    AppDependencySchema,
     IgnoreRequest,
     UpdateRequest,
     PreviewResponse,

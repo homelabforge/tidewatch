@@ -9,9 +9,7 @@ Tests CSRF protection using session-based token storage:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.middleware.csrf import CSRFProtectionMiddleware
@@ -213,7 +211,6 @@ class TestCSRFTokenValidation:
     def test_csrf_validation_uses_constant_time_comparison(self):
         """Test CSRF uses constant-time comparison (secrets.compare_digest)."""
         # This is a security test to prevent timing attacks
-        import secrets
         from app.middleware.csrf import CSRFProtectionMiddleware
 
         # Verify secrets.compare_digest is used in the source code

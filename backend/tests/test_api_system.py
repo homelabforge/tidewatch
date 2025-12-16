@@ -10,9 +10,7 @@ Tests system information and health endpoints:
 
 import pytest
 from fastapi import status
-from unittest.mock import patch, MagicMock
 from app.models.container import Container
-from app.models.update import Update
 
 
 class TestSystemInfoEndpoint:

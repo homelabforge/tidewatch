@@ -13,13 +13,11 @@ Tests version parsing, prerelease detection, and tag filtering:
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
-from packaging.version import Version
+from unittest.mock import MagicMock, patch
 
 from app.services.registry_client import (
     is_prerelease_tag,
     TagCache,
-    RegistryClient,
     canonical_arch_suffix,
     NON_PEP440_PRERELEASE_INDICATORS
 )

@@ -8,9 +8,7 @@ Tests backup and restore endpoints:
 - GET /api/v1/backup/stats - Backup statistics
 """
 
-import pytest
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock
 from fastapi import status

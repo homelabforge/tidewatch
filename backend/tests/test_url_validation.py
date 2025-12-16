@@ -10,7 +10,7 @@ Tests SSRF (Server-Side Request Forgery) protection:
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import socket
 
 from app.utils.url_validation import (
@@ -18,7 +18,6 @@ from app.utils.url_validation import (
     resolve_hostname,
     validate_url_for_ssrf,
     validate_oidc_url,
-    PRIVATE_IP_RANGES,
     LOCALHOST_HOSTNAMES,
 )
 from app.exceptions import SSRFProtectionError

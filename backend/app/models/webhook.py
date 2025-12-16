@@ -1,6 +1,5 @@
 """Webhook model for event notifications."""
 
-from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, func
 from app.db import Base
 

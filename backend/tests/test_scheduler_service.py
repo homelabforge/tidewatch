@@ -13,11 +13,10 @@ Tests background job scheduling and execution:
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch, call, ANY
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from unittest.mock import AsyncMock, MagicMock, patch, ANY
 from apscheduler.triggers.cron import CronTrigger
 
-from app.services.scheduler import SchedulerService, scheduler_service
+from app.services.scheduler import SchedulerService
 
 
 # Mock fixtures

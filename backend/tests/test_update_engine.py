@@ -12,14 +12,12 @@ Tests update orchestration workflow including:
 
 import pytest
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
-import json
 
 from app.services.update_engine import UpdateEngine
 from app.models.container import Container
-from app.models.update import Update
 from app.models.history import UpdateHistory
 from app.utils.validators import ValidationError
 

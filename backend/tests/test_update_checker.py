@@ -12,13 +12,10 @@ Tests update discovery, auto-approval logic, and changelog classification:
 """
 
 import pytest
-import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.update_checker import UpdateChecker
 from app.models.container import Container
-from app.models.update import Update
 
 
 class TestAutoApprovalLogic:

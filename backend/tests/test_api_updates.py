@@ -70,7 +70,6 @@ class TestListUpdatesEndpoint:
 
     async def test_list_updates_filter_by_container(self, authenticated_client, db, make_update, make_container):
         """Test filtering updates by container_id."""
-        from app.models.update import Update
 
         # Create two containers with all required fields
         container1 = make_container(
@@ -176,7 +175,6 @@ class TestGetUpdateEndpoint:
 
     async def test_get_update_valid_id(self, authenticated_client, db, make_update, make_container):
         """Test getting update by valid ID returns update object."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and update
@@ -327,7 +325,6 @@ class TestApproveUpdateEndpoint:
 
     async def test_approve_update_pending(self, authenticated_client, db, make_update, make_container):
         """Test approving pending update changes status to approved."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and pending update
@@ -370,7 +367,6 @@ class TestApproveUpdateEndpoint:
 
     async def test_approve_update_already_approved(self, authenticated_client, db, make_update, make_container):
         """Test approving already approved update is idempotent (returns 200)."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and already-approved update
@@ -409,7 +405,6 @@ class TestApproveUpdateEndpoint:
 
     async def test_approve_update_already_applied(self, authenticated_client, db, make_update, make_container):
         """Test approving already applied update returns 400."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and already-applied update
@@ -447,7 +442,6 @@ class TestApproveUpdateEndpoint:
 
     async def test_approve_update_adds_timestamp(self, authenticated_client, db, make_update, make_container):
         """Test approve adds approval timestamp and user."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and pending update
@@ -509,7 +503,6 @@ class TestRejectUpdateEndpoint:
 
     async def test_reject_update_pending(self, authenticated_client, db, make_update, make_container):
         """Test rejecting pending update changes status to rejected."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and pending update
@@ -554,7 +547,6 @@ class TestRejectUpdateEndpoint:
 
     async def test_reject_update_already_rejected(self, authenticated_client, db, make_update, make_container):
         """Test rejecting already rejected update returns 400."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and already-rejected update
@@ -588,8 +580,6 @@ class TestRejectUpdateEndpoint:
 
     async def test_reject_update_adds_reason(self, authenticated_client, db, make_update, make_container):
         """Test reject adds rejection reason."""
-        from app.models.update import Update
-        from datetime import datetime, timezone
 
         # Create test container and update
         container = make_container(
@@ -649,7 +639,6 @@ class TestApplyUpdateEndpoint:
 
     async def test_apply_update_approved(self, authenticated_client, db, mock_docker_client, make_update, make_container):
         """Test applying approved update triggers update engine."""
-        from app.models.update import Update
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
@@ -704,7 +693,6 @@ class TestApplyUpdateEndpoint:
 
     async def test_apply_update_pending_rejected(self, authenticated_client, db, make_update, make_container):
         """Test applying pending update returns 400 (must approve first)."""
-        from app.models.update import Update
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
@@ -744,7 +732,6 @@ class TestApplyUpdateEndpoint:
 
     async def test_apply_update_failed_retry(self, authenticated_client, db, make_update, make_container):
         """Test applying failed update allows retry."""
-        from app.models.update import Update
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
@@ -793,7 +780,6 @@ class TestApplyUpdateEndpoint:
 
     async def test_apply_update_creates_history(self, authenticated_client, db, make_update, make_container):
         """Test apply creates history entry."""
-        from app.models.update import Update
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
@@ -883,7 +869,6 @@ class TestApplyUpdateEndpoint:
 
     async def test_apply_update_container_deleted(self, authenticated_client, db, make_update, make_container):
         """Test apply when container was deleted returns 400."""
-        from app.models.update import Update
         from datetime import datetime, timezone
         from unittest.mock import patch, AsyncMock
 
@@ -972,7 +957,6 @@ class TestDeleteUpdateEndpoint:
 
     async def test_delete_update_applied_rejected(self, authenticated_client, db, make_update, make_container):
         """Test deleting applied/rejected updates is allowed."""
-        from app.models.update import Update
         from datetime import datetime, timezone
 
         # Create test container and rejected update
@@ -1018,7 +1002,6 @@ class TestBatchOperations:
 
     async def test_batch_approve_multiple(self, authenticated_client, db, make_update, make_container):
         """Test batch approve approves multiple updates."""
-        from app.models.update import Update
 
         # Create container with all required fields
         container = make_container(
@@ -1083,7 +1066,6 @@ class TestBatchOperations:
 
     async def test_batch_approve_mixed_statuses(self, authenticated_client, db, make_update, make_container):
         """Test batch approve with mixed statuses returns partial success."""
-        from app.models.update import Update
 
         # Create container with all required fields
         container = make_container(
@@ -1145,7 +1127,6 @@ class TestBatchOperations:
 
     async def test_batch_approve_returns_summary(self, authenticated_client, db, make_update, make_container):
         """Test batch approve returns approval summary."""
-        from app.models.update import Update
 
         # Create container with all required fields
         container = make_container(
@@ -1202,7 +1183,6 @@ class TestBatchOperations:
 
     async def test_batch_reject_multiple(self, authenticated_client, db, make_update, make_container):
         """Test batch reject rejects multiple updates."""
-        from app.models.update import Update
 
         # Create container with all required fields
         container = make_container(
