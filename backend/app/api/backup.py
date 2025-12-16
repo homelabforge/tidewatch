@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db, DATABASE_URL
 from app.services import SettingsService
 from app.services.auth import require_auth
-from app.utils.security import sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 from app.utils.error_handling import safe_error_response
 
 router = APIRouter()
@@ -112,14 +112,10 @@ def validate_filename(filename: str) -> Path:
     if not safe_name.endswith(".json"):
         raise HTTPException(status_code=400, detail="Invalid file type. Must be .json")
 
-    # Check for suspicious patterns
-    if ".." in safe_name or "/" in safe_name or "\\" in safe_name:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    backup_path = BACKUP_DIR / safe_name
-
-    # Ensure the resolved path is within backup directory
-    if not str(backup_path.resolve()).startswith(str(BACKUP_DIR.resolve())):
+    # Use sanitize_path to prevent path traversal attacks
+    try:
+        backup_path = sanitize_path(safe_name, BACKUP_DIR, allow_symlinks=False)
+    except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail="Invalid file path")
 
     return backup_path

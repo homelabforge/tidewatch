@@ -147,9 +147,11 @@ def sanitize_path(user_path: Union[str, Path], base_dir: Union[str, Path], allow
         # If relative, it will be relative to base
         if Path(user_path).is_absolute():
             # For absolute paths, resolve and check if within base
+            # lgtm[py/path-injection] - This is the path validation function itself
             target = Path(user_path).resolve()
         else:
             # For relative paths, resolve relative to base
+            # lgtm[py/path-injection] - This is the path validation function itself
             target = (base / user_path).resolve()
     except (OSError, RuntimeError) as e:
         # Resolve can fail on invalid paths, circular symlinks, etc.
@@ -159,6 +161,7 @@ def sanitize_path(user_path: Union[str, Path], base_dir: Union[str, Path], allow
     if not allow_symlinks:
         # Check if the path itself is a symlink
         try:
+            # lgtm[py/path-injection] - This is the path validation function itself
             if (base / user_path).exists() and (base / user_path).is_symlink():
                 raise ValueError(f"Symbolic links not allowed: {user_path}")
         except (OSError, RuntimeError):
