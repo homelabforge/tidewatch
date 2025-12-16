@@ -51,6 +51,14 @@ yarn-error.log*
 .DS_Store
 
 # TideWatch specific
+data-dev/
+data-dev/*.db
+data-dev/*.db-shm
+data-dev/*.db-wal
+data-dev/*.db.backup-*
+data-dev/*.key
+data-dev/backups/
+data-dev/security.log
 data/
 data/*.db
 data/*.db-shm
