@@ -529,7 +529,7 @@ async def get_restart_stats(
             )
         )
     )
-    paused = paused_result.scalar_one()
+    paused_result.scalar_one()
 
     # Max retries reached
     max_retries_result = await db.execute(
@@ -537,7 +537,7 @@ async def get_restart_stats(
             ContainerRestartState.max_retries_reached
         )
     )
-    max_retries_reached = max_retries_result.scalar_one()
+    max_retries_result.scalar_one()
 
     # Restarts today
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -575,9 +575,9 @@ async def get_restart_stats(
 
     if recent_logs:
         successful = sum(1 for log in recent_logs if log.success)
-        success_rate = (successful / len(recent_logs)) * 100
+        (successful / len(recent_logs)) * 100
     else:
-        success_rate = 100.0
+        pass
 
     return RestartStatsResponse(
         total_containers=total_monitored,

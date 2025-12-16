@@ -99,7 +99,7 @@ class ProjectScanner:
                 errors.append(str(e))
 
         # Remove containers that are marked as My Projects but weren't found in scan
-        stmt = select(Container).where(Container.is_my_project == True)
+        stmt = select(Container).where(Container.is_my_project)
         result = await self.db.execute(stmt)
         all_my_projects = result.scalars().all()
 
@@ -319,7 +319,7 @@ class ProjectScanner:
         Returns:
             Number of containers removed
         """
-        stmt = select(Container).where(Container.is_my_project == True)
+        stmt = select(Container).where(Container.is_my_project)
         result = await self.db.execute(stmt)
         my_projects = result.scalars().all()
 

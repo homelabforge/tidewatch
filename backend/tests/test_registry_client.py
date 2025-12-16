@@ -538,7 +538,7 @@ class TestDockerHubClient:
         mock_response.raise_for_status = MagicMock()
 
         with patch.object(client.client, "get", return_value=mock_response) as mock_get:
-            tags = await client.get_all_tags("nginx")
+            await client.get_all_tags("nginx")
 
             # Should have called API with "library/nginx"
             called_url = mock_get.call_args[0][0]

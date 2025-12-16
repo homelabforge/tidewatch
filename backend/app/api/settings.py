@@ -491,7 +491,7 @@ async def test_dockerhub_connection(
             )
             profile_response.raise_for_status()
 
-            profile_data = profile_response.json()
+            profile_response.json()
 
             return {
                 "success": True,

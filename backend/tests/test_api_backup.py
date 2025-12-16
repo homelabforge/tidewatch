@@ -26,7 +26,7 @@ class TestCreateBackupEndpoint:
         await db.commit()
 
         # Mock file operations
-        with patch('builtins.open', mock_open()) as mock_file, \
+        with patch('builtins.open', mock_open()), \
              patch('app.api.backup.BACKUP_DIR') as mock_dir:
 
             mock_dir.__truediv__ = MagicMock(return_value=Path("/data/backups/test.json"))
@@ -61,7 +61,7 @@ class TestCreateBackupEndpoint:
             backup_data_captured = data
 
         # Mock file operations
-        with patch('builtins.open', mock_open()) as mock_file, \
+        with patch('builtins.open', mock_open()), \
              patch('json.dump', side_effect=capture_json_dump), \
              patch('app.api.backup.BACKUP_DIR') as mock_dir:
 

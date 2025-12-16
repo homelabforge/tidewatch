@@ -125,7 +125,7 @@ class ScanService:
         """
         # Get all containers with VulnForge enabled
         result = await db.execute(
-            select(Container).where(Container.vulnforge_enabled == True)
+            select(Container).where(Container.vulnforge_enabled)
         )
         containers = result.scalars().all()
 

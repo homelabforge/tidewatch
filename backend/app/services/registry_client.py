@@ -52,7 +52,7 @@ def is_prerelease_tag(tag: str) -> bool:
             if sep in tag_lower:
                 parts = tag_lower.split(sep, 1)
                 try:
-                    base_parsed = Version(parts[0])
+                    Version(parts[0])
                     # Base is valid, check if suffix indicates prerelease
                     suffix = parts[1].lower()
                     # Check non-PEP 440 indicators in suffix
@@ -380,7 +380,6 @@ class RegistryClient(ABC):
         if version == "latest":
             return None
 
-        original = version
         if "+" in version:
             version = version.split("+", 1)[0]
 

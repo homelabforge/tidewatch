@@ -239,7 +239,7 @@ async def create_backup(
         logger.info(f"Created backup: {sanitize_log_message(str(filename))}")
 
         # Get file stats
-        stat = backup_path.stat()
+        backup_path.stat()
 
         return {
             "message": "Backup created successfully",

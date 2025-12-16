@@ -57,7 +57,7 @@ async def collect_metrics(db: AsyncSession) -> None:
     containers_total.set(result.scalar() or 0)
 
     result = await db.execute(
-        select(func.count()).select_from(Container).where(Container.update_available == True)
+        select(func.count()).select_from(Container).where(Container.update_available)
     )
     containers_with_updates.set(result.scalar() or 0)
 

@@ -33,7 +33,7 @@ async def get_widget(
 
     # Get containers with updates available
     updates_available_result = await db.execute(
-        select(func.count(Container.id)).where(Container.update_available == True)
+        select(func.count(Container.id)).where(Container.update_available)
     )
     updates_available = updates_available_result.scalar() or 0
 
@@ -224,7 +224,7 @@ async def get_widget_data(
 
     # Get containers with updates available
     updates_available_result = await db.execute(
-        select(func.count(Container.id)).where(Container.update_available == True)
+        select(func.count(Container.id)).where(Container.update_available)
     )
     updates_available = updates_available_result.scalar() or 0
 

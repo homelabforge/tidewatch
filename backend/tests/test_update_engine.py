@@ -25,8 +25,6 @@ from app.utils.validators import ValidationError
 @pytest.fixture
 def mock_filesystem():
     """Mock filesystem operations for path validation tests."""
-    original_init = Path.__init__
-    original_resolve = Path.resolve
 
     def mock_resolve(self, strict=True):
         # Return self for resolve() calls to bypass filesystem checks

@@ -1032,7 +1032,7 @@ class TestSchedulerEdgeCases:
 
         with patch.object(scheduler_instance.scheduler, 'get_job', side_effect=Exception("Job not found")):
             # Should not crash
-            next_run = scheduler_instance.get_next_run_time()
+            scheduler_instance.get_next_run_time()
             # May return None or handle error
 
     async def test_sequential_start_stop_cycles(self, scheduler_instance, mock_settings):

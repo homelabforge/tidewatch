@@ -407,13 +407,12 @@ class TestRateLimitSecurity:
     def test_endpoint_specific_refill_rates(self):
         """Test endpoint-specific limits have correct refill rates."""
         app = FastAPI()
-        middleware = RateLimitMiddleware(app, requests_per_minute=60)
+        RateLimitMiddleware(app, requests_per_minute=60)
 
         # Login: 5 requests per 300 seconds = 5/5 = 1 request/minute = 1/60 request/second
         # Actually: 5 / (300 / 60) = 5 / 5 = 1 request/minute
         # Which is: 1 / 60 tokens per second = 0.01667 tokens/sec
 
-        endpoint_limits = middleware.dispatch.__code__.co_consts
         # This test verifies the logic exists; actual calculation tested in integration
 
 

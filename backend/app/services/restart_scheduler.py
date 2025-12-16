@@ -81,7 +81,7 @@ class RestartSchedulerService:
             try:
                 # Get all containers with auto-restart enabled
                 result = await db.execute(
-                    select(Container).where(Container.auto_restart_enabled == True)
+                    select(Container).where(Container.auto_restart_enabled)
                 )
                 containers = result.scalars().all()
 
@@ -154,7 +154,7 @@ class RestartSchedulerService:
             # Get exit information
             exit_code = container_state.get("exit_code")
             oom_killed = container_state.get("oom_killed", False)
-            error = container_state.get("error", "")
+            container_state.get("error", "")
 
             # Determine if we should retry
             should_retry, failure_reason = await container_monitor.should_retry_restart(

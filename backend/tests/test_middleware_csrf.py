@@ -182,7 +182,7 @@ class TestCSRFTokenValidation:
     def test_post_with_invalid_csrf_token_fails(self, client):
         """Test POST with invalid CSRF token returns 403."""
         # Get valid token
-        get_response = client.get("/test")
+        client.get("/test")
 
         # Use wrong token
         response = client.post(
@@ -365,7 +365,7 @@ class TestCSRFSecurityProperties:
         client = TestClient(app, base_url="https://example.com")
 
         response = client.get("/test")
-        set_cookie = response.headers.get("set-cookie", "")
+        response.headers.get("set-cookie", "")
 
         # In production (HTTPS), cookie should be Secure
         # Note: TestClient doesn't fully simulate HTTPS, so check env var effect

@@ -492,7 +492,7 @@ class SchedulerService:
                 if updates_found > 0:
                     # Get all dependencies with updates
                     stmt = select(DockerfileDependency).where(
-                        DockerfileDependency.update_available == True
+                        DockerfileDependency.update_available
                     )
                     result = await db.execute(stmt)
                     deps_with_updates = result.scalars().all()
