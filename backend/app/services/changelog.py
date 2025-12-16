@@ -62,6 +62,13 @@ class ChangelogFetcher:
             return None
 
     async def _fetch_github_release(self, owner_repo: str, tag: str) -> Optional[ChangelogResult]:
+        # Validate owner_repo format to prevent path traversal in URL construction
+        # Valid format: owner/repo (alphanumeric, hyphens, underscores, dots)
+        import re
+        if not re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', owner_repo):
+            logger.warning(f"Invalid GitHub repository format: {sanitize_log_message(str(owner_repo))}")
+            return None
+
         # Try multiple tag formats (some repos use v prefix, version/ prefix, etc.)
         tag_variations = [
             tag,                    # exact tag (e.g., "2025.10.2")
@@ -80,6 +87,7 @@ class ChangelogFetcher:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 for tag_variant in tag_variations:
+                    # URL is constrained to api.github.com, owner_repo validated above
                     api_url = f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag_variant}"
                     response = await client.get(api_url, headers=headers)
 

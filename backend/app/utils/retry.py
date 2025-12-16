@@ -39,7 +39,7 @@ def async_retry(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            last_exception = None
+            last_exception: Optional[Exception] = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -66,10 +66,10 @@ def async_retry(
 
                     await asyncio.sleep(backoff)
 
-            # This should never be reached, but satisfy type checker
-            if last_exception:
-                raise last_exception
-            raise RuntimeError(f"{func.__name__} failed after {max_attempts} attempts with no exception captured")
+            # This should never be reached due to raise on line 54, but satisfy type checker
+            # If somehow reached, last_exception should be set from the loop
+            assert last_exception is not None, "No exception captured but max attempts reached"
+            raise last_exception
 
         return wrapper
     return decorator
@@ -98,7 +98,7 @@ def sync_retry(
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             import time
-            last_exception = None
+            last_exception: Optional[Exception] = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -125,10 +125,10 @@ def sync_retry(
 
                     time.sleep(backoff)
 
-            # This should never be reached, but satisfy type checker
-            if last_exception:
-                raise last_exception
-            raise RuntimeError(f"{func.__name__} failed after {max_attempts} attempts with no exception captured")
+            # This should never be reached due to raise on line 113, but satisfy type checker
+            # If somehow reached, last_exception should be set from the loop
+            assert last_exception is not None, "No exception captured but max attempts reached"
+            raise last_exception
 
         return wrapper
     return decorator

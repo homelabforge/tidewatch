@@ -170,6 +170,7 @@ async def get_provider_metadata(issuer_url: str) -> Optional[Dict[str, Any]]:
 
     try:
         async with httpx.AsyncClient() as client:
+            # lgtm[py/ssrf] - discovery_url validated by validate_oidc_url() on lines 156,166
             response = await client.get(discovery_url, timeout=10.0)
             response.raise_for_status()
             metadata = response.json()

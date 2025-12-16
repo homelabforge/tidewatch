@@ -79,6 +79,8 @@ def get_or_create_secret_key(key_file: Path = JWT_SECRET_KEY_FILE) -> str:
         validated_key_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Write key to file
+        # lgtm[py/clear-text-storage-sensitive-data] - JWT secret key must persist across restarts
+        # File is stored in protected /data/ directory with 0o600 permissions
         validated_key_file.write_text(secret_key)
 
         # Set restrictive permissions (owner read/write only)

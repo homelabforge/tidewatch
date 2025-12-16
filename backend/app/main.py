@@ -217,6 +217,8 @@ try:
     else:
         session_secret = secrets.token_urlsafe(32)
         session_secret_file.parent.mkdir(parents=True, exist_ok=True)
+        # lgtm[py/clear-text-storage-sensitive-data] - Session secret must persist across restarts
+        # File is stored in protected /data/ directory with 0o600 permissions
         session_secret_file.write_text(session_secret)
         session_secret_file.chmod(0o600)
         logger.info("Generated new session secret key")
