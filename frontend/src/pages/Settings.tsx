@@ -949,7 +949,7 @@ export default function Settings() {
                 <div className="bg-tide-surface/50 border border-tide-border rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <RefreshCw className={`w-5 h-5 ${Boolean(schedulerStatus.running) ? 'text-green-500' : 'text-tide-text-muted'}`} />
+                      <RefreshCw className={`w-5 h-5 ${schedulerStatus.running ? 'text-green-500' : 'text-tide-text-muted'}`} />
                       <div>
                         <h3 className="text-sm font-semibold text-tide-text">Update Scheduler</h3>
                         <p className="text-xs text-tide-text-muted">Background update checking service</p>
