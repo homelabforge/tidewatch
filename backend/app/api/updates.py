@@ -8,8 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, IntegrityError
 
-logger = logging.getLogger(__name__)
-
 from app.db import get_db
 from app.services.auth import require_auth
 from app.models.update import Update
@@ -19,6 +17,8 @@ from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
 from app.services.scheduler import scheduler_service
 from app.utils.security import sanitize_log_message
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

@@ -182,7 +182,8 @@ class HttpServerScanner:
                     if result.exit_code == 0:
                         output = result.output.decode('utf-8') if isinstance(result.output, bytes) else result.output
                         break
-                except:
+                except Exception:
+                    # Command not available in container, try next
                     continue
 
             # If ps is not available, try checking /proc
@@ -191,7 +192,8 @@ class HttpServerScanner:
                     result = container.exec_run(['sh', '-c', 'cat /proc/*/cmdline 2>/dev/null | tr "\\0" " "'], demux=False)
                     if result.exit_code == 0:
                         output = result.output.decode('utf-8') if isinstance(result.output, bytes) else result.output
-                except:
+                except Exception:
+                    # /proc not accessible
                     pass
 
             if not output:
@@ -340,7 +342,8 @@ class HttpServerScanner:
             # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"
-        except:
+        except (ValueError, IndexError, TypeError):
+            # If version parsing fails, default to info severity
             return "info"
 
     async def _detect_from_labels(self, container) -> List[Dict[str, any]]:

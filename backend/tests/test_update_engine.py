@@ -1114,8 +1114,8 @@ class TestEventBusProgress:
 
             try:
                 await UpdateEngine.apply_update(mock_db, 1, "user")
-            except:
-                pass  # Expected to fail
+            except Exception:
+                pass  # Expected to fail due to missing container
 
             # Should have published 'update-progress' event with phase='starting'
             starting_events = [e for e in events if e.get("phase") == "starting"]

@@ -13,8 +13,6 @@ from sqlalchemy.orm import undefer
 from app.db import get_db
 from app.services.auth import require_auth
 from app.utils.security import sanitize_log_message
-
-logger = logging.getLogger(__name__)
 from app.models.container import Container
 from app.models.update import Update
 from app.models.history import UpdateHistory
@@ -36,6 +34,8 @@ from app.services.dependency_manager import DependencyManager
 from app.services.update_window import UpdateWindow
 from app.services.docker_stats import docker_stats_service
 from app.utils.error_handling import safe_error_response
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

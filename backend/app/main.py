@@ -200,12 +200,12 @@ else:
 # IMPORTANT: Must be added BEFORE SessionMiddleware because middlewares execute in LIFO order
 # (last added = first executed). CSRF needs session to be available, so SessionMiddleware
 # must be added after CSRF so it executes before CSRF.
-from app.middleware.csrf import CSRFProtectionMiddleware
+from app.middleware.csrf import CSRFProtectionMiddleware  # noqa: E402
 app.add_middleware(CSRFProtectionMiddleware)
 
 # Session middleware for CSRF protection
 # Generate/load session secret key from persistent storage
-from app.utils.security import sanitize_path
+from app.utils.security import sanitize_path  # noqa: E402
 
 try:
     # Validate session secret file path (must be in /data)
@@ -298,7 +298,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 
 # Global Exception Handler
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse  # noqa: E402
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
@@ -369,7 +369,7 @@ async def metrics():
 
 
 # API routes
-from app.api import api_router
+from app.api import api_router  # noqa: E402
 app.include_router(api_router)
 
 # Serve frontend static files (in production)

@@ -661,7 +661,8 @@ class DependencyScanner:
             # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"
-        except:
+        except (ValueError, IndexError, TypeError):
+            # If version parsing fails, default to info severity
             return "info"
 
     async def _get_npm_latest(self, package: str) -> Optional[str]:
