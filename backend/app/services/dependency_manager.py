@@ -75,7 +75,7 @@ class DependencyManager:
         for name in container_names:
             container = containers.get(name)
             if not container:
-                logger.warning(f"Container {name} not found in database")
+                logger.warning(f"Container {sanitize_log_message(str(name))} not found in database")
                 dependencies[name] = set()
                 continue
 
@@ -101,7 +101,7 @@ class DependencyManager:
         # Check cache first
         cache_key = DependencyManager._generate_cache_key(dependencies)
         if cache_key in _dependency_cache:
-            logger.debug(f"Cache hit for dependency resolution ({len(container_names)} containers)")
+            logger.debug(f"Cache hit for dependency resolution ({sanitize_log_message(str(len(container_names)))} containers)")
             return _dependency_cache[cache_key]
 
         # Perform topological sort
@@ -110,7 +110,7 @@ class DependencyManager:
 
             # Cache the result
             _dependency_cache[cache_key] = result_order
-            logger.debug(f"Cached dependency resolution for {len(container_names)} containers")
+            logger.debug(f"Cached dependency resolution for {sanitize_log_message(str(len(container_names)))} containers")
 
             # Limit cache size to prevent memory issues (keep last 100 results)
             if len(_dependency_cache) > 100:
@@ -121,7 +121,7 @@ class DependencyManager:
 
             return result_order
         except ValueError as e:
-            logger.error(f"Dependency error: {e}")
+            logger.error(f"Dependency error: {sanitize_log_message(str(e))}")
             # Fall back to original order if there's a cycle
             logger.warning("Falling back to original order due to cycle")
             return container_names

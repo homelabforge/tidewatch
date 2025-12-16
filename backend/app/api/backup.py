@@ -49,7 +49,7 @@ def get_database_stats() -> Dict[str, Any]:
             "exists": False,
         }
     except PermissionError as e:
-        logger.error(f"Permission denied reading database stats: {e}")
+        logger.error(f"Permission denied reading database stats: {sanitize_log_message(str(e))}")
         return {
             "path": DATABASE_PATH,
             "size_mb": 0,
@@ -58,7 +58,7 @@ def get_database_stats() -> Dict[str, Any]:
             "error": "Permission denied",
         }
     except OSError as e:
-        logger.error(f"OS error getting database stats: {e}")
+        logger.error(f"OS error getting database stats: {sanitize_log_message(str(e))}")
         return {
             "path": DATABASE_PATH,
             "size_mb": 0,
@@ -84,9 +84,9 @@ def get_backup_files() -> List[Dict[str, Any]]:
                 "is_safety": "safety" in backup_file.name.lower(),
             })
     except PermissionError as e:
-        logger.error(f"Permission denied listing backup files: {e}")
+        logger.error(f"Permission denied listing backup files: {sanitize_log_message(str(e))}")
     except OSError as e:
-        logger.error(f"OS error listing backup files: {e}")
+        logger.error(f"OS error listing backup files: {sanitize_log_message(str(e))}")
 
     # Sort by created date (newest first)
     backups.sort(key=lambda x: x["created"], reverse=True)
@@ -150,10 +150,10 @@ async def get_stats(
             "wal_mode_enabled": "wal" in DATABASE_PATH.lower() or Path(f"{DATABASE_PATH}-wal").exists(),
         }
     except PermissionError as e:
-        logger.error(f"Permission denied getting stats: {e}")
+        logger.error(f"Permission denied getting stats: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except OSError as e:
-        logger.error(f"OS error getting stats: {e}")
+        logger.error(f"OS error getting stats: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -189,10 +189,10 @@ async def list_backups(
             "stats": db_stats
         }
     except PermissionError as e:
-        logger.error(f"Permission denied listing backups: {e}")
+        logger.error(f"Permission denied listing backups: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except OSError as e:
-        logger.error(f"OS error listing backups: {e}")
+        logger.error(f"OS error listing backups: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -240,7 +240,7 @@ async def create_backup(
         with open(backup_path, "w") as f:
             json.dump(backup_data, f, indent=2)
 
-        logger.info(f"Created backup: {filename}")
+        logger.info(f"Created backup: {sanitize_log_message(str(filename))}")
 
         # Get file stats
         stat = backup_path.stat()
@@ -250,13 +250,13 @@ async def create_backup(
             "filename": filename,
         }
     except PermissionError as e:
-        logger.error(f"Permission denied creating backup: {e}")
+        logger.error(f"Permission denied creating backup: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied writing backup file")
     except OSError as e:
-        logger.error(f"OS error creating backup: {e}")
+        logger.error(f"OS error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
     except json.JSONEncodeError as e:
-        logger.error(f"JSON encoding error creating backup: {e}")
+        logger.error(f"JSON encoding error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Failed to encode backup data", status_code=500)
 
 
@@ -288,10 +288,10 @@ async def download_backup(
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(f"Permission denied downloading backup: {e}")
+        logger.error(f"Permission denied downloading backup: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied reading backup file")
     except OSError as e:
-        logger.error(f"OS error downloading backup: {e}")
+        logger.error(f"OS error downloading backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -344,7 +344,7 @@ async def restore_backup(
         with open(safety_path, "w") as f:
             json.dump(safety_data, f, indent=2)
 
-        logger.info(f"Created safety backup: {safety_filename}")
+        logger.info(f"Created safety backup: {sanitize_log_message(str(safety_filename))}")
 
         # Read and validate backup file
         with open(backup_path, "r") as f:
@@ -364,7 +364,7 @@ async def restore_backup(
             value = setting_data.get("value")
 
             if not key:
-                logger.warning(f"Skipping setting with no key: {setting_data}")
+                logger.warning(f"Skipping setting with no key: {sanitize_log_message(str(setting_data))}")
                 continue
 
             try:
@@ -372,13 +372,13 @@ async def restore_backup(
                 await SettingsService.set(db, key, value)
                 restored_count += 1
             except ValueError as e:
-                logger.error(f"Invalid value for setting {key}: {e}")
+                logger.error(f"Invalid value for setting {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}")
                 # Continue with other settings
             except KeyError as e:
-                logger.error(f"Invalid setting key {key}: {e}")
+                logger.error(f"Invalid setting key {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}")
                 # Continue with other settings
 
-        logger.info(f"Restored {restored_count} settings from {filename}")
+        logger.info(f"Restored {sanitize_log_message(str(restored_count))} settings from {sanitize_log_message(str(filename))}")
 
         return {
             "success": True,
@@ -394,13 +394,13 @@ async def restore_backup(
     except json.JSONDecodeError as e:
         safe_error_response(logger, e, "Invalid JSON in backup file", status_code=400)
     except PermissionError as e:
-        logger.error(f"Permission denied restoring backup: {e}")
+        logger.error(f"Permission denied restoring backup: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except FileNotFoundError as e:
-        logger.error(f"Backup file not found: {e}")
+        logger.error(f"Backup file not found: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Backup file not found", status_code=404)
     except OSError as e:
-        logger.error(f"OS error restoring backup: {e}")
+        logger.error(f"OS error restoring backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -452,7 +452,7 @@ async def upload_backup(
         with open(backup_path, "wb") as f:
             f.write(content)
 
-        logger.info(f"Uploaded backup: {safe_filename}")
+        logger.info(f"Uploaded backup: {sanitize_log_message(str(safe_filename))}")
 
         # Get file stats
         stat = backup_path.stat()
@@ -469,10 +469,10 @@ async def upload_backup(
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(f"Permission denied uploading backup: {e}")
+        logger.error(f"Permission denied uploading backup: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied writing backup file")
     except OSError as e:
-        logger.error(f"OS error uploading backup: {e}")
+        logger.error(f"OS error uploading backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -507,7 +507,7 @@ async def delete_backup(
         # Delete the file
         backup_path.unlink()
 
-        logger.info(f"Deleted backup: {filename}")
+        logger.info(f"Deleted backup: {sanitize_log_message(str(filename))}")
 
         return {
             "success": True,
@@ -516,10 +516,10 @@ async def delete_backup(
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(f"Permission denied deleting backup: {e}")
+        logger.error(f"Permission denied deleting backup: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=403, detail="Permission denied deleting backup file")
     except OSError as e:
-        logger.error(f"OS error deleting backup: {e}")
+        logger.error(f"OS error deleting backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
@@ -565,7 +565,7 @@ async def download_backup_legacy(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except json.JSONEncodeError as e:
-        logger.error(f"JSON encoding error creating backup: {e}")
+        logger.error(f"JSON encoding error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Failed to encode backup data", status_code=500)
 
 
@@ -609,7 +609,7 @@ async def restore_backup_legacy(
             value = setting_data.get("value")
 
             if not key:
-                logger.warning(f"Skipping setting with no key: {setting_data}")
+                logger.warning(f"Skipping setting with no key: {sanitize_log_message(str(setting_data))}")
                 continue
 
             try:
@@ -617,13 +617,13 @@ async def restore_backup_legacy(
                 await SettingsService.set(db, key, value)
                 restored_count += 1
             except ValueError as e:
-                logger.error(f"Invalid value for setting {key}: {e}")
+                logger.error(f"Invalid value for setting {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}")
                 # Continue with other settings
             except KeyError as e:
-                logger.error(f"Invalid setting key {key}: {e}")
+                logger.error(f"Invalid setting key {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}")
                 # Continue with other settings
 
-        logger.info(f"Restored {restored_count} settings from uploaded file")
+        logger.info(f"Restored {sanitize_log_message(str(restored_count))} settings from uploaded file")
 
         return {
             "success": True,

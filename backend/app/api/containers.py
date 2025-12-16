@@ -1020,7 +1020,7 @@ async def get_app_dependencies(
 
         # If no dependencies found, scan and persist
         if not dependencies:
-            logger.info(f"No persisted dependencies found for container {container_id}, scanning...")
+            logger.info(f"No persisted dependencies found for container {sanitize_log_message(str(container_id))}, scanning...")
             # Scan dependencies
             scanned_deps = await scanner.scan_container_dependencies(
                 container.compose_file,
@@ -1055,19 +1055,19 @@ async def get_app_dependencies(
             scan_status="idle"
         )
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access dependency files"
         )
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse dependencies"
         )
     except (ImportError, ModuleNotFoundError) as e:
-        logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Dependency scanner not available"
@@ -1124,19 +1124,19 @@ async def scan_app_dependencies(
             "updates_available": sum(1 for dep in dependencies if dep.update_available)
         }
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access dependency files"
         )
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse dependencies"
         )
     except (ImportError, ModuleNotFoundError) as e:
-        logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Dependency scanner not available"
@@ -1191,7 +1191,7 @@ async def get_dockerfile_dependencies(
     except OperationalError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Database error getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Database error getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database error retrieving dependencies"
@@ -1199,7 +1199,7 @@ async def get_dockerfile_dependencies(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse dependency data"
@@ -1207,7 +1207,7 @@ async def get_dockerfile_dependencies(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Dockerfile parser not available"
@@ -1260,7 +1260,7 @@ async def scan_dockerfile_dependencies(
     except (OSError, PermissionError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"File system error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"File system error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access Dockerfile"
@@ -1268,7 +1268,7 @@ async def scan_dockerfile_dependencies(
     except OperationalError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Database error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Database error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database error saving dependencies"
@@ -1276,7 +1276,7 @@ async def scan_dockerfile_dependencies(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse Dockerfile"
@@ -1284,7 +1284,7 @@ async def scan_dockerfile_dependencies(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Dockerfile parser not available"
@@ -1318,7 +1318,7 @@ async def check_dockerfile_updates(
     except OperationalError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Database error checking Dockerfile dependencies for updates: {e}")
+        logger.error(f"Database error checking Dockerfile dependencies for updates: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database error checking updates"
@@ -1326,7 +1326,7 @@ async def check_dockerfile_updates(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data checking Dockerfile dependencies for updates: {e}")
+        logger.error(f"Invalid data checking Dockerfile dependencies for updates: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to process update data"
@@ -1334,7 +1334,7 @@ async def check_dockerfile_updates(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module checking Dockerfile dependencies for updates: {e}")
+        logger.error(f"Missing module checking Dockerfile dependencies for updates: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Dockerfile parser not available"
@@ -1369,7 +1369,7 @@ async def scan_my_projects(
     except (OSError, PermissionError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"File system error scanning my projects: {e}")
+        logger.error(f"File system error scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to access projects directory"
@@ -1377,7 +1377,7 @@ async def scan_my_projects(
     except OperationalError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Database error scanning my projects: {e}")
+        logger.error(f"Database error scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database error saving projects"
@@ -1385,7 +1385,7 @@ async def scan_my_projects(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data scanning my projects: {e}")
+        logger.error(f"Invalid data scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse project data"
@@ -1393,7 +1393,7 @@ async def scan_my_projects(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module scanning my projects: {e}")
+        logger.error(f"Missing module scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Project scanner not available"
@@ -1446,7 +1446,7 @@ async def get_http_servers(
     except subprocess.CalledProcessError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Docker exec error getting HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Docker exec error getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to execute scanner in container"
@@ -1454,7 +1454,7 @@ async def get_http_servers(
     except asyncio.TimeoutError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Timeout getting HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Timeout getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=504,
             detail="HTTP server scan timed out"
@@ -1462,7 +1462,7 @@ async def get_http_servers(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data getting HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse server data"
@@ -1470,7 +1470,7 @@ async def get_http_servers(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module getting HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="HTTP server scanner not available"
@@ -1518,7 +1518,7 @@ async def scan_http_servers(
     except subprocess.CalledProcessError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Docker exec error scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Docker exec error scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to execute scanner in container"
@@ -1526,7 +1526,7 @@ async def scan_http_servers(
     except asyncio.TimeoutError as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Timeout scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Timeout scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=504,
             detail="HTTP server scan timed out"
@@ -1534,7 +1534,7 @@ async def scan_http_servers(
     except (ValueError, KeyError, AttributeError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid data scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Invalid data scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Failed to parse server data"
@@ -1542,7 +1542,7 @@ async def scan_http_servers(
     except (ImportError, ModuleNotFoundError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Missing module scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {e}")
+        logger.error(f"Missing module scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="HTTP server scanner not available"

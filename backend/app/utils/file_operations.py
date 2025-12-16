@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 import logging
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def validate_file_path_for_update(file_path: str) -> Path:
         if not os.access(path, os.W_OK):
             raise PathValidationError(f"No write permission: {file_path}")
 
-        logger.debug(f"Path validation successful: {path}")
+        logger.debug(f"Path validation successful: {sanitize_log_message(str(path))}")
         return path
 
     except PathValidationError:
@@ -182,7 +183,7 @@ def validate_version_string(version: str, ecosystem: Optional[str] = None) -> bo
                     f"Invalid Docker tag format: {version}"
                 )
 
-    logger.debug(f"Version validation successful: {version} (ecosystem: {ecosystem})")
+    logger.debug(f"Version validation successful: {sanitize_log_message(str(version))} (ecosystem: {sanitize_log_message(str(ecosystem))})")
     return True
 
 
@@ -219,7 +220,7 @@ def create_timestamped_backup(file_path: Path) -> Path:
         if backup_path.stat().st_size != file_path.stat().st_size:
             raise BackupError(f"Backup file size mismatch: {backup_path}")
 
-        logger.info(f"Created backup: {backup_path}")
+        logger.info(f"Created backup: {sanitize_log_message(str(backup_path))}")
         return backup_path
 
     except Exception as e:
@@ -280,12 +281,12 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
                 os.chmod(temp_path, original_stat.st_mode)
                 os.chown(temp_path, original_stat.st_uid, original_stat.st_gid)
             except (OSError, PermissionError) as e:
-                logger.warning(f"Could not preserve ownership/permissions: {e}")
+                logger.warning(f"Could not preserve ownership/permissions: {sanitize_log_message(str(e))}")
 
         # Atomic rename (replaces original file)
         temp_path.replace(file_path)
 
-        logger.info(f"Atomic write successful: {file_path}")
+        logger.info(f"Atomic write successful: {sanitize_log_message(str(file_path))}")
         return True
 
     except Exception as e:
@@ -294,7 +295,7 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
             try:
                 temp_path.unlink()
             except Exception as cleanup_error:
-                logger.error(f"Failed to clean up temp file {temp_path}: {cleanup_error}")
+                logger.error(f"Failed to clean up temp file {sanitize_log_message(str(temp_path))}: {sanitize_log_message(str(cleanup_error))}")
 
         raise AtomicWriteError(f"Atomic write failed for {file_path}: {e}")
 
@@ -325,7 +326,7 @@ def restore_from_backup(backup_path: Path, target_path: Path) -> bool:
         if not target_path.exists():
             raise FileOperationError(f"Restore failed: target not created")
 
-        logger.info(f"Restored {target_path} from backup {backup_path}")
+        logger.info(f"Restored {sanitize_log_message(str(target_path))} from backup {sanitize_log_message(str(backup_path))}")
         return True
 
     except Exception as e:
@@ -358,15 +359,15 @@ def cleanup_old_backups(file_path: Path, keep_count: int = 5) -> int:
             try:
                 backup.unlink()
                 deleted_count += 1
-                logger.debug(f"Deleted old backup: {backup}")
+                logger.debug(f"Deleted old backup: {sanitize_log_message(str(backup))}")
             except Exception as e:
-                logger.warning(f"Failed to delete backup {backup}: {e}")
+                logger.warning(f"Failed to delete backup {sanitize_log_message(str(backup))}: {sanitize_log_message(str(e))}")
 
         if deleted_count > 0:
-            logger.info(f"Cleaned up {deleted_count} old backups for {file_path.name}")
+            logger.info(f"Cleaned up {sanitize_log_message(str(deleted_count))} old backups for {sanitize_log_message(str(file_path.name))}")
 
         return deleted_count
 
     except Exception as e:
-        logger.warning(f"Failed to cleanup backups for {file_path}: {e}")
+        logger.warning(f"Failed to cleanup backups for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
         return 0

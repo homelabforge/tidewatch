@@ -25,6 +25,7 @@ from app.schemas.dependency import (
     UpdateResponse,
 )
 from app.services.dependency_update_service import DependencyUpdateService
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ async def ignore_dockerfile_dependency(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error ignoring Dockerfile dependency {dependency_id}: {e}")
+        logger.error(f"Error ignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to ignore dependency: {str(e)}")
 
 
@@ -159,7 +160,7 @@ async def unignore_dockerfile_dependency(
 
         await db.commit()
 
-        logger.info(f"Unignored Dockerfile dependency {dependency.image_name} (id={dependency_id})")
+        logger.info(f"Unignored Dockerfile dependency {sanitize_log_message(str(dependency.image_name))} (id={sanitize_log_message(str(dependency_id))})")
 
         return {"success": True, "message": "Dependency unignored successfully"}
 
@@ -167,7 +168,7 @@ async def unignore_dockerfile_dependency(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error unignoring Dockerfile dependency {dependency_id}: {e}")
+        logger.error(f"Error unignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to unignore dependency: {str(e)}")
 
 
@@ -202,7 +203,7 @@ async def preview_dockerfile_update(
         )
 
     except Exception as e:
-        logger.error(f"Error previewing Dockerfile dependency {dependency_id}: {e}")
+        logger.error(f"Error previewing Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
@@ -234,7 +235,7 @@ async def update_dockerfile_dependency(
         )
 
     except Exception as e:
-        logger.error(f"Error updating Dockerfile dependency {dependency_id}: {e}")
+        logger.error(f"Error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to update dependency: {str(e)}")
 
 
@@ -305,7 +306,7 @@ async def ignore_http_server(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error ignoring HTTP server {server_id}: {e}")
+        logger.error(f"Error ignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to ignore HTTP server: {str(e)}")
 
 
@@ -363,7 +364,7 @@ async def unignore_http_server(
 
         await db.commit()
 
-        logger.info(f"Unignored HTTP server {server.name} (id={server_id})")
+        logger.info(f"Unignored HTTP server {sanitize_log_message(str(server.name))} (id={sanitize_log_message(str(server_id))})")
 
         return {"success": True, "message": "HTTP server unignored successfully"}
 
@@ -371,7 +372,7 @@ async def unignore_http_server(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error unignoring HTTP server {server_id}: {e}")
+        logger.error(f"Error unignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to unignore HTTP server: {str(e)}")
 
 
@@ -406,7 +407,7 @@ async def preview_http_server_update(
         )
 
     except Exception as e:
-        logger.error(f"Error previewing HTTP server {server_id}: {e}")
+        logger.error(f"Error previewing HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
@@ -438,7 +439,7 @@ async def update_http_server(
         )
 
     except Exception as e:
-        logger.error(f"Error updating HTTP server {server_id}: {e}")
+        logger.error(f"Error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to update HTTP server: {str(e)}")
 
 
@@ -507,7 +508,7 @@ async def ignore_app_dependency(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error ignoring app dependency {dependency_id}: {e}")
+        logger.error(f"Error ignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to ignore app dependency: {str(e)}")
 
 
@@ -565,7 +566,7 @@ async def unignore_app_dependency(
 
         await db.commit()
 
-        logger.info(f"Unignored app dependency {dependency.name} (id={dependency_id})")
+        logger.info(f"Unignored app dependency {sanitize_log_message(str(dependency.name))} (id={sanitize_log_message(str(dependency_id))})")
 
         return {"success": True, "message": "App dependency unignored successfully"}
 
@@ -573,7 +574,7 @@ async def unignore_app_dependency(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error unignoring app dependency {dependency_id}: {e}")
+        logger.error(f"Error unignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to unignore app dependency: {str(e)}")
 
 
@@ -608,7 +609,7 @@ async def preview_app_dependency_update(
         )
 
     except Exception as e:
-        logger.error(f"Error previewing app dependency {dependency_id}: {e}")
+        logger.error(f"Error previewing app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
@@ -643,5 +644,5 @@ async def update_app_dependency(
         )
 
     except Exception as e:
-        logger.error(f"Error updating app dependency {dependency_id}: {e}")
+        logger.error(f"Error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail=f"Failed to update app dependency: {str(e)}")

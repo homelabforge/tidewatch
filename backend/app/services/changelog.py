@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import httpx
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,10 @@ class ChangelogFetcher:
 
         # Handle bare owner/repo format as GitHub repository
         if "/" in source and not source.startswith(("http://", "https://", "github:")):
-            logger.debug(f"Treating '{source}' as GitHub repository for {image}")
+            logger.debug(f"Treating '{sanitize_log_message(str(source))}' as GitHub repository for {sanitize_log_message(str(image))}")
             return await self._fetch_github_release(source, tag)
 
-        logger.debug(f"Unsupported release source '{source}' for {image}")
+        logger.debug(f"Unsupported release source '{sanitize_log_message(str(source))}' for {sanitize_log_message(str(image))}")
         return None
 
     async def _fetch_url(self, url: str) -> Optional[ChangelogResult]:
@@ -51,13 +52,13 @@ class ChangelogFetcher:
                 response.raise_for_status()
                 return ChangelogResult(raw_text=response.text, source=url)
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error fetching changelog from {url}: {e}")
+            logger.warning(f"HTTP error fetching changelog from {sanitize_log_message(str(url))}: {sanitize_log_message(str(e))}")
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning(f"Connection error fetching changelog from {url}: {e}")
+            logger.warning(f"Connection error fetching changelog from {sanitize_log_message(str(url))}: {sanitize_log_message(str(e))}")
             return None
         except (ValueError, KeyError) as e:
-            logger.warning(f"Invalid response fetching changelog from {url}: {e}")
+            logger.warning(f"Invalid response fetching changelog from {sanitize_log_message(str(url))}: {sanitize_log_message(str(e))}")
             return None
 
     async def _fetch_github_release(self, owner_repo: str, tag: str) -> Optional[ChangelogResult]:
@@ -83,29 +84,29 @@ class ChangelogFetcher:
                     response = await client.get(api_url, headers=headers)
 
                     if response.status_code == 404:
-                        logger.debug(f"GitHub release {owner_repo}@{tag_variant} not found, trying next variant")
+                        logger.debug(f"GitHub release {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag_variant))} not found, trying next variant")
                         continue
 
                     response.raise_for_status()
                     data = response.json()
                     body = data.get("body") or ""
                     if not body.strip():
-                        logger.info(f"GitHub release {owner_repo}@{tag_variant} has no body text")
+                        logger.info(f"GitHub release {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag_variant))} has no body text")
                         return None
 
-                    logger.info(f"Found GitHub release {owner_repo}@{tag_variant}")
+                    logger.info(f"Found GitHub release {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag_variant))}")
                     return ChangelogResult(raw_text=body, source=api_url, tag=tag_variant, title=data.get("name"), url=data.get("html_url"))
 
-                logger.info(f"GitHub release {owner_repo}@{tag} not found (tried {len(tag_variations)} variations)")
+                logger.info(f"GitHub release {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag))} not found (tried {sanitize_log_message(str(len(tag_variations)))} variations)")
                 return None
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error fetching GitHub release for {owner_repo}@{tag}: {e}")
+            logger.warning(f"HTTP error fetching GitHub release for {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag))}: {sanitize_log_message(str(e))}")
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning(f"Connection error fetching GitHub release for {owner_repo}@{tag}: {e}")
+            logger.warning(f"Connection error fetching GitHub release for {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag))}: {sanitize_log_message(str(e))}")
             return None
         except (ValueError, KeyError) as e:
-            logger.warning(f"Invalid GitHub release data for {owner_repo}@{tag}: {e}")
+            logger.warning(f"Invalid GitHub release data for {sanitize_log_message(str(owner_repo))}@{sanitize_log_message(str(tag))}: {sanitize_log_message(str(e))}")
             return None
 
 

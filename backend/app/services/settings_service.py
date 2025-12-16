@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from app.models import Setting
 from typing import Optional, Dict, Any
 from app.utils.encryption import get_encryption_service, is_encryption_configured
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -613,11 +614,11 @@ class SettingsService:
                 decrypted_value = encryption_service.decrypt(setting.value)
                 return decrypted_value
             except ValueError as e:
-                logger.error(f"Failed to decrypt setting '{key}': {e}")
-                logger.warning(f"Setting '{key}' is marked as encrypted but decryption failed. Returning None.")
+                logger.error(f"Failed to decrypt setting '{sanitize_log_message(str(key))}': {sanitize_log_message(str(e))}")
+                logger.warning(f"Setting '{sanitize_log_message(str(key))}' is marked as encrypted but decryption failed. Returning None.")
                 return None
             except Exception as e:
-                logger.error(f"Unexpected error decrypting setting '{key}': {e}")
+                logger.error(f"Unexpected error decrypting setting '{sanitize_log_message(str(key))}': {sanitize_log_message(str(e))}")
                 return None
 
         return setting.value
@@ -668,9 +669,9 @@ class SettingsService:
             try:
                 encryption_service = get_encryption_service()
                 value_to_store = encryption_service.encrypt(value)
-                logger.debug(f"Encrypted setting '{key}' before storing")
+                logger.debug(f"Encrypted setting '{sanitize_log_message(str(key))}' before storing")
             except Exception as e:
-                logger.error(f"Failed to encrypt setting '{key}': {e}")
+                logger.error(f"Failed to encrypt setting '{sanitize_log_message(str(key))}': {sanitize_log_message(str(e))}")
                 # For security, don't store unencrypted value if encryption was expected
                 raise ValueError(f"Failed to encrypt setting '{key}': {e}")
         elif is_encrypted and not is_encryption_configured():

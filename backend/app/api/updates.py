@@ -19,6 +19,7 @@ from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
 from app.services.scheduler import scheduler_service
 from app.utils.error_handling import safe_error_response
+from app.utils.security import sanitize_log_message
 
 router = APIRouter()
 
@@ -205,10 +206,10 @@ async def batch_approve_updates(
 
         except OperationalError as e:
             # Database lock/conflict - likely concurrent modification
-            logger.warning(f"Database conflict approving update {update_id}: {e}")
+            logger.warning(f"Database conflict approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
             failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
-            logger.error(f"Error approving update {update_id}: {e}")
+            logger.error(f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
             failed.append({"id": update_id, "reason": str(e)})
 
     return {
@@ -278,10 +279,10 @@ async def batch_reject_updates(
 
         except OperationalError as e:
             # Database lock/conflict - likely concurrent modification
-            logger.warning(f"Database conflict rejecting update {update_id}: {e}")
+            logger.warning(f"Database conflict rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
             failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
-            logger.error(f"Error rejecting update {update_id}: {e}")
+            logger.error(f"Error rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
             failed.append({"id": update_id, "reason": str(e)})
 
     return {
@@ -410,10 +411,10 @@ async def apply_update(
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:
-        logger.error(f"Database error applying update: {e}")
+        logger.error(f"Database error applying update: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Database error during update")
     except (KeyError, AttributeError) as e:
-        logger.error(f"Invalid data applying update: {e}")
+        logger.error(f"Invalid data applying update: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Invalid update data")
 
 
@@ -665,7 +666,7 @@ async def remove_container_from_db(
 
         await db.commit()
 
-        logger.info(f"Removed stale container from database: {container_name}")
+        logger.info(f"Removed stale container from database: {sanitize_log_message(str(container_name))}")
 
         return {
             "success": True,
@@ -673,21 +674,21 @@ async def remove_container_from_db(
         }
     except IntegrityError as e:
         await db.rollback()
-        logger.error(f"Database constraint violation removing container: {e}")
+        logger.error(f"Database constraint violation removing container: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database constraint error during container removal"
         )
     except OperationalError as e:
         await db.rollback()
-        logger.error(f"Database error removing container: {e}")
+        logger.error(f"Database error removing container: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Database error during container removal"
         )
     except (KeyError, AttributeError) as e:
         await db.rollback()
-        logger.error(f"Invalid data removing container: {e}")
+        logger.error(f"Invalid data removing container: {sanitize_log_message(str(e))}")
         raise HTTPException(
             status_code=500,
             detail="Invalid container data"
@@ -726,10 +727,10 @@ async def trigger_scheduler(
             "message": "Update check triggered successfully"
         }
     except (ImportError, ModuleNotFoundError, AttributeError) as e:
-        logger.error(f"Scheduler service error: {e}")
+        logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(f"Invalid data triggering update check: {e}")
+        logger.error(f"Invalid data triggering update check: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")
 
 
@@ -754,11 +755,11 @@ async def reload_scheduler(
             "scheduler": status
         }
     except OperationalError as e:
-        logger.error(f"Database error reloading scheduler: {e}")
+        logger.error(f"Database error reloading scheduler: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Database error reloading configuration")
     except (ImportError, ModuleNotFoundError, AttributeError) as e:
-        logger.error(f"Scheduler service error: {e}")
+        logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(f"Invalid data reloading scheduler: {e}")
+        logger.error(f"Invalid data reloading scheduler: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")

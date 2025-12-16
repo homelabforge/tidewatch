@@ -60,7 +60,7 @@ class DockerfileParser:
             # Find Dockerfile
             dockerfile_path = await self._find_dockerfile(container, manual_dockerfile_path)
             if not dockerfile_path:
-                logger.warning(f"Could not find Dockerfile for container {container.name}")
+                logger.warning(f"Could not find Dockerfile for container {sanitize_log_message(str(container.name))}")
                 return []
 
             # Parse Dockerfile
@@ -73,17 +73,17 @@ class DockerfileParser:
             # Save dependencies to database
             await self._save_dependencies(session, container.id, dependencies)
 
-            logger.info(f"Scanned Dockerfile for {container.name}: found {len(dependencies)} dependencies")
+            logger.info(f"Scanned Dockerfile for {sanitize_log_message(str(container.name))}: found {sanitize_log_message(str(len(dependencies)))} dependencies")
             return dependencies
 
         except (OSError, PermissionError) as e:
-            logger.error(f"File system error scanning Dockerfile for {container.name}: {e}")
+            logger.error(f"File system error scanning Dockerfile for {sanitize_log_message(str(container.name))}: {sanitize_log_message(str(e))}")
             return []
         except OperationalError as e:
-            logger.error(f"Database error scanning Dockerfile for {container.name}: {e}")
+            logger.error(f"Database error scanning Dockerfile for {sanitize_log_message(str(container.name))}: {sanitize_log_message(str(e))}")
             return []
         except (ValueError, KeyError) as e:
-            logger.error(f"Invalid data scanning Dockerfile for {container.name}: {e}")
+            logger.error(f"Invalid data scanning Dockerfile for {sanitize_log_message(str(container.name))}: {sanitize_log_message(str(e))}")
             return []
 
     async def _find_dockerfile(
@@ -107,7 +107,7 @@ class DockerfileParser:
                 if dockerfile.exists():
                     return dockerfile
             except (ValueError, FileNotFoundError) as e:
-                logger.warning(f"Invalid manual Dockerfile path: {sanitize_log_message(manual_path)} - {e}")
+                logger.warning(f"Invalid manual Dockerfile path: {sanitize_log_message(manual_path)} - {sanitize_log_message(str(e))}")
                 # Fall through to automatic search
 
         # Get project root from compose file
@@ -141,9 +141,9 @@ class DockerfileParser:
                     if any(str(resolved).startswith(str(parent)) for parent in safe_parents):
                         return path
                     else:
-                        logger.warning(f"Dockerfile path outside safe directories, skipping: {resolved}")
+                        logger.warning(f"Dockerfile path outside safe directories, skipping: {sanitize_log_message(str(resolved))}")
                 except (OSError, RuntimeError) as e:
-                    logger.warning(f"Could not validate Dockerfile path {path}: {e}")
+                    logger.warning(f"Could not validate Dockerfile path {sanitize_log_message(str(path))}: {sanitize_log_message(str(e))}")
                     continue
 
         return None
@@ -210,11 +210,11 @@ class DockerfileParser:
                     dependencies.append(dep)
 
         except (OSError, PermissionError) as e:
-            logger.error(f"File system error parsing Dockerfile {sanitize_log_message(str(dockerfile_path))}: {e}")
+            logger.error(f"File system error parsing Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
         except UnicodeDecodeError as e:
-            logger.error(f"Encoding error parsing Dockerfile {dockerfile_path}: {e}")
+            logger.error(f"Encoding error parsing Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
         except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid Dockerfile content at {dockerfile_path}: {e}")
+            logger.error(f"Invalid Dockerfile content at {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
 
         return dependencies
 
@@ -296,11 +296,11 @@ class DockerfileParser:
                     dependency.severity = "info"
 
         except (ValueError, KeyError, AttributeError) as e:
-            logger.error(f"Invalid data checking updates for {dependency.full_image}: {e}")
+            logger.error(f"Invalid data checking updates for {sanitize_log_message(str(dependency.full_image))}: {sanitize_log_message(str(e))}")
             # Still mark as checked even if error occurred
             dependency.update_available = False
         except (ImportError, ModuleNotFoundError) as e:
-            logger.error(f"Missing module checking updates for {dependency.full_image}: {e}")
+            logger.error(f"Missing module checking updates for {sanitize_log_message(str(dependency.full_image))}: {sanitize_log_message(str(e))}")
             dependency.update_available = False
 
     async def _save_dependencies(
@@ -364,27 +364,27 @@ class DockerfileParser:
                             existing.ignored_at = None
                             existing.ignored_reason = None
 
-                    logger.debug(f"Updated existing dependency: {existing.image_name} at line {existing.line_number}")
+                    logger.debug(f"Updated existing dependency: {sanitize_log_message(str(existing.image_name))} at line {sanitize_log_message(str(existing.line_number))}")
                 else:
                     # Add new dependency
                     session.add(new_dep)
-                    logger.debug(f"Created new dependency: {new_dep.image_name} at line {new_dep.line_number}")
+                    logger.debug(f"Created new dependency: {sanitize_log_message(str(new_dep.image_name))} at line {sanitize_log_message(str(new_dep.line_number))}")
 
             # Remove dependencies that are no longer in the Dockerfile
             for key, existing in existing_deps.items():
                 if key not in seen_keys:
-                    logger.debug(f"Removing old dependency: {existing.image_name} at line {existing.line_number}")
+                    logger.debug(f"Removing old dependency: {sanitize_log_message(str(existing.image_name))} at line {sanitize_log_message(str(existing.line_number))}")
                     await session.delete(existing)
 
             await session.commit()
 
         except IntegrityError as e:
             await session.rollback()
-            logger.error(f"Database constraint violation saving dependencies for container {container_id}: {e}")
+            logger.error(f"Database constraint violation saving dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
             raise
         except OperationalError as e:
             await session.rollback()
-            logger.error(f"Database error saving dependencies for container {container_id}: {e}")
+            logger.error(f"Database error saving dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
             raise
 
     async def get_container_dockerfile_dependencies(
@@ -462,10 +462,10 @@ class DockerfileParser:
                     if dep.update_available:
                         stats["updates_found"] += 1
                 except (ValueError, KeyError, AttributeError) as e:
-                    logger.error(f"Invalid data checking dependency {dep.id}: {e}")
+                    logger.error(f"Invalid data checking dependency {sanitize_log_message(str(dep.id))}: {sanitize_log_message(str(e))}")
                     stats["errors"] += 1
                 except (ImportError, ModuleNotFoundError) as e:
-                    logger.error(f"Missing module checking dependency {dep.id}: {e}")
+                    logger.error(f"Missing module checking dependency {sanitize_log_message(str(dep.id))}: {sanitize_log_message(str(e))}")
                     stats["errors"] += 1
 
             # Save all updates
@@ -478,11 +478,11 @@ class DockerfileParser:
 
         except OperationalError as e:
             await session.rollback()
-            logger.error(f"Database error in bulk update check: {e}")
+            logger.error(f"Database error in bulk update check: {sanitize_log_message(str(e))}")
             raise
         except (ValueError, AttributeError) as e:
             await session.rollback()
-            logger.error(f"Invalid data in bulk update check: {e}")
+            logger.error(f"Invalid data in bulk update check: {sanitize_log_message(str(e))}")
             raise
 
         return stats
@@ -597,10 +597,10 @@ class DockerfileParser:
             return True, ''.join(lines)
 
         except (OSError, PermissionError) as e:
-            logger.error(f"File system error updating Dockerfile {dockerfile_path}: {e}")
+            logger.error(f"File system error updating Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
             return False, ""
         except UnicodeDecodeError as e:
-            logger.error(f"Encoding error updating Dockerfile {dockerfile_path}: {e}")
+            logger.error(f"Encoding error updating Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
             return False, ""
 
     @staticmethod
@@ -655,8 +655,8 @@ class DockerfileParser:
             return True, ''.join(lines)
 
         except (OSError, PermissionError) as e:
-            logger.error(f"File system error updating Dockerfile label {dockerfile_path}: {e}")
+            logger.error(f"File system error updating Dockerfile label {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
             return False, ""
         except UnicodeDecodeError as e:
-            logger.error(f"Encoding error updating Dockerfile label {dockerfile_path}: {e}")
+            logger.error(f"Encoding error updating Dockerfile label {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}")
             return False, ""

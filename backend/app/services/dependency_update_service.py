@@ -30,6 +30,7 @@ from app.utils.file_operations import (
     PathValidationError,
     VersionValidationError,
 )
+from app.utils.security import sanitize_log_message
 from app.services.dockerfile_parser import DockerfileParser
 from app.services.changelog import ChangelogFetcher
 from app.utils.manifest_parsers import (
@@ -137,7 +138,7 @@ class DependencyUpdateService:
                                     return f"{parts[0]}/{parts[1]}"
 
         except Exception as e:
-            logger.debug(f"Could not fetch GitHub repo for {package_name} ({ecosystem}): {e}")
+            logger.debug(f"Could not fetch GitHub repo for {sanitize_log_message(str(package_name))} ({sanitize_log_message(str(ecosystem))}): {sanitize_log_message(str(e))}")
 
         return None
 
@@ -257,9 +258,9 @@ class DependencyUpdateService:
                 if backup_path:
                     try:
                         restore_from_backup(backup_path, validated_path)
-                        logger.warning(f"Restored backup after write failure: {e}")
+                        logger.warning(f"Restored backup after write failure: {sanitize_log_message(str(e))}")
                     except FileOperationError as restore_error:
-                        logger.error(f"Failed to restore backup: {restore_error}")
+                        logger.error(f"Failed to restore backup: {sanitize_log_message(str(restore_error))}")
 
                 return {
                     "success": False,
@@ -315,16 +316,16 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating Dockerfile dependency {dependency_id}: {e}")
+            logger.error(f"Unexpected error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
 
             # Try to restore backup
             if backup_path and Path(backup_path).exists():
                 try:
                     file_path = Path("/projects") / dependency.dockerfile_path
                     restore_from_backup(Path(backup_path), file_path)
-                    logger.warning(f"Restored backup after unexpected error: {e}")
+                    logger.warning(f"Restored backup after unexpected error: {sanitize_log_message(str(e))}")
                 except Exception as restore_error:
-                    logger.error(f"Failed to restore backup: {restore_error}")
+                    logger.error(f"Failed to restore backup: {sanitize_log_message(str(restore_error))}")
 
             return {
                 "success": False,
@@ -490,7 +491,7 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating HTTP server {server_id}: {e}")
+            logger.error(f"Unexpected error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
 
             if backup_path and Path(backup_path).exists():
                 try:
@@ -709,7 +710,7 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating app dependency {dependency_id}: {e}")
+            logger.error(f"Unexpected error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
 
             if backup_path and Path(backup_path).exists():
                 try:
@@ -761,9 +762,9 @@ class DependencyUpdateService:
                         if changelog_result:
                             changelog_text = changelog_result.raw_text
                             changelog_url = changelog_result.url
-                            logger.info(f"Fetched changelog for {dependency.image_name}:{new_version} from {github_repo}")
+                            logger.info(f"Fetched changelog for {sanitize_log_message(str(dependency.image_name))}:{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}")
                     except Exception as e:
-                        logger.warning(f"Failed to fetch changelog for {dependency.image_name}: {e}")
+                        logger.warning(f"Failed to fetch changelog for {sanitize_log_message(str(dependency.image_name))}: {sanitize_log_message(str(e))}")
 
                 return {
                     "current_line": f"FROM {dependency.image_name}:{dependency.current_tag}",
@@ -816,9 +817,9 @@ class DependencyUpdateService:
                         if changelog_result:
                             changelog_text = changelog_result.raw_text
                             changelog_url = changelog_result.url
-                            logger.info(f"Fetched changelog for {dependency.name}@{new_version} from {github_repo}")
+                            logger.info(f"Fetched changelog for {sanitize_log_message(str(dependency.name))}@{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}")
                     except Exception as e:
-                        logger.warning(f"Failed to fetch changelog for {dependency.name}: {e}")
+                        logger.warning(f"Failed to fetch changelog for {sanitize_log_message(str(dependency.name))}: {sanitize_log_message(str(e))}")
 
                 # Format depends on manifest type
                 manifest_name = Path(dependency.manifest_file).name.lower()
@@ -851,5 +852,5 @@ class DependencyUpdateService:
                 return {"error": f"Unknown dependency type: {dependency_type}"}
 
         except Exception as e:
-            logger.error(f"Error generating preview: {e}")
+            logger.error(f"Error generating preview: {sanitize_log_message(str(e))}")
             return {"error": f"Preview failed: {str(e)}"}

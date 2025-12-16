@@ -10,6 +10,7 @@ from app.services.auth import require_auth
 from app.services.scan_service import ScanService
 from app.schemas.scan import ScanResultSchema, ScanSummarySchema
 from app.utils.error_handling import safe_error_response
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +38,18 @@ async def scan_container(
         400: VulnForge disabled for container or not configured
         500: Scan failed
     """
-    logger.info(f"scan_container called with container_id={container_id}")
+    logger.info(f"scan_container called with container_id={sanitize_log_message(str(container_id))}")
     try:
         result = await ScanService.scan_container(db, container_id)
-        logger.info(f"scan_container succeeded for container_id={container_id}")
+        logger.info(f"scan_container succeeded for container_id={sanitize_log_message(str(container_id))}")
         return result
     except ValueError as e:
-        logger.error(f"ValueError in scan_container: {e}")
+        logger.error(f"ValueError in scan_container: {sanitize_log_message(str(e))}")
         error_detail = str(e)
-        logger.error(f"Raising HTTPException 404 with detail: {error_detail}")
+        logger.error(f"Raising HTTPException 404 with detail: {sanitize_log_message(str(error_detail))}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_detail)
     except Exception as e:
-        logger.error(f"Unexpected exception in scan_container: {type(e).__name__}: {e}")
+        logger.error(f"Unexpected exception in scan_container: {sanitize_log_message(str(type(e).__name__))}: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Failed to scan container")
 
 

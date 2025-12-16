@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class CleanupService:
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(f"Failed to get disk usage: {error_msg}")
+                logger.error(f"Failed to get disk usage: {sanitize_log_message(str(error_msg))}")
                 return {"error": error_msg}
 
             # Parse JSON output (one per line for different resource types)
@@ -156,7 +157,7 @@ class CleanupService:
             logger.error("Timeout getting disk usage")
             return {"error": "Timeout getting disk usage"}
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error: {e}")
+            logger.error(f"Process execution error: {sanitize_log_message(str(e))}")
             return {"error": str(e)}
 
     @staticmethod
@@ -207,7 +208,7 @@ class CleanupService:
             return images
 
         except (asyncio.TimeoutError, OSError, PermissionError) as e:
-            logger.error(f"Error getting dangling images: {e}")
+            logger.error(f"Error getting dangling images: {sanitize_log_message(str(e))}")
             return []
 
     @staticmethod
@@ -267,7 +268,7 @@ class CleanupService:
             return containers
 
         except (asyncio.TimeoutError, OSError, PermissionError) as e:
-            logger.error(f"Error getting exited containers: {e}")
+            logger.error(f"Error getting exited containers: {sanitize_log_message(str(e))}")
             return []
 
     @staticmethod
@@ -328,7 +329,7 @@ class CleanupService:
             return images
 
         except (asyncio.TimeoutError, OSError, PermissionError) as e:
-            logger.error(f"Error getting old images: {e}")
+            logger.error(f"Error getting old images: {sanitize_log_message(str(e))}")
             return []
 
     @staticmethod
@@ -398,7 +399,7 @@ class CleanupService:
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(f"Failed to prune dangling images: {error_msg}")
+                logger.error(f"Failed to prune dangling images: {sanitize_log_message(str(error_msg))}")
                 return {"success": False, "error": error_msg, "images_removed": 0, "space_reclaimed": 0}
 
             # Parse output for space reclaimed
@@ -417,7 +418,7 @@ class CleanupService:
             if match:
                 space_reclaimed = CleanupService._parse_bytes(match.group(1))
 
-            logger.info(f"Pruned {images_removed} dangling images, reclaimed {CleanupService._format_bytes(space_reclaimed)}")
+            logger.info(f"Pruned {sanitize_log_message(str(images_removed))} dangling images, reclaimed {sanitize_log_message(str(CleanupService._format_bytes(space_reclaimed)))}")
 
             return {
                 "success": True,
@@ -430,7 +431,7 @@ class CleanupService:
             logger.error("Timeout pruning dangling images")
             return {"success": False, "error": "Timeout", "images_removed": 0, "space_reclaimed": 0}
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error: {e}")
+            logger.error(f"Process execution error: {sanitize_log_message(str(e))}")
             return {"success": False, "error": str(e), "images_removed": 0, "space_reclaimed": 0}
 
     @staticmethod
@@ -465,14 +466,14 @@ class CleanupService:
 
                     if process.returncode == 0:
                         removed += 1
-                        logger.debug(f"Removed container: {container['name']}")
+                        logger.debug(f"Removed container: {sanitize_log_message(str(container['name']))}")
                     else:
                         errors.append(container["name"])
 
                 except (asyncio.TimeoutError, OSError, PermissionError) as e:
                     errors.append(f"{container['name']}: {e}")
 
-            logger.info(f"Removed {removed} exited containers")
+            logger.info(f"Removed {sanitize_log_message(str(removed))} exited containers")
 
             return {
                 "success": len(errors) == 0,
@@ -494,7 +495,7 @@ class CleanupService:
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(f"Failed to prune containers: {error_msg}")
+                logger.error(f"Failed to prune containers: {sanitize_log_message(str(error_msg))}")
                 return {"success": False, "error": error_msg, "containers_removed": 0}
 
             # Count removed containers from output
@@ -505,7 +506,7 @@ class CleanupService:
                 if line and not line.startswith("Total") and not line.startswith("Deleted"):
                     containers_removed += 1
 
-            logger.info(f"Pruned {containers_removed} exited containers")
+            logger.info(f"Pruned {sanitize_log_message(str(containers_removed))} exited containers")
 
             return {
                 "success": True,
@@ -516,7 +517,7 @@ class CleanupService:
             logger.error("Timeout pruning containers")
             return {"success": False, "error": "Timeout", "containers_removed": 0}
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error: {e}")
+            logger.error(f"Process execution error: {sanitize_log_message(str(e))}")
             return {"success": False, "error": str(e), "containers_removed": 0}
 
     @staticmethod
@@ -562,7 +563,7 @@ class CleanupService:
                     if process.returncode == 0:
                         removed += 1
                         space_reclaimed += size
-                        logger.debug(f"Removed old image: {image.get('repository', image['id'])}")
+                        logger.debug(f"Removed old image: {sanitize_log_message(str(image.get('repository', image['id'])))}")
                     else:
                         # Image might be in use, skip silently
                         stderr_text = stderr_out.decode().strip()
@@ -572,7 +573,7 @@ class CleanupService:
                 except (asyncio.TimeoutError, OSError, PermissionError) as e:
                     errors.append(f"{image['id']}: {e}")
 
-            logger.info(f"Removed {removed} old images, reclaimed {CleanupService._format_bytes(space_reclaimed)}")
+            logger.info(f"Removed {sanitize_log_message(str(removed))} old images, reclaimed {sanitize_log_message(str(CleanupService._format_bytes(space_reclaimed)))}")
 
             return {
                 "success": len(errors) == 0,
@@ -597,7 +598,7 @@ class CleanupService:
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(f"Failed to prune old images: {error_msg}")
+                logger.error(f"Failed to prune old images: {sanitize_log_message(str(error_msg))}")
                 return {"success": False, "error": error_msg, "images_removed": 0, "space_reclaimed": 0}
 
             output = stdout.decode()
@@ -614,7 +615,7 @@ class CleanupService:
             if match:
                 space_reclaimed = CleanupService._parse_bytes(match.group(1))
 
-            logger.info(f"Pruned {images_removed} old images (>{days} days), reclaimed {CleanupService._format_bytes(space_reclaimed)}")
+            logger.info(f"Pruned {sanitize_log_message(str(images_removed))} old images (>{sanitize_log_message(str(days))} days), reclaimed {sanitize_log_message(str(CleanupService._format_bytes(space_reclaimed)))}")
 
             return {
                 "success": True,
@@ -627,7 +628,7 @@ class CleanupService:
             logger.error("Timeout pruning old images")
             return {"success": False, "error": "Timeout", "images_removed": 0, "space_reclaimed": 0}
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error: {e}")
+            logger.error(f"Process execution error: {sanitize_log_message(str(e))}")
             return {"success": False, "error": str(e), "images_removed": 0, "space_reclaimed": 0}
 
     @staticmethod
