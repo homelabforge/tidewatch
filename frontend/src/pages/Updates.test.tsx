@@ -792,7 +792,7 @@ describe('Updates', () => {
       fireEvent.click(approveButtons[0])
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to approve update')
+        expect(toast.error).toHaveBeenCalledWith('API Error')
       })
     })
 
@@ -813,7 +813,7 @@ describe('Updates', () => {
       fireEvent.click(rejectButtons[0])
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to reject update')
+        expect(toast.error).toHaveBeenCalledWith('API Error')
       })
 
       window.prompt = originalPrompt

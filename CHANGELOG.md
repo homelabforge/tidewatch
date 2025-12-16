@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.6] - 2025-12-15
+
+### Fixed
+- **CI Frontend Tests** - Fixed test environment configuration causing "document is not defined" errors
+  - Root cause: Bun's test runner (`bun test`) doesn't recognize vite.config.ts test settings for jsdom environment
+  - Solution: Changed CI workflow and package.json to use `vitest` instead of `bun test` for proper jsdom environment loading
+  - Impact: CI tests now properly execute with DOM environment, matching local development behavior
+  - **Files modified:**
+    - `.github/workflows/ci.yml` - Changed from `bun test --run --coverage` to `bun run test:coverage` (line 74)
+    - `frontend/package.json` - Updated `test:coverage` script to use `vitest run --coverage` (line 14)
+
 ## [3.5.5] - 2025-12-15
 
 ### Updated - Frontend Dependencies
