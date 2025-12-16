@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.5] - 2025-12-15
+
+### Updated - Frontend Dependencies
+- lucide-react: 0.556.0 → 0.561.0 (new icons)
+- react: 19.2.1 → 19.2.3 (stability fixes)
+- react-dom: 19.2.1 → 19.2.3 (stability fixes)
+- recharts: 3.5.1 → 3.6.0 (performance improvements)
+- vite: 7.2.6 → 7.3.0 (bug fixes, improved HMR)
+- @testing-library/react: 16.3.0 → 16.3.1 (testing improvements)
+- @types/react: 19.2.6 → 19.2.7 (type definition updates)
+- @typescript-eslint/eslint-plugin: 8.47.0 → 8.50.0 (new linting rules)
+- @typescript-eslint/parser: 8.47.0 → 8.50.0 (parser improvements)
+- eslint-plugin-react-refresh: 0.4.24 → 0.4.25 (plugin updates)
+- autoprefixer: 10.4.22 → 10.4.23 (CSS vendor prefix updates)
+- jsdom: 27.2.0 → 27.3.0 (DOM compatibility updates)
+- typescript-eslint: 8.47.0 → 8.50.0 (unified TypeScript ESLint tooling)
+
+### Updated - Backend Dependencies
+- pytest: 9.0.1 → 9.0.2 (bug fixes)
+- ruff: 0.14.8 → 0.14.9 (linting improvements)
+
+### Changed
+- Updated frontend package version to 3.5.5
+- Updated backend package version to 3.5.5
+
 ## [3.5.4] - 2025-12-14
 
 ### Fixed
