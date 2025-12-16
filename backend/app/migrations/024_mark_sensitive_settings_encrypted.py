@@ -94,7 +94,7 @@ async def upgrade():
                 skipped_count += 1
 
         print("")
-        print(f"Migration completed successfully!")
+        print("Migration completed successfully!")
         print(f"  Marked: {marked_count}")
         print(f"  Skipped: {skipped_count}")
         print("")

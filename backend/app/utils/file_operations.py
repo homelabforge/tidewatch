@@ -327,7 +327,7 @@ def restore_from_backup(backup_path: Path, target_path: Path) -> bool:
 
         # Verify restore
         if not target_path.exists():
-            raise FileOperationError(f"Restore failed: target not created")
+            raise FileOperationError("Restore failed: target not created")
 
         logger.info(f"Restored {sanitize_log_message(str(target_path))} from backup {sanitize_log_message(str(backup_path))}")
         return True

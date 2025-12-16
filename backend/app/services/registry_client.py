@@ -762,7 +762,7 @@ class GHCRClient(RegistryClient):
                 auth = httpx.BasicAuth(self._username, self._token)
                 logger.info(f"GHCR: Using Basic Auth for token request (username: {self._username[:min(4, len(self._username))]}..., token length: {len(self._token)})")
             else:
-                logger.info(f"GHCR: No credentials provided for token request (anonymous)")
+                logger.info("GHCR: No credentials provided for token request (anonymous)")
 
             async with httpx.AsyncClient(timeout=30.0) as token_client:
                 response = await token_client.get(self.TOKEN_URL, params=params, auth=auth)

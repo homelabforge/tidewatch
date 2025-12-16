@@ -30,7 +30,7 @@ async def test_filter_debug(authenticated_client, db):
 
     # Get all containers first
     response = await authenticated_client.get("/api/v1/containers/")
-    print(f"\n=== ALL CONTAINERS ===")
+    print("\n=== ALL CONTAINERS ===")
     print(f"Status: {response.status_code}")
     data = response.json()
     print(f"Count: {len(data)}")
@@ -39,7 +39,7 @@ async def test_filter_debug(authenticated_client, db):
 
     # Filter by policy=auto
     response = await authenticated_client.get("/api/v1/containers/?policy=auto")
-    print(f"\n=== FILTERED BY POLICY=auto ===")
+    print("\n=== FILTERED BY POLICY=auto ===")
     print(f"Status: {response.status_code}")
     data = response.json()
     print(f"Count: {len(data)}")

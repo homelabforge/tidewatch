@@ -55,7 +55,7 @@ class ProjectScanner:
                 projects_path = sanitize_path(projects_dir, "/srv/raid0/docker/build", allow_symlinks=False)
             else:
                 logger.warning(f"Projects directory outside allowed paths: {sanitize_log_message(projects_dir)}")
-                return {"added": 0, "updated": 0, "skipped": 0, "error": f"Invalid directory path"}
+                return {"added": 0, "updated": 0, "skipped": 0, "error": "Invalid directory path"}
 
             if not projects_path.exists():
                 logger.warning(f"Projects directory does not exist: {projects_path}")

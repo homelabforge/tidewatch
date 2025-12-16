@@ -89,7 +89,7 @@ async def migrate():
             if added_count > 0:
                 logger.info(f"\n✅ Migration completed successfully! Added {added_count} columns.")
             else:
-                logger.info(f"\n✅ Migration already applied (all columns exist).")
+                logger.info("\n✅ Migration already applied (all columns exist).")
 
             # Verify all columns exist
             logger.info("\nVerifying migration...")
@@ -110,7 +110,7 @@ async def migrate():
             if missing:
                 logger.error(f"  ❌ Missing critical columns: {', '.join(missing)}")
             else:
-                logger.info(f"  ✓ All critical columns present")
+                logger.info("  ✓ All critical columns present")
 
     except Exception as e:
         logger.error(f"\n❌ Migration failed: {e}")

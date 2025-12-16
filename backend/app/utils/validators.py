@@ -41,7 +41,7 @@ def validate_container_name(name: str) -> str:
     dangerous_chars = ['$', '`', '\\', '"', "'", ';', '|', '&', '<', '>',
                        '(', ')', '{', '}', '[', ']', '*', '?', '!', '\n', '\r']
     if any(char in name for char in dangerous_chars):
-        raise ValidationError(f"Container name contains forbidden characters")
+        raise ValidationError("Container name contains forbidden characters")
 
     # Length check
     if len(name) > 255:

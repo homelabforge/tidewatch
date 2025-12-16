@@ -99,7 +99,7 @@ async def upgrade():
 
         results = cursor.fetchall()
         if results:
-            print(f"\nRecent update_history records with CVE data:")
+            print("\nRecent update_history records with CVE data:")
             for row in results:
                 import json
                 cve_count = len(json.loads(row[3])) if row[3] else 0

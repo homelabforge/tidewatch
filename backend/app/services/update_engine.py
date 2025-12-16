@@ -1384,7 +1384,7 @@ class UpdateEngine:
                     env=env
                 )
                 await asyncio.wait_for(stop_process.communicate(), timeout=60)
-                logger.info(f"Container stopped successfully (or was not running)")
+                logger.info("Container stopped successfully (or was not running)")
             except Exception as e:
                 logger.warning(f"Stop command failed (container may not be running): {e}")
                 # Continue anyway - container might not have been running
