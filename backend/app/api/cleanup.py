@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -11,6 +11,7 @@ from app.services.auth import require_auth
 from app.services.cleanup_service import CleanupService
 from app.services.settings_service import SettingsService
 from app.utils.error_handling import safe_error_response
+from app.utils.security import sanitize_log_message
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -31,8 +32,12 @@ async def get_disk_usage(
 
     Returns disk usage for images, containers, volumes, and build cache.
     """
-    stats = await CleanupService.get_disk_usage()
-    return {"success": True, "stats": stats}
+    try:
+        stats = await CleanupService.get_disk_usage()
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        logger.error(f"Error getting disk usage stats: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve disk usage statistics")
 
 
 @router.get("/preview")
@@ -115,14 +120,18 @@ async def cleanup_containers(
     Removes containers that are in exited, dead, or created state.
     Respects exclude patterns from settings.
     """
-    exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
-    exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
+    try:
+        exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+        exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
-    result = await CleanupService.prune_exited_containers(exclude_patterns)
+        result = await CleanupService.prune_exited_containers(exclude_patterns)
 
-    logger.info(f"Container cleanup complete: {result.get('containers_removed', 0)} containers removed")
+        logger.info(f"Container cleanup complete: {result.get('containers_removed', 0)} containers removed")
 
-    return {"success": result.get("success", False), **result}
+        return {"success": result.get("success", False), **result}
+    except Exception as e:
+        logger.error(f"Error cleaning up containers: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=500, detail="Failed to clean up containers")
 
 
 @router.post("/all")

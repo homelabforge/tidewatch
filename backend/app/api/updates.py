@@ -210,7 +210,7 @@ async def batch_approve_updates(
             failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
             logger.error(f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": str(e)})
+            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
 
     return {
         "approved": approved,
@@ -283,7 +283,7 @@ async def batch_reject_updates(
             failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
         except Exception as e:
             logger.error(f"Error rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": str(e)})
+            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
 
     return {
         "rejected": rejected,
