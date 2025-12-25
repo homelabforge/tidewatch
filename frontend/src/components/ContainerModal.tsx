@@ -241,8 +241,21 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   };
 
   const handleScopeChange = async (newScope: string) => {
+    const oldScope = scope;
     setScope(newScope);
     await saveSettings({ scope: newScope });
+
+    // Auto re-check updates if scope changed
+    if (oldScope !== newScope) {
+      try {
+        await api.containers.recheckUpdates(container.id);
+        toast.success('Updates re-checked with new scope');
+        if (onUpdate) onUpdate(); // Refresh parent view
+      } catch (error) {
+        console.error('Failed to re-check updates:', error);
+        toast.error('Failed to re-check updates');
+      }
+    }
   };
 
   const handlePrereleasesToggle = async () => {

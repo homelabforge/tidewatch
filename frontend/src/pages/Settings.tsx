@@ -2136,7 +2136,7 @@ export default function Settings() {
                           <p className="text-sm text-tide-text-muted mt-0.5">Vulnerability scanning with authentication</p>
                         </div>
                       </div>
-                      <HelpTooltip content="VulnForge URL should point to your VulnForge instance (e.g., http://vulnforge:8787). API key authentication is recommended for automated scanning. Basic auth is useful for testing or manual integration. Test connection after changing authentication settings." />
+                      <HelpTooltip content="VulnForge URL should point to your VulnForge instance (e.g., http://vulnforge:8787). API key authentication is required for external access. Use 'None' for internal/trusted network access only. Test connection after changing authentication settings." />
                     </div>
 
                     <div className="space-y-4">
@@ -2204,7 +2204,7 @@ export default function Settings() {
                         </p>
 
                         {/* Auth Type Selector */}
-                        <div className="grid grid-cols-3 gap-2 mb-4">
+                        <div className="grid grid-cols-2 gap-2 mb-4">
                           <button
                             type="button"
                             onClick={() => updateSetting('vulnforge_auth_type', 'none')}
@@ -2216,18 +2216,6 @@ export default function Settings() {
                             }`}
                           >
                             None
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateSetting('vulnforge_auth_type', 'basic_auth')}
-                            disabled={saving}
-                            className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                              settings.vulnforge_auth_type === 'basic_auth'
-                                ? 'bg-teal-500 text-tide-text'
-                                : 'bg-tide-surface text-tide-text hover:bg-tide-surface-light'
-                            }`}
-                          >
-                            Basic Auth
                           </button>
                           <button
                             type="button"
@@ -2249,36 +2237,6 @@ export default function Settings() {
                             <p className="text-xs text-teal-400">
                               No authentication configured. VulnForge will be accessed without credentials.
                             </p>
-                          </div>
-                        )}
-
-                        {/* Basic Auth Fields */}
-                        {settings.vulnforge_auth_type === 'basic_auth' && (
-                          <div className="space-y-3 mt-3">
-                            <div>
-                              <label className="block text-sm font-medium text-tide-text mb-2">
-                                Username
-                              </label>
-                              <input
-                                type="text"
-                                value={String(settings.vulnforge_username || '')}
-                                onChange={(e) => handleTextChange('vulnforge_username', e.target.value)}
-                                disabled={saving}
-                                className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-tide-text mb-2">
-                                Password
-                              </label>
-                              <input
-                                type="password"
-                                value={String(settings.vulnforge_password || '')}
-                                onChange={(e) => handleTextChange('vulnforge_password', e.target.value)}
-                                disabled={saving}
-                                className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
-                              />
-                            </div>
                           </div>
                         )}
 

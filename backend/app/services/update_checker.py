@@ -28,9 +28,7 @@ class UpdateChecker:
 
     @staticmethod
     async def _should_auto_approve(
-        container: Container,
-        update: Update,
-        auto_update_enabled: bool
+        container: Container, update: Update, auto_update_enabled: bool
     ) -> tuple[bool, str]:
         """Determine if an update should be automatically approved.
 
@@ -54,13 +52,19 @@ class UpdateChecker:
             return False, "container policy requires manual approval"
 
         if container.policy == "auto":
-            return True, "container policy allows all updates (including breaking changes)"
+            return (
+                True,
+                "container policy allows all updates (including breaking changes)",
+            )
 
         if container.policy == "security":
             if update.reason_type == "security":
                 return True, "security policy approves security updates"
             else:
-                return False, "security policy requires manual approval for non-security updates"
+                return (
+                    False,
+                    "security policy requires manual approval for non-security updates",
+                )
 
         # Semver-aware policies
         if container.policy == "patch-only":
@@ -68,16 +72,25 @@ class UpdateChecker:
             if change_type == "patch":
                 return True, "patch-only policy approves patch updates"
             else:
-                return False, f"patch-only policy requires manual approval for {change_type or 'unknown'} updates"
+                return (
+                    False,
+                    f"patch-only policy requires manual approval for {change_type or 'unknown'} updates",
+                )
 
         if container.policy == "minor-and-patch":
             change_type = get_version_change_type(update.from_tag, update.to_tag)
             if change_type in ["minor", "patch"]:
                 return True, f"minor-and-patch policy approves {change_type} updates"
             elif change_type == "major":
-                return False, "minor-and-patch policy requires manual approval for major updates (breaking changes)"
+                return (
+                    False,
+                    "minor-and-patch policy requires manual approval for major updates (breaking changes)",
+                )
             else:
-                return False, "minor-and-patch policy requires manual approval for unknown version changes"
+                return (
+                    False,
+                    "minor-and-patch policy requires manual approval for unknown version changes",
+                )
 
         return False, "unknown policy"
 
@@ -169,16 +182,49 @@ class UpdateChecker:
             # This allows users to globally filter pre-releases via Settings > Updates
             include_prereleases = container.include_prereleases
             if not include_prereleases:
-                global_include_prereleases = await SettingsService.get_bool(db, "include_prereleases", default=False)
+                global_include_prereleases = await SettingsService.get_bool(
+                    db, "include_prereleases", default=False
+                )
                 include_prereleases = global_include_prereleases
 
             latest_tag = await client.get_latest_tag(
                 container.image,
                 container.current_tag,
                 container.scope,
-                current_digest=container.current_digest if container.current_tag == "latest" else None,
+                current_digest=container.current_digest
+                if container.current_tag == "latest"
+                else None,
                 include_prereleases=include_prereleases,
             )
+
+            # ALWAYS check for major updates separately (even if scope blocks them)
+            # This provides informational visibility to users about available major versions
+            latest_major_tag = None
+            if container.scope != "major":  # Optimization: skip if already major
+                try:
+                    latest_major_tag = await client.get_latest_major_tag(
+                        container.image,
+                        container.current_tag,
+                        include_prereleases=include_prereleases,
+                    )
+
+                    # Only store if different from scope-filtered result
+                    if latest_major_tag and latest_major_tag != latest_tag:
+                        container.latest_major_tag = latest_major_tag
+                        logger.info(
+                            f"Major update available for {container.name} (blocked by scope={container.scope}): "
+                            f"{container.current_tag} -> {latest_major_tag}"
+                        )
+                    else:
+                        container.latest_major_tag = None
+                except Exception as e:
+                    # Don't fail entire check if major tag check fails
+                    logger.warning(
+                        f"Failed to check major updates for {container.name}: {e}"
+                    )
+                    container.latest_major_tag = None
+            else:
+                container.latest_major_tag = None
 
             # Update last_checked
             container.last_checked = datetime.now(timezone.utc)
@@ -201,9 +247,13 @@ class UpdateChecker:
                                 f"{previous_digest} -> {new_digest}"
                             )
                 except httpx.HTTPStatusError as e:
-                    logger.warning(f"Registry HTTP error fetching digest for {container.name}: {e}")
+                    logger.warning(
+                        f"Registry HTTP error fetching digest for {container.name}: {e}"
+                    )
                 except (httpx.ConnectError, httpx.TimeoutException) as e:
-                    logger.warning(f"Registry connection error fetching digest for {container.name}: {e}")
+                    logger.warning(
+                        f"Registry connection error fetching digest for {container.name}: {e}"
+                    )
                 except (ValueError, KeyError, AttributeError) as e:
                     logger.warning(f"Invalid digest metadata for {container.name}: {e}")
 
@@ -218,6 +268,7 @@ class UpdateChecker:
                     # No update available
                     container.update_available = False
                     container.latest_tag = None
+                    # Keep latest_major_tag if it exists (informational only)
                     logger.info(f"No updates for {container.name}")
 
                     await UpdateChecker._clear_pending_updates(db, container.id)
@@ -272,7 +323,9 @@ class UpdateChecker:
                         else "Image digest updated for latest tag"
                     )
                     existing_update.reason_summary = summary
-                    existing_update.recommendation = "Recommended - refreshed image available"
+                    existing_update.recommendation = (
+                        "Recommended - refreshed image available"
+                    )
                     existing_update.changelog = json.dumps(
                         {
                             "type": "digest_update",
@@ -304,9 +357,7 @@ class UpdateChecker:
             if digest_update and new_digest:
                 reason_type = "maintenance"
                 if previous_digest:
-                    reason_summary = (
-                        f"Image digest updated: {previous_digest[:12]} → {new_digest[:12]}"
-                    )
+                    reason_summary = f"Image digest updated: {previous_digest[:12]} → {new_digest[:12]}"
                 else:
                     reason_summary = "Image digest updated for latest tag"
                 recommendation = "Recommended - refreshed image available"
@@ -319,8 +370,12 @@ class UpdateChecker:
                 )
 
             # Get retry settings from configuration
-            max_retries = await SettingsService.get_int(db, "update_retry_max_attempts", default=3)
-            backoff_multiplier = await SettingsService.get_int(db, "update_retry_backoff_multiplier", default=3)
+            max_retries = await SettingsService.get_int(
+                db, "update_retry_max_attempts", default=3
+            )
+            backoff_multiplier = await SettingsService.get_int(
+                db, "update_retry_backoff_multiplier", default=3
+            )
 
             # Create new update record
             update = Update(
@@ -376,16 +431,24 @@ class UpdateChecker:
             if not release_source:
                 detected_source = ComposeParser.extract_release_source(container.image)
                 if detected_source:
-                    logger.info(f"Auto-detected release source for {container.name}: {detected_source}")
+                    logger.info(
+                        f"Auto-detected release source for {container.name}: {detected_source}"
+                    )
                     release_source = detected_source
 
             if release_source:
                 # Try ghcr_token first (GitHub PAT), fallback to github_token if exists
-                github_token = await SettingsService.get(db, "ghcr_token") or await SettingsService.get(db, "github_token")
+                github_token = await SettingsService.get(
+                    db, "ghcr_token"
+                ) or await SettingsService.get(db, "github_token")
                 fetcher = ChangelogFetcher(github_token=github_token)
-                changelog = await fetcher.fetch(release_source, container.image, latest_tag)
+                changelog = await fetcher.fetch(
+                    release_source, container.image, latest_tag
+                )
                 if changelog:
-                    classified_type, summary = ChangelogClassifier.classify(changelog.raw_text)
+                    classified_type, summary = ChangelogClassifier.classify(
+                        changelog.raw_text
+                    )
                     if classified_type != "unknown":
                         update.reason_type = classified_type
                     if summary:
@@ -397,6 +460,7 @@ class UpdateChecker:
                     # Save the detected source to the container for future use (only if changelog was found)
                     if detected_source:
                         from sqlalchemy import update as sql_update
+
                         await db.execute(
                             sql_update(Container)
                             .where(Container.id == container.id)
@@ -436,14 +500,14 @@ class UpdateChecker:
                     update.from_tag,
                     update.to_tag,
                     update.cves_fixed,
-                    update.vuln_delta or 0
+                    update.vuln_delta or 0,
                 )
             else:
                 await dispatcher.notify_update_available(
                     container.name,
                     update.from_tag,
                     update.to_tag,
-                    update.reason_summary or "New version available"
+                    update.reason_summary or "New version available",
                 )
 
             logger.info(f"Created update record for {container.name}")
@@ -463,7 +527,9 @@ class UpdateChecker:
             return update
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Registry HTTP error checking updates for {container.name}: {e}")
+            logger.error(
+                f"Registry HTTP error checking updates for {container.name}: {e}"
+            )
             await event_bus.publish(
                 {
                     "type": "update-check-error",
@@ -474,7 +540,9 @@ class UpdateChecker:
             )
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error(f"Registry connection error checking updates for {container.name}: {e}")
+            logger.error(
+                f"Registry connection error checking updates for {container.name}: {e}"
+            )
             await event_bus.publish(
                 {
                     "type": "update-check-error",
@@ -611,7 +679,7 @@ class UpdateChecker:
                 auth_type=auth_type,
                 api_key=vulnforge_api_key,
                 username=vulnforge_username,
-                password=vulnforge_password
+                password=vulnforge_password,
             )
 
             try:
@@ -620,7 +688,7 @@ class UpdateChecker:
                     container.image,
                     container.current_tag,
                     update.to_tag,
-                    container.registry
+                    container.registry,
                 )
 
                 if not comparison:
@@ -685,8 +753,7 @@ class UpdateChecker:
                     )
                     update.status = "rejected"
                     update.reason_summary = (
-                        f"Auto-rejected: {comparison['summary']} "
-                        f"(security policy)"
+                        f"Auto-rejected: {comparison['summary']} (security policy)"
                     )
 
                 # Update container vulnerability count

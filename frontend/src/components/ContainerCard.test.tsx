@@ -16,6 +16,7 @@ describe('ContainerCard', () => {
     is_my_project: false,
     update_available: false,
     latest_tag: null,
+    latest_major_tag: null,
     last_checked: null,
     last_updated: null,
     labels: {},

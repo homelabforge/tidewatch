@@ -5,7 +5,11 @@ from typing import Optional, List, Dict
 import json
 
 from pydantic import BaseModel, Field, field_validator
-from app.schemas.dependency import DockerfileDependencySchema, AppDependencySchema, HttpServerSchema as HttpServerSchemaFromDependency
+from app.schemas.dependency import (
+    DockerfileDependencySchema,
+    AppDependencySchema,
+    HttpServerSchema as HttpServerSchemaFromDependency,
+)
 
 
 class ContainerSchema(BaseModel):
@@ -27,6 +31,7 @@ class ContainerSchema(BaseModel):
     is_my_project: bool = False
     update_available: bool
     latest_tag: Optional[str] = None
+    latest_major_tag: Optional[str] = None
     last_checked: Optional[datetime] = None
     last_updated: Optional[datetime] = None
     labels: Dict[str, str] = Field(default_factory=dict)
@@ -78,7 +83,9 @@ class HistoryItemSchema(BaseModel):
     from_tag: str
     to_tag: str
     status: str
-    event_type: Optional[str] = None  # 'update', 'dependency_ignore', 'dependency_unignore'
+    event_type: Optional[str] = (
+        None  # 'update', 'dependency_ignore', 'dependency_unignore'
+    )
     update_type: Optional[str] = None
     reason: Optional[str] = None
     reason_type: Optional[str] = None
@@ -94,7 +101,9 @@ class HistoryItemSchema(BaseModel):
     rolled_back_at: Optional[datetime] = None
 
     # Dependency-specific fields (present for dependency ignore/unignore events)
-    dependency_type: Optional[str] = None  # 'dockerfile', 'http_server', 'app_dependency'
+    dependency_type: Optional[str] = (
+        None  # 'dockerfile', 'http_server', 'app_dependency'
+    )
     dependency_id: Optional[int] = None
     dependency_name: Optional[str] = None
 
@@ -140,7 +149,9 @@ class ContainerUpdate(BaseModel):
 
     policy: Optional[str] = None  # auto, manual, disabled, security
     scope: Optional[str] = None  # patch, minor, major
-    include_prereleases: Optional[bool] = None  # Include nightly, dev, alpha, beta, rc tags
+    include_prereleases: Optional[bool] = (
+        None  # Include nightly, dev, alpha, beta, rc tags
+    )
     vulnforge_enabled: Optional[bool] = None
     health_check_url: Optional[str] = None
     health_check_method: Optional[str] = None

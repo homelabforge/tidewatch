@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Update } from '../types';
+import { Update, Container } from '../types';
 import { api } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
 import { RefreshCw, CheckCircle, XCircle, AlertCircle, Archive, RotateCw, Shield } from 'lucide-react';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 export default function Updates() {
   const [updates, setUpdates] = useState<Update[]>([]);
   const [allUpdates, setAllUpdates] = useState<Update[]>([]); // Keep track of all updates for consistent counts
+  const [containers, setContainers] = useState<Map<number, Container>>(new Map()); // Container lookup by ID
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'security'>('all');
@@ -19,9 +20,19 @@ export default function Updates() {
   const loadUpdates = useCallback(async () => {
     setLoading(true);
     try {
-      // Always fetch all updates for consistent tab counts
-      const allData = await api.updates.getAll();
+      // Fetch all updates and containers in parallel
+      const [allData, containersData] = await Promise.all([
+        api.updates.getAll(),
+        api.containers.getAll()
+      ]);
+
       setAllUpdates(allData);
+
+      // Create container lookup map by ID
+      const containerMap = new Map(
+        containersData.map(c => [c.id, c])
+      );
+      setContainers(containerMap);
 
       // Set displayed updates based on filter
       if (filterType === 'security') {
@@ -430,6 +441,7 @@ export default function Updates() {
               <UpdateCard
                 key={update.id}
                 update={update}
+                container={containers.get(update.container_id)}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onApply={handleApply}

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Major Update Visibility** - Always show major version updates even when scope blocks them
+  - New `latest_major_tag` field stores major version updates outside configured scope
+  - Orange warning badges on container cards when major updates exist but scope is set to patch/minor
+  - Scope violation warnings on update detail cards with actionable guidance
+  - Auto re-check updates when scope changes (single container only)
+  - New API endpoint: `POST /api/v1/containers/{id}/recheck-updates`
+
+- **Non-Semver Tag Tracking** - Extended digest-based tracking from "latest" to ALL non-semver tags
+  - Tags like `lts`, `stable`, `alpine`, `edge` now properly tracked via digest comparison
+  - Enables update detection for containers using non-semantic version tags
+  - Suffix matching preserved (e.g., `2.33.5-alpine` only updates to `2.33.6-alpine`, not `2.33.6`)
+
+### Changed
+- **Backend**: Migration 032 adds `latest_major_tag` column to containers table (auto-runs on startup)
+- **Backend**: Registry clients now perform dual-check (scope-filtered + always-major)
+- **Backend**: Generalized `_check_latest_digest()` to `_check_digest_change()` accepting any tag name
+- **Backend**: Added `get_latest_major_tag()` method to all registry client implementations
+- **Frontend**: Container interface updated with `latest_major_tag` field
+- **Frontend**: Updates page fetches containers in parallel for scope violation warnings
+- **Frontend**: UpdateCard component accepts optional container prop for warnings
+- **Frontend**: ContainerModal auto re-checks updates on scope change
+
+### Fixed
+- **Settings Page**: Removed VulnForge Basic Auth option (now API-key only for external access)
+- **Settings Page**: Fixed `setTestingDocker is not defined` error in VulnForge connection testing
+- Non-semver tags (lts, stable, alpine) no longer filtered out during update discovery
+- Portainer and similar containers using suffixed tags now properly detect updates
+
+### Security
+- **CodeQL Analysis**: Zero error/warning level findings across all scans
+  - Python: 315 informational notes (clear-text logging in dev mode)
+  - JavaScript/TypeScript: Clean with zero findings
+  - Full OWASP Top 10 coverage, 50+ CWE patterns scanned
+
 ## [3.5.6] - 2025-12-15
 
 ### Fixed

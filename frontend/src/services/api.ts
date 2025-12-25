@@ -149,6 +149,11 @@ export const containerApi = {
       method: 'POST',
     }),
 
+  recheckUpdates: (id: number) =>
+    apiCall<{ success: boolean; update_found: boolean; latest_tag: string | null; latest_major_tag: string | null; message: string }>(`/containers/${id}/recheck-updates`, {
+      method: 'POST',
+    }),
+
   getLogs: (id: number, tail: number = 100) =>
     apiCall<ContainerLogs>(`/containers/${id}/logs?tail=${tail}`),
 

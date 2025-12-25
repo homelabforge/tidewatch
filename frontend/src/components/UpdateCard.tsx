@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Update } from '../types';
+import { Update, Container } from '../types';
 import StatusBadge from './StatusBadge';
 import { ArrowRight, Shield, AlertTriangle, ExternalLink, Check, X, Trash2, Clock, Archive, ChevronDown, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -43,6 +43,7 @@ function cleanChangelog(text: string): string {
 
 interface UpdateCardProps {
   update: Update;
+  container?: Container;
   onApprove?: (id: number) => void;
   onReject?: (id: number) => void;
   onApply?: (id: number) => void;
@@ -55,7 +56,7 @@ interface UpdateCardProps {
   isRejecting?: boolean;
 }
 
-export default function UpdateCard({ update, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false }: UpdateCardProps) {
+export default function UpdateCard({ update, container, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false }: UpdateCardProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const isStale = update.reason_type === 'stale';
 
@@ -111,6 +112,26 @@ export default function UpdateCard({ update, onApprove, onReject, onApply, onSno
         </div>
         <StatusBadge status={update.status} />
       </div>
+
+      {/* Scope Violation Warning */}
+      {container?.latest_major_tag &&
+       container.latest_major_tag !== update.to_tag &&
+       container.scope !== 'major' && (
+        <div className="mb-3 bg-orange-500/10 border border-orange-500/30 rounded-md p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-orange-400">
+                Newer Major Version Available
+              </p>
+              <p className="text-xs text-tide-text-muted mt-1">
+                Version {container.latest_major_tag} is available but blocked by your current
+                scope setting ({container.scope}). Change scope to "major" to see this update.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reason */}
       <div className="flex items-start gap-2 mb-3">

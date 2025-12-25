@@ -1,5 +1,5 @@
 import { Container } from '../types';
-import { Package, Calendar, ToggleLeft, ToggleRight, Shield, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Package, Calendar, ToggleLeft, ToggleRight, Shield, ShieldAlert, RefreshCw, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -28,14 +28,22 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
         {/* Status Badge removed - runtime status not available */}
       </div>
 
-      {/* Update Badge */}
-      {hasUpdate && (
-        <div className="mb-3">
+      {/* Update Badges */}
+      <div className="mb-3 space-y-2">
+        {hasUpdate && (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/20 text-accent border border-accent/30">
             Update Available
           </span>
-        </div>
-      )}
+        )}
+
+        {/* Major update blocked by scope indicator */}
+        {!hasUpdate && container.latest_major_tag && container.scope !== 'major' && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            <AlertTriangle size={12} className="mr-1" />
+            Major Update Available (Scope: {container.scope})
+          </span>
+        )}
+      </div>
 
       {/* Info Grid */}
       <div className="grid grid-cols-2 gap-3 text-sm">

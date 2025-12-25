@@ -16,6 +16,7 @@ export interface Container {
   is_my_project: boolean;
   update_available: boolean;
   latest_tag: string | null;
+  latest_major_tag: string | null;
   last_checked: string | null;
   last_updated: string | null;
   labels: Record<string, string>;

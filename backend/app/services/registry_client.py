@@ -17,9 +17,27 @@ logger = logging.getLogger(__name__)
 # Non-PEP 440 prerelease indicators that packaging.Version won't detect
 # These are common in Docker image tags but not standard Python versioning
 NON_PEP440_PRERELEASE_INDICATORS = [
-    'nightly', 'develop', 'dev', 'master', 'main', 'preview', 'unstable',
-    'snapshot', 'canary', 'edge', 'test', 'testing', 'experimental', 'exp',
-    'pr-', 'pull-', 'branch-', 'feat-', 'feature-', 'fix-', 'hotfix-',
+    "nightly",
+    "develop",
+    "dev",
+    "master",
+    "main",
+    "preview",
+    "unstable",
+    "snapshot",
+    "canary",
+    "edge",
+    "test",
+    "testing",
+    "experimental",
+    "exp",
+    "pr-",
+    "pull-",
+    "branch-",
+    "feat-",
+    "feature-",
+    "fix-",
+    "hotfix-",
 ]
 
 
@@ -36,19 +54,19 @@ def is_prerelease_tag(tag: str) -> bool:
     Returns:
         True if the tag appears to be a prerelease version
     """
-    tag_lower = tag.lower().lstrip('v')
+    tag_lower = tag.lower().lstrip("v")
 
     # First, try PEP 440 detection via packaging library
     try:
         # Handle build metadata
-        version_str = tag_lower.split('+')[0] if '+' in tag_lower else tag_lower
+        version_str = tag_lower.split("+")[0] if "+" in tag_lower else tag_lower
         parsed = Version(version_str)
         if parsed.is_prerelease or parsed.is_devrelease:
             return True
     except InvalidVersion:
         # If it doesn't parse as a valid version, check if the base parses
         # e.g., "4.6.0-unstable" -> try "4.6.0" then check suffix
-        for sep in ('-', '_'):
+        for sep in ("-", "_"):
             if sep in tag_lower:
                 parts = tag_lower.split(sep, 1)
                 try:
@@ -56,7 +74,10 @@ def is_prerelease_tag(tag: str) -> bool:
                     # Base is valid, check if suffix indicates prerelease
                     suffix = parts[1].lower()
                     # Check non-PEP 440 indicators in suffix
-                    if any(indicator in suffix for indicator in NON_PEP440_PRERELEASE_INDICATORS):
+                    if any(
+                        indicator in suffix
+                        for indicator in NON_PEP440_PRERELEASE_INDICATORS
+                    ):
                         return True
                 except InvalidVersion:
                     pass
@@ -65,18 +86,18 @@ def is_prerelease_tag(tag: str) -> bool:
     # Use word boundary matching to avoid false positives (e.g., 'latest' shouldn't match 'test')
     for indicator in NON_PEP440_PRERELEASE_INDICATORS:
         # Handle prefix patterns (e.g., 'pr-', 'feat-') - check if tag starts with indicator
-        if indicator.endswith('-'):
+        if indicator.endswith("-"):
             # For patterns like 'pr-', check if tag starts with 'pr-' (case-insensitive)
             if tag_lower.startswith(indicator):
                 return True
             # Also check if any segment after splitting starts with the prefix
             # e.g., '1.0-pr-123' should match 'pr-'
-            segments = re.split(r'[-_.]', tag_lower)
+            segments = re.split(r"[-_.]", tag_lower)
             if any(seg.startswith(indicator) for seg in segments):
                 return True
         else:
             # For exact word patterns (e.g., 'nightly', 'test'), check exact segment match
-            segments = re.split(r'[-_.]', tag_lower)
+            segments = re.split(r"[-_.]", tag_lower)
             if indicator in segments:
                 return True
 
@@ -140,8 +161,7 @@ class TagCache:
         """
         now = datetime.now(timezone.utc)
         expired_keys = [
-            key for key, entry in self._cache.items()
-            if now > entry["expires_at"]
+            key for key, entry in self._cache.items() if now > entry["expires_at"]
         ]
         for key in expired_keys:
             del self._cache[key]
@@ -206,7 +226,9 @@ HOST_ARCH_CANONICAL = canonical_arch_suffix(platform.machine().lower())
 class RegistryClient(ABC):
     """Base class for registry clients."""
 
-    def __init__(self, username: Optional[str] = None, token: Optional[str] = None) -> None:
+    def __init__(
+        self, username: Optional[str] = None, token: Optional[str] = None
+    ) -> None:
         """Initialize registry client.
 
         Args:
@@ -223,9 +245,7 @@ class RegistryClient(ABC):
             headers["Authorization"] = f"Bearer {token}"
 
         self.client = httpx.AsyncClient(
-            timeout=30.0,
-            headers=headers,
-            auth=auth if auth else None
+            timeout=30.0, headers=headers, auth=auth if auth else None
         )
         self._registry_name = self.__class__.__name__.replace("Client", "").lower()
 
@@ -257,7 +277,7 @@ class RegistryClient(ABC):
         max_attempts=3,
         backoff_base=1.0,
         backoff_max=10.0,
-        exceptions=(httpx.HTTPError, httpx.TimeoutException, httpx.ConnectError)
+        exceptions=(httpx.HTTPError, httpx.TimeoutException, httpx.ConnectError),
     )
     async def _get_with_retry(self, url: str, **kwargs) -> httpx.Response:
         """Make HTTP GET request with automatic retry on transient failures.
@@ -277,7 +297,14 @@ class RegistryClient(ABC):
         return response
 
     @abstractmethod
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag for an image.
 
         Args:
@@ -407,6 +434,20 @@ class RegistryClient(ABC):
         """Backward-compatible helper for existing version-parsing calls."""
         return self._normalize_version(version)
 
+    def _is_non_semver_tag(self, tag: str) -> bool:
+        """Check if tag requires digest tracking (non-semantic version).
+
+        Non-semver tags like 'latest', 'lts', 'stable', 'alpine', 'edge' cannot be
+        compared using version logic and must use digest-based change detection.
+
+        Args:
+            tag: Tag to check
+
+        Returns:
+            True if tag cannot be parsed as semantic version
+        """
+        return self._parse_semver(tag) is None
+
     def _extract_arch_suffix(self, tag: str) -> Optional[str]:
         """Extract canonical architecture suffix from a tag if present."""
         lower_tag = tag.lower()
@@ -446,6 +487,36 @@ class RegistryClient(ABC):
             "-windows",
         ]
         return any(indicator in lower_tag for indicator in windows_indicators)
+
+    async def get_latest_major_tag(
+        self, image: str, current_tag: str, include_prereleases: bool = False
+    ) -> Optional[str]:
+        """Get latest major version regardless of container scope.
+
+        This method ALWAYS checks with scope='major' to find the absolute
+        latest version, even if container scope is set to patch/minor.
+
+        Args:
+            image: Image name
+            current_tag: Current tag
+            include_prereleases: Include pre-release tags
+
+        Returns:
+            Latest major version or None
+        """
+        # For non-semver tags, return None (no concept of major version)
+        if self._is_non_semver_tag(current_tag):
+            return None
+
+        # Delegate to registry-specific implementation
+        # This uses get_latest_tag with scope='major'
+        return await self.get_latest_tag(
+            image,
+            current_tag,
+            scope="major",  # Always major scope
+            current_digest=None,  # Not needed for semver tags
+            include_prereleases=include_prereleases,
+        )
 
 
 class DockerHubClient(RegistryClient):
@@ -489,7 +560,9 @@ class DockerHubClient(RegistryClient):
                 url = data.get("next")
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching Docker Hub tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching Docker Hub tags for {image}: {e.response.status_code}"
+            )
             return []
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching Docker Hub tags for {image}: {e}")
@@ -498,7 +571,9 @@ class DockerHubClient(RegistryClient):
             logger.error(f"Timeout fetching Docker Hub tags for {image}: {e}")
             return []
         except (ValueError, KeyError) as e:
-            logger.error(f"Invalid response data fetching Docker Hub tags for {image}: {e}")
+            logger.error(
+                f"Invalid response data fetching Docker Hub tags for {image}: {e}"
+            )
             return []
 
         # Cache the results
@@ -507,7 +582,14 @@ class DockerHubClient(RegistryClient):
 
         return tags
 
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag from Docker Hub.
 
         Optimized approach:
@@ -524,78 +606,94 @@ class DockerHubClient(RegistryClient):
         Returns:
             New tag if update available, None otherwise
         """
-        # Special case: if current tag is 'latest', check digest
-        if current_tag == "latest":
-            result = await self._check_latest_digest(image, current_tag, current_digest)
+        # Check if tag is non-semver (needs digest tracking)
+        if self._is_non_semver_tag(current_tag):
+            result = await self._check_digest_change(image, current_tag, current_digest)
             if result and result.get("changed"):
-                return "latest"  # Return the tag name if changed
+                return current_tag  # Return the tag name if changed
             return None  # No update
 
         # For semantic versions, use optimized fetching
-        return await self._get_semver_update(image, current_tag, scope, include_prereleases)
+        return await self._get_semver_update(
+            image, current_tag, scope, include_prereleases
+        )
 
-    async def _check_latest_digest(self, image: str, current_tag: str, current_digest: Optional[str] = None) -> Optional[Dict]:
-        """Check if 'latest' tag has new digest (optimized for 'latest' tracking).
+    async def _check_digest_change(
+        self, image: str, current_tag: str, current_digest: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Check if non-semver tag has new digest.
+
+        Works for any non-semver tag including 'latest', 'lts', 'stable', 'alpine', etc.
 
         Args:
             image: Image name
-            current_tag: Current tag (should be 'latest')
+            current_tag: Current tag (any non-semver tag)
             current_digest: Stored digest from database (if available)
 
         Returns:
             Dict with 'tag' and 'digest' if changed, None if same or error
         """
-        if current_tag != "latest":
-            logger.warning(f"_check_latest_digest called with non-latest tag: {current_tag}")
-            return None
-
         try:
             # Fetch current digest from registry
-            metadata = await self.get_tag_metadata(image, "latest")
+            metadata = await self.get_tag_metadata(image, current_tag)
             if not metadata:
-                logger.warning(f"Failed to fetch metadata for {image}:latest")
+                logger.warning(f"Failed to fetch metadata for {image}:{current_tag}")
                 return None
 
             new_digest = metadata.get("digest")
             if not new_digest:
-                logger.warning(f"No digest in metadata for {image}:latest")
+                logger.warning(f"No digest in metadata for {image}:{current_tag}")
                 return None
 
             # If we have a stored digest, compare them
             if current_digest:
                 if current_digest == new_digest:
-                    logger.debug(f"Digest unchanged for {image}:latest ({new_digest})")
+                    logger.debug(
+                        f"Digest unchanged for {image}:{current_tag} ({new_digest})"
+                    )
                     return None  # No change
                 else:
-                    logger.info(f"Digest changed for {image}:latest: {current_digest} -> {new_digest}")
-                    return {
-                        "tag": "latest",
-                        "digest": new_digest,
-                        "changed": True
-                    }
+                    logger.info(
+                        f"Digest changed for {image}:{current_tag}: {current_digest} -> {new_digest}"
+                    )
+                    return {"tag": current_tag, "digest": new_digest, "changed": True}
             else:
                 # No stored digest - this is the first check, store it
-                logger.info(f"No previous digest for {image}:latest, storing: {new_digest}")
+                logger.info(
+                    f"No previous digest for {image}:{current_tag}, storing: {new_digest}"
+                )
                 return {
-                    "tag": "latest",
+                    "tag": current_tag,
                     "digest": new_digest,
-                    "changed": False  # Not a change, just initial state
+                    "changed": False,  # Not a change, just initial state
                 }
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error checking digest for {image}:latest: {e.response.status_code}")
+            logger.error(
+                f"HTTP error checking digest for {image}:{current_tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error checking digest for {image}:latest: {e}")
+            logger.error(
+                f"Connection error checking digest for {image}:{current_tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
-            logger.error(f"Timeout checking digest for {image}:latest: {e}")
+            logger.error(f"Timeout checking digest for {image}:{current_tag}: {e}")
             return None
         except (ValueError, KeyError) as e:
-            logger.error(f"Invalid metadata checking digest for {image}:latest: {e}")
+            logger.error(
+                f"Invalid metadata checking digest for {image}:{current_tag}: {e}"
+            )
             return None
 
-    async def _get_semver_update(self, image: str, current_tag: str, scope: str, include_prereleases: bool = False) -> Optional[str]:
+    async def _get_semver_update(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get semantic version update with optimized API calls.
 
         Fetches tags in larger pages and stops early when possible.
@@ -632,18 +730,18 @@ class DockerHubClient(RegistryClient):
 
                     # Extract suffix from current tag to ensure we only suggest matching variants
                     # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-                    current_tag_without_v = current_tag.lstrip('vV')
+                    current_tag_without_v = current_tag.lstrip("vV")
                     current_suffix = None
-                    if '-' in current_tag_without_v:
-                        current_parts = current_tag_without_v.split('-', 1)
+                    if "-" in current_tag_without_v:
+                        current_parts = current_tag_without_v.split("-", 1)
                         if len(current_parts) == 2:
                             current_suffix = current_parts[1].lower()
 
                     # Extract suffix from candidate tag
-                    tag_without_v = tag_name.lstrip('vV')
+                    tag_without_v = tag_name.lstrip("vV")
                     candidate_suffix = None
-                    if '-' in tag_without_v:
-                        parts = tag_without_v.split('-', 1)
+                    if "-" in tag_without_v:
+                        parts = tag_without_v.split("-", 1)
                         if len(parts) == 2:
                             candidate_suffix = parts[1].lower()
 
@@ -665,7 +763,9 @@ class DockerHubClient(RegistryClient):
                         for t in data.get("results", [])
                         if self._parse_semver(t["name"])
                     ]
-                    if page_versions and all(v <= current_version for v in page_versions):
+                    if page_versions and all(
+                        v <= current_version for v in page_versions
+                    ):
                         logger.debug(f"Early exit: found {best_tag}, rest are older")
                         break
 
@@ -675,7 +775,9 @@ class DockerHubClient(RegistryClient):
                     break
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching tags for {image}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching tags for {image}: {e}")
@@ -708,16 +810,22 @@ class DockerHubClient(RegistryClient):
                 "full_size": data.get("full_size"),
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching Docker Hub metadata for {image}:{tag}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching Docker Hub metadata for {image}:{tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error fetching Docker Hub metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Connection error fetching Docker Hub metadata for {image}:{tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Docker Hub metadata for {image}:{tag}: {e}")
             return None
         except (ValueError, KeyError) as e:
-            logger.error(f"Invalid response data fetching Docker Hub metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Invalid response data fetching Docker Hub metadata for {image}:{tag}: {e}"
+            )
             return None
 
 
@@ -727,7 +835,9 @@ class GHCRClient(RegistryClient):
     BASE_URL = "https://ghcr.io"
     TOKEN_URL = "https://ghcr.io/token"
 
-    def __init__(self, username: Optional[str] = None, token: Optional[str] = None) -> None:
+    def __init__(
+        self, username: Optional[str] = None, token: Optional[str] = None
+    ) -> None:
         """Initialize GHCR client.
 
         Store credentials separately to avoid applying Basic Auth to the main httpx client.
@@ -748,10 +858,7 @@ class GHCRClient(RegistryClient):
         Returns:
             Bearer token or None
         """
-        params = {
-            "scope": f"repository:{image}:{scope}",
-            "service": "ghcr.io"
-        }
+        params = {"scope": f"repository:{image}:{scope}", "service": "ghcr.io"}
 
         try:
             # Use separate httpx client for token request with Basic Auth
@@ -759,22 +866,34 @@ class GHCRClient(RegistryClient):
             auth = None
             if self._username and self._token:
                 auth = httpx.BasicAuth(self._username, self._token)
-                logger.info(f"GHCR: Using Basic Auth for token request (username: {self._username[:min(4, len(self._username))]}..., token length: {len(self._token)})")
+                logger.info(
+                    f"GHCR: Using Basic Auth for token request (username: {self._username[: min(4, len(self._username))]}..., token length: {len(self._token)})"
+                )
             else:
-                logger.info("GHCR: No credentials provided for token request (anonymous)")
+                logger.info(
+                    "GHCR: No credentials provided for token request (anonymous)"
+                )
 
             async with httpx.AsyncClient(timeout=30.0) as token_client:
-                response = await token_client.get(self.TOKEN_URL, params=params, auth=auth)
+                response = await token_client.get(
+                    self.TOKEN_URL, params=params, auth=auth
+                )
                 response.raise_for_status()
                 data = response.json()
                 token = data.get("token")
                 if token:
-                    logger.info(f"GHCR: Successfully obtained bearer token for {image} (token length: {len(token)})")
+                    logger.info(
+                        f"GHCR: Successfully obtained bearer token for {image} (token length: {len(token)})"
+                    )
                 else:
-                    logger.warning(f"GHCR: Token response did not contain a token for {image}")
+                    logger.warning(
+                        f"GHCR: Token response did not contain a token for {image}"
+                    )
                 return token
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching GHCR token for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching GHCR token for {image}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GHCR token for {image}: {e}")
@@ -837,7 +956,9 @@ class GHCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching GHCR tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching GHCR tags for {image}: {e.response.status_code}"
+            )
             return tags  # Return partial results if pagination failed mid-way
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GHCR tags for {image}: {e}")
@@ -849,7 +970,14 @@ class GHCRClient(RegistryClient):
             logger.error(f"Invalid response data fetching GHCR tags for {image}: {e}")
             return tags
 
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag from GHCR.
 
         Args:
@@ -868,7 +996,9 @@ class GHCRClient(RegistryClient):
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
-                    logger.info(f"Digest changed for {image}:latest: {current_digest} -> {new_digest}")
+                    logger.info(
+                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                    )
                     return "latest"
             return None
 
@@ -877,7 +1007,11 @@ class GHCRClient(RegistryClient):
             return None
 
         # Filter out "latest" and non-semantic tags
-        version_tags = [t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None]
+        version_tags = [
+            t
+            for t in tags
+            if t.lower() != "latest" and self._parse_semver(t) is not None
+        ]
 
         # Filter out pre-release tags unless explicitly allowed
         if not include_prereleases:
@@ -885,20 +1019,20 @@ class GHCRClient(RegistryClient):
 
         # Extract suffix from current tag to ensure we only suggest matching variants
         # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip('vV')
+        current_tag_without_v = current_tag.lstrip("vV")
         current_suffix = None
-        if '-' in current_tag_without_v:
-            current_parts = current_tag_without_v.split('-', 1)
+        if "-" in current_tag_without_v:
+            current_parts = current_tag_without_v.split("-", 1)
             if len(current_parts) == 2:
                 current_suffix = current_parts[1].lower()
 
         # Filter tags to only include those with matching suffix
         filtered_tags = []
         for tag in version_tags:
-            tag_without_v = tag.lstrip('vV')
+            tag_without_v = tag.lstrip("vV")
             candidate_suffix = None
-            if '-' in tag_without_v:
-                parts = tag_without_v.split('-', 1)
+            if "-" in tag_without_v:
+                parts = tag_without_v.split("-", 1)
                 if len(parts) == 2:
                     candidate_suffix = parts[1].lower()
 
@@ -930,7 +1064,7 @@ class GHCRClient(RegistryClient):
             # Need to accept the manifest format and include bearer token
             headers = {
                 "Accept": "application/vnd.docker.distribution.manifest.v2+json",
-                "Authorization": f"Bearer {token}"
+                "Authorization": f"Bearer {token}",
             }
             response = await self.client.get(url, headers=headers)
             response.raise_for_status()
@@ -943,10 +1077,14 @@ class GHCRClient(RegistryClient):
                 "digest": digest,
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching GHCR metadata for {image}:{tag}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching GHCR metadata for {image}:{tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error fetching GHCR metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Connection error fetching GHCR metadata for {image}:{tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GHCR metadata for {image}:{tag}: {e}")
@@ -971,7 +1109,7 @@ class LSCRClient(RegistryClient):
         """
         params = {
             "scope": f"repository:{image}:{scope}",
-            "service": "ghcr.io"  # LSCR uses GHCR service
+            "service": "ghcr.io",  # LSCR uses GHCR service
         }
 
         try:
@@ -980,7 +1118,9 @@ class LSCRClient(RegistryClient):
             data = response.json()
             return data.get("token")
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching LSCR token for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching LSCR token for {image}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching LSCR token for {image}: {e}")
@@ -1042,7 +1182,9 @@ class LSCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching LSCR tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching LSCR tags for {image}: {e.response.status_code}"
+            )
             return tags
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching LSCR tags for {image}: {e}")
@@ -1054,7 +1196,14 @@ class LSCRClient(RegistryClient):
             logger.error(f"Invalid response data fetching LSCR tags for {image}: {e}")
             return tags
 
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag from LSCR.
 
         Args:
@@ -1073,7 +1222,9 @@ class LSCRClient(RegistryClient):
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
-                    logger.info(f"Digest changed for {image}:latest: {current_digest} -> {new_digest}")
+                    logger.info(
+                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                    )
                     return "latest"
             return None
 
@@ -1113,7 +1264,7 @@ class LSCRClient(RegistryClient):
         try:
             headers = {
                 "Accept": "application/vnd.docker.distribution.manifest.v2+json",
-                "Authorization": f"Bearer {token}"
+                "Authorization": f"Bearer {token}",
             }
             response = await self.client.get(url, headers=headers)
             response.raise_for_status()
@@ -1125,10 +1276,14 @@ class LSCRClient(RegistryClient):
                 "digest": digest,
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching LSCR metadata for {image}:{tag}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching LSCR metadata for {image}:{tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error fetching LSCR metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Connection error fetching LSCR metadata for {image}:{tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching LSCR metadata for {image}:{tag}: {e}")
@@ -1172,7 +1327,9 @@ class GCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching GCR tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching GCR tags for {image}: {e.response.status_code}"
+            )
             return []
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GCR tags for {image}: {e}")
@@ -1184,7 +1341,14 @@ class GCRClient(RegistryClient):
             logger.error(f"Invalid response data fetching GCR tags for {image}: {e}")
             return []
 
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag from GCR.
 
         Args:
@@ -1203,7 +1367,9 @@ class GCRClient(RegistryClient):
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
-                    logger.info(f"Digest changed for {image}:latest: {current_digest} -> {new_digest}")
+                    logger.info(
+                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                    )
                     return "latest"
             return None
 
@@ -1212,7 +1378,11 @@ class GCRClient(RegistryClient):
             return None
 
         # Filter out "latest" and non-semantic tags
-        version_tags = [t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None]
+        version_tags = [
+            t
+            for t in tags
+            if t.lower() != "latest" and self._parse_semver(t) is not None
+        ]
 
         # Filter out pre-release tags unless explicitly allowed
         if not include_prereleases:
@@ -1220,20 +1390,20 @@ class GCRClient(RegistryClient):
 
         # Extract suffix from current tag to ensure we only suggest matching variants
         # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip('vV')
+        current_tag_without_v = current_tag.lstrip("vV")
         current_suffix = None
-        if '-' in current_tag_without_v:
-            current_parts = current_tag_without_v.split('-', 1)
+        if "-" in current_tag_without_v:
+            current_parts = current_tag_without_v.split("-", 1)
             if len(current_parts) == 2:
                 current_suffix = current_parts[1].lower()
 
         # Filter tags to only include those with matching suffix
         filtered_tags = []
         for tag in version_tags:
-            tag_without_v = tag.lstrip('vV')
+            tag_without_v = tag.lstrip("vV")
             candidate_suffix = None
-            if '-' in tag_without_v:
-                parts = tag_without_v.split('-', 1)
+            if "-" in tag_without_v:
+                parts = tag_without_v.split("-", 1)
                 if len(parts) == 2:
                     candidate_suffix = parts[1].lower()
 
@@ -1268,10 +1438,14 @@ class GCRClient(RegistryClient):
                 "digest": digest,
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching GCR metadata for {image}:{tag}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching GCR metadata for {image}:{tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error fetching GCR metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Connection error fetching GCR metadata for {image}:{tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GCR metadata for {image}:{tag}: {e}")
@@ -1315,7 +1489,9 @@ class QuayClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching Quay tags for {image}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching Quay tags for {image}: {e.response.status_code}"
+            )
             return []
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching Quay tags for {image}: {e}")
@@ -1327,7 +1503,14 @@ class QuayClient(RegistryClient):
             logger.error(f"Invalid response data fetching Quay tags for {image}: {e}")
             return []
 
-    async def get_latest_tag(self, image: str, current_tag: str, scope: str = "patch", current_digest: Optional[str] = None, include_prereleases: bool = False) -> Optional[str]:
+    async def get_latest_tag(
+        self,
+        image: str,
+        current_tag: str,
+        scope: str = "patch",
+        current_digest: Optional[str] = None,
+        include_prereleases: bool = False,
+    ) -> Optional[str]:
         """Get latest tag from Quay.io.
 
         Args:
@@ -1346,7 +1529,9 @@ class QuayClient(RegistryClient):
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
-                    logger.info(f"Digest changed for {image}:latest: {current_digest} -> {new_digest}")
+                    logger.info(
+                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                    )
                     return "latest"
             return None
 
@@ -1355,7 +1540,11 @@ class QuayClient(RegistryClient):
             return None
 
         # Filter out "latest" and non-semantic tags
-        version_tags = [t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None]
+        version_tags = [
+            t
+            for t in tags
+            if t.lower() != "latest" and self._parse_semver(t) is not None
+        ]
 
         # Filter out pre-release tags unless explicitly allowed
         if not include_prereleases:
@@ -1363,20 +1552,20 @@ class QuayClient(RegistryClient):
 
         # Extract suffix from current tag to ensure we only suggest matching variants
         # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip('vV')
+        current_tag_without_v = current_tag.lstrip("vV")
         current_suffix = None
-        if '-' in current_tag_without_v:
-            current_parts = current_tag_without_v.split('-', 1)
+        if "-" in current_tag_without_v:
+            current_parts = current_tag_without_v.split("-", 1)
             if len(current_parts) == 2:
                 current_suffix = current_parts[1].lower()
 
         # Filter tags to only include those with matching suffix
         filtered_tags = []
         for tag in version_tags:
-            tag_without_v = tag.lstrip('vV')
+            tag_without_v = tag.lstrip("vV")
             candidate_suffix = None
-            if '-' in tag_without_v:
-                parts = tag_without_v.split('-', 1)
+            if "-" in tag_without_v:
+                parts = tag_without_v.split("-", 1)
                 if len(parts) == 2:
                     candidate_suffix = parts[1].lower()
 
@@ -1411,10 +1600,14 @@ class QuayClient(RegistryClient):
                 "digest": digest,
             }
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching Quay metadata for {image}:{tag}: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching Quay metadata for {image}:{tag}: {e.response.status_code}"
+            )
             return None
         except httpx.ConnectError as e:
-            logger.error(f"Connection error fetching Quay metadata for {image}:{tag}: {e}")
+            logger.error(
+                f"Connection error fetching Quay metadata for {image}:{tag}: {e}"
+            )
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Quay metadata for {image}:{tag}: {e}")
@@ -1425,7 +1618,7 @@ class RegistryClientFactory:
     """Factory for creating registry clients."""
 
     @staticmethod
-    async def get_client(registry: str, db = None) -> RegistryClient:
+    async def get_client(registry: str, db=None) -> RegistryClient:
         """Get registry client by name with authentication.
 
         Args:
