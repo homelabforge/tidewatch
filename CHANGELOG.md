@@ -20,11 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enables update detection for containers using non-semantic version tags
   - Suffix matching preserved (e.g., `2.33.5-alpine` only updates to `2.33.6-alpine`, not `2.33.6`)
 
+- **HTML-to-Markdown Conversion** - Automatic conversion of HTML release notes to clean markdown
+  - New `html2text` library dependency for backend
+  - Automatic HTML detection in changelog/release notes (checks for DOCTYPE, common tags)
+  - Converts HTML content to markdown before storage, preserving links, images, formatting, and code blocks
+  - Fallback to regex HTML stripping on conversion failure
+  - Fixes display issues for containers with HTML-formatted release notes (e.g., Portainer)
+
 ### Changed
 - **Backend**: Migration 032 adds `latest_major_tag` column to containers table (auto-runs on startup)
 - **Backend**: Registry clients now perform dual-check (scope-filtered + always-major)
 - **Backend**: Generalized `_check_latest_digest()` to `_check_digest_change()` accepting any tag name
 - **Backend**: Added `get_latest_major_tag()` method to all registry client implementations
+- **Backend**: ChangelogFetcher now detects and converts HTML content to markdown automatically
+- **Backend**: Added `_is_html_content()` and `_convert_html_to_markdown()` methods to changelog service
 - **Frontend**: Container interface updated with `latest_major_tag` field
 - **Frontend**: Updates page fetches containers in parallel for scope violation warnings
 - **Frontend**: UpdateCard component accepts optional container prop for warnings
