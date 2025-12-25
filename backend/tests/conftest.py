@@ -13,6 +13,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 # Set encryption key for tests
 from cryptography.fernet import Fernet
+
 if "TIDEWATCH_ENCRYPTION_KEY" not in os.environ:
     os.environ["TIDEWATCH_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 
@@ -109,8 +110,10 @@ def mock_async_session_local(db):
     mock_session_local = MockAsyncSessionLocal()
 
     # Patch all AsyncSessionLocal imports in scheduler-related modules
-    with patch('app.services.scheduler.AsyncSessionLocal', mock_session_local), \
-         patch('app.services.restart_scheduler.AsyncSessionLocal', mock_session_local):
+    with (
+        patch("app.services.scheduler.AsyncSessionLocal", mock_session_local),
+        patch("app.services.restart_scheduler.AsyncSessionLocal", mock_session_local),
+    ):
         yield mock_session_local
 
 
@@ -140,6 +143,7 @@ def make_container():
     - compose_file: "/compose/test.yml"
     - service_name: Derived from name or "test-service"
     """
+
     def _make_container(**kwargs):
         from app.models.container import Container
 
@@ -188,6 +192,7 @@ def make_update():
     - registry: "docker.io"
     - reason_type: "update"
     """
+
     def _make_update(**kwargs):
         from app.models.update import Update
 
@@ -218,6 +223,7 @@ def make_update():
 async def app():
     """Create FastAPI app for testing."""
     from app.main import app as application
+
     return application
 
 
@@ -233,7 +239,9 @@ async def client(app, db):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True) as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
+    ) as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -260,7 +268,7 @@ async def admin_user(db):
         "username": "admin",
         "email": "admin@example.com",
         "password": "AdminPassword123!",
-        "full_name": "Admin User"
+        "full_name": "Admin User",
     }
 
 
@@ -268,10 +276,12 @@ async def admin_user(db):
 async def authenticated_client(client, admin_user):
     """AsyncClient with valid JWT token and CSRF token."""
     # Set JWT token for authentication (must match login endpoint's token format)
-    token = create_access_token({
-        "sub": "admin",  # TideWatch uses "admin" as the subject
-        "username": admin_user["username"]
-    })
+    token = create_access_token(
+        {
+            "sub": "admin",  # TideWatch uses "admin" as the subject
+            "username": admin_user["username"],
+        }
+    )
     client.headers = {"Authorization": f"Bearer {token}"}
 
     # Get CSRF token by making a GET request
@@ -287,7 +297,14 @@ async def authenticated_client(client, admin_user):
 class MockDockerContainer:
     """Mock Docker container with state machine for testing."""
 
-    def __init__(self, id: str, name: str, image: str, status: str = "running", labels: dict = None):
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        image: str,
+        status: str = "running",
+        labels: dict = None,
+    ):
         self.id = id
         self.name = name
         self.image = image
@@ -306,7 +323,9 @@ class MockDockerContainer:
                 "Pid": 12345 if status == "running" else 0,
                 "ExitCode": 0,
                 "StartedAt": "2025-01-01T00:00:00.000000000Z",
-                "FinishedAt": "0001-01-01T00:00:00Z" if status == "running" else "2025-01-01T01:00:00.000000000Z",
+                "FinishedAt": "0001-01-01T00:00:00Z"
+                if status == "running"
+                else "2025-01-01T01:00:00.000000000Z",
             },
             "Config": {
                 "Image": image,
@@ -359,8 +378,11 @@ class MockDockerContainer:
     def remove(self, force=False):
         """Remove the container."""
         import docker.errors
+
         if self.status == "running" and not force:
-            raise docker.errors.APIError("Cannot remove running container without force=True")
+            raise docker.errors.APIError(
+                "Cannot remove running container without force=True"
+            )
         # Container would be removed from the client's list
 
     def reload(self):
@@ -379,6 +401,7 @@ class MockDockerClient:
 
         # Container management
         from unittest.mock import MagicMock
+
         self.containers = MagicMock()
         self.images = MagicMock()
         self.volumes = MagicMock()
@@ -406,20 +429,33 @@ class MockDockerClient:
 
         # Apply status filter
         if filters and "status" in filters:
-            statuses = filters["status"] if isinstance(filters["status"], list) else [filters["status"]]
+            statuses = (
+                filters["status"]
+                if isinstance(filters["status"], list)
+                else [filters["status"]]
+            )
             containers = [c for c in containers if c.status in statuses]
 
         # Apply label filter
         if filters and "label" in filters:
-            labels = filters["label"] if isinstance(filters["label"], list) else [filters["label"]]
-            containers = [c for c in containers if any(
-                f"{k}={v}" in labels or k in labels
-                for k, v in c.labels.items()
-            )]
+            labels = (
+                filters["label"]
+                if isinstance(filters["label"], list)
+                else [filters["label"]]
+            )
+            containers = [
+                c
+                for c in containers
+                if any(f"{k}={v}" in labels or k in labels for k, v in c.labels.items())
+            ]
 
         # Apply name filter
         if filters and "name" in filters:
-            names = filters["name"] if isinstance(filters["name"], list) else [filters["name"]]
+            names = (
+                filters["name"]
+                if isinstance(filters["name"], list)
+                else [filters["name"]]
+            )
             containers = [c for c in containers if any(n in c.name for n in names)]
 
         # Filter by running status if all=False
@@ -431,6 +467,7 @@ class MockDockerClient:
     def _get_container(self, container_id):
         """Get a container by ID or name."""
         import docker.errors
+
         for container in self._containers:
             if container.id == container_id or container.name == container_id:
                 return container
@@ -445,23 +482,34 @@ class MockDockerClient:
     def _create_container(self, image, **kwargs):
         """Create a container."""
         import secrets
+
         container_id = secrets.token_hex(32)
         name = kwargs.get("name", f"container-{len(self._containers)}")
         labels = kwargs.get("labels", {})
 
-        container = MockDockerContainer(container_id, name, image, status="created", labels=labels)
+        container = MockDockerContainer(
+            container_id, name, image, status="created", labels=labels
+        )
         self._containers.append(container)
         return container
 
     def _get_image(self, image_name):
         """Get an image by name."""
         import docker.errors
+
         for image in self._images:
             if image_name in getattr(image, "tags", []):
                 return image
         raise docker.errors.ImageNotFound(f"Image {image_name} not found")
 
-    def add_container(self, id: str, name: str, image: str, status: str = "running", labels: dict = None):
+    def add_container(
+        self,
+        id: str,
+        name: str,
+        image: str,
+        status: str = "running",
+        labels: dict = None,
+    ):
         """Helper to add a mock container for testing."""
         container = MockDockerContainer(id, name, image, status, labels)
         self._containers.append(container)
@@ -470,6 +518,7 @@ class MockDockerClient:
     def add_image(self, tags: list, id: str = None):
         """Helper to add a mock image for testing."""
         from unittest.mock import MagicMock
+
         image = MagicMock()
         image.id = id or f"sha256:{'0' * 64}"
         image.tags = tags
@@ -492,9 +541,15 @@ class MockDockerClient:
         """Get Docker daemon system info."""
         return {
             "Containers": len(self._containers),
-            "ContainersRunning": len([c for c in self._containers if c.status == "running"]),
-            "ContainersPaused": len([c for c in self._containers if c.status == "paused"]),
-            "ContainersStopped": len([c for c in self._containers if c.status == "exited"]),
+            "ContainersRunning": len(
+                [c for c in self._containers if c.status == "running"]
+            ),
+            "ContainersPaused": len(
+                [c for c in self._containers if c.status == "paused"]
+            ),
+            "ContainersStopped": len(
+                [c for c in self._containers if c.status == "exited"]
+            ),
             "Images": len(self._images),
         }
 
@@ -525,7 +580,8 @@ def mock_docker_client():
 def mock_event_bus():
     """Mock event bus for testing notifications."""
     from unittest.mock import patch, AsyncMock
-    with patch('app.services.event_bus.event_bus') as mock:
+
+    with patch("app.services.event_bus.event_bus") as mock:
         mock.publish = AsyncMock()
         yield mock
 
@@ -538,7 +594,7 @@ def notification_event():
         "container_name": "nginx",
         "current_version": "1.20",
         "new_version": "1.21",
-        "timestamp": "2025-01-01T00:00:00Z"
+        "timestamp": "2025-01-01T00:00:00Z",
     }
 
 
@@ -546,7 +602,8 @@ def notification_event():
 def mock_httpx_client():
     """Mock httpx client for notification services."""
     from unittest.mock import patch, AsyncMock, MagicMock
-    with patch('httpx.AsyncClient') as mock:
+
+    with patch("httpx.AsyncClient") as mock:
         mock_instance = AsyncMock()
         mock.return_value.__aenter__.return_value = mock_instance
         mock_instance.post = AsyncMock(return_value=MagicMock(status_code=200))
@@ -557,5 +614,6 @@ def mock_httpx_client():
 def mock_smtp_client():
     """Mock SMTP client for email notifications."""
     from unittest.mock import patch
-    with patch('aiosmtplib.SMTP') as mock:
+
+    with patch("aiosmtplib.SMTP") as mock:
         yield mock

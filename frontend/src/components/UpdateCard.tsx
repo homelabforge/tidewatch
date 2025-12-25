@@ -59,6 +59,7 @@ interface UpdateCardProps {
 export default function UpdateCard({ update, container, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false }: UpdateCardProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const isStale = update.reason_type === 'stale';
+  const isScopeViolation = update.scope_violation === 1;
 
   // Clean the changelog text to remove PR metadata
   const cleanedChangelog = useMemo(() => {
@@ -83,7 +84,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
   const isAnyOperationInProgress = isApplying || isApproving || isRejecting;
 
   return (
-    <div className={`relative bg-tide-surface border ${isStale ? 'border-orange-600' : 'border-tide-border'} rounded-lg p-5`}>
+    <div className={`relative bg-tide-surface border ${isScopeViolation ? 'border-orange-500/50' : isStale ? 'border-orange-600' : 'border-tide-border'} rounded-lg p-5 ${isScopeViolation ? 'bg-orange-500/5' : ''}`}>
       {/* Loading Overlay */}
       {isAnyOperationInProgress && (
         <div className="absolute inset-0 bg-tide-surface/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
@@ -112,6 +113,24 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
         </div>
         <StatusBadge status={update.status} />
       </div>
+
+      {/* Scope Violation Banner - for scope-violation updates */}
+      {isScopeViolation && (
+        <div className="mb-3 bg-orange-500/20 border border-orange-500/40 rounded-md p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-orange-400">
+                Major Update Blocked by Scope Policy
+              </p>
+              <p className="text-xs text-tide-text-muted mt-1">
+                This update is blocked by your current scope setting ({container?.scope || 'unknown'}).
+                You can apply it anyway to override the policy, or change the scope to "major" in container settings.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scope Violation Warning */}
       {container?.latest_major_tag &&
@@ -304,10 +323,11 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
               <button
                 onClick={() => onApprove(update.id)}
                 disabled={isAnyOperationInProgress}
-                className="flex-1 px-3 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex-1 px-3 py-2 ${isScopeViolation ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-primary-dark'} text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                title={isScopeViolation ? 'Approve this update despite scope policy' : 'Approve this update'}
               >
                 <Check size={14} />
-                Approve
+                {isScopeViolation ? 'Apply Anyway' : 'Approve'}
               </button>
             )}
             {onReject && (
@@ -315,9 +335,10 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
                 onClick={() => onReject(update.id)}
                 disabled={isAnyOperationInProgress}
                 className="flex-1 px-3 py-2 bg-tide-surface-light hover:bg-tide-border text-tide-text rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors border border-tide-border disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isScopeViolation ? 'Ignore this major version' : 'Reject this update'}
               >
                 <X size={14} />
-                Reject
+                {isScopeViolation ? 'Ignore' : 'Reject'}
               </button>
             )}
           </div>

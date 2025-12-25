@@ -20,7 +20,7 @@ def safe_error_response(
     error: Exception,
     user_message: str,
     status_code: int = 500,
-    log_level: str = "error"
+    log_level: str = "error",
 ) -> None:
     """Log full error details server-side and raise generic HTTPException for user.
 
@@ -69,7 +69,7 @@ def safe_dict_response(
     user_message: str,
     success: bool = False,
     additional_fields: Optional[Dict[str, Any]] = None,
-    log_level: str = "error"
+    log_level: str = "error",
 ) -> Dict[str, Any]:
     """Log error server-side and return safe dict response (for non-exception returns).
 
@@ -106,10 +106,7 @@ def safe_dict_response(
     log_method(f"{user_message}: {type(error).__name__}", exc_info=True)
 
     # Build safe response dict
-    response = {
-        "success": success,
-        "message": user_message
-    }
+    response = {"success": success, "message": user_message}
 
     if additional_fields:
         response.update(additional_fields)
@@ -121,7 +118,7 @@ def log_and_continue(
     logger_instance: logging.Logger,
     error: Exception,
     context_message: str,
-    log_level: str = "warning"
+    log_level: str = "warning",
 ) -> None:
     """Log error but continue execution (for non-critical errors).
 

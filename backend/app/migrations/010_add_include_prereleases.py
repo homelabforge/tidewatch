@@ -33,7 +33,9 @@ async def migrate():
             if not await column_exists(conn, "containers", "include_prereleases"):
                 logger.info("Adding include_prereleases column to containers…")
                 await conn.execute(
-                    text("ALTER TABLE containers ADD COLUMN include_prereleases BOOLEAN DEFAULT 0")
+                    text(
+                        "ALTER TABLE containers ADD COLUMN include_prereleases BOOLEAN DEFAULT 0"
+                    )
                 )
                 logger.info("  ✓ Column added")
             else:

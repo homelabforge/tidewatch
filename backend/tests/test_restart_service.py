@@ -26,11 +26,7 @@ class TestExponentialBackoff:
     def test_exponential_backoff_attempt_0(self):
         """Test backoff at attempt 0 is base_delay."""
         delay = RestartService.calculate_exponential_backoff(
-            attempt=0,
-            base_delay=2.0,
-            multiplier=1.0,
-            max_delay=300.0,
-            jitter=False
+            attempt=0, base_delay=2.0, multiplier=1.0, max_delay=300.0, jitter=False
         )
 
         # 2.0 * 1.0 * 2^0 = 2.0
@@ -45,16 +41,16 @@ class TestExponentialBackoff:
                 base_delay=2.0,
                 multiplier=1.0,
                 max_delay=300.0,
-                jitter=False
+                jitter=False,
             )
             delays.append(delay)
 
         # Each delay should be double the previous
-        assert delays[0] == pytest.approx(2.0)    # 2 * 1 * 2^0 = 2
-        assert delays[1] == pytest.approx(4.0)    # 2 * 1 * 2^1 = 4
-        assert delays[2] == pytest.approx(8.0)    # 2 * 1 * 2^2 = 8
-        assert delays[3] == pytest.approx(16.0)   # 2 * 1 * 2^3 = 16
-        assert delays[4] == pytest.approx(32.0)   # 2 * 1 * 2^4 = 32
+        assert delays[0] == pytest.approx(2.0)  # 2 * 1 * 2^0 = 2
+        assert delays[1] == pytest.approx(4.0)  # 2 * 1 * 2^1 = 4
+        assert delays[2] == pytest.approx(8.0)  # 2 * 1 * 2^2 = 8
+        assert delays[3] == pytest.approx(16.0)  # 2 * 1 * 2^3 = 16
+        assert delays[4] == pytest.approx(32.0)  # 2 * 1 * 2^4 = 32
 
     def test_exponential_backoff_respects_max_delay(self):
         """Test backoff is capped at max_delay."""
@@ -63,7 +59,7 @@ class TestExponentialBackoff:
             base_delay=2.0,
             multiplier=1.0,
             max_delay=60.0,
-            jitter=False
+            jitter=False,
         )
 
         # Should be capped at max_delay
@@ -76,7 +72,7 @@ class TestExponentialBackoff:
             base_delay=2.0,
             multiplier=2.0,  # Double the rate
             max_delay=300.0,
-            jitter=False
+            jitter=False,
         )
 
         # 2.0 * 2.0 * 2^3 = 2.0 * 2.0 * 8 = 32.0
@@ -87,11 +83,7 @@ class TestExponentialBackoff:
         delays = []
         for _ in range(10):
             delay = RestartService.calculate_exponential_backoff(
-                attempt=3,
-                base_delay=10.0,
-                multiplier=1.0,
-                max_delay=300.0,
-                jitter=True
+                attempt=3, base_delay=10.0, multiplier=1.0, max_delay=300.0, jitter=True
             )
             delays.append(delay)
 
@@ -120,7 +112,7 @@ class TestExponentialBackoff:
                     base_delay=base_delay,
                     multiplier=1.0,
                     max_delay=300.0,
-                    jitter=True
+                    jitter=True,
                 )
 
                 # Never below base delay
@@ -136,18 +128,18 @@ class TestExponentialBackoff:
                 base_delay=5.0,
                 multiplier=1.0,
                 max_delay=300.0,  # 5 minutes
-                jitter=False
+                jitter=False,
             )
             delays.append(delay)
 
         # First few attempts
-        assert delays[0] == pytest.approx(5.0)      # 5s
-        assert delays[1] == pytest.approx(10.0)     # 10s
-        assert delays[2] == pytest.approx(20.0)     # 20s
-        assert delays[3] == pytest.approx(40.0)     # 40s
-        assert delays[4] == pytest.approx(80.0)     # 1m 20s
-        assert delays[5] == pytest.approx(160.0)    # 2m 40s
-        assert delays[6] == pytest.approx(300.0)    # 5m (capped)
+        assert delays[0] == pytest.approx(5.0)  # 5s
+        assert delays[1] == pytest.approx(10.0)  # 10s
+        assert delays[2] == pytest.approx(20.0)  # 20s
+        assert delays[3] == pytest.approx(40.0)  # 40s
+        assert delays[4] == pytest.approx(80.0)  # 1m 20s
+        assert delays[5] == pytest.approx(160.0)  # 2m 40s
+        assert delays[6] == pytest.approx(300.0)  # 5m (capped)
 
 
 class TestLinearBackoff:
@@ -156,10 +148,7 @@ class TestLinearBackoff:
     def test_linear_backoff_attempt_0(self):
         """Test linear backoff at attempt 0 is base_delay."""
         delay = RestartService.calculate_linear_backoff(
-            attempt=0,
-            base_delay=5.0,
-            increment=10.0,
-            max_delay=300.0
+            attempt=0, base_delay=5.0, increment=10.0, max_delay=300.0
         )
 
         # 5.0 + (10.0 * 0) = 5.0
@@ -170,14 +159,11 @@ class TestLinearBackoff:
         delays = []
         for attempt in range(5):
             delay = RestartService.calculate_linear_backoff(
-                attempt=attempt,
-                base_delay=5.0,
-                increment=10.0,
-                max_delay=300.0
+                attempt=attempt, base_delay=5.0, increment=10.0, max_delay=300.0
             )
             delays.append(delay)
 
-        assert delays[0] == pytest.approx(5.0)   # 5 + 10*0 = 5
+        assert delays[0] == pytest.approx(5.0)  # 5 + 10*0 = 5
         assert delays[1] == pytest.approx(15.0)  # 5 + 10*1 = 15
         assert delays[2] == pytest.approx(25.0)  # 5 + 10*2 = 25
         assert delays[3] == pytest.approx(35.0)  # 5 + 10*3 = 35
@@ -186,10 +172,7 @@ class TestLinearBackoff:
     def test_linear_backoff_respects_max_delay(self):
         """Test linear backoff is capped at max_delay."""
         delay = RestartService.calculate_linear_backoff(
-            attempt=50,
-            base_delay=5.0,
-            increment=10.0,
-            max_delay=60.0
+            attempt=50, base_delay=5.0, increment=10.0, max_delay=60.0
         )
 
         # Would be 5 + 10*50 = 505, but capped at 60
@@ -201,17 +184,14 @@ class TestLinearBackoff:
         delays = []
         for attempt in range(10):
             delay = RestartService.calculate_linear_backoff(
-                attempt=attempt,
-                base_delay=10.0,
-                increment=15.0,
-                max_delay=300.0
+                attempt=attempt, base_delay=10.0, increment=15.0, max_delay=300.0
             )
             delays.append(delay)
 
-        assert delays[0] == pytest.approx(10.0)   # 10s
-        assert delays[1] == pytest.approx(25.0)   # 25s
-        assert delays[2] == pytest.approx(40.0)   # 40s
-        assert delays[5] == pytest.approx(85.0)   # 1m 25s
+        assert delays[0] == pytest.approx(10.0)  # 10s
+        assert delays[1] == pytest.approx(25.0)  # 25s
+        assert delays[2] == pytest.approx(40.0)  # 40s
+        assert delays[5] == pytest.approx(85.0)  # 1m 25s
 
 
 class TestFixedBackoff:
@@ -246,7 +226,7 @@ class TestCalculateBackoffDelay:
             consecutive_failures=3,
             backoff_strategy="exponential",
             base_delay_seconds=5.0,
-            max_delay_seconds=300.0
+            max_delay_seconds=300.0,
         )
 
         delay = await RestartService.calculate_backoff_delay(state, mock_db)
@@ -266,7 +246,7 @@ class TestCalculateBackoffDelay:
             consecutive_failures=4,
             backoff_strategy="linear",
             base_delay_seconds=5.0,
-            max_delay_seconds=300.0
+            max_delay_seconds=300.0,
         )
 
         delay = await RestartService.calculate_backoff_delay(state, mock_db)
@@ -285,7 +265,7 @@ class TestCalculateBackoffDelay:
             consecutive_failures=10,  # Shouldn't matter
             backoff_strategy="fixed",
             base_delay_seconds=30.0,
-            max_delay_seconds=300.0
+            max_delay_seconds=300.0,
         )
 
         delay = await RestartService.calculate_backoff_delay(state, mock_db)
@@ -303,7 +283,7 @@ class TestCalculateBackoffDelay:
             consecutive_failures=2,
             backoff_strategy="unknown_strategy",
             base_delay_seconds=5.0,
-            max_delay_seconds=300.0
+            max_delay_seconds=300.0,
         )
 
         delay = await RestartService.calculate_backoff_delay(state, mock_db)
@@ -326,7 +306,9 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+        allow, reason = await RestartService.check_circuit_breaker(
+            mock_db, container_id=1
+        )
 
         assert allow is True
         assert reason is None
@@ -341,7 +323,7 @@ class TestCircuitBreaker:
             id=1,
             container_id=1,
             paused_until=future_time,
-            pause_reason="Manual investigation"
+            pause_reason="Manual investigation",
         )
 
         mock_result = MagicMock()
@@ -349,7 +331,9 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+        allow, reason = await RestartService.check_circuit_breaker(
+            mock_db, container_id=1
+        )
 
         assert allow is False
         assert "Paused until" in reason
@@ -368,7 +352,7 @@ class TestCircuitBreaker:
             paused_until=past_time,
             pause_reason="Temporary",
             max_retries_reached=False,
-            enabled=True
+            enabled=True,
         )
 
         mock_result = MagicMock()
@@ -379,15 +363,14 @@ class TestCircuitBreaker:
         mock_count_result.scalar.return_value = 0
 
         # Mock for settings
-        with patch('app.services.restart_service.SettingsService') as mock_settings:
+        with patch("app.services.restart_service.SettingsService") as mock_settings:
             mock_settings.get_int = AsyncMock(return_value=10)
 
-            mock_db.execute = AsyncMock(side_effect=[
-                mock_result,
-                mock_count_result
-            ])
+            mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
 
-            allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+            allow, reason = await RestartService.check_circuit_breaker(
+                mock_db, container_id=1
+            )
 
             assert allow is True
             assert reason is None
@@ -399,18 +382,16 @@ class TestCircuitBreaker:
         """Test max retries reached blocks restart."""
         mock_db = AsyncMock()
 
-        state = ContainerRestartState(
-            id=1,
-            container_id=1,
-            max_retries_reached=True
-        )
+        state = ContainerRestartState(id=1, container_id=1, max_retries_reached=True)
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = state
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+        allow, reason = await RestartService.check_circuit_breaker(
+            mock_db, container_id=1
+        )
 
         assert allow is False
         assert "Maximum retry attempts reached" in reason
@@ -421,10 +402,7 @@ class TestCircuitBreaker:
         mock_db = AsyncMock()
 
         state = ContainerRestartState(
-            id=1,
-            container_id=1,
-            enabled=False,
-            max_retries_reached=False
+            id=1, container_id=1, enabled=False, max_retries_reached=False
         )
 
         mock_result = MagicMock()
@@ -432,7 +410,9 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+        allow, reason = await RestartService.check_circuit_breaker(
+            mock_db, container_id=1
+        )
 
         assert allow is False
         assert "Auto-restart disabled" in reason
@@ -447,7 +427,7 @@ class TestCircuitBreaker:
             container_id=1,
             enabled=True,
             max_retries_reached=False,
-            paused_until=None
+            paused_until=None,
         )
 
         mock_result = MagicMock()
@@ -457,15 +437,14 @@ class TestCircuitBreaker:
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 10
 
-        with patch('app.services.restart_service.SettingsService') as mock_settings:
+        with patch("app.services.restart_service.SettingsService") as mock_settings:
             mock_settings.get_int = AsyncMock(return_value=10)
 
-            mock_db.execute = AsyncMock(side_effect=[
-                mock_result,
-                mock_count_result
-            ])
+            mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
 
-            allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
+            allow, reason = await RestartService.check_circuit_breaker(
+                mock_db, container_id=1
+            )
 
             assert allow is False
             assert "Concurrent restart limit" in reason
@@ -480,15 +459,13 @@ class TestCheckAndResetBackoff:
         """Test no reset if container never started successfully."""
         mock_db = AsyncMock()
 
-        state = ContainerRestartState(
-            id=1,
-            container_id=1,
-            last_successful_start=None
-        )
+        state = ContainerRestartState(id=1, container_id=1, last_successful_start=None)
 
         container = Container(name="test")
 
-        was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
+        was_reset = await RestartService.check_and_reset_backoff(
+            mock_db, state, container
+        )
 
         assert was_reset is False
 
@@ -501,13 +478,15 @@ class TestCheckAndResetBackoff:
             id=1,
             container_id=1,
             last_successful_start=datetime.now(timezone.utc),
-            success_window_seconds=300
+            success_window_seconds=300,
         )
         # Mock uptime_seconds property
-        with patch.object(ContainerRestartState, 'uptime_seconds', None):
+        with patch.object(ContainerRestartState, "uptime_seconds", None):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
+            was_reset = await RestartService.check_and_reset_backoff(
+                mock_db, state, container
+            )
 
             assert was_reset is False
 
@@ -526,14 +505,16 @@ class TestCheckAndResetBackoff:
             current_backoff_seconds=120.0,
             max_retries_reached=True,
             last_exit_code=1,
-            last_failure_reason="OOMKilled"
+            last_failure_reason="OOMKilled",
         )
 
         # Mock uptime_seconds property
-        with patch.object(ContainerRestartState, 'uptime_seconds', 400):
+        with patch.object(ContainerRestartState, "uptime_seconds", 400):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
+            was_reset = await RestartService.check_and_reset_backoff(
+                mock_db, state, container
+            )
 
             assert was_reset is True
             assert state.consecutive_failures == 0
@@ -553,13 +534,15 @@ class TestCheckAndResetBackoff:
             container_id=1,
             last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=200),
             success_window_seconds=300,  # 5 minutes
-            consecutive_failures=2
+            consecutive_failures=2,
         )
 
-        with patch.object(ContainerRestartState, 'uptime_seconds', 200):
+        with patch.object(ContainerRestartState, "uptime_seconds", 200):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
+            was_reset = await RestartService.check_and_reset_backoff(
+                mock_db, state, container
+            )
 
             assert was_reset is False
             assert state.consecutive_failures == 2  # Not reset
@@ -594,9 +577,7 @@ class TestGetOrCreateRestartState:
         mock_db = AsyncMock()
 
         existing_state = ContainerRestartState(
-            id=1,
-            container_id=1,
-            consecutive_failures=3
+            id=1, container_id=1, consecutive_failures=3
         )
 
         mock_result = MagicMock()
@@ -625,21 +606,21 @@ class TestBackoffIntegration:
                 base_delay=5.0,
                 multiplier=1.0,
                 max_delay=300.0,
-                jitter=False
+                jitter=False,
             )
             delays.append(delay)
 
         # Verify exponential growth
-        assert delays[0] == pytest.approx(5.0)      # 5s
-        assert delays[1] == pytest.approx(10.0)     # 10s
-        assert delays[2] == pytest.approx(20.0)     # 20s
-        assert delays[3] == pytest.approx(40.0)     # 40s
-        assert delays[4] == pytest.approx(80.0)     # 1m 20s
-        assert delays[5] == pytest.approx(160.0)    # 2m 40s
-        assert delays[6] == pytest.approx(300.0)    # 5m (capped)
-        assert delays[7] == pytest.approx(300.0)    # Still capped
-        assert delays[8] == pytest.approx(300.0)    # Still capped
-        assert delays[9] == pytest.approx(300.0)    # Still capped
+        assert delays[0] == pytest.approx(5.0)  # 5s
+        assert delays[1] == pytest.approx(10.0)  # 10s
+        assert delays[2] == pytest.approx(20.0)  # 20s
+        assert delays[3] == pytest.approx(40.0)  # 40s
+        assert delays[4] == pytest.approx(80.0)  # 1m 20s
+        assert delays[5] == pytest.approx(160.0)  # 2m 40s
+        assert delays[6] == pytest.approx(300.0)  # 5m (capped)
+        assert delays[7] == pytest.approx(300.0)  # Still capped
+        assert delays[8] == pytest.approx(300.0)  # Still capped
+        assert delays[9] == pytest.approx(300.0)  # Still capped
 
     def test_realistic_linear_backoff_progression(self):
         """Test realistic linear backoff over 10 failures."""
@@ -647,17 +628,14 @@ class TestBackoffIntegration:
 
         for attempt in range(10):
             delay = RestartService.calculate_linear_backoff(
-                attempt=attempt,
-                base_delay=10.0,
-                increment=15.0,
-                max_delay=300.0
+                attempt=attempt, base_delay=10.0, increment=15.0, max_delay=300.0
             )
             delays.append(delay)
 
-        assert delays[0] == pytest.approx(10.0)   # 10s
-        assert delays[1] == pytest.approx(25.0)   # 25s
-        assert delays[2] == pytest.approx(40.0)   # 40s
-        assert delays[5] == pytest.approx(85.0)   # 1m 25s
+        assert delays[0] == pytest.approx(10.0)  # 10s
+        assert delays[1] == pytest.approx(25.0)  # 25s
+        assert delays[2] == pytest.approx(40.0)  # 40s
+        assert delays[5] == pytest.approx(85.0)  # 1m 25s
         assert delays[9] == pytest.approx(145.0)  # 2m 25s
 
     def test_jitter_prevents_thundering_herd(self):
@@ -667,11 +645,7 @@ class TestBackoffIntegration:
 
         for _ in range(100):
             delay = RestartService.calculate_exponential_backoff(
-                attempt=3,
-                base_delay=10.0,
-                multiplier=1.0,
-                max_delay=300.0,
-                jitter=True
+                attempt=3, base_delay=10.0, multiplier=1.0, max_delay=300.0, jitter=True
             )
             delays.append(delay)
 

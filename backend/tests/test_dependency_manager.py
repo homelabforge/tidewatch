@@ -36,9 +36,7 @@ class TestGetUpdateOrder:
         db.add_all([container1, container2, container3])
         await db.commit()
 
-        result = await DependencyManager.get_update_order(
-            db, ["web", "api", "cache"]
-        )
+        result = await DependencyManager.get_update_order(db, ["web", "api", "cache"])
 
         # Independent containers should be sorted alphabetically
         assert result == ["api", "cache", "web"]
@@ -46,17 +44,22 @@ class TestGetUpdateOrder:
     async def test_orders_linear_dependency_chain(self, db, make_container):
         """Test orders containers with linear dependency chain."""
         # db -> api -> web (web depends on api, api depends on db)
-        db_container = make_container(name="db", image="postgres", current_tag="16", dependencies=None)
-        api_container = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+        db_container = make_container(
+            name="db", image="postgres", current_tag="16", dependencies=None
         )
-        web_container = make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["api"])
+        api_container = make_container(
+            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+        )
+        web_container = make_container(
+            name="web",
+            image="nginx",
+            current_tag="latest",
+            dependencies=json.dumps(["api"]),
         )
         db.add_all([db_container, api_container, web_container])
         await db.commit()
 
-        result = await DependencyManager.get_update_order(
-            db, ["web", "api", "db"]
-        )
+        result = await DependencyManager.get_update_order(db, ["web", "api", "db"])
 
         # Should order: db -> api -> web
         assert result == ["db", "api", "web"]
@@ -72,11 +75,31 @@ class TestGetUpdateOrder:
 
         db_container = make_container(name="db", image="postgres", current_tag="16")
         cache_container = make_container(name="cache", image="redis", current_tag="7")
-        api_container = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"]))
-        worker_container = make_container(name="worker", image="python", current_tag="3.11", dependencies=json.dumps(["db", "cache"]))
-        web_container = make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["api", "cache"]))
+        api_container = make_container(
+            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+        )
+        worker_container = make_container(
+            name="worker",
+            image="python",
+            current_tag="3.11",
+            dependencies=json.dumps(["db", "cache"]),
+        )
+        web_container = make_container(
+            name="web",
+            image="nginx",
+            current_tag="latest",
+            dependencies=json.dumps(["api", "cache"]),
+        )
 
-        db.add_all([db_container, cache_container, api_container, worker_container, web_container])
+        db.add_all(
+            [
+                db_container,
+                cache_container,
+                api_container,
+                worker_container,
+                web_container,
+            ]
+        )
         await db.commit()
 
         result = await DependencyManager.get_update_order(
@@ -107,14 +130,12 @@ class TestGetUpdateOrder:
             name="web",
             image="nginx",
             current_tag="latest",
-            dependencies=json.dumps(["api", "external-service"])
+            dependencies=json.dumps(["api", "external-service"]),
         )
         db.add_all([api_container, web_container])
         await db.commit()
 
-        result = await DependencyManager.get_update_order(
-            db, ["web", "api"]
-        )
+        result = await DependencyManager.get_update_order(db, ["web", "api"])
 
         # Should only consider api dependency
         assert result == ["api", "web"]
@@ -125,9 +146,7 @@ class TestGetUpdateOrder:
         db.add(container)
         await db.commit()
 
-        result = await DependencyManager.get_update_order(
-            db, ["web", "nonexistent"]
-        )
+        result = await DependencyManager.get_update_order(db, ["web", "nonexistent"])
 
         # Should include all requested containers
         assert "web" in result
@@ -136,7 +155,9 @@ class TestGetUpdateOrder:
     async def test_uses_cache_for_repeated_calls(self, db, make_container):
         """Test uses cache for repeated dependency resolution."""
         container1 = make_container(name="db", image="postgres", current_tag="16")
-        container2 = make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"]))
+        container2 = make_container(
+            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+        )
         db.add_all([container1, container2])
         await db.commit()
 
@@ -147,7 +168,7 @@ class TestGetUpdateOrder:
         result1 = await DependencyManager.get_update_order(db, ["api", "db"])
 
         # Second call with same dependencies
-        with patch.object(DependencyManager, '_topological_sort') as mock_sort:
+        with patch.object(DependencyManager, "_topological_sort") as mock_sort:
             result2 = await DependencyManager.get_update_order(db, ["api", "db"])
 
             # Should not call topological_sort (cache hit)
@@ -161,28 +182,38 @@ class TestGetUpdateOrder:
         DependencyManager.clear_dependency_cache()
 
         # Create 102 containers to ensure we can have 101 unique patterns
-        containers = [make_container(name=f"container{i}", image="alpine", current_tag="3") for i in range(102)]
+        containers = [
+            make_container(name=f"container{i}", image="alpine", current_tag="3")
+            for i in range(102)
+        ]
         db.add_all(containers)
         await db.commit()
 
         # Fill cache with 101 different dependency patterns
         for i in range(101):
             # Create unique dependency pattern each time by including different container sets
-            names = [f"container{j}" for j in range(i, i + 1)]  # Each pattern has exactly 1 container, different each time
+            names = [
+                f"container{j}" for j in range(i, i + 1)
+            ]  # Each pattern has exactly 1 container, different each time
             await DependencyManager.get_update_order(db, names)
 
         # Cache should be limited to 100 entries
         from app.services.dependency_manager import _dependency_cache
+
         assert len(_dependency_cache) == 100
 
-    async def test_falls_back_to_original_order_on_cycle(
-        self, db, make_container
-    ):
+    async def test_falls_back_to_original_order_on_cycle(self, db, make_container):
         """Test falls back to original order if circular dependency detected."""
         # Create circular dependency: a -> b -> c -> a
-        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["c"]))
-        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"]))
-        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"]))
+        container_a = make_container(
+            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["c"])
+        )
+        container_b = make_container(
+            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"])
+        )
+        container_c = make_container(
+            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"])
+        )
         db.add_all([container_a, container_b, container_c])
         await db.commit()
 
@@ -191,16 +222,11 @@ class TestGetUpdateOrder:
         # Should fall back to original order
         assert result == ["a", "b", "c"]
 
-    async def test_handles_invalid_json_dependencies(
-        self, db, make_container, caplog
-    ):
+    async def test_handles_invalid_json_dependencies(self, db, make_container, caplog):
         """Test handles invalid JSON in dependencies field."""
         container1 = make_container(name="db", image="postgres", current_tag="16")
         container2 = make_container(
-            name="api",
-            image="node",
-            current_tag="18",
-            dependencies="not-valid-json"
+            name="api", image="node", current_tag="18", dependencies="not-valid-json"
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -219,11 +245,7 @@ class TestTopologicalSort:
 
     def test_sorts_simple_graph(self):
         """Test sorts simple dependency graph."""
-        dependencies = {
-            "a": set(),
-            "b": {"a"},
-            "c": {"b"}
-        }
+        dependencies = {"a": set(), "b": {"a"}, "c": {"b"}}
 
         result = DependencyManager._topological_sort(dependencies)
 
@@ -231,11 +253,7 @@ class TestTopologicalSort:
 
     def test_sorts_graph_with_multiple_roots(self):
         """Test sorts graph with multiple independent roots."""
-        dependencies = {
-            "a": set(),
-            "b": set(),
-            "c": {"a", "b"}
-        }
+        dependencies = {"a": set(), "b": set(), "c": {"a", "b"}}
 
         result = DependencyManager._topological_sort(dependencies)
 
@@ -246,12 +264,7 @@ class TestTopologicalSort:
     def test_sorts_diamond_dependency(self):
         """Test sorts diamond-shaped dependency."""
         # d depends on b and c, both b and c depend on a
-        dependencies = {
-            "a": set(),
-            "b": {"a"},
-            "c": {"a"},
-            "d": {"b", "c"}
-        }
+        dependencies = {"a": set(), "b": {"a"}, "c": {"a"}, "d": {"b", "c"}}
 
         result = DependencyManager._topological_sort(dependencies)
 
@@ -263,20 +276,14 @@ class TestTopologicalSort:
 
     def test_raises_on_circular_dependency(self):
         """Test raises ValueError on circular dependency."""
-        dependencies = {
-            "a": {"b"},
-            "b": {"c"},
-            "c": {"a"}
-        }
+        dependencies = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
 
         with pytest.raises(ValueError, match="Circular dependency detected"):
             DependencyManager._topological_sort(dependencies)
 
     def test_raises_on_self_dependency(self):
         """Test raises ValueError on self dependency."""
-        dependencies = {
-            "a": {"a"}
-        }
+        dependencies = {"a": {"a"}}
 
         with pytest.raises(ValueError, match="Circular dependency detected"):
             DependencyManager._topological_sort(dependencies)
@@ -291,9 +298,7 @@ class TestTopologicalSort:
 
     def test_handles_single_node(self):
         """Test handles single node with no dependencies."""
-        dependencies = {
-            "a": set()
-        }
+        dependencies = {"a": set()}
 
         result = DependencyManager._topological_sort(dependencies)
 
@@ -301,12 +306,7 @@ class TestTopologicalSort:
 
     def test_deterministic_ordering(self):
         """Test produces deterministic ordering."""
-        dependencies = {
-            "z": set(),
-            "y": set(),
-            "x": set(),
-            "w": {"x", "y", "z"}
-        }
+        dependencies = {"z": set(), "y": set(), "x": set(), "w": {"x", "y", "z"}}
 
         # Run multiple times
         result1 = DependencyManager._topological_sort(dependencies)
@@ -322,11 +322,7 @@ class TestGenerateCacheKey:
 
     def test_generates_consistent_key_for_same_graph(self):
         """Test generates consistent key for same dependency graph."""
-        dependencies = {
-            "a": {"b"},
-            "b": {"c"},
-            "c": set()
-        }
+        dependencies = {"a": {"b"}, "b": {"c"}, "c": set()}
 
         key1 = DependencyManager._generate_cache_key(dependencies)
         key2 = DependencyManager._generate_cache_key(dependencies)
@@ -335,17 +331,9 @@ class TestGenerateCacheKey:
 
     def test_generates_same_key_for_different_order(self):
         """Test generates same key regardless of dict order."""
-        dependencies1 = {
-            "a": {"b"},
-            "c": set(),
-            "b": {"c"}
-        }
+        dependencies1 = {"a": {"b"}, "c": set(), "b": {"c"}}
 
-        dependencies2 = {
-            "c": set(),
-            "b": {"c"},
-            "a": {"b"}
-        }
+        dependencies2 = {"c": set(), "b": {"c"}, "a": {"b"}}
 
         key1 = DependencyManager._generate_cache_key(dependencies1)
         key2 = DependencyManager._generate_cache_key(dependencies2)
@@ -355,15 +343,9 @@ class TestGenerateCacheKey:
 
     def test_generates_different_key_for_different_graph(self):
         """Test generates different key for different graphs."""
-        dependencies1 = {
-            "a": {"b"},
-            "b": set()
-        }
+        dependencies1 = {"a": {"b"}, "b": set()}
 
-        dependencies2 = {
-            "a": {"c"},
-            "c": set()
-        }
+        dependencies2 = {"a": {"c"}, "c": set()}
 
         key1 = DependencyManager._generate_cache_key(dependencies1)
         key2 = DependencyManager._generate_cache_key(dependencies2)
@@ -372,13 +354,9 @@ class TestGenerateCacheKey:
 
     def test_generates_different_key_for_different_sets(self):
         """Test generates different key for different dependency sets."""
-        dependencies1 = {
-            "a": {"b", "c"}
-        }
+        dependencies1 = {"a": {"b", "c"}}
 
-        dependencies2 = {
-            "a": {"b"}
-        }
+        dependencies2 = {"a": {"b"}}
 
         key1 = DependencyManager._generate_cache_key(dependencies1)
         key2 = DependencyManager._generate_cache_key(dependencies2)
@@ -396,9 +374,7 @@ class TestUpdateContainerDependencies:
         db.add_all([container_a, container_b])
         await db.commit()
 
-        await DependencyManager.update_container_dependencies(
-            db, "a", ["b"]
-        )
+        await DependencyManager.update_container_dependencies(db, "a", ["b"])
 
         # Refresh and check
         await db.refresh(container_a)
@@ -412,36 +388,42 @@ class TestUpdateContainerDependencies:
         db.add_all([container_a, container_b])
         await db.commit()
 
-        await DependencyManager.update_container_dependencies(
-            db, "a", ["b"]
-        )
+        await DependencyManager.update_container_dependencies(db, "a", ["b"])
 
         # Check reverse dependency
         await db.refresh(container_b)
-        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        dependents = (
+            json.loads(container_b.dependents) if container_b.dependents else []
+        )
         assert "a" in dependents
 
     async def test_removes_old_dependencies(self, db, make_container):
         """Test removes old dependencies when updated."""
-        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"]))
-        container_b = make_container(name="b", image="busybox", current_tag="1", dependents=json.dumps(["a"]))
+        container_a = make_container(
+            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"])
+        )
+        container_b = make_container(
+            name="b", image="busybox", current_tag="1", dependents=json.dumps(["a"])
+        )
         container_c = make_container(name="c", image="caddy", current_tag="2")
         db.add_all([container_a, container_b, container_c])
         await db.commit()
 
         # Update a to depend on c instead of b
-        await DependencyManager.update_container_dependencies(
-            db, "a", ["c"]
-        )
+        await DependencyManager.update_container_dependencies(db, "a", ["c"])
 
         # Check b no longer has a as dependent
         await db.refresh(container_b)
-        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        dependents = (
+            json.loads(container_b.dependents) if container_b.dependents else []
+        )
         assert "a" not in dependents
 
         # Check c has a as dependent
         await db.refresh(container_c)
-        dependents = json.loads(container_c.dependents) if container_c.dependents else []
+        dependents = (
+            json.loads(container_c.dependents) if container_c.dependents else []
+        )
         assert "a" in dependents
 
     async def test_clears_dependency_cache(self, db, make_container):
@@ -453,22 +435,20 @@ class TestUpdateContainerDependencies:
         # Fill cache
         await DependencyManager.get_update_order(db, ["a"])
 
-        with patch.object(DependencyManager, 'clear_dependency_cache') as mock_clear:
+        with patch.object(DependencyManager, "clear_dependency_cache") as mock_clear:
             await DependencyManager.update_container_dependencies(db, "a", [])
             mock_clear.assert_called_once()
 
     async def test_raises_on_container_not_found(self, db):
         """Test raises ValueError if container not found."""
         with pytest.raises(ValueError, match="Container nonexistent not found"):
-            await DependencyManager.update_container_dependencies(
-                db, "nonexistent", []
-            )
+            await DependencyManager.update_container_dependencies(db, "nonexistent", [])
 
-    async def test_handles_invalid_json_in_old_dependencies(
-        self, db, make_container
-    ):
+    async def test_handles_invalid_json_in_old_dependencies(self, db, make_container):
         """Test handles invalid JSON in existing dependencies."""
-        container = make_container(name="a", image="alpine", current_tag="3", dependencies="invalid-json")
+        container = make_container(
+            name="a", image="alpine", current_tag="3", dependencies="invalid-json"
+        )
         db.add(container)
         await db.commit()
 
@@ -488,7 +468,10 @@ class TestUpdateContainerDependencies:
         await DependencyManager._add_to_dependents(db, "nonexistent", "a")
 
         # Should log warning
-        assert "Cannot add dependent a to non-existent container nonexistent" in caplog.text
+        assert (
+            "Cannot add dependent a to non-existent container nonexistent"
+            in caplog.text
+        )
 
 
 class TestValidateDependencies:
@@ -501,9 +484,7 @@ class TestValidateDependencies:
         db.add_all([container_a, container_b])
         await db.commit()
 
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "a", ["b"]
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "a", ["b"])
 
         assert is_valid is True
         assert error is None
@@ -524,16 +505,18 @@ class TestValidateDependencies:
     async def test_rejects_circular_dependencies(self, db, make_container):
         """Test rejects dependencies that create cycles."""
         # Create: a -> b -> c
-        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"]))
-        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["c"]))
+        container_a = make_container(
+            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"])
+        )
+        container_b = make_container(
+            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["c"])
+        )
         container_c = make_container(name="c", image="caddy", current_tag="2")
         db.add_all([container_a, container_b, container_c])
         await db.commit()
 
         # Try to make c -> a (creates cycle)
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "c", ["a"]
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "c", ["a"])
 
         assert is_valid is False
         assert "Circular dependency detected" in error
@@ -542,8 +525,12 @@ class TestValidateDependencies:
         """Test allows complex but valid dependency graph."""
         container_a = make_container(name="a", image="alpine", current_tag="3")
         container_b = make_container(name="b", image="busybox", current_tag="1")
-        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["a"]))
-        container_d = make_container(name="d", image="debian", current_tag="12", dependencies=json.dumps(["b"]))
+        container_c = make_container(
+            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["a"])
+        )
+        container_d = make_container(
+            name="d", image="debian", current_tag="12", dependencies=json.dumps(["b"])
+        )
         db.add_all([container_a, container_b, container_c, container_d])
         await db.commit()
 
@@ -561,25 +548,21 @@ class TestValidateDependencies:
         db.add(container)
         await db.commit()
 
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "a", []
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "a", [])
 
         assert is_valid is True
         assert error is None
 
-    async def test_handles_invalid_json_in_existing_deps(
-        self, db, make_container
-    ):
+    async def test_handles_invalid_json_in_existing_deps(self, db, make_container):
         """Test handles invalid JSON in existing container dependencies."""
-        container_a = make_container(name="a", image="alpine", current_tag="3", dependencies="invalid")
+        container_a = make_container(
+            name="a", image="alpine", current_tag="3", dependencies="invalid"
+        )
         container_b = make_container(name="b", image="busybox", current_tag="1")
         db.add_all([container_a, container_b])
         await db.commit()
 
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "b", ["a"]
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "b", ["a"])
 
         # Should still validate successfully
         assert is_valid is True
@@ -606,6 +589,7 @@ class TestClearDependencyCache:
 
         # Should not raise
         from app.services.dependency_manager import _dependency_cache
+
         assert len(_dependency_cache) == 0
 
 
@@ -621,6 +605,7 @@ class TestAutoDetectDependencies:
     async def test_logs_not_implemented_message(self, db, caplog):
         """Test logs message about not implemented."""
         import logging
+
         caplog.set_level(logging.DEBUG)
 
         await DependencyManager.auto_detect_dependencies(db, "test")
@@ -639,13 +624,13 @@ class TestDependencyManagerEdgeCases:
             deps = []
             if i > 0:
                 # Each container depends on previous one
-                deps = [f"container{i-1}"]
+                deps = [f"container{i - 1}"]
 
             container = make_container(
                 name=f"container{i}",
                 image="test",
                 current_tag="latest",
-                dependencies=json.dumps(deps) if deps else None
+                dependencies=json.dumps(deps) if deps else None,
             )
             containers.append(container)
 
@@ -668,17 +653,37 @@ class TestDependencyManagerEdgeCases:
 
         layer0 = [
             make_container(name="db", image="postgres", current_tag="16"),
-            make_container(name="cache", image="redis", current_tag="7")
+            make_container(name="cache", image="redis", current_tag="7"),
         ]
         layer1 = [
-            make_container(name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])),
-            make_container(name="queue", image="rabbitmq", current_tag="3", dependencies=json.dumps(["cache"]))
+            make_container(
+                name="api",
+                image="node",
+                current_tag="18",
+                dependencies=json.dumps(["db"]),
+            ),
+            make_container(
+                name="queue",
+                image="rabbitmq",
+                current_tag="3",
+                dependencies=json.dumps(["cache"]),
+            ),
         ]
         layer2 = [
-            make_container(name="worker", image="python", current_tag="3.11", dependencies=json.dumps(["api", "queue"]))
+            make_container(
+                name="worker",
+                image="python",
+                current_tag="3.11",
+                dependencies=json.dumps(["api", "queue"]),
+            )
         ]
         layer3 = [
-            make_container(name="web", image="nginx", current_tag="latest", dependencies=json.dumps(["worker"]))
+            make_container(
+                name="web",
+                image="nginx",
+                current_tag="latest",
+                dependencies=json.dumps(["worker"]),
+            )
         ]
 
         db.add_all(layer0 + layer1 + layer2 + layer3)
@@ -713,9 +718,15 @@ class TestDependencyManagerEdgeCases:
         # Only update b and c
 
         container_a = make_container(name="a", image="alpine", current_tag="3")
-        container_b = make_container(name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"]))
-        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"]))
-        container_d = make_container(name="d", image="debian", current_tag="12", dependencies=json.dumps(["c"]))
+        container_b = make_container(
+            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"])
+        )
+        container_c = make_container(
+            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"])
+        )
+        container_d = make_container(
+            name="d", image="debian", current_tag="12", dependencies=json.dumps(["c"])
+        )
 
         db.add_all([container_a, container_b, container_c, container_d])
         await db.commit()

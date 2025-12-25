@@ -23,7 +23,7 @@ from app.services.compose_parser import (
     ComposeParser,
     validate_container_name,
     validate_compose_file_path,
-    validate_tag_format
+    validate_tag_format,
 )
 
 
@@ -102,7 +102,9 @@ class TestValidateTagFormat:
 
     def test_valid_sha256_digest(self):
         """Test valid sha256 digest."""
-        digest = "sha256:abc123def4567890123456789012345678901234567890123456789012345678"
+        digest = (
+            "sha256:abc123def4567890123456789012345678901234567890123456789012345678"
+        )
         assert validate_tag_format(digest) is True
 
     def test_invalid_empty_tag(self):
@@ -202,9 +204,10 @@ class TestValidateComposeFilePath:
 
     def test_path_outside_allowed_base_directory(self):
         """Test path outside allowed base directory is rejected."""
-        with tempfile.TemporaryDirectory() as tmpdir1, \
-             tempfile.TemporaryDirectory() as tmpdir2:
-
+        with (
+            tempfile.TemporaryDirectory() as tmpdir1,
+            tempfile.TemporaryDirectory() as tmpdir2,
+        ):
             compose_file = Path(tmpdir2) / "docker-compose.yml"
             compose_file.write_text("services:\n  nginx:\n    image: nginx")
 
@@ -241,7 +244,9 @@ class TestParseImageString:
 
     def test_parse_ghcr_image(self):
         """Test parsing GitHub Container Registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("ghcr.io/owner/app:v1.0.0")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "ghcr.io/owner/app:v1.0.0"
+        )
 
         assert registry == "ghcr"
         assert image == "owner/app"
@@ -249,7 +254,9 @@ class TestParseImageString:
 
     def test_parse_lscr_image(self):
         """Test parsing LinuxServer.io registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("lscr.io/linuxserver/plex:1.40.0")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "lscr.io/linuxserver/plex:1.40.0"
+        )
 
         assert registry == "lscr"
         assert image == "linuxserver/plex"
@@ -266,11 +273,16 @@ class TestParseImageString:
 
         assert registry == "dockerhub"
         assert image == "nginx"
-        assert tag == "sha256:abc123def45678901234567890123456789012345678901234567890123456"
+        assert (
+            tag
+            == "sha256:abc123def45678901234567890123456789012345678901234567890123456"
+        )
 
     def test_parse_quay_image(self):
         """Test parsing Quay.io registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("quay.io/user/app:latest")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "quay.io/user/app:latest"
+        )
 
         assert registry == "quay"
         assert image == "user/app"
@@ -278,7 +290,9 @@ class TestParseImageString:
 
     def test_parse_gcr_image(self):
         """Test parsing Google Container Registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("gcr.io/project/app:v2.0.0")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "gcr.io/project/app:v2.0.0"
+        )
 
         assert registry == "gcr"
         assert image == "project/app"
@@ -286,7 +300,9 @@ class TestParseImageString:
 
     def test_parse_private_registry(self):
         """Test parsing private registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("registry.example.com/app:1.0.0")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "registry.example.com/app:1.0.0"
+        )
 
         assert registry == "registry.example.com"
         assert image == "app"
@@ -294,7 +310,9 @@ class TestParseImageString:
 
     def test_parse_localhost_registry(self):
         """Test parsing localhost registry image."""
-        registry, image, tag = ComposeParser._parse_image_string("localhost:5000/app:test")
+        registry, image, tag = ComposeParser._parse_image_string(
+            "localhost:5000/app:test"
+        )
 
         assert registry == "localhost:5000"
         assert image == "app"
@@ -374,7 +392,7 @@ class TestLabelParsing:
         labels = {
             "valid_key": "value1",
             "key\nwith\nnewline": "value2",
-            "key\x00with\x00null": "value3"
+            "key\x00with\x00null": "value3",
         }
 
         sanitized = ComposeParser._sanitize_labels(labels)
@@ -385,11 +403,7 @@ class TestLabelParsing:
 
     def test_sanitize_labels_converts_non_string_values(self):
         """Test label sanitization converts non-string values to strings."""
-        labels = {
-            "int_value": 123,
-            "bool_value": True,
-            "float_value": 3.14
-        }
+        labels = {"int_value": 123, "bool_value": True, "float_value": 3.14}
 
         sanitized = ComposeParser._sanitize_labels(labels)
 
@@ -421,8 +435,14 @@ class TestHealthCheckExtraction:
     def test_extract_healthcheck_url_from_dict(self):
         """Test extracting URL from dict format with test key."""
         health_config = {
-            "test": ["CMD", "wget", "--quiet", "--tries=1", "http://127.0.0.1:3000/healthz"],
-            "interval": "30s"
+            "test": [
+                "CMD",
+                "wget",
+                "--quiet",
+                "--tries=1",
+                "http://127.0.0.1:3000/healthz",
+            ],
+            "interval": "30s",
         }
 
         url = ComposeParser._extract_healthcheck_url(health_config, "webapp")
@@ -508,7 +528,7 @@ class TestParseComposeFile:
     @pytest.mark.asyncio
     async def test_parse_compose_file_simple_service(self, mock_db):
         """Test parsing simple compose file with one service."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:
@@ -532,7 +552,7 @@ services:
     @pytest.mark.asyncio
     async def test_parse_compose_file_with_labels(self, mock_db):
         """Test parsing compose file with TideWatch labels."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:
@@ -561,7 +581,7 @@ services:
     @pytest.mark.asyncio
     async def test_parse_compose_file_skips_invalid_names(self, mock_db):
         """Test parsing skips services with invalid names."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:
@@ -585,7 +605,7 @@ services:
     @pytest.mark.asyncio
     async def test_parse_compose_file_skips_disabled_services(self, mock_db):
         """Test parsing skips services with tidewatch.enabled=false."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:
@@ -611,7 +631,7 @@ services:
     @pytest.mark.asyncio
     async def test_parse_compose_file_multiple_services(self, mock_db):
         """Test parsing compose file with multiple services."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:
@@ -639,7 +659,7 @@ services:
     @pytest.mark.asyncio
     async def test_parse_compose_file_labels_list_format(self, mock_db):
         """Test parsing labels in list format."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write("""
 version: '3.8'
 services:

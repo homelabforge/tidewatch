@@ -75,7 +75,9 @@ class TestComposeFilePathValidation:
             "/compose/project/compose.yaml",
         ]
         for path in valid_paths:
-            result = validate_compose_file_path(path, allowed_base="/compose", strict=False)
+            result = validate_compose_file_path(
+                path, allowed_base="/compose", strict=False
+            )
             assert str(result).startswith("/compose/")
 
     def test_path_traversal_attempts(self):
@@ -101,9 +103,7 @@ class TestComposeFilePathValidation:
         # For now, just verify that non-existent files raise errors with strict=True
         with pytest.raises(ValidationError):
             validate_compose_file_path(
-                "/compose/nonexistent.yml",
-                allowed_base="/compose",
-                strict=True
+                "/compose/nonexistent.yml", allowed_base="/compose", strict=True
             )
 
 

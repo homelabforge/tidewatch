@@ -21,10 +21,11 @@ from app.services.scheduler import SchedulerService
 
 # Mock fixtures
 
+
 @pytest.fixture
 def mock_settings():
     """Mock SettingsService for scheduler configuration."""
-    with patch('app.services.scheduler.SettingsService') as mock:
+    with patch("app.services.scheduler.SettingsService") as mock:
         # Default return values - stored in dicts that tests can modify
         get_values = {
             "check_schedule": "0 */6 * * *",
@@ -47,9 +48,15 @@ def mock_settings():
             "cleanup_after_days": 7,
         }
 
-        mock.get = AsyncMock(side_effect=lambda db, key, default=None: get_values.get(key, default))
-        mock.get_bool = AsyncMock(side_effect=lambda db, key, default=False: get_bool_values.get(key, default))
-        mock.get_int = AsyncMock(side_effect=lambda db, key, default=0: get_int_values.get(key, default))
+        mock.get = AsyncMock(
+            side_effect=lambda db, key, default=None: get_values.get(key, default)
+        )
+        mock.get_bool = AsyncMock(
+            side_effect=lambda db, key, default=False: get_bool_values.get(key, default)
+        )
+        mock.get_int = AsyncMock(
+            side_effect=lambda db, key, default=0: get_int_values.get(key, default)
+        )
         mock.set = AsyncMock()
 
         # Expose the dicts so tests can modify them
@@ -63,24 +70,20 @@ def mock_settings():
 @pytest.fixture
 def mock_update_checker():
     """Mock UpdateChecker for update check jobs."""
-    with patch('app.services.scheduler.UpdateChecker') as mock:
-        mock.check_all_containers = AsyncMock(return_value={
-            'total': 10,
-            'checked': 10,
-            'updates_found': 2,
-            'errors': 0
-        })
+    with patch("app.services.scheduler.UpdateChecker") as mock:
+        mock.check_all_containers = AsyncMock(
+            return_value={"total": 10, "checked": 10, "updates_found": 2, "errors": 0}
+        )
         yield mock
 
 
 @pytest.fixture
 def mock_update_engine():
     """Mock UpdateEngine for auto-apply jobs."""
-    with patch('app.services.update_engine.UpdateEngine') as mock:
-        mock.apply_update = AsyncMock(return_value={
-            'success': True,
-            'message': 'Update applied successfully'
-        })
+    with patch("app.services.update_engine.UpdateEngine") as mock:
+        mock.apply_update = AsyncMock(
+            return_value={"success": True, "message": "Update applied successfully"}
+        )
         yield mock
 
 
@@ -88,15 +91,12 @@ def mock_update_engine():
 def mock_metrics_collector():
     """Mock metrics_collector for metrics jobs."""
     mock = MagicMock()
-    mock.collect_all_metrics = AsyncMock(return_value={
-        'collected': 10,
-        'skipped': 0
-    })
+    mock.collect_all_metrics = AsyncMock(return_value={"collected": 10, "skipped": 0})
     mock.cleanup_old_metrics = AsyncMock(return_value=150)
 
     # metrics_collector is imported inside try/except blocks in the methods
     # Patch at the import location
-    with patch('app.services.metrics_collector.metrics_collector', mock):
+    with patch("app.services.metrics_collector.metrics_collector", mock):
         yield mock
 
 
@@ -120,7 +120,9 @@ def auto_mock_db(mock_async_session_local, db):
 class TestSchedulerLifecycle:
     """Test scheduler start/stop/reload lifecycle."""
 
-    async def test_starts_scheduler_with_default_settings(self, scheduler_instance, mock_settings):
+    async def test_starts_scheduler_with_default_settings(
+        self, scheduler_instance, mock_settings
+    ):
         """Test starts scheduler with default settings."""
         await scheduler_instance.start()
 
@@ -129,7 +131,9 @@ class TestSchedulerLifecycle:
         assert scheduler_instance._check_schedule == "0 */6 * * *"
         assert scheduler_instance._enabled is True
 
-    async def test_loads_schedule_from_settings(self, scheduler_instance, mock_settings):
+    async def test_loads_schedule_from_settings(
+        self, scheduler_instance, mock_settings
+    ):
         """Test loads schedule from database settings."""
         mock_settings._get_values["check_schedule"] = "0 */4 * * *"  # Every 4 hours
 
@@ -137,11 +141,11 @@ class TestSchedulerLifecycle:
 
         assert scheduler_instance._check_schedule == "0 */4 * * *"
         # Use assert_any_await since start() calls get() multiple times for different keys
-        mock_settings.get.assert_any_await(
-            ANY, "check_schedule", default="0 */6 * * *"
-        )
+        mock_settings.get.assert_any_await(ANY, "check_schedule", default="0 */6 * * *")
 
-    async def test_does_not_start_when_disabled(self, scheduler_instance, mock_settings):
+    async def test_does_not_start_when_disabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test does not start scheduler when check_enabled is False."""
         mock_settings._get_bool_values["check_enabled"] = False
 
@@ -165,7 +169,9 @@ class TestSchedulerLifecycle:
 
         assert scheduler_instance.scheduler is None
 
-    async def test_reloads_schedule_when_changed(self, scheduler_instance, mock_settings, db):
+    async def test_reloads_schedule_when_changed(
+        self, scheduler_instance, mock_settings, db
+    ):
         """Test reloads schedule when settings change."""
         await scheduler_instance.start()
         original_schedule = scheduler_instance._check_schedule
@@ -178,38 +184,51 @@ class TestSchedulerLifecycle:
         assert scheduler_instance._check_schedule == "0 */2 * * *"
         assert scheduler_instance._check_schedule != original_schedule
 
-    async def test_does_not_reload_when_schedule_unchanged(self, scheduler_instance, mock_settings, db):
+    async def test_does_not_reload_when_schedule_unchanged(
+        self, scheduler_instance, mock_settings, db
+    ):
         """Test does not reload when schedule hasn't changed."""
         await scheduler_instance.start()
-        
+
         # Keep same schedule
         mock_settings._get_values["check_schedule"] = "0 */6 * * *"
-        
-        with patch.object(scheduler_instance, 'stop') as mock_stop:
+
+        with patch.object(scheduler_instance, "stop") as mock_stop:
             await scheduler_instance.reload_schedule(db)
-            
+
             # Should not have called stop/start
             mock_stop.assert_not_called()
 
-    async def test_handles_database_error_during_start(self, scheduler_instance, mock_settings):
+    async def test_handles_database_error_during_start(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles database connection error during start."""
         from sqlalchemy.exc import OperationalError
-        
-        mock_settings.get.side_effect = OperationalError("Connection failed", None, None)
+
+        mock_settings.get.side_effect = OperationalError(
+            "Connection failed", None, None
+        )
 
         with pytest.raises(OperationalError):
             await scheduler_instance.start()
 
-    async def test_handles_invalid_cron_schedule(self, scheduler_instance, mock_settings):
+    async def test_handles_invalid_cron_schedule(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles invalid cron schedule format."""
         mock_settings._get_values["check_schedule"] = "invalid cron"
 
         with pytest.raises(ValueError):
             await scheduler_instance.start()
 
-    async def test_handles_import_error_during_start(self, scheduler_instance, mock_settings):
+    async def test_handles_import_error_during_start(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles import error during scheduler start."""
-        with patch('app.services.restart_scheduler.RestartSchedulerService', side_effect=ImportError("Module not found")):
+        with patch(
+            "app.services.restart_scheduler.RestartSchedulerService",
+            side_effect=ImportError("Module not found"),
+        ):
             with pytest.raises(ImportError):
                 await scheduler_instance.start()
 
@@ -234,7 +253,9 @@ class TestJobRegistration:
         assert job is not None
         assert job.name == "Automatic Update Application"
 
-    async def test_registers_metrics_collection_job(self, scheduler_instance, mock_settings):
+    async def test_registers_metrics_collection_job(
+        self, scheduler_instance, mock_settings
+    ):
         """Test registers metrics collection job."""
         await scheduler_instance.start()
 
@@ -242,7 +263,9 @@ class TestJobRegistration:
         assert job is not None
         assert job.name == "Container Metrics Collection"
 
-    async def test_registers_metrics_cleanup_job(self, scheduler_instance, mock_settings):
+    async def test_registers_metrics_cleanup_job(
+        self, scheduler_instance, mock_settings
+    ):
         """Test registers metrics cleanup job."""
         await scheduler_instance.start()
 
@@ -250,7 +273,9 @@ class TestJobRegistration:
         assert job is not None
         assert job.name == "Metrics History Cleanup"
 
-    async def test_registers_dockerfile_job_when_enabled(self, scheduler_instance, mock_settings):
+    async def test_registers_dockerfile_job_when_enabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test registers dockerfile dependencies job when enabled."""
         mock_settings.get.side_effect = lambda db, key, default=None: {
             "check_schedule": "0 */6 * * *",
@@ -263,7 +288,9 @@ class TestJobRegistration:
         assert job is not None
         assert job.name == "Dockerfile Dependencies Update Check"
 
-    async def test_does_not_register_dockerfile_job_when_disabled(self, scheduler_instance, mock_settings):
+    async def test_does_not_register_dockerfile_job_when_disabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test does not register dockerfile job when disabled."""
         mock_settings.get.side_effect = lambda db, key, default=None: {
             "check_schedule": "0 */6 * * *",
@@ -275,7 +302,9 @@ class TestJobRegistration:
         job = scheduler_instance.scheduler.get_job("dockerfile_dependencies_check")
         assert job is None
 
-    async def test_registers_docker_cleanup_job_when_enabled(self, scheduler_instance, mock_settings):
+    async def test_registers_docker_cleanup_job_when_enabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test registers docker cleanup job when enabled."""
         mock_settings.get_bool.side_effect = lambda db, key, default=False: {
             "check_enabled": True,
@@ -288,7 +317,9 @@ class TestJobRegistration:
         assert job is not None
         assert job.name == "Docker Resource Cleanup"
 
-    async def test_does_not_register_docker_cleanup_when_disabled(self, scheduler_instance, mock_settings):
+    async def test_does_not_register_docker_cleanup_when_disabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test does not register docker cleanup job when disabled."""
         mock_settings.get_bool.side_effect = lambda db, key, default=False: {
             "check_enabled": True,
@@ -312,17 +343,17 @@ class TestJobRegistration:
     async def test_replaces_existing_jobs(self, scheduler_instance, mock_settings):
         """Test jobs are replaced if they already exist."""
         await scheduler_instance.start()
-        
+
         # Get original job
         original_job = scheduler_instance.scheduler.get_job("update_check")
-        
+
         # Stop and restart
         await scheduler_instance.stop()
         await scheduler_instance.start()
-        
+
         # Get new job
         new_job = scheduler_instance.scheduler.get_job("update_check")
-        
+
         # Jobs should have same ID but be different instances
         assert new_job is not None
         assert new_job.id == original_job.id
@@ -331,19 +362,23 @@ class TestJobRegistration:
 class TestUpdateCheckJob:
     """Test update check job execution."""
 
-    async def test_runs_update_check_successfully(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_runs_update_check_successfully(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test runs update check job successfully."""
         await scheduler_instance._run_update_check()
 
         mock_update_checker.check_all_containers.assert_awaited_once()
 
-    async def test_logs_update_check_stats(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_logs_update_check_stats(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test logs statistics after update check."""
         mock_update_checker.check_all_containers.return_value = {
-            'total': 15,
-            'checked': 15,
-            'updates_found': 5,
-            'errors': 1
+            "total": 15,
+            "checked": 15,
+            "updates_found": 5,
+            "errors": 1,
         }
 
         await scheduler_instance._run_update_check()
@@ -351,16 +386,20 @@ class TestUpdateCheckJob:
         # Should have been called with expected stats
         mock_update_checker.check_all_containers.assert_awaited_once()
 
-    async def test_updates_last_check_timestamp(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_updates_last_check_timestamp(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test updates _last_check timestamp after successful run."""
         before = datetime.now(timezone.utc)
-        
+
         await scheduler_instance._run_update_check()
-        
+
         assert scheduler_instance._last_check is not None
         assert scheduler_instance._last_check >= before
 
-    async def test_persists_last_check_to_settings(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_persists_last_check_to_settings(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test persists last check timestamp to settings."""
         await scheduler_instance._run_update_check()
 
@@ -370,35 +409,43 @@ class TestUpdateCheckJob:
         assert call_args[0][1] == "scheduler_last_check"
         assert isinstance(call_args[0][2], str)  # ISO format string
 
-    async def test_handles_database_error_during_check(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_handles_database_error_during_check(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test handles database error during update check."""
         from sqlalchemy.exc import OperationalError
-        
-        mock_update_checker.check_all_containers.side_effect = OperationalError("DB error", None, None)
+
+        mock_update_checker.check_all_containers.side_effect = OperationalError(
+            "DB error", None, None
+        )
 
         # Should not raise, just log error
         await scheduler_instance._run_update_check()
 
-    async def test_handles_invalid_data_during_check(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_handles_invalid_data_during_check(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test handles KeyError during update check."""
         mock_update_checker.check_all_containers.side_effect = KeyError("missing key")
 
         # Should not raise, just log error
         await scheduler_instance._run_update_check()
 
-    async def test_manual_trigger_calls_update_check(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_manual_trigger_calls_update_check(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test manual trigger runs update check."""
         await scheduler_instance.trigger_update_check()
 
         mock_update_checker.check_all_containers.assert_awaited_once()
 
 
-
-
 class TestAutoApplyJob:
     """Test auto-apply job execution and logic."""
 
-    async def test_skips_when_auto_update_disabled(self, scheduler_instance, mock_settings):
+    async def test_skips_when_auto_update_disabled(
+        self, scheduler_instance, mock_settings
+    ):
         """Test skips auto-apply when auto_update_enabled is False."""
         mock_settings.get_bool.side_effect = lambda db, key, default=False: {
             "auto_update_enabled": False,
@@ -409,7 +456,9 @@ class TestAutoApplyJob:
         # Should return early, no updates applied
         mock_settings.get_bool.assert_awaited()
 
-    async def test_applies_auto_approved_updates(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_applies_auto_approved_updates(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test applies auto-approved updates."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -427,20 +476,22 @@ class TestAutoApplyJob:
             status="approved",
             approved_by="system",
             from_tag="1.0.0",
-            to_tag="1.1.0"
+            to_tag="1.1.0",
         )
         db.add(update)
         await db.commit()
 
-        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
-            mock_engine.apply_update = AsyncMock(return_value={'success': True})
+        with patch("app.services.update_engine.UpdateEngine") as mock_engine:
+            mock_engine.apply_update = AsyncMock(return_value={"success": True})
 
             await scheduler_instance._run_auto_apply()
 
             # Should have applied the update
             mock_engine.apply_update.assert_awaited_once()
 
-    async def test_applies_pending_retry_updates(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_applies_pending_retry_updates(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test applies pending retry updates when ready."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -458,19 +509,21 @@ class TestAutoApplyJob:
             status="pending_retry",
             next_retry_at=past_time,
             retry_count=1,
-            max_retries=3
+            max_retries=3,
         )
         db.add(update)
         await db.commit()
 
-        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
-            mock_engine.apply_update = AsyncMock(return_value={'success': True})
+        with patch("app.services.update_engine.UpdateEngine") as mock_engine:
+            mock_engine.apply_update = AsyncMock(return_value={"success": True})
 
             await scheduler_instance._run_auto_apply()
 
             mock_engine.apply_update.assert_awaited_once()
 
-    async def test_skips_updates_outside_update_window(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_skips_updates_outside_update_window(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test skips updates outside their update window."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -478,10 +531,7 @@ class TestAutoApplyJob:
 
         # Create container with update window (e.g., only at 3 AM)
         container = make_container(
-            name="db",
-            image="postgres",
-            policy="auto",
-            update_window="0 3 * * *"
+            name="db", image="postgres", policy="auto", update_window="0 3 * * *"
         )
         db.add(container)
         await db.commit()
@@ -490,16 +540,16 @@ class TestAutoApplyJob:
             container_id=container.id,
             container_name="db",
             status="approved",
-            approved_by="system"
+            approved_by="system",
         )
         db.add(update)
         await db.commit()
 
-        with patch('app.services.update_window.UpdateWindow') as mock_window:
+        with patch("app.services.update_window.UpdateWindow") as mock_window:
             # Mock is_in_window to return False (outside window)
             mock_window.is_in_window.return_value = False
 
-            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
+            with patch("app.services.update_engine.UpdateEngine") as mock_engine:
                 mock_engine.apply_update = AsyncMock()
 
                 await scheduler_instance._run_auto_apply()
@@ -507,13 +557,17 @@ class TestAutoApplyJob:
                 # Should NOT have applied update
                 mock_engine.apply_update.assert_not_called()
 
-    async def test_respects_max_concurrent_limit(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_respects_max_concurrent_limit(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test respects auto_update_max_concurrent setting."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
         }.get(key, default)
-        
-        mock_settings._get_int_values["auto_update_max_concurrent"] = 2  # Max 2 concurrent
+
+        mock_settings._get_int_values["auto_update_max_concurrent"] = (
+            2  # Max 2 concurrent
+        )
 
         # Create 5 approved updates
         for i in range(5):
@@ -525,21 +579,23 @@ class TestAutoApplyJob:
                 container_id=container.id,
                 container_name=f"app{i}",
                 status="approved",
-                approved_by="system"
+                approved_by="system",
             )
             db.add(update)
 
         await db.commit()
 
-        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
-            mock_engine.apply_update = AsyncMock(return_value={'success': True})
+        with patch("app.services.update_engine.UpdateEngine") as mock_engine:
+            mock_engine.apply_update = AsyncMock(return_value={"success": True})
 
             await scheduler_instance._run_auto_apply()
 
             # Should have applied only 2 updates (max_concurrent limit)
             assert mock_engine.apply_update.await_count == 2
 
-    async def test_orders_updates_by_dependencies(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_orders_updates_by_dependencies(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test orders updates by dependency graph."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -556,30 +612,32 @@ class TestAutoApplyJob:
             container_id=db_container.id,
             container_name="database",
             status="approved",
-            approved_by="system"
+            approved_by="system",
         )
         api_update = make_update(
             container_id=api_container.id,
             container_name="api",
             status="approved",
-            approved_by="system"
+            approved_by="system",
         )
         db.add_all([db_update, api_update])
         await db.commit()
 
-        with patch('app.services.dependency_manager.DependencyManager') as mock_dm:
+        with patch("app.services.dependency_manager.DependencyManager") as mock_dm:
             # Mock dependency order: database before api
             mock_dm.get_update_order = AsyncMock(return_value=["database", "api"])
 
-            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
-                mock_engine.apply_update = AsyncMock(return_value={'success': True})
+            with patch("app.services.update_engine.UpdateEngine") as mock_engine:
+                mock_engine.apply_update = AsyncMock(return_value={"success": True})
 
                 await scheduler_instance._run_auto_apply()
 
                 # Should have called get_update_order
                 mock_dm.get_update_order.assert_awaited_once()
 
-    async def test_handles_dependency_ordering_failure(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_handles_dependency_ordering_failure(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test handles dependency ordering failure gracefully."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -593,24 +651,26 @@ class TestAutoApplyJob:
             container_id=container.id,
             container_name="app",
             status="approved",
-            approved_by="system"
+            approved_by="system",
         )
         db.add(update)
         await db.commit()
 
-        with patch('app.services.dependency_manager.DependencyManager') as mock_dm:
+        with patch("app.services.dependency_manager.DependencyManager") as mock_dm:
             # Mock ordering failure
             mock_dm.get_update_order.side_effect = ValueError("Cycle detected")
 
-            with patch('app.services.update_engine.UpdateEngine') as mock_engine:
-                mock_engine.apply_update = AsyncMock(return_value={'success': True})
+            with patch("app.services.update_engine.UpdateEngine") as mock_engine:
+                mock_engine.apply_update = AsyncMock(return_value={"success": True})
 
                 await scheduler_instance._run_auto_apply()
 
                 # Should still apply updates in original order
                 mock_engine.apply_update.assert_awaited_once()
 
-    async def test_logs_success_and_failure_counts(self, scheduler_instance, mock_settings, db, make_container, make_update):
+    async def test_logs_success_and_failure_counts(
+        self, scheduler_instance, mock_settings, db, make_container, make_update
+    ):
         """Test logs applied/failed counts."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
@@ -623,38 +683,57 @@ class TestAutoApplyJob:
         await db.commit()
 
         # Create 2 updates
-        update1 = make_update(container_id=container1.id, container_name="app1", status="approved", approved_by="system")
-        update2 = make_update(container_id=container2.id, container_name="app2", status="approved", approved_by="system")
+        update1 = make_update(
+            container_id=container1.id,
+            container_name="app1",
+            status="approved",
+            approved_by="system",
+        )
+        update2 = make_update(
+            container_id=container2.id,
+            container_name="app2",
+            status="approved",
+            approved_by="system",
+        )
         db.add_all([update1, update2])
         await db.commit()
 
-        with patch('app.services.update_engine.UpdateEngine') as mock_engine:
+        with patch("app.services.update_engine.UpdateEngine") as mock_engine:
             # First succeeds, second fails
-            mock_engine.apply_update = AsyncMock(side_effect=[
-                {'success': True},
-                {'success': False, 'message': 'Container not running'}
-            ])
+            mock_engine.apply_update = AsyncMock(
+                side_effect=[
+                    {"success": True},
+                    {"success": False, "message": "Container not running"},
+                ]
+            )
 
             await scheduler_instance._run_auto_apply()
 
             assert mock_engine.apply_update.await_count == 2
 
-    async def test_handles_database_error_during_auto_apply(self, scheduler_instance, mock_settings):
+    async def test_handles_database_error_during_auto_apply(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles database error during auto-apply."""
         from sqlalchemy.exc import OperationalError
-        
+
         mock_settings.get_bool.side_effect = OperationalError("DB error", None, None)
 
         # Should not raise
         await scheduler_instance._run_auto_apply()
 
-    async def test_handles_import_error_during_auto_apply(self, scheduler_instance, mock_settings, db):
+    async def test_handles_import_error_during_auto_apply(
+        self, scheduler_instance, mock_settings, db
+    ):
         """Test handles import error during auto-apply."""
         mock_settings.get_bool.side_effect = lambda db_s, key, default=False: {
             "auto_update_enabled": True,
         }.get(key, default)
 
-        with patch('app.services.update_engine.UpdateEngine', side_effect=ImportError("Module not found")):
+        with patch(
+            "app.services.update_engine.UpdateEngine",
+            side_effect=ImportError("Module not found"),
+        ):
             # Should not raise
             await scheduler_instance._run_auto_apply()
 
@@ -662,50 +741,69 @@ class TestAutoApplyJob:
 class TestMetricsJobs:
     """Test metrics collection and cleanup jobs."""
 
-    async def test_collects_metrics_successfully(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_collects_metrics_successfully(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test runs metrics collection job."""
         await scheduler_instance._run_metrics_collection()
 
         mock_metrics_collector.collect_all_metrics.assert_awaited_once()
 
-    async def test_logs_metrics_collection_stats(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_logs_metrics_collection_stats(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test logs metrics collection statistics."""
         mock_metrics_collector.collect_all_metrics.return_value = {
-            'collected': 15,
-            'skipped': 2
+            "collected": 15,
+            "skipped": 2,
         }
 
         await scheduler_instance._run_metrics_collection()
 
         mock_metrics_collector.collect_all_metrics.assert_awaited_once()
 
-    async def test_handles_metrics_collection_error(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_handles_metrics_collection_error(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test handles error during metrics collection."""
         from sqlalchemy.exc import OperationalError
-        
-        mock_metrics_collector.collect_all_metrics.side_effect = OperationalError("DB error", None, None)
+
+        mock_metrics_collector.collect_all_metrics.side_effect = OperationalError(
+            "DB error", None, None
+        )
 
         # Should not raise
         await scheduler_instance._run_metrics_collection()
 
-    async def test_handles_metrics_collector_import_error(self, scheduler_instance, mock_settings):
+    async def test_handles_metrics_collector_import_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles import error for metrics_collector."""
         # Patch the import to raise ImportError
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs:
-                   __import__(name, *args, **kwargs) if 'metrics_collector' not in name
-                   else (_ for _ in ()).throw(ImportError("Module not found"))):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: __import__(name, *args, **kwargs)
+            if "metrics_collector" not in name
+            else (_ for _ in ()).throw(ImportError("Module not found")),
+        ):
             # Should not raise
             await scheduler_instance._run_metrics_collection()
 
-    async def test_cleans_up_old_metrics(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_cleans_up_old_metrics(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test runs metrics cleanup job."""
         mock_metrics_collector.cleanup_old_metrics.return_value = 200
 
         await scheduler_instance._run_metrics_cleanup()
 
-        mock_metrics_collector.cleanup_old_metrics.assert_awaited_once_with(ANY, days=30)
+        mock_metrics_collector.cleanup_old_metrics.assert_awaited_once_with(
+            ANY, days=30
+        )
 
-    async def test_logs_metrics_cleanup_count(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_logs_metrics_cleanup_count(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test logs number of records deleted."""
         mock_metrics_collector.cleanup_old_metrics.return_value = 150
 
@@ -714,11 +812,15 @@ class TestMetricsJobs:
         # Should have logged 150 records deleted
         mock_metrics_collector.cleanup_old_metrics.assert_awaited_once()
 
-    async def test_handles_metrics_cleanup_error(self, scheduler_instance, mock_settings, mock_metrics_collector):
+    async def test_handles_metrics_cleanup_error(
+        self, scheduler_instance, mock_settings, mock_metrics_collector
+    ):
         """Test handles error during metrics cleanup."""
         from sqlalchemy.exc import OperationalError
-        
-        mock_metrics_collector.cleanup_old_metrics.side_effect = OperationalError("DB error", None, None)
+
+        mock_metrics_collector.cleanup_old_metrics.side_effect = OperationalError(
+            "DB error", None, None
+        )
 
         # Should not raise
         await scheduler_instance._run_metrics_cleanup()
@@ -727,21 +829,24 @@ class TestMetricsJobs:
 class TestDockerfileDependenciesJob:
     """Test Dockerfile dependencies check job."""
 
-    async def test_checks_dockerfile_dependencies(self, scheduler_instance, mock_settings):
+    async def test_checks_dockerfile_dependencies(
+        self, scheduler_instance, mock_settings
+    ):
         """Test runs Dockerfile dependencies check."""
-        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
+        with patch("app.services.dockerfile_parser.DockerfileParser") as mock_parser:
             parser_instance = MagicMock()
-            parser_instance.check_all_for_updates = AsyncMock(return_value={
-                'total_scanned': 10,
-                'updates_found': 3
-            })
+            parser_instance.check_all_for_updates = AsyncMock(
+                return_value={"total_scanned": 10, "updates_found": 3}
+            )
             mock_parser.return_value = parser_instance
 
             await scheduler_instance._run_dockerfile_dependencies_check()
 
             parser_instance.check_all_for_updates.assert_awaited_once()
 
-    async def test_sends_notifications_for_updates(self, scheduler_instance, mock_settings, db, make_container):
+    async def test_sends_notifications_for_updates(
+        self, scheduler_instance, mock_settings, db, make_container
+    ):
         """Test sends notifications when updates are found."""
         from app.models.dockerfile_dependency import DockerfileDependency
 
@@ -759,20 +864,21 @@ class TestDockerfileDependenciesJob:
             full_image="python:3.11",
             dockerfile_path="/app/Dockerfile",
             dependency_type="base_image",
-            update_available=True
+            update_available=True,
         )
         db.add(dep)
         await db.commit()
 
-        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
+        with patch("app.services.dockerfile_parser.DockerfileParser") as mock_parser:
             parser_instance = MagicMock()
-            parser_instance.check_all_for_updates = AsyncMock(return_value={
-                'total_scanned': 1,
-                'updates_found': 1
-            })
+            parser_instance.check_all_for_updates = AsyncMock(
+                return_value={"total_scanned": 1, "updates_found": 1}
+            )
             mock_parser.return_value = parser_instance
 
-            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
+            with patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+            ) as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.notify_dockerfile_update = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -782,25 +888,32 @@ class TestDockerfileDependenciesJob:
                 # Should have sent notification
                 dispatcher_instance.notify_dockerfile_update.assert_awaited_once()
 
-    async def test_handles_dockerfile_check_error(self, scheduler_instance, mock_settings):
+    async def test_handles_dockerfile_check_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles error during Dockerfile check."""
         from sqlalchemy.exc import OperationalError
-        
-        with patch('app.services.dockerfile_parser.DockerfileParser') as mock_parser:
+
+        with patch("app.services.dockerfile_parser.DockerfileParser") as mock_parser:
             parser_instance = MagicMock()
-            parser_instance.check_all_for_updates = AsyncMock(side_effect=OperationalError("DB error", None, None))
+            parser_instance.check_all_for_updates = AsyncMock(
+                side_effect=OperationalError("DB error", None, None)
+            )
             mock_parser.return_value = parser_instance
 
             # Should not raise
             await scheduler_instance._run_dockerfile_dependencies_check()
 
-    async def test_handles_dockerfile_parser_import_error(self, scheduler_instance, mock_settings):
+    async def test_handles_dockerfile_parser_import_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles import error for DockerfileParser."""
-        with patch('app.services.dockerfile_parser.DockerfileParser', side_effect=ImportError("Module not found")):
+        with patch(
+            "app.services.dockerfile_parser.DockerfileParser",
+            side_effect=ImportError("Module not found"),
+        ):
             # Should not raise
             await scheduler_instance._run_dockerfile_dependencies_check()
-
-
 
 
 class TestDockerCleanupJob:
@@ -808,12 +921,14 @@ class TestDockerCleanupJob:
 
     async def test_runs_docker_cleanup(self, scheduler_instance, mock_settings):
         """Test runs Docker cleanup job."""
-        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
-            mock_cleanup.run_cleanup = AsyncMock(return_value={
-                'images_removed': 5,
-                'containers_removed': 2,
-                'space_reclaimed_formatted': '1.2 GB'
-            })
+        with patch("app.services.cleanup_service.CleanupService") as mock_cleanup:
+            mock_cleanup.run_cleanup = AsyncMock(
+                return_value={
+                    "images_removed": 5,
+                    "containers_removed": 2,
+                    "space_reclaimed_formatted": "1.2 GB",
+                }
+            )
 
             await scheduler_instance._run_docker_cleanup()
 
@@ -831,32 +946,40 @@ class TestDockerCleanupJob:
             "cleanup_containers": True,
         }.get(key, default)
 
-        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
-            mock_cleanup.run_cleanup = AsyncMock(return_value={
-                'images_removed': 0,
-                'containers_removed': 0,
-                'space_reclaimed_formatted': '0 B'
-            })
+        with patch("app.services.cleanup_service.CleanupService") as mock_cleanup:
+            mock_cleanup.run_cleanup = AsyncMock(
+                return_value={
+                    "images_removed": 0,
+                    "containers_removed": 0,
+                    "space_reclaimed_formatted": "0 B",
+                }
+            )
 
             await scheduler_instance._run_docker_cleanup()
 
             # Should have called with correct settings
             call_args = mock_cleanup.run_cleanup.call_args
-            assert call_args.kwargs['mode'] == "all"
-            assert call_args.kwargs['days'] == 14
-            assert call_args.kwargs['cleanup_containers'] is True
-            assert "rollback" in call_args.kwargs['exclude_patterns']
+            assert call_args.kwargs["mode"] == "all"
+            assert call_args.kwargs["days"] == 14
+            assert call_args.kwargs["cleanup_containers"] is True
+            assert "rollback" in call_args.kwargs["exclude_patterns"]
 
-    async def test_sends_notification_after_cleanup(self, scheduler_instance, mock_settings):
+    async def test_sends_notification_after_cleanup(
+        self, scheduler_instance, mock_settings
+    ):
         """Test sends notification after successful cleanup."""
-        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
-            mock_cleanup.run_cleanup = AsyncMock(return_value={
-                'images_removed': 10,
-                'containers_removed': 5,
-                'space_reclaimed_formatted': '2.5 GB'
-            })
+        with patch("app.services.cleanup_service.CleanupService") as mock_cleanup:
+            mock_cleanup.run_cleanup = AsyncMock(
+                return_value={
+                    "images_removed": 10,
+                    "containers_removed": 5,
+                    "space_reclaimed_formatted": "2.5 GB",
+                }
+            )
 
-            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
+            with patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+            ) as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.dispatch = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -866,18 +989,24 @@ class TestDockerCleanupJob:
                 # Should have sent notification
                 dispatcher_instance.dispatch.assert_awaited_once()
                 call_args = dispatcher_instance.dispatch.call_args
-                assert "2.5 GB" in call_args.kwargs['message']
+                assert "2.5 GB" in call_args.kwargs["message"]
 
-    async def test_does_not_notify_when_nothing_removed(self, scheduler_instance, mock_settings):
+    async def test_does_not_notify_when_nothing_removed(
+        self, scheduler_instance, mock_settings
+    ):
         """Test does not send notification when nothing was removed."""
-        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
-            mock_cleanup.run_cleanup = AsyncMock(return_value={
-                'images_removed': 0,
-                'containers_removed': 0,
-                'space_reclaimed_formatted': '0 B'
-            })
+        with patch("app.services.cleanup_service.CleanupService") as mock_cleanup:
+            mock_cleanup.run_cleanup = AsyncMock(
+                return_value={
+                    "images_removed": 0,
+                    "containers_removed": 0,
+                    "space_reclaimed_formatted": "0 B",
+                }
+            )
 
-            with patch('app.services.notifications.dispatcher.NotificationDispatcher') as mock_dispatcher:
+            with patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+            ) as mock_dispatcher:
                 dispatcher_instance = MagicMock()
                 dispatcher_instance.dispatch = AsyncMock()
                 mock_dispatcher.return_value = dispatcher_instance
@@ -887,28 +1016,35 @@ class TestDockerCleanupJob:
                 # Should NOT have sent notification
                 dispatcher_instance.dispatch.assert_not_called()
 
-    async def test_handles_cleanup_service_error(self, scheduler_instance, mock_settings):
+    async def test_handles_cleanup_service_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles error during cleanup."""
         from sqlalchemy.exc import OperationalError
-        
-        with patch('app.services.cleanup_service.CleanupService') as mock_cleanup:
-            mock_cleanup.run_cleanup = AsyncMock(side_effect=OperationalError("DB error", None, None))
+
+        with patch("app.services.cleanup_service.CleanupService") as mock_cleanup:
+            mock_cleanup.run_cleanup = AsyncMock(
+                side_effect=OperationalError("DB error", None, None)
+            )
 
             # Should not raise
             await scheduler_instance._run_docker_cleanup()
 
-    async def test_handles_cleanup_service_import_error(self, scheduler_instance, mock_settings):
+    async def test_handles_cleanup_service_import_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles import error for CleanupService."""
         # Patch __import__ to raise ImportError for cleanup_service module
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
-            if 'cleanup_service' in name:
+            if "cleanup_service" in name:
                 raise ImportError(f"No module named '{name}'")
             return original_import(name, *args, **kwargs)
 
-        with patch('builtins.__import__', side_effect=mock_import):
+        with patch("builtins.__import__", side_effect=mock_import):
             # Should not raise - method should handle ImportError gracefully
             await scheduler_instance._run_docker_cleanup()
 
@@ -937,40 +1073,46 @@ class TestStatusReporting:
 
         status = scheduler_instance.get_status()
 
-        assert status['running'] is True
-        assert status['enabled'] is True
-        assert status['schedule'] == "0 */6 * * *"
-        assert status['next_run'] is not None
+        assert status["running"] is True
+        assert status["enabled"] is True
+        assert status["schedule"] == "0 */6 * * *"
+        assert status["next_run"] is not None
 
     async def test_get_status_when_not_running(self, scheduler_instance):
         """Test get_status returns correct status when not running."""
         status = scheduler_instance.get_status()
 
-        assert status['running'] is False
-        assert 'enabled' in status
-        assert 'schedule' in status
-        assert status['next_run'] is None
+        assert status["running"] is False
+        assert "enabled" in status
+        assert "schedule" in status
+        assert status["next_run"] is None
 
-    async def test_includes_last_check_in_status(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_includes_last_check_in_status(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test get_status includes last_check timestamp."""
         await scheduler_instance.start()
         await scheduler_instance._run_update_check()
 
         status = scheduler_instance.get_status()
 
-        assert status['last_check'] is not None
-        assert isinstance(status['last_check'], str)  # ISO format
+        assert status["last_check"] is not None
+        assert isinstance(status["last_check"], str)  # ISO format
 
-    async def test_last_check_is_none_before_first_run(self, scheduler_instance, mock_settings):
+    async def test_last_check_is_none_before_first_run(
+        self, scheduler_instance, mock_settings
+    ):
         """Test last_check is None before first check runs."""
         await scheduler_instance.start()
 
         status = scheduler_instance.get_status()
 
         # May be None or may have been loaded from settings
-        assert 'last_check' in status
+        assert "last_check" in status
 
-    async def test_loads_last_check_from_settings(self, scheduler_instance, mock_settings):
+    async def test_loads_last_check_from_settings(
+        self, scheduler_instance, mock_settings
+    ):
         """Test loads last_check timestamp from settings on start."""
         last_check_time = datetime.now(timezone.utc)
         mock_settings.get.side_effect = lambda db, key, default=None: {
@@ -982,32 +1124,48 @@ class TestStatusReporting:
 
         assert scheduler_instance._last_check is not None
         # Should have loaded from settings
-        assert abs((scheduler_instance._last_check - last_check_time).total_seconds()) < 1
+        assert (
+            abs((scheduler_instance._last_check - last_check_time).total_seconds()) < 1
+        )
 
 
 class TestSchedulerEdgeCases:
     """Test edge cases and error scenarios."""
 
-    async def test_handles_restart_scheduler_service_error(self, scheduler_instance, mock_settings):
+    async def test_handles_restart_scheduler_service_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles error initializing restart scheduler."""
-        with patch('app.services.restart_scheduler.RestartSchedulerService') as mock_restart:
+        with patch(
+            "app.services.restart_scheduler.RestartSchedulerService"
+        ) as mock_restart:
             mock_restart_instance = MagicMock()
-            mock_restart_instance.start_monitoring = AsyncMock(side_effect=Exception("Failed to start"))
+            mock_restart_instance.start_monitoring = AsyncMock(
+                side_effect=Exception("Failed to start")
+            )
             mock_restart.return_value = mock_restart_instance
 
             # Should still start scheduler even if restart monitoring fails
             with pytest.raises(Exception):
                 await scheduler_instance.start()
 
-    async def test_handles_shutdown_error_gracefully(self, scheduler_instance, mock_settings):
+    async def test_handles_shutdown_error_gracefully(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles error during scheduler shutdown."""
         await scheduler_instance.start()
 
-        with patch.object(scheduler_instance.scheduler, 'shutdown', side_effect=RuntimeError("Shutdown failed")):
+        with patch.object(
+            scheduler_instance.scheduler,
+            "shutdown",
+            side_effect=RuntimeError("Shutdown failed"),
+        ):
             # Should not raise
             await scheduler_instance.stop()
 
-    async def test_handles_invalid_last_check_timestamp(self, scheduler_instance, mock_settings):
+    async def test_handles_invalid_last_check_timestamp(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles invalid last_check timestamp in settings."""
         mock_settings.get.side_effect = lambda db, key, default=None: {
             "check_schedule": "0 */6 * * *",
@@ -1030,12 +1188,18 @@ class TestSchedulerEdgeCases:
         """Test handles JobLookupError gracefully."""
         await scheduler_instance.start()
 
-        with patch.object(scheduler_instance.scheduler, 'get_job', side_effect=Exception("Job not found")):
+        with patch.object(
+            scheduler_instance.scheduler,
+            "get_job",
+            side_effect=Exception("Job not found"),
+        ):
             # Should not crash
             scheduler_instance.get_next_run_time()
             # May return None or handle error
 
-    async def test_sequential_start_stop_cycles(self, scheduler_instance, mock_settings):
+    async def test_sequential_start_stop_cycles(
+        self, scheduler_instance, mock_settings
+    ):
         """Test can start and stop scheduler multiple times."""
         for i in range(3):
             await scheduler_instance.start()
@@ -1044,18 +1208,25 @@ class TestSchedulerEdgeCases:
             await scheduler_instance.stop()
             assert scheduler_instance.scheduler.running is False
 
-    async def test_handles_cron_trigger_creation_error(self, scheduler_instance, mock_settings):
+    async def test_handles_cron_trigger_creation_error(
+        self, scheduler_instance, mock_settings
+    ):
         """Test handles error creating CronTrigger."""
         mock_settings._get_values["check_schedule"] = "99 99 99 99 99"  # Invalid cron
 
         with pytest.raises(ValueError):
             await scheduler_instance.start()
 
-    async def test_handles_database_integrity_error(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_handles_database_integrity_error(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test handles IntegrityError during job execution."""
         from sqlalchemy.exc import IntegrityError
-        
-        with patch('app.services.scheduler.SettingsService.set', side_effect=IntegrityError("Duplicate key", None, None)):
+
+        with patch(
+            "app.services.scheduler.SettingsService.set",
+            side_effect=IntegrityError("Duplicate key", None, None),
+        ):
             # Should not crash even if persisting last_check fails
             await scheduler_instance._run_update_check()
 
@@ -1063,7 +1234,9 @@ class TestSchedulerEdgeCases:
 class TestSchedulerIntegration:
     """Integration tests for scheduler service."""
 
-    async def test_full_lifecycle(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_full_lifecycle(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test complete scheduler lifecycle."""
         # Start
         await scheduler_instance.start()
@@ -1071,7 +1244,7 @@ class TestSchedulerIntegration:
 
         # Check status
         status = scheduler_instance.get_status()
-        assert status['running'] is True
+        assert status["running"] is True
 
         # Manually trigger job
         await scheduler_instance.trigger_update_check()
@@ -1094,14 +1267,16 @@ class TestSchedulerIntegration:
         assert scheduler_instance._check_schedule == "0 */12 * * *"
         assert scheduler_instance._check_schedule != original_schedule
 
-    async def test_all_jobs_registered_correctly(self, scheduler_instance, mock_settings):
+    async def test_all_jobs_registered_correctly(
+        self, scheduler_instance, mock_settings
+    ):
         """Test all expected jobs are registered."""
         # Enable all jobs
         mock_settings.get_bool.side_effect = lambda db, key, default=False: {
             "check_enabled": True,
             "cleanup_old_images": True,
         }.get(key, True)  # Default to True for all boolean settings
-        
+
         mock_settings.get.side_effect = lambda db, key, default=None: {
             "check_schedule": "0 */6 * * *",
             "dockerfile_scan_schedule": "daily",
@@ -1124,7 +1299,9 @@ class TestSchedulerIntegration:
             job = scheduler_instance.scheduler.get_job(job_id)
             assert job is not None, f"Job {job_id} should be registered"
 
-    async def test_handles_concurrent_manual_triggers(self, scheduler_instance, mock_settings, mock_update_checker):
+    async def test_handles_concurrent_manual_triggers(
+        self, scheduler_instance, mock_settings, mock_update_checker
+    ):
         """Test handles multiple manual triggers."""
         await scheduler_instance.start()
 

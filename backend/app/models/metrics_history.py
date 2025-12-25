@@ -11,10 +11,17 @@ class MetricsHistory(Base):
     __tablename__ = "metrics_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    container_id = Column(Integer, ForeignKey("containers.id", ondelete="CASCADE"), nullable=False, index=True)
+    container_id = Column(
+        Integer,
+        ForeignKey("containers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     # Timestamp for this metrics snapshot
-    collected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    collected_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
 
     # Resource metrics
     cpu_percent = Column(Float, nullable=False)
@@ -28,6 +35,4 @@ class MetricsHistory(Base):
     pids = Column(Integer, nullable=False)
 
     # Composite index for efficient queries (container + time range)
-    __table_args__ = (
-        Index('idx_container_collected', 'container_id', 'collected_at'),
-    )
+    __table_args__ = (Index("idx_container_collected", "container_id", "collected_at"),)

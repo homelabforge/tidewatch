@@ -18,6 +18,7 @@ describe('UpdateCard', () => {
     vuln_delta: 0,
     published_date: '2025-01-01T00:00:00Z',
     image_size_delta: 0,
+    scope_violation: 0,
     approved_by: null,
     approved_at: null,
     rejected_by: null,

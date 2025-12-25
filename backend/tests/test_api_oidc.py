@@ -41,7 +41,9 @@ class TestOIDCConfigEndpoint:
         """Test client secret is masked in response."""
         from app.services.settings_service import SettingsService
 
-        await SettingsService.set(db, "oidc_client_secret", "very-long-secret-key-that-should-be-masked")
+        await SettingsService.set(
+            db, "oidc_client_secret", "very-long-secret-key-that-should-be-masked"
+        )
 
         response = await authenticated_client.get("/api/v1/auth/oidc/config")
 
@@ -54,6 +56,7 @@ class TestOIDCConfigEndpoint:
     async def test_get_config_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -73,17 +76,21 @@ class TestUpdateOIDCConfigEndpoint:
             "client_secret": "new-secret",
             "provider_name": "New Provider",
             "scopes": "openid profile email",
-            "redirect_uri": "https://tidewatch.local/api/v1/auth/oidc/callback"
+            "redirect_uri": "https://tidewatch.local/api/v1/auth/oidc/callback",
         }
 
-        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/oidc/config", json=config_data
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "message" in data
         assert "updated successfully" in data["message"].lower()
 
-    async def test_update_config_preserves_masked_secret(self, authenticated_client, db):
+    async def test_update_config_preserves_masked_secret(
+        self, authenticated_client, db
+    ):
         """Test preserves existing secret when masked value sent."""
         from app.services.settings_service import SettingsService
 
@@ -98,10 +105,12 @@ class TestUpdateOIDCConfigEndpoint:
             "client_secret": "********",  # Masked
             "provider_name": "Provider",
             "scopes": "openid",
-            "redirect_uri": ""
+            "redirect_uri": "",
         }
 
-        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/oidc/config", json=config_data
+        )
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -112,6 +121,7 @@ class TestUpdateOIDCConfigEndpoint:
     async def test_update_config_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -122,7 +132,7 @@ class TestUpdateOIDCConfigEndpoint:
             "client_secret": "secret",
             "provider_name": "Provider",
             "scopes": "openid",
-            "redirect_uri": ""
+            "redirect_uri": "",
         }
 
         response = await client.put("/api/v1/auth/oidc/config", json=config_data)
@@ -146,19 +156,23 @@ class TestOIDCTestEndpoint:
             "client_secret": "********",  # Will use stored secret
             "provider_name": "Provider",
             "scopes": "openid",
-            "redirect_uri": ""
+            "redirect_uri": "",
         }
 
         # Mock the test_oidc_connection to return success
-        with patch('app.api.oidc.oidc_service.test_oidc_connection', new_callable=AsyncMock) as mock_test:
+        with patch(
+            "app.api.oidc.oidc_service.test_oidc_connection", new_callable=AsyncMock
+        ) as mock_test:
             mock_test.return_value = {
                 "success": True,
                 "message": "Successfully connected to OIDC provider",
                 "provider_name": "Provider",
-                "issuer": "https://auth.example.com"
+                "issuer": "https://auth.example.com",
             }
 
-            response = await authenticated_client.post("/api/v1/auth/oidc/test", json=config_data)
+            response = await authenticated_client.post(
+                "/api/v1/auth/oidc/test", json=config_data
+            )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -167,6 +181,7 @@ class TestOIDCTestEndpoint:
     async def test_oidc_test_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -177,7 +192,7 @@ class TestOIDCTestEndpoint:
             "client_secret": "secret",
             "provider_name": "Provider",
             "scopes": "openid",
-            "redirect_uri": ""
+            "redirect_uri": "",
         }
 
         response = await client.post("/api/v1/auth/oidc/test", json=config_data)
@@ -228,15 +243,25 @@ class TestOIDCLoginEndpoint:
         await SettingsService.set(db, "oidc_client_id", "test-client-id")
 
         # Mock provider metadata and authorization URL creation
-        with patch('app.api.oidc.oidc_service.get_provider_metadata', new_callable=AsyncMock) as mock_metadata:
-            with patch('app.api.oidc.oidc_service.create_authorization_url', new_callable=AsyncMock) as mock_auth_url:
+        with patch(
+            "app.api.oidc.oidc_service.get_provider_metadata", new_callable=AsyncMock
+        ) as mock_metadata:
+            with patch(
+                "app.api.oidc.oidc_service.create_authorization_url",
+                new_callable=AsyncMock,
+            ) as mock_auth_url:
                 mock_metadata.return_value = {
                     "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token"
+                    "token_endpoint": "https://auth.example.com/token",
                 }
-                mock_auth_url.return_value = ("https://auth.example.com/authorize?state=abc123", "abc123")
+                mock_auth_url.return_value = (
+                    "https://auth.example.com/authorize?state=abc123",
+                    "abc123",
+                )
 
-                response = await client.get("/api/v1/auth/oidc/login", follow_redirects=False)
+                response = await client.get(
+                    "/api/v1/auth/oidc/login", follow_redirects=False
+                )
 
                 assert response.status_code == status.HTTP_302_FOUND
                 assert "location" in response.headers
@@ -257,12 +282,16 @@ class TestOIDCCallbackEndpoint:
 
     async def test_callback_invalid_state(self, client):
         """Test invalid state returns 400 (CSRF protection)."""
-        response = await client.get("/api/v1/auth/oidc/callback?code=abc123&state=invalid-state")
+        response = await client.get(
+            "/api/v1/auth/oidc/callback?code=abc123&state=invalid-state"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "invalid or expired state" in response.json()["detail"].lower()
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking with state/nonce validation")
+    @pytest.mark.skip(
+        reason="Requires complete OIDC flow mocking with state/nonce validation"
+    )
     async def test_callback_valid_state_code_returns_token(self, client, db):
         """Test valid state + code returns JWT token."""
         pass
@@ -296,7 +325,9 @@ class TestOIDCCallbackEndpoint:
 class TestOIDCLinkAccountEndpoint:
     """Test suite for POST /api/v1/auth/oidc/link-account endpoint."""
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking and pending link token generation")
+    @pytest.mark.skip(
+        reason="Requires complete OIDC flow mocking and pending link token generation"
+    )
     async def test_link_account_valid_token_password(self, client, db):
         """Test links account with valid token and password."""
         pass

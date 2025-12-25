@@ -35,15 +35,11 @@ class DockerStatsService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=10.0
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.warning(
-                    f"Failed to get stats for {container_name}: {error_msg}"
-                )
+                logger.warning(f"Failed to get stats for {container_name}: {error_msg}")
                 return None
 
             # Parse JSON output
@@ -93,7 +89,9 @@ class DockerStatsService:
             logger.error(f"Failed to parse stats JSON: {e}")
             return None
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error getting stats for {container_name}: {e}")
+            logger.error(
+                f"Process execution error getting stats for {container_name}: {e}"
+            )
             return None
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid stats data for {container_name}: {e}")
@@ -124,26 +122,27 @@ class DockerStatsService:
 
         # Units mapping (case insensitive)
         units = {
-            'B': 1,
-            'KB': 1000,
-            'MB': 1000**2,
-            'GB': 1000**3,
-            'TB': 1000**4,
-            'KIB': 1024,
-            'MIB': 1024**2,
-            'GIB': 1024**3,
-            'TIB': 1024**4,
+            "B": 1,
+            "KB": 1000,
+            "MB": 1000**2,
+            "GB": 1000**3,
+            "TB": 1000**4,
+            "KIB": 1024,
+            "MIB": 1024**2,
+            "GIB": 1024**3,
+            "TIB": 1024**4,
         }
 
         try:
             # Extract number and unit
             import re
-            match = re.match(r'^([\d.]+)\s*([A-Za-z]+)?$', size_str)
+
+            match = re.match(r"^([\d.]+)\s*([A-Za-z]+)?$", size_str)
             if not match:
                 return 0
 
             number = float(match.group(1))
-            unit = match.group(2) if match.group(2) else 'B'
+            unit = match.group(2) if match.group(2) else "B"
             unit = unit.upper()
 
             # Get multiplier
@@ -246,6 +245,7 @@ class DockerStatsService:
 
             # Set up environment with DOCKER_HOST if provided
             import os
+
             env = os.environ.copy()
             if docker_host:
                 env["DOCKER_HOST"] = docker_host
@@ -258,9 +258,7 @@ class DockerStatsService:
             )
 
             timeout = 30.0 if follow else 10.0
-            stdout, _ = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             if process.returncode != 0:
                 logger.warning(
@@ -279,7 +277,9 @@ class DockerStatsService:
                 await process.wait()
             return None
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error getting logs for {container_name}: {e}")
+            logger.error(
+                f"Process execution error getting logs for {container_name}: {e}"
+            )
             return None
         except (UnicodeDecodeError, ValueError) as e:
             logger.error(f"Failed to decode logs for {container_name}: {e}")
@@ -315,7 +315,9 @@ class DockerStatsService:
             return output.lower() == "true"
 
         except (OSError, PermissionError) as e:
-            logger.debug(f"Process execution error checking if {container_name} is running: {e}")
+            logger.debug(
+                f"Process execution error checking if {container_name} is running: {e}"
+            )
             return False
         except (UnicodeDecodeError, ValueError, AttributeError) as e:
             logger.debug(f"Failed to parse container status for {container_name}: {e}")
@@ -360,7 +362,9 @@ class DockerStatsService:
             logger.error(f"Failed to parse exit info JSON for {container_name}: {e}")
             return None
         except (OSError, PermissionError) as e:
-            logger.error(f"Process execution error getting exit info for {container_name}: {e}")
+            logger.error(
+                f"Process execution error getting exit info for {container_name}: {e}"
+            )
             return None
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid exit info data for {container_name}: {e}")
@@ -378,7 +382,13 @@ class DockerStatsService:
             Returns 'manual' (default) if container not found or error
         """
         try:
-            cmd = ["docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", container_name]
+            cmd = [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.HostConfig.RestartPolicy.Name}}",
+                container_name,
+            ]
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -400,7 +410,9 @@ class DockerStatsService:
             return policy
 
         except (OSError, PermissionError) as e:
-            logger.debug(f"Process execution error getting restart policy for {container_name}: {e}")
+            logger.debug(
+                f"Process execution error getting restart policy for {container_name}: {e}"
+            )
             return "manual"
         except (UnicodeDecodeError, ValueError, AttributeError) as e:
             logger.debug(f"Failed to parse restart policy for {container_name}: {e}")

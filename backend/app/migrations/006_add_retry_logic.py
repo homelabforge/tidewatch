@@ -42,45 +42,55 @@ async def upgrade():
     async with engine.begin() as conn:
         # Add retry_count column
         if not await column_exists(conn, "updates", "retry_count"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates ADD COLUMN retry_count INTEGER DEFAULT 0;
-            """))
+            """)
+            )
             logger.info("✅ Added retry_count column")
         else:
             logger.info("⏭️  Skipped retry_count column (already exists)")
 
         # Add max_retries column
         if not await column_exists(conn, "updates", "max_retries"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates ADD COLUMN max_retries INTEGER DEFAULT 3;
-            """))
+            """)
+            )
             logger.info("✅ Added max_retries column")
         else:
             logger.info("⏭️  Skipped max_retries column (already exists)")
 
         # Add next_retry_at column
         if not await column_exists(conn, "updates", "next_retry_at"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates ADD COLUMN next_retry_at TIMESTAMP NULL;
-            """))
+            """)
+            )
             logger.info("✅ Added next_retry_at column")
         else:
             logger.info("⏭️  Skipped next_retry_at column (already exists)")
 
         # Add last_error column
         if not await column_exists(conn, "updates", "last_error"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates ADD COLUMN last_error TEXT NULL;
-            """))
+            """)
+            )
             logger.info("✅ Added last_error column")
         else:
             logger.info("⏭️  Skipped last_error column (already exists)")
 
         # Add backoff_multiplier column
         if not await column_exists(conn, "updates", "backoff_multiplier"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates ADD COLUMN backoff_multiplier INTEGER DEFAULT 3;
-            """))
+            """)
+            )
             logger.info("✅ Added backoff_multiplier column")
         else:
             logger.info("⏭️  Skipped backoff_multiplier column (already exists)")

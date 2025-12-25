@@ -24,7 +24,7 @@ async def table_exists(conn, table_name: str) -> bool:
     """Check if a table exists in the database."""
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
-        {"name": table_name}
+        {"name": table_name},
     )
     return result.scalar() is not None
 
@@ -40,7 +40,8 @@ async def upgrade():
             return
 
         # Create secret_keys table
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE TABLE secret_keys (
                 key_name VARCHAR PRIMARY KEY,
                 key_value VARCHAR NOT NULL,
@@ -50,19 +51,24 @@ async def upgrade():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """))
+        """)
+        )
         print("✓ Created secret_keys table")
 
         # Create index on key_name for faster lookups
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX ix_secret_keys_name ON secret_keys(key_name)
-        """))
+        """)
+        )
         print("✓ Created index on key_name")
 
         # Create index on key_type for filtering
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX ix_secret_keys_type ON secret_keys(key_type)
-        """))
+        """)
+        )
         print("✓ Created index on key_type")
 
         print("")

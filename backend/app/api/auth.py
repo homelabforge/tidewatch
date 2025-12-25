@@ -63,7 +63,9 @@ async def get_auth_status(
     }
 
 
-@router.post("/setup", response_model=SetupResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/setup", response_model=SetupResponse, status_code=status.HTTP_201_CREATED
+)
 async def setup_admin_account(
     request: Request,
     setup_data: SetupRequest,
@@ -123,8 +125,7 @@ async def cancel_setup(db: AsyncSession = Depends(get_db)):
     setup_complete = await is_setup_complete(db)
     if setup_complete:
         raise HTTPException(
-            status_code=403,
-            detail="Cannot cancel setup after it has been completed"
+            status_code=403, detail="Cannot cancel setup after it has been completed"
         )
 
     # Set auth_mode to none
@@ -164,7 +165,7 @@ async def login(
     access_token_expires = timedelta(minutes=24 * 60)  # 24 hours
     access_token = create_access_token(
         data={"sub": "admin", "username": profile["username"]},
-        expires_delta=access_token_expires
+        expires_delta=access_token_expires,
     )
 
     # Set httpOnly cookie
@@ -286,7 +287,7 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password change not allowed for {admin['auth_method']} authentication. "
-                   "Please use your identity provider to change your password.",
+            "Please use your identity provider to change your password.",
         )
 
     # Verify current password

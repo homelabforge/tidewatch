@@ -24,8 +24,7 @@ router = APIRouter()
 
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_analytics_summary(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> AnalyticsSummary:
     """Return aggregated analytics for the dashboard."""
     now = datetime.now(timezone.utc)
@@ -67,10 +66,7 @@ async def get_analytics_summary(
     cve_counts: Dict[str, int] = defaultdict(int)
     for record in histories:
         reference_time = (
-            record.completed_at
-            or record.started_at
-            or record.created_at
-            or now
+            record.completed_at or record.started_at or record.created_at or now
         )
         if reference_time.tzinfo is None:
             reference_time = reference_time.replace(tzinfo=timezone.utc)
@@ -86,8 +82,7 @@ async def get_analytics_summary(
 
     # Policy distribution
     policy_result = await db.execute(
-        select(Container.policy, func.count().label("count"))
-        .group_by(Container.policy)
+        select(Container.policy, func.count().label("count")).group_by(Container.policy)
     )
 
     policy_rows = policy_result.all()
@@ -127,11 +122,12 @@ async def get_analytics_summary(
 
     # Average update duration
     duration_result = await db.execute(
-        select(func.avg(
-            func.julianday(UpdateHistory.completed_at) -
-            func.julianday(UpdateHistory.started_at)
-        ))
-        .where(
+        select(
+            func.avg(
+                func.julianday(UpdateHistory.completed_at)
+                - func.julianday(UpdateHistory.started_at)
+            )
+        ).where(
             UpdateHistory.status == "success",
             UpdateHistory.completed_at.isnot(None),
             UpdateHistory.started_at.isnot(None),

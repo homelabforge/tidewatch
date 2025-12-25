@@ -41,9 +41,7 @@ logger = logging.getLogger(__name__)
 
 async def check_column_exists(conn, table: str, column: str) -> bool:
     """Check if a column exists in a table."""
-    result = await conn.execute(
-        text(f"PRAGMA table_info({table})")
-    )
+    result = await conn.execute(text(f"PRAGMA table_info({table})"))
     columns = result.fetchall()
     return any(col[1] == column for col in columns)
 
@@ -79,7 +77,9 @@ async def migrate():
             for column, definition in columns_to_add:
                 if not await check_column_exists(conn, "container_restart_log", column):
                     await conn.execute(
-                        text(f"ALTER TABLE container_restart_log ADD COLUMN {column} {definition}")
+                        text(
+                            f"ALTER TABLE container_restart_log ADD COLUMN {column} {definition}"
+                        )
                     )
                     logger.info(f"  ✓ Added column: {column}")
                     added_count += 1
@@ -87,7 +87,9 @@ async def migrate():
                     logger.info(f"  ⊘ Column already exists: {column}")
 
             if added_count > 0:
-                logger.info(f"\n✅ Migration completed successfully! Added {added_count} columns.")
+                logger.info(
+                    f"\n✅ Migration completed successfully! Added {added_count} columns."
+                )
             else:
                 logger.info("\n✅ Migration already applied (all columns exist).")
 
@@ -100,8 +102,13 @@ async def migrate():
             logger.info(f"  Total columns in container_restart_log: {len(columns)}")
 
             # Check for critical columns
-            critical_columns = ["restart_state_id", "failure_reason", "backoff_strategy",
-                               "restart_method", "health_check_enabled"]
+            critical_columns = [
+                "restart_state_id",
+                "failure_reason",
+                "backoff_strategy",
+                "restart_method",
+                "health_check_enabled",
+            ]
             missing = []
             for col in critical_columns:
                 if not any(c[1] == col for c in columns):

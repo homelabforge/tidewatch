@@ -120,7 +120,7 @@ class TestSecretKeyManagement:
             key_file = Path(tmpdir) / "test.key"
 
             # Mock sanitize_path to return our temp file
-            with patch('app.utils.security.sanitize_path', return_value=key_file):
+            with patch("app.utils.security.sanitize_path", return_value=key_file):
                 secret_key = get_or_create_secret_key(key_file)
 
                 # Key should be created
@@ -138,7 +138,7 @@ class TestSecretKeyManagement:
             existing_key = "existing_secret_key_12345"
             key_file.write_text(existing_key)
 
-            with patch('app.utils.security.sanitize_path', return_value=key_file):
+            with patch("app.utils.security.sanitize_path", return_value=key_file):
                 loaded_key = get_or_create_secret_key(key_file)
                 assert loaded_key == existing_key
 
@@ -147,7 +147,7 @@ class TestSecretKeyManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             key_file = Path(tmpdir) / "test.key"
 
-            with patch('app.utils.security.sanitize_path', return_value=key_file):
+            with patch("app.utils.security.sanitize_path", return_value=key_file):
                 get_or_create_secret_key(key_file)
 
                 # Check file permissions (owner read/write only)
@@ -157,7 +157,9 @@ class TestSecretKeyManagement:
 
     def test_get_or_create_secret_key_fallback_on_path_error(self):
         """Test fallback to in-memory key on path validation error."""
-        with patch('app.utils.security.sanitize_path', side_effect=ValueError("Invalid path")):
+        with patch(
+            "app.utils.security.sanitize_path", side_effect=ValueError("Invalid path")
+        ):
             secret_key = get_or_create_secret_key(Path("/invalid/path"))
 
             # Should still return a key (in-memory)
@@ -168,7 +170,7 @@ class TestSecretKeyManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             key_file = Path(tmpdir) / "nested" / "dir" / "test.key"
 
-            with patch('app.utils.security.sanitize_path', return_value=key_file):
+            with patch("app.utils.security.sanitize_path", return_value=key_file):
                 get_or_create_secret_key(key_file)
 
                 assert key_file.exists()
@@ -180,7 +182,7 @@ class TestSecretKeyManagement:
             key_file = Path(tmpdir) / "empty.key"
             key_file.write_text("")  # Empty file
 
-            with patch('app.utils.security.sanitize_path', return_value=key_file):
+            with patch("app.utils.security.sanitize_path", return_value=key_file):
                 secret_key = get_or_create_secret_key(key_file)
 
                 # Should generate new key
@@ -194,11 +196,7 @@ class TestJWTOperations:
     @pytest.fixture
     def sample_payload(self):
         """Sample JWT payload for testing."""
-        return {
-            "sub": "admin",
-            "username": "admin",
-            "email": "admin@example.com"
-        }
+        return {"sub": "admin", "username": "admin", "email": "admin@example.com"}
 
     def test_create_access_token_includes_required_fields(self, sample_payload):
         """Test create_access_token() includes exp and iat fields."""
@@ -224,7 +222,9 @@ class TestJWTOperations:
         expected_delta = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         actual_delta = exp - iat
 
-        assert abs((actual_delta - expected_delta).total_seconds()) < 5  # 5 second tolerance
+        assert (
+            abs((actual_delta - expected_delta).total_seconds()) < 5
+        )  # 5 second tolerance
 
     def test_create_access_token_custom_expiration(self, sample_payload):
         """Test token with custom expiration delta."""
@@ -292,9 +292,10 @@ class TestJWTOperations:
         # Decode header
         import base64
         import json
-        header_b64 = token.split('.')[0]
+
+        header_b64 = token.split(".")[0]
         # Add padding if needed
-        header_b64 += '=' * (4 - len(header_b64) % 4)
+        header_b64 += "=" * (4 - len(header_b64) % 4)
         header_json = base64.urlsafe_b64decode(header_b64)
         header = json.loads(header_json)
 
@@ -312,11 +313,13 @@ class TestAdminProfileManagement:
     @pytest.fixture
     def mock_settings_service(self):
         """Mock SettingsService."""
-        with patch('app.services.auth.SettingsService') as mock:
+        with patch("app.services.auth.SettingsService") as mock:
             yield mock
 
     @pytest.mark.asyncio
-    async def test_is_setup_complete_auth_disabled(self, mock_db, mock_settings_service):
+    async def test_is_setup_complete_auth_disabled(
+        self, mock_db, mock_settings_service
+    ):
         """Test is_setup_complete() returns True when auth disabled."""
         mock_settings_service.get = AsyncMock(return_value="none")
 
@@ -344,8 +347,11 @@ class TestAdminProfileManagement:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_get_admin_profile_returns_profile(self, mock_db, mock_settings_service):
+    async def test_get_admin_profile_returns_profile(
+        self, mock_db, mock_settings_service
+    ):
         """Test get_admin_profile() returns complete profile dict."""
+
         async def mock_get(db, key, default=""):
             profile_data = {
                 "auth_mode": "local",
@@ -369,7 +375,9 @@ class TestAdminProfileManagement:
         assert profile["auth_method"] == "local"
 
     @pytest.mark.asyncio
-    async def test_get_admin_profile_setup_not_complete(self, mock_db, mock_settings_service):
+    async def test_get_admin_profile_setup_not_complete(
+        self, mock_db, mock_settings_service
+    ):
         """Test get_admin_profile() returns None when setup incomplete."""
         mock_settings_service.get = AsyncMock(side_effect=["local", ""])
 
@@ -378,29 +386,41 @@ class TestAdminProfileManagement:
         assert profile is None
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_email(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_email(
+        self, mock_db, mock_settings_service
+    ):
         """Test update_admin_profile() updates email."""
         mock_settings_service.set = AsyncMock()
 
         await update_admin_profile(mock_db, email="newemail@example.com")
 
-        mock_settings_service.set.assert_called_once_with(mock_db, "admin_email", "newemail@example.com")
+        mock_settings_service.set.assert_called_once_with(
+            mock_db, "admin_email", "newemail@example.com"
+        )
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_full_name(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_full_name(
+        self, mock_db, mock_settings_service
+    ):
         """Test update_admin_profile() updates full name."""
         mock_settings_service.set = AsyncMock()
 
         await update_admin_profile(mock_db, full_name="John Doe")
 
-        mock_settings_service.set.assert_called_once_with(mock_db, "admin_full_name", "John Doe")
+        mock_settings_service.set.assert_called_once_with(
+            mock_db, "admin_full_name", "John Doe"
+        )
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_both(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_both(
+        self, mock_db, mock_settings_service
+    ):
         """Test update_admin_profile() updates both fields."""
         mock_settings_service.set = AsyncMock()
 
-        await update_admin_profile(mock_db, email="new@example.com", full_name="New Name")
+        await update_admin_profile(
+            mock_db, email="new@example.com", full_name="New Name"
+        )
 
         assert mock_settings_service.set.call_count == 2
 
@@ -412,7 +432,9 @@ class TestAdminProfileManagement:
 
         await update_admin_password(mock_db, new_hash)
 
-        mock_settings_service.set.assert_called_once_with(mock_db, "admin_password_hash", new_hash)
+        mock_settings_service.set.assert_called_once_with(
+            mock_db, "admin_password_hash", new_hash
+        )
 
 
 class TestAuthentication:
@@ -426,7 +448,7 @@ class TestAuthentication:
     @pytest.fixture
     def mock_settings_service(self):
         """Mock SettingsService."""
-        with patch('app.services.auth.SettingsService') as mock:
+        with patch("app.services.auth.SettingsService") as mock:
             yield mock
 
     @pytest.mark.asyncio
@@ -454,7 +476,9 @@ class TestAuthentication:
         assert profile["username"] == "admin"
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_wrong_username(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_wrong_username(
+        self, mock_db, mock_settings_service
+    ):
         """Test authenticate_admin() fails with wrong username."""
         password = "SecurePassword123!"
         password_hash = hash_password(password)
@@ -474,7 +498,9 @@ class TestAuthentication:
         assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_wrong_password(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_wrong_password(
+        self, mock_db, mock_settings_service
+    ):
         """Test authenticate_admin() fails with wrong password."""
         password_hash = hash_password("CorrectPassword")
 
@@ -494,8 +520,11 @@ class TestAuthentication:
         assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_no_password_hash(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_no_password_hash(
+        self, mock_db, mock_settings_service
+    ):
         """Test authenticate_admin() fails when no password hash set."""
+
         async def mock_get(db, key, default=""):
             data = {
                 "auth_mode": "local",
@@ -511,7 +540,9 @@ class TestAuthentication:
         assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_oidc_user_rejects_password(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_oidc_user_rejects_password(
+        self, mock_db, mock_settings_service
+    ):
         """Test authenticate_admin() rejects password login for OIDC users."""
         password_hash = hash_password("SomePassword")
 
@@ -531,7 +562,9 @@ class TestAuthentication:
         assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_updates_last_login(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_updates_last_login(
+        self, mock_db, mock_settings_service
+    ):
         """Test authenticate_admin() updates last_login timestamp."""
         password = "SecurePassword123!"
         password_hash = hash_password(password)
@@ -552,7 +585,9 @@ class TestAuthentication:
 
         # Check last_login was updated
         set_calls = mock_settings_service.set.call_args_list
-        last_login_call = [call for call in set_calls if call[0][1] == "admin_last_login"]
+        last_login_call = [
+            call for call in set_calls if call[0][1] == "admin_last_login"
+        ]
         assert len(last_login_call) == 1
 
 
@@ -567,7 +602,7 @@ class TestAuthMode:
     @pytest.fixture
     def mock_settings_service(self):
         """Mock SettingsService."""
-        with patch('app.services.auth.SettingsService') as mock:
+        with patch("app.services.auth.SettingsService") as mock:
             yield mock
 
     @pytest.mark.asyncio

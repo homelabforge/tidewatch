@@ -18,14 +18,19 @@ class TestCleanupImagesEndpoint:
     async def test_cleanup_dangling_images(self, authenticated_client, db):
         """Test removes dangling Docker images."""
         # Mock CleanupService
-        with patch('app.api.cleanup.CleanupService.prune_dangling_images', new_callable=AsyncMock) as mock_prune:
+        with patch(
+            "app.api.cleanup.CleanupService.prune_dangling_images",
+            new_callable=AsyncMock,
+        ) as mock_prune:
             mock_prune.return_value = {
                 "images_removed": 5,
-                "space_reclaimed": 1024 * 1024 * 100  # 100 MB
+                "space_reclaimed": 1024 * 1024 * 100,  # 100 MB
             }
 
             # Act
-            response = await authenticated_client.post("/api/v1/cleanup/images?dangling_only=true")
+            response = await authenticated_client.post(
+                "/api/v1/cleanup/images?dangling_only=true"
+            )
 
             # Assert
             assert response.status_code == status.HTTP_200_OK
@@ -39,20 +44,29 @@ class TestCleanupImagesEndpoint:
     async def test_cleanup_old_images_by_age(self, authenticated_client, db):
         """Test removes images older than specified days."""
         # Mock CleanupService methods
-        with patch('app.api.cleanup.CleanupService.prune_dangling_images', new_callable=AsyncMock) as mock_prune_dangling, \
-             patch('app.api.cleanup.CleanupService.cleanup_old_images', new_callable=AsyncMock) as mock_cleanup_old:
-
+        with (
+            patch(
+                "app.api.cleanup.CleanupService.prune_dangling_images",
+                new_callable=AsyncMock,
+            ) as mock_prune_dangling,
+            patch(
+                "app.api.cleanup.CleanupService.cleanup_old_images",
+                new_callable=AsyncMock,
+            ) as mock_cleanup_old,
+        ):
             mock_prune_dangling.return_value = {
                 "images_removed": 2,
-                "space_reclaimed": 1024 * 1024 * 50
+                "space_reclaimed": 1024 * 1024 * 50,
             }
             mock_cleanup_old.return_value = {
                 "images_removed": 3,
-                "space_reclaimed": 1024 * 1024 * 150
+                "space_reclaimed": 1024 * 1024 * 150,
             }
 
             # Act
-            response = await authenticated_client.post("/api/v1/cleanup/images?dangling_only=false&older_than_days=30")
+            response = await authenticated_client.post(
+                "/api/v1/cleanup/images?dangling_only=false&older_than_days=30"
+            )
 
             # Assert
             assert response.status_code == status.HTTP_200_OK
@@ -66,11 +80,13 @@ class TestCleanupImagesEndpoint:
     async def test_cleanup_preview_mode(self, authenticated_client, db):
         """Test preview mode returns list without deleting."""
         # Mock preview method
-        with patch('app.api.cleanup.CleanupService.get_cleanup_preview', new_callable=AsyncMock) as mock_preview:
+        with patch(
+            "app.api.cleanup.CleanupService.get_cleanup_preview", new_callable=AsyncMock
+        ) as mock_preview:
             mock_preview.return_value = {
                 "images_to_remove": 3,
                 "space_to_reclaim": 1024 * 1024 * 75,
-                "image_list": ["nginx:old", "redis:old", "postgres:old"]
+                "image_list": ["nginx:old", "redis:old", "postgres:old"],
             }
 
             # Act
@@ -88,6 +104,7 @@ class TestCleanupImagesEndpoint:
     async def test_cleanup_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -104,11 +121,14 @@ class TestCleanupContainersEndpoint:
     async def test_cleanup_exited_containers(self, authenticated_client, db):
         """Test removes exited containers."""
         # Mock CleanupService
-        with patch('app.api.cleanup.CleanupService.prune_exited_containers', new_callable=AsyncMock) as mock_prune:
+        with patch(
+            "app.api.cleanup.CleanupService.prune_exited_containers",
+            new_callable=AsyncMock,
+        ) as mock_prune:
             mock_prune.return_value = {
                 "success": True,
                 "containers_removed": 3,
-                "space_reclaimed": 1024 * 1024 * 10
+                "space_reclaimed": 1024 * 1024 * 10,
             }
 
             # Act
@@ -125,15 +145,19 @@ class TestCleanupContainersEndpoint:
         """Test respects configured exclude patterns."""
         # Set exclude patterns in settings
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "cleanup_exclude_patterns", "-dev,-test,rollback")
         await db.commit()
 
         # Mock CleanupService
-        with patch('app.api.cleanup.CleanupService.prune_exited_containers', new_callable=AsyncMock) as mock_prune:
+        with patch(
+            "app.api.cleanup.CleanupService.prune_exited_containers",
+            new_callable=AsyncMock,
+        ) as mock_prune:
             mock_prune.return_value = {
                 "success": True,
                 "containers_removed": 2,
-                "space_reclaimed": 1024 * 1024 * 5
+                "space_reclaimed": 1024 * 1024 * 5,
             }
 
             # Act
@@ -150,6 +174,7 @@ class TestCleanupContainersEndpoint:
     async def test_cleanup_containers_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -166,12 +191,14 @@ class TestCleanupStatsEndpoint:
     async def test_stats_returns_disk_usage(self, authenticated_client):
         """Test returns Docker disk usage statistics."""
         # Mock disk usage stats
-        with patch('app.api.cleanup.CleanupService.get_disk_usage', new_callable=AsyncMock) as mock_stats:
+        with patch(
+            "app.api.cleanup.CleanupService.get_disk_usage", new_callable=AsyncMock
+        ) as mock_stats:
             mock_stats.return_value = {
                 "images": {"active": 10, "size": 1024 * 1024 * 1024},
                 "containers": {"active": 5, "size": 1024 * 1024 * 512},
                 "volumes": {"active": 3, "size": 1024 * 1024 * 256},
-                "build_cache": {"size": 1024 * 1024 * 128}
+                "build_cache": {"size": 1024 * 1024 * 128},
             }
 
             # Act
@@ -189,6 +216,7 @@ class TestCleanupStatsEndpoint:
     async def test_stats_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -206,6 +234,7 @@ class TestCleanupSettingsEndpoint:
         """Test returns current cleanup settings."""
         # Set some settings
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "cleanup_mode", "moderate")
         await SettingsService.set(db, "cleanup_after_days", "14")
         await SettingsService.set(db, "cleanup_old_images", "true")
@@ -226,9 +255,9 @@ class TestCleanupSettingsEndpoint:
     async def test_cleanup_settings_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
-
 
         # Act
         response = await client.get("/api/v1/cleanup/settings")

@@ -26,17 +26,21 @@ async def upgrade():
 
         if "version" not in columns:
             # Add version column with default value of 1
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates
                 ADD COLUMN version INTEGER DEFAULT 1 NOT NULL
-            """))
+            """)
+            )
 
             # Initialize existing rows to version 1
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 UPDATE updates
                 SET version = 1
                 WHERE version IS NULL
-            """))
+            """)
+            )
 
 
 async def downgrade():

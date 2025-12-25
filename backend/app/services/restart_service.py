@@ -108,7 +108,9 @@ class RestartService:
                 max_delay=state.max_delay_seconds,
             )
         elif state.backoff_strategy == "fixed":
-            return RestartService.calculate_fixed_backoff(delay=state.base_delay_seconds)
+            return RestartService.calculate_fixed_backoff(
+                delay=state.base_delay_seconds
+            )
         else:
             logger.warning(
                 f"Unknown backoff strategy '{state.backoff_strategy}', using exponential"
@@ -343,7 +345,10 @@ class RestartService:
 
             # Wait a moment for container to start (configurable delay)
             from app.services.settings_service import SettingsService
-            startup_delay = await SettingsService.get_int(db, "container_startup_delay", default=2)
+
+            startup_delay = await SettingsService.get_int(
+                db, "container_startup_delay", default=2
+            )
             await asyncio.sleep(startup_delay)
 
             # Validate health check if enabled
@@ -414,9 +419,7 @@ class RestartService:
                 from app.services.notifications.dispatcher import NotificationDispatcher
 
                 dispatcher = NotificationDispatcher(db)
-                await dispatcher.notify_restart_success(
-                    container.name, attempt_number
-                )
+                await dispatcher.notify_restart_success(container.name, attempt_number)
 
             return {"success": True, "health": health_result}
 
@@ -430,7 +433,9 @@ class RestartService:
 
             return {"success": False, "error": str(e)}
         except (ImportError, AttributeError) as e:
-            logger.error(f"Service dependency error during restart of {container.name}: {e}")
+            logger.error(
+                f"Service dependency error during restart of {container.name}: {e}"
+            )
 
             log_entry.success = False
             log_entry.error_message = str(e)
@@ -479,10 +484,15 @@ class RestartService:
             cmd_parts = cmd.split() + ["restart", container.service_name]
 
             # Format docker socket to DOCKER_HOST environment variable
-            docker_host = docker_socket if docker_socket.startswith(("tcp://", "unix://")) else f"unix://{docker_socket}"
+            docker_host = (
+                docker_socket
+                if docker_socket.startswith(("tcp://", "unix://"))
+                else f"unix://{docker_socket}"
+            )
 
             # Execute with proper DOCKER_HOST environment variable
             import os
+
             env = os.environ.copy()
             env["DOCKER_HOST"] = docker_host
 

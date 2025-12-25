@@ -23,26 +23,31 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 class FileOperationError(Exception):
     """Base exception for file operation errors."""
+
     pass
 
 
 class PathValidationError(FileOperationError):
     """Raised when path validation fails."""
+
     pass
 
 
 class VersionValidationError(FileOperationError):
     """Raised when version string validation fails."""
+
     pass
 
 
 class BackupError(FileOperationError):
     """Raised when backup creation fails."""
+
     pass
 
 
 class AtomicWriteError(FileOperationError):
     """Raised when atomic write fails."""
+
     pass
 
 
@@ -80,9 +85,7 @@ def validate_file_path_for_update(file_path: str) -> Path:
 
         # Check for path traversal attempts in original string
         if ".." in str(file_path) or "//" in str(file_path):
-            raise PathValidationError(
-                f"Path contains traversal sequences: {file_path}"
-            )
+            raise PathValidationError(f"Path contains traversal sequences: {file_path}")
 
         # Check if file exists
         if not path.exists():
@@ -151,25 +154,23 @@ def validate_version_string(version: str, ecosystem: Optional[str] = None) -> bo
 
     # Basic pattern: alphanumeric, dots, hyphens, plus, tilde, caret
     # Covers semver, calver, and most package manager formats
-    basic_pattern = r'^[a-zA-Z0-9.\-+~^]+$'
+    basic_pattern = r"^[a-zA-Z0-9.\-+~^]+$"
     if not re.match(basic_pattern, version):
-        raise VersionValidationError(
-            f"Version contains invalid characters: {version}"
-        )
+        raise VersionValidationError(f"Version contains invalid characters: {version}")
 
     # Ecosystem-specific validation
     if ecosystem:
         if ecosystem == "npm":
             # npm semver: 1.2.3, 1.2.3-alpha.1, ^1.2.3, ~1.2.3, >=1.2.3
-            npm_pattern = r'^[\^~>=<]*\d+\.\d+\.\d+(-[a-zA-Z0-9.\-+]+)?$'
+            npm_pattern = r"^[\^~>=<]*\d+\.\d+\.\d+(-[a-zA-Z0-9.\-+]+)?$"
             if not re.match(npm_pattern, version.lstrip("^~>=<")):
-                raise VersionValidationError(
-                    f"Invalid npm version format: {version}"
-                )
+                raise VersionValidationError(f"Invalid npm version format: {version}")
 
         elif ecosystem == "pypi":
             # PEP 440: 1.2.3, 1.2.3a1, 1.2.3.post1, 1.2.3+local
-            pypi_pattern = r'^\d+(\.\d+)*([a-z]+\d+)?(\.(post|dev)\d+)?(\+[a-zA-Z0-9.]+)?$'
+            pypi_pattern = (
+                r"^\d+(\.\d+)*([a-z]+\d+)?(\.(post|dev)\d+)?(\+[a-zA-Z0-9.]+)?$"
+            )
             if not re.match(pypi_pattern, version):
                 raise VersionValidationError(
                     f"Invalid Python version format: {version}"
@@ -180,13 +181,13 @@ def validate_version_string(version: str, ecosystem: Optional[str] = None) -> bo
             # Limit length to prevent ReDoS attacks
             if len(version) > 255:
                 raise VersionValidationError("Docker tag too long (max 255 characters)")
-            docker_pattern = r'^[a-zA-Z0-9.\-_]+(?::[a-zA-Z0-9.\-_]+)?$'  # Fixed: removed extra '?' after ':'
+            docker_pattern = r"^[a-zA-Z0-9.\-_]+(?::[a-zA-Z0-9.\-_]+)?$"  # Fixed: removed extra '?' after ':'
             if not re.match(docker_pattern, version):
-                raise VersionValidationError(
-                    f"Invalid Docker tag format: {version}"
-                )
+                raise VersionValidationError(f"Invalid Docker tag format: {version}")
 
-    logger.debug(f"Version validation successful: {sanitize_log_message(str(version))} (ecosystem: {sanitize_log_message(str(ecosystem))})")
+    logger.debug(
+        f"Version validation successful: {sanitize_log_message(str(version))} (ecosystem: {sanitize_log_message(str(ecosystem))})"
+    )
     return True
 
 
@@ -263,7 +264,7 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
         temp_path = file_path.parent / f".{file_path.name}.tmp.{os.getpid()}"
 
         # Write content to temp file
-        with open(temp_path, 'w', encoding='utf-8') as f:
+        with open(temp_path, "w", encoding="utf-8") as f:
             f.write(content)
 
         # Verify temp file was written
@@ -272,7 +273,7 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
 
         # Verify content length matches
         written_size = temp_path.stat().st_size
-        expected_size = len(content.encode('utf-8'))
+        expected_size = len(content.encode("utf-8"))
         if written_size != expected_size:
             raise AtomicWriteError(
                 f"Temp file size mismatch: written={written_size}, expected={expected_size}"
@@ -284,7 +285,9 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
                 os.chmod(temp_path, original_stat.st_mode)
                 os.chown(temp_path, original_stat.st_uid, original_stat.st_gid)
             except (OSError, PermissionError) as e:
-                logger.warning(f"Could not preserve ownership/permissions: {sanitize_log_message(str(e))}")
+                logger.warning(
+                    f"Could not preserve ownership/permissions: {sanitize_log_message(str(e))}"
+                )
 
         # Atomic rename (replaces original file)
         temp_path.replace(file_path)
@@ -298,7 +301,9 @@ def atomic_file_write(file_path: Path, content: str) -> bool:
             try:
                 temp_path.unlink()
             except Exception as cleanup_error:
-                logger.error(f"Failed to clean up temp file {sanitize_log_message(str(temp_path))}: {sanitize_log_message(str(cleanup_error))}")
+                logger.error(
+                    f"Failed to clean up temp file {sanitize_log_message(str(temp_path))}: {sanitize_log_message(str(cleanup_error))}"
+                )
 
         raise AtomicWriteError(f"Atomic write failed for {file_path}: {e}")
 
@@ -329,7 +334,9 @@ def restore_from_backup(backup_path: Path, target_path: Path) -> bool:
         if not target_path.exists():
             raise FileOperationError("Restore failed: target not created")
 
-        logger.info(f"Restored {sanitize_log_message(str(target_path))} from backup {sanitize_log_message(str(backup_path))}")
+        logger.info(
+            f"Restored {sanitize_log_message(str(target_path))} from backup {sanitize_log_message(str(backup_path))}"
+        )
         return True
 
     except Exception as e:
@@ -353,7 +360,7 @@ def cleanup_old_backups(file_path: Path, keep_count: int = 5) -> int:
         backup_files = sorted(
             file_path.parent.glob(pattern),
             key=lambda p: p.stat().st_mtime,
-            reverse=True  # Newest first
+            reverse=True,  # Newest first
         )
 
         # Delete old backups
@@ -364,13 +371,19 @@ def cleanup_old_backups(file_path: Path, keep_count: int = 5) -> int:
                 deleted_count += 1
                 logger.debug(f"Deleted old backup: {sanitize_log_message(str(backup))}")
             except Exception as e:
-                logger.warning(f"Failed to delete backup {sanitize_log_message(str(backup))}: {sanitize_log_message(str(e))}")
+                logger.warning(
+                    f"Failed to delete backup {sanitize_log_message(str(backup))}: {sanitize_log_message(str(e))}"
+                )
 
         if deleted_count > 0:
-            logger.info(f"Cleaned up {sanitize_log_message(str(deleted_count))} old backups for {sanitize_log_message(str(file_path.name))}")
+            logger.info(
+                f"Cleaned up {sanitize_log_message(str(deleted_count))} old backups for {sanitize_log_message(str(file_path.name))}"
+            )
 
         return deleted_count
 
     except Exception as e:
-        logger.warning(f"Failed to cleanup backups for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.warning(
+            f"Failed to cleanup backups for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return 0

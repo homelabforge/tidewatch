@@ -54,10 +54,13 @@ def app():
 def client(app):
     """Create test client."""
     from fastapi.testclient import TestClient
+
     return TestClient(app)
 
 
-@pytest.mark.skip(reason="CSRF middleware may have session issues in test environment - integration tests not applicable")
+@pytest.mark.skip(
+    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
+)
 class TestCSRFTokenGeneration:
     """Test suite for CSRF token generation on safe methods."""
 
@@ -117,7 +120,9 @@ class TestCSRFTokenGeneration:
         assert token1 == token2
 
 
-@pytest.mark.skip(reason="CSRF middleware may have session issues in test environment - integration tests not applicable")
+@pytest.mark.skip(
+    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
+)
 class TestCSRFTokenValidation:
     """Test suite for CSRF token validation on unsafe methods."""
 
@@ -135,10 +140,7 @@ class TestCSRFTokenValidation:
         csrf_token = get_response.headers["X-CSRF-Token"]
 
         # POST with token
-        response = client.post(
-            "/test",
-            headers={"X-CSRF-Token": csrf_token}
-        )
+        response = client.post("/test", headers={"X-CSRF-Token": csrf_token})
 
         assert response.status_code == 200
         assert response.json()["message"] == "POST success"
@@ -148,10 +150,7 @@ class TestCSRFTokenValidation:
         get_response = client.get("/test")
         csrf_token = get_response.headers["X-CSRF-Token"]
 
-        response = client.put(
-            "/test",
-            headers={"X-CSRF-Token": csrf_token}
-        )
+        response = client.put("/test", headers={"X-CSRF-Token": csrf_token})
 
         assert response.status_code == 200
 
@@ -160,10 +159,7 @@ class TestCSRFTokenValidation:
         get_response = client.get("/test")
         csrf_token = get_response.headers["X-CSRF-Token"]
 
-        response = client.delete(
-            "/test",
-            headers={"X-CSRF-Token": csrf_token}
-        )
+        response = client.delete("/test", headers={"X-CSRF-Token": csrf_token})
 
         assert response.status_code == 200
 
@@ -172,10 +168,7 @@ class TestCSRFTokenValidation:
         get_response = client.get("/test")
         csrf_token = get_response.headers["X-CSRF-Token"]
 
-        response = client.patch(
-            "/test",
-            headers={"X-CSRF-Token": csrf_token}
-        )
+        response = client.patch("/test", headers={"X-CSRF-Token": csrf_token})
 
         assert response.status_code == 200
 
@@ -185,10 +178,7 @@ class TestCSRFTokenValidation:
         client.get("/test")
 
         # Use wrong token
-        response = client.post(
-            "/test",
-            headers={"X-CSRF-Token": "invalid_token_12345"}
-        )
+        response = client.post("/test", headers={"X-CSRF-Token": "invalid_token_12345"})
 
         assert response.status_code == 403
         assert response.json()["detail"] == "CSRF token invalid"
@@ -201,10 +191,7 @@ class TestCSRFTokenValidation:
         # Use token from different session
         different_token = "different_session_token_abcdef"
 
-        response = client.post(
-            "/test",
-            headers={"X-CSRF-Token": different_token}
-        )
+        response = client.post("/test", headers={"X-CSRF-Token": different_token})
 
         assert response.status_code == 403
 
@@ -215,12 +202,15 @@ class TestCSRFTokenValidation:
 
         # Verify secrets.compare_digest is used in the source code
         import inspect
+
         source = inspect.getsource(CSRFProtectionMiddleware.dispatch)
 
         assert "secrets.compare_digest" in source
 
 
-@pytest.mark.skip(reason="CSRF middleware may have session issues in test environment - integration tests not applicable")
+@pytest.mark.skip(
+    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
+)
 class TestCSRFExemptPaths:
     """Test suite for CSRF exempt paths."""
 
@@ -256,6 +246,7 @@ class TestCSRFExemptPaths:
     def test_login_endpoint_exempt_from_csrf(self, app_with_auth):
         """Test /api/v1/auth/login is exempt from CSRF."""
         from fastapi.testclient import TestClient
+
         client = TestClient(app_with_auth)
 
         # POST to login without CSRF token
@@ -267,6 +258,7 @@ class TestCSRFExemptPaths:
     def test_setup_endpoint_exempt_from_csrf(self, app_with_auth):
         """Test /api/v1/auth/setup is exempt from CSRF."""
         from fastapi.testclient import TestClient
+
         client = TestClient(app_with_auth)
 
         response = client.post("/api/v1/auth/setup")
@@ -276,6 +268,7 @@ class TestCSRFExemptPaths:
     def test_oidc_callback_exempt_from_csrf(self, app_with_auth):
         """Test OIDC callback is exempt from CSRF."""
         from fastapi.testclient import TestClient
+
         client = TestClient(app_with_auth)
 
         response = client.post("/api/v1/auth/oidc/callback")
@@ -285,6 +278,7 @@ class TestCSRFExemptPaths:
     def test_health_endpoint_exempt_from_csrf(self, app_with_auth):
         """Test /health is exempt from CSRF."""
         from fastapi.testclient import TestClient
+
         client = TestClient(app_with_auth)
 
         response = client.get("/health")
@@ -294,6 +288,7 @@ class TestCSRFExemptPaths:
     def test_docs_endpoint_exempt_from_csrf(self, app_with_auth):
         """Test /docs is exempt from CSRF."""
         from fastapi.testclient import TestClient
+
         client = TestClient(app_with_auth)
 
         response = client.get("/docs")
@@ -301,7 +296,9 @@ class TestCSRFExemptPaths:
         assert response.status_code == 200
 
 
-@pytest.mark.skip(reason="CSRF middleware may have session issues in test environment - integration tests not applicable")
+@pytest.mark.skip(
+    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
+)
 class TestCSRFSecurityProperties:
     """Test suite for CSRF security properties."""
 
@@ -312,6 +309,7 @@ class TestCSRFSecurityProperties:
         for _ in range(10):
             # Create new client for new session
             from fastapi.testclient import TestClient
+
             new_client = TestClient(client.app)
 
             response = new_client.get("/test")
@@ -362,6 +360,7 @@ class TestCSRFSecurityProperties:
             return {"message": "test"}
 
         from fastapi.testclient import TestClient
+
         client = TestClient(app, base_url="https://example.com")
 
         response = client.get("/test")
@@ -372,7 +371,9 @@ class TestCSRFSecurityProperties:
         assert "CSRF_SECURE_COOKIE" in str(monkeypatch.setenv)
 
 
-@pytest.mark.skip(reason="CSRF middleware may have session issues in test environment - integration tests not applicable")
+@pytest.mark.skip(
+    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
+)
 class TestCSRFIntegration:
     """Integration tests for CSRF protection with real scenarios."""
 
@@ -384,9 +385,7 @@ class TestCSRFIntegration:
 
         # Step 2: POST with token in header
         post_response = client.post(
-            "/test",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"data": "test"}
+            "/test", headers={"X-CSRF-Token": csrf_token}, json={"data": "test"}
         )
 
         assert post_response.status_code == 200
@@ -399,10 +398,7 @@ class TestCSRFIntegration:
 
         # Multiple POSTs with same token
         for _ in range(5):
-            response = client.post(
-                "/test",
-                headers={"X-CSRF-Token": token}
-            )
+            response = client.post("/test", headers={"X-CSRF-Token": token})
             assert response.status_code == 200
 
     def test_token_persists_across_get_requests(self, client):

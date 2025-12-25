@@ -110,7 +110,9 @@ class TestTokenBucket:
         assert bucket.last_refill > initial_time
 
 
-@pytest.mark.skip(reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable")
+@pytest.mark.skip(
+    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
+)
 class TestRateLimitMiddleware:
     """Test suite for RateLimitMiddleware."""
 
@@ -229,9 +231,9 @@ class TestRateLimitMiddleware:
 
         # Mock request with X-Forwarded-For
         request = MagicMock()
-        request.headers.get = MagicMock(side_effect=lambda h: {
-            "X-Forwarded-For": "192.168.1.100, 10.0.0.1"
-        }.get(h))
+        request.headers.get = MagicMock(
+            side_effect=lambda h: {"X-Forwarded-For": "192.168.1.100, 10.0.0.1"}.get(h)
+        )
 
         ip = middleware._get_client_ip(request)
 
@@ -243,9 +245,9 @@ class TestRateLimitMiddleware:
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
         request = MagicMock()
-        request.headers.get = MagicMock(side_effect=lambda h: {
-            "X-Real-IP": "203.0.113.42"
-        }.get(h))
+        request.headers.get = MagicMock(
+            side_effect=lambda h: {"X-Real-IP": "203.0.113.42"}.get(h)
+        )
         request.client = None
 
         ip = middleware._get_client_ip(request)
@@ -348,7 +350,9 @@ class TestRateLimitMiddleware:
         assert "new_ip" in middleware.buckets
 
 
-@pytest.mark.skip(reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable")
+@pytest.mark.skip(
+    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
+)
 class TestRateLimitSecurity:
     """Test suite for rate limiting security properties."""
 
@@ -416,7 +420,9 @@ class TestRateLimitSecurity:
         # This test verifies the logic exists; actual calculation tested in integration
 
 
-@pytest.mark.skip(reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable")
+@pytest.mark.skip(
+    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
+)
 class TestRateLimitIntegration:
     """Integration tests for rate limiting with real scenarios."""
 

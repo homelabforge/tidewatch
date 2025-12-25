@@ -23,8 +23,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[WebhookSchema], status_code=status.HTTP_200_OK)
 async def list_webhooks(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> List[WebhookSchema]:
     """List all webhooks.
 
@@ -46,7 +45,7 @@ async def list_webhooks(
 async def create_webhook(
     webhook: WebhookCreate,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Create a new webhook.
 
@@ -75,16 +74,18 @@ async def create_webhook(
         if "UNIQUE constraint failed" in str(e) or "unique" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Webhook with name '{webhook.name}' already exists"
+                detail=f"Webhook with name '{webhook.name}' already exists",
             )
         safe_error_response(logger, e, "Failed to create webhook")
 
 
-@router.get("/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK
+)
 async def get_webhook(
     webhook_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Get webhook by ID.
 
@@ -103,17 +104,19 @@ async def get_webhook(
     if not webhook:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Webhook with ID {webhook_id} not found"
+            detail=f"Webhook with ID {webhook_id} not found",
         )
     return webhook
 
 
-@router.put("/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK)
+@router.put(
+    "/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK
+)
 async def update_webhook(
     webhook_id: int,
     webhook: WebhookUpdate,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Update an existing webhook.
 
@@ -135,7 +138,7 @@ async def update_webhook(
         if not updated_webhook:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Webhook with ID {webhook_id} not found"
+                detail=f"Webhook with ID {webhook_id} not found",
             )
         return updated_webhook
     except ValueError as e:
@@ -151,7 +154,7 @@ async def update_webhook(
 async def delete_webhook(
     webhook_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a webhook.
 
@@ -167,15 +170,19 @@ async def delete_webhook(
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Webhook with ID {webhook_id} not found"
+            detail=f"Webhook with ID {webhook_id} not found",
         )
 
 
-@router.post("/{webhook_id}/test", response_model=WebhookTestResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/{webhook_id}/test",
+    response_model=WebhookTestResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def test_webhook(
     webhook_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> WebhookTestResponse:
     """Send a test payload to a webhook.
 
@@ -195,8 +202,7 @@ async def test_webhook(
     # If webhook not found, return 404
     if not result.success and result.error == "Webhook not found":
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Webhook not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
         )
 
     return result

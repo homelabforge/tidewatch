@@ -265,11 +265,70 @@ class UpdateChecker:
 
             if not latest_tag or latest_tag == container.current_tag:
                 if not digest_update:
-                    # No update available
+                    # No update available within scope
                     container.update_available = False
                     container.latest_tag = None
                     # Keep latest_major_tag if it exists (informational only)
-                    logger.info(f"No updates for {container.name}")
+
+                    # Check if there's a major update blocked by scope
+                    if (
+                        container.latest_major_tag
+                        and container.latest_major_tag != container.current_tag
+                    ):
+                        # Create a scope-violation Update record for history visibility
+                        result = await db.execute(
+                            select(Update).where(
+                                Update.container_id == container.id,
+                                Update.from_tag == container.current_tag,
+                                Update.to_tag == container.latest_major_tag,
+                                Update.status.in_(["pending", "approved"]),
+                            )
+                        )
+                        existing_scope_violation = result.scalar_one_or_none()
+
+                        if not existing_scope_violation:
+                            # Create new scope-violation update
+                            max_retries = await SettingsService.get_int(
+                                db, "update_retry_max_attempts", default=3
+                            )
+                            backoff_multiplier = await SettingsService.get_int(
+                                db, "update_retry_backoff_multiplier", default=3
+                            )
+
+                            scope_update = Update(
+                                container_id=container.id,
+                                container_name=container.name,
+                                from_tag=container.current_tag,
+                                to_tag=container.latest_major_tag,
+                                registry=container.registry,
+                                reason_type="feature",
+                                reason_summary=f"Major version update available (blocked by scope={container.scope})",
+                                recommendation="Review required - change scope to major to apply",
+                                status="pending",
+                                scope_violation=1,
+                                max_retries=max_retries,
+                                backoff_multiplier=backoff_multiplier,
+                                created_at=datetime.now(timezone.utc),
+                                updated_at=datetime.now(timezone.utc),
+                            )
+
+                            db.add(scope_update)
+                            try:
+                                async with db.begin_nested():
+                                    await db.flush()
+                                await db.refresh(scope_update)
+                                logger.info(
+                                    f"Created scope-violation update for {container.name}: "
+                                    f"{container.current_tag} -> {container.latest_major_tag} (scope={container.scope})"
+                                )
+                            except IntegrityError:
+                                # Race condition, another process created it
+                                logger.debug(
+                                    f"Scope-violation update already exists for {container.name}"
+                                )
+                                await db.rollback()
+
+                    logger.info(f"No in-scope updates for {container.name}")
 
                     await UpdateChecker._clear_pending_updates(db, container.id)
 

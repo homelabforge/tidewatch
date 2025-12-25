@@ -43,18 +43,18 @@ async def get_docker_version() -> str:
     try:
         # Use async subprocess to avoid blocking the event loop
         process = await asyncio.create_subprocess_exec(
-            "docker", "version", "--format", "{{.Server.Version}}",
+            "docker",
+            "version",
+            "--format",
+            "{{.Server.Version}}",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
         )
 
         try:
-            stdout_bytes, _ = await asyncio.wait_for(
-                process.communicate(),
-                timeout=5
-            )
+            stdout_bytes, _ = await asyncio.wait_for(process.communicate(), timeout=5)
             if process.returncode == 0:
-                return stdout_bytes.decode('utf-8').strip()
+                return stdout_bytes.decode("utf-8").strip()
         except asyncio.TimeoutError:
             pass
     except Exception:
@@ -64,8 +64,7 @@ async def get_docker_version() -> str:
 
 @router.get("/info")
 async def get_system_info(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ):
     """Get system information."""
     from app.models import Container, Update
@@ -86,14 +85,14 @@ async def get_system_info(
         "total_containers": total_containers or 0,
         "monitored_containers": monitored or 0,
         "pending_updates": pending_updates or 0,
-        "auto_update_enabled": await SettingsService.get_bool(db, "auto_update_enabled", default=False),
+        "auto_update_enabled": await SettingsService.get_bool(
+            db, "auto_update_enabled", default=False
+        ),
     }
 
 
 @router.get("/version")
-async def get_version_info(
-    admin: Optional[dict] = Depends(require_auth)
-):
+async def get_version_info(admin: Optional[dict] = Depends(require_auth)):
     """Get version information."""
     return {
         "version": get_version(),
@@ -144,7 +143,9 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         components["disk_space"] = "unknown"
 
     # Overall status
-    if all(c in ["healthy", "warning"] for c in components.values() if isinstance(c, str)):
+    if all(
+        c in ["healthy", "warning"] for c in components.values() if isinstance(c, str)
+    ):
         overall = "healthy"
     elif any(c == "unhealthy" for c in components.values()):
         overall = "degraded"
@@ -154,7 +155,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     return {
         "status": overall,
         "components": components,
-        "timestamp": datetime.now(UTC).isoformat()
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -189,24 +190,51 @@ async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
 
     try:
         # Get container counts
-        total_containers = await db.scalar(select(func.count()).select_from(Container)) or 0
-        monitored_containers = await db.scalar(
-            select(func.count()).select_from(Container).where(Container.policy == "auto")
-        ) or 0
+        total_containers = (
+            await db.scalar(select(func.count()).select_from(Container)) or 0
+        )
+        monitored_containers = (
+            await db.scalar(
+                select(func.count())
+                .select_from(Container)
+                .where(Container.policy == "auto")
+            )
+            or 0
+        )
 
         # Get update counts by status
-        pending_updates = await db.scalar(
-            select(func.count()).select_from(Update).where(Update.status == "pending")
-        ) or 0
-        approved_updates = await db.scalar(
-            select(func.count()).select_from(Update).where(Update.status == "approved")
-        ) or 0
-        applied_updates = await db.scalar(
-            select(func.count()).select_from(Update).where(Update.status == "applied")
-        ) or 0
-        rejected_updates = await db.scalar(
-            select(func.count()).select_from(Update).where(Update.status == "rejected")
-        ) or 0
+        pending_updates = (
+            await db.scalar(
+                select(func.count())
+                .select_from(Update)
+                .where(Update.status == "pending")
+            )
+            or 0
+        )
+        approved_updates = (
+            await db.scalar(
+                select(func.count())
+                .select_from(Update)
+                .where(Update.status == "approved")
+            )
+            or 0
+        )
+        applied_updates = (
+            await db.scalar(
+                select(func.count())
+                .select_from(Update)
+                .where(Update.status == "applied")
+            )
+            or 0
+        )
+        rejected_updates = (
+            await db.scalar(
+                select(func.count())
+                .select_from(Update)
+                .where(Update.status == "rejected")
+            )
+            or 0
+        )
 
         # Build Prometheus text format
         metrics = []
@@ -215,7 +243,9 @@ async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
         metrics.append(f"tidewatch_containers_total {total_containers}")
         metrics.append("")
 
-        metrics.append("# HELP tidewatch_containers_monitored Containers with auto-update enabled")
+        metrics.append(
+            "# HELP tidewatch_containers_monitored Containers with auto-update enabled"
+        )
         metrics.append("# TYPE tidewatch_containers_monitored gauge")
         metrics.append(f"tidewatch_containers_monitored {monitored_containers}")
         metrics.append("")
@@ -223,9 +253,13 @@ async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
         metrics.append("# HELP tidewatch_updates_total Total updates by status")
         metrics.append("# TYPE tidewatch_updates_total gauge")
         metrics.append(f'tidewatch_updates_total{{status="pending"}} {pending_updates}')
-        metrics.append(f'tidewatch_updates_total{{status="approved"}} {approved_updates}')
+        metrics.append(
+            f'tidewatch_updates_total{{status="approved"}} {approved_updates}'
+        )
         metrics.append(f'tidewatch_updates_total{{status="applied"}} {applied_updates}')
-        metrics.append(f'tidewatch_updates_total{{status="rejected"}} {rejected_updates}')
+        metrics.append(
+            f'tidewatch_updates_total{{status="rejected"}} {rejected_updates}'
+        )
         metrics.append("")
 
         content = "\n".join(metrics)
@@ -236,5 +270,5 @@ async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
         # Return minimal metrics on error
         return Response(
             content="# Error generating metrics\n",
-            media_type="text/plain; version=0.0.4"
+            media_type="text/plain; version=0.0.4",
         )

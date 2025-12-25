@@ -19,43 +19,61 @@ async def upgrade():
     """Add indexes on frequently queried columns."""
     async with engine.begin() as conn:
         # Container indexes
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_containers_policy ON containers(policy)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_containers_update_available ON containers(update_available)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_containers_name ON containers(name)"
-        ))
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_containers_policy ON containers(policy)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_containers_update_available ON containers(update_available)"
+            )
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_containers_name ON containers(name)")
+        )
 
         # Update indexes
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_updates_status ON updates(status)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_updates_container_id ON updates(container_id)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_updates_snoozed_until ON updates(snoozed_until)"
-        ))
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_updates_status ON updates(status)")
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_updates_container_id ON updates(container_id)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_updates_snoozed_until ON updates(snoozed_until)"
+            )
+        )
 
         # UpdateHistory indexes
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_update_history_container_id ON update_history(container_id)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_update_history_status ON update_history(status)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_update_history_created_at ON update_history(created_at DESC)"
-        ))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_update_history_started_at ON update_history(started_at DESC)"
-        ))
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_update_history_container_id ON update_history(container_id)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_update_history_status ON update_history(status)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_update_history_created_at ON update_history(created_at DESC)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_update_history_started_at ON update_history(started_at DESC)"
+            )
+        )
 
 
 async def downgrade():

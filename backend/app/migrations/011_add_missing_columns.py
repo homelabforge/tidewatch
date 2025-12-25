@@ -23,7 +23,9 @@ async def column_exists(conn, table: str, column: str) -> bool:
 
 
 async def migrate():
-    logger.info("Starting migration: add backup_path, current_digest, and update_window columns")
+    logger.info(
+        "Starting migration: add backup_path, current_digest, and update_window columns"
+    )
     logger.info("Database URL: %s", DATABASE_URL)
 
     engine = create_async_engine(DATABASE_URL, echo=False)
@@ -130,7 +132,9 @@ async def migrate():
             if not await column_exists(conn, "updates", "backoff_multiplier"):
                 logger.info("Adding backoff_multiplier column to updates…")
                 await conn.execute(
-                    text("ALTER TABLE updates ADD COLUMN backoff_multiplier INTEGER DEFAULT 3")
+                    text(
+                        "ALTER TABLE updates ADD COLUMN backoff_multiplier INTEGER DEFAULT 3"
+                    )
                 )
                 logger.info("  ✓ Column added")
             else:

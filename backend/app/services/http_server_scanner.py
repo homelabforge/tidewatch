@@ -19,62 +19,62 @@ class HttpServerScanner:
 
         # Known HTTP servers and their detection methods
         self.server_patterns = {
-            'nginx': {
-                'commands': ['nginx -v', 'nginx -V'],
-                'version_regex': r'nginx/(\d+\.\d+\.\d+)',
-                'check_url': 'https://nginx.org/en/CHANGES',
-                'latest_api': 'https://nginx.org/en/download.html',
+            "nginx": {
+                "commands": ["nginx -v", "nginx -V"],
+                "version_regex": r"nginx/(\d+\.\d+\.\d+)",
+                "check_url": "https://nginx.org/en/CHANGES",
+                "latest_api": "https://nginx.org/en/download.html",
             },
-            'apache': {
-                'commands': ['httpd -v', 'apache2 -v', 'apachectl -v'],
-                'version_regex': r'Apache/(\d+\.\d+\.\d+)',
-                'check_url': 'https://httpd.apache.org/',
-                'latest_api': None,
+            "apache": {
+                "commands": ["httpd -v", "apache2 -v", "apachectl -v"],
+                "version_regex": r"Apache/(\d+\.\d+\.\d+)",
+                "check_url": "https://httpd.apache.org/",
+                "latest_api": None,
             },
-            'caddy': {
-                'commands': ['caddy version'],
-                'version_regex': r'v?(\d+\.\d+\.\d+)',
-                'check_url': 'https://github.com/caddyserver/caddy/releases',
-                'latest_api': 'https://api.github.com/repos/caddyserver/caddy/releases/latest',
+            "caddy": {
+                "commands": ["caddy version"],
+                "version_regex": r"v?(\d+\.\d+\.\d+)",
+                "check_url": "https://github.com/caddyserver/caddy/releases",
+                "latest_api": "https://api.github.com/repos/caddyserver/caddy/releases/latest",
             },
-            'traefik': {
-                'commands': ['traefik version'],
-                'version_regex': r'Version:\s*v?(\d+\.\d+\.\d+)',
-                'check_url': 'https://github.com/traefik/traefik/releases',
-                'latest_api': 'https://api.github.com/repos/traefik/traefik/releases/latest',
+            "traefik": {
+                "commands": ["traefik version"],
+                "version_regex": r"Version:\s*v?(\d+\.\d+\.\d+)",
+                "check_url": "https://github.com/traefik/traefik/releases",
+                "latest_api": "https://api.github.com/repos/traefik/traefik/releases/latest",
             },
-            'granian': {
-                'commands': ['granian --version'],
-                'version_regex': r'granian\s+v?(\d+\.\d+\.\d+)',
-                'check_url': 'https://github.com/emmett-framework/granian/releases',
-                'latest_api': 'https://api.github.com/repos/emmett-framework/granian/releases/latest',
+            "granian": {
+                "commands": ["granian --version"],
+                "version_regex": r"granian\s+v?(\d+\.\d+\.\d+)",
+                "check_url": "https://github.com/emmett-framework/granian/releases",
+                "latest_api": "https://api.github.com/repos/emmett-framework/granian/releases/latest",
             },
-            'lighttpd': {
-                'commands': ['lighttpd -v'],
-                'version_regex': r'lighttpd/(\d+\.\d+\.\d+)',
-                'check_url': 'https://www.lighttpd.net/',
-                'latest_api': None,
+            "lighttpd": {
+                "commands": ["lighttpd -v"],
+                "version_regex": r"lighttpd/(\d+\.\d+\.\d+)",
+                "check_url": "https://www.lighttpd.net/",
+                "latest_api": None,
             },
-            'httpd': {
-                'commands': ['httpd -v'],
-                'version_regex': r'Apache/(\d+\.\d+\.\d+)',
-                'check_url': 'https://httpd.apache.org/',
-                'latest_api': None,
+            "httpd": {
+                "commands": ["httpd -v"],
+                "version_regex": r"Apache/(\d+\.\d+\.\d+)",
+                "check_url": "https://httpd.apache.org/",
+                "latest_api": None,
             },
         }
 
         # Process-based detection (for servers running as processes)
         self.process_patterns = {
-            'nginx': 'nginx',
-            'apache': 'apache2|httpd',
-            'caddy': 'caddy',
-            'traefik': 'traefik',
-            'lighttpd': 'lighttpd',
-            'uvicorn': 'uvicorn',
-            'gunicorn': 'gunicorn',
-            'granian': 'granian',
-            'node': 'node',
-            'python': 'python.*manage.py runserver',
+            "nginx": "nginx",
+            "apache": "apache2|httpd",
+            "caddy": "caddy",
+            "traefik": "traefik",
+            "lighttpd": "lighttpd",
+            "uvicorn": "uvicorn",
+            "gunicorn": "gunicorn",
+            "granian": "granian",
+            "node": "node",
+            "python": "python.*manage.py runserver",
         }
 
     async def scan_container_http_servers(
@@ -98,8 +98,10 @@ class HttpServerScanner:
             label_servers = await self._detect_from_labels(container)
 
             # If container is not running, only use label detection
-            if container.status != 'running':
-                logger.info(f"Container {container_name} is {container.status}, using label-based detection only")
+            if container.status != "running":
+                logger.info(
+                    f"Container {container_name} is {container.status}, using label-based detection only"
+                )
                 servers = label_servers
             else:
                 # Container is running - use all detection methods
@@ -117,39 +119,42 @@ class HttpServerScanner:
 
                 # Add label-detected servers first (base data)
                 for server in label_servers:
-                    servers_dict[server['name']] = server
+                    servers_dict[server["name"]] = server
 
                 # Add config-detected servers (may add new servers)
                 for server in config_servers:
-                    if server['name'] not in servers_dict:
-                        servers_dict[server['name']] = server
+                    if server["name"] not in servers_dict:
+                        servers_dict[server["name"]] = server
 
                 # Add process-detected servers (may add new servers)
                 for server in process_servers:
-                    if server['name'] not in servers_dict:
-                        servers_dict[server['name']] = server
+                    if server["name"] not in servers_dict:
+                        servers_dict[server["name"]] = server
 
                 # Update with version-detected servers (best data, includes version)
                 for server in version_servers:
-                    if server['name'] in servers_dict:
+                    if server["name"] in servers_dict:
                         # Update existing entry with version info
-                        servers_dict[server['name']]['current_version'] = server.get('current_version')
-                        servers_dict[server['name']]['detection_method'] = 'version_command'
+                        servers_dict[server["name"]]["current_version"] = server.get(
+                            "current_version"
+                        )
+                        servers_dict[server["name"]]["detection_method"] = (
+                            "version_command"
+                        )
                     else:
                         # Add new server
-                        servers_dict[server['name']] = server
+                        servers_dict[server["name"]] = server
 
                 # Convert back to list
                 servers = list(servers_dict.values())
 
             # Get latest versions for detected servers
             for server in servers:
-                server['latest_version'] = await self._get_latest_version(
-                    server['name'], server.get('current_version')
+                server["latest_version"] = await self._get_latest_version(
+                    server["name"], server.get("current_version")
                 )
-                server['update_available'] = self._check_update_available(
-                    server.get('current_version'),
-                    server.get('latest_version')
+                server["update_available"] = self._check_update_available(
+                    server.get("current_version"), server.get("latest_version")
                 )
 
         except docker.errors.NotFound:
@@ -170,9 +175,9 @@ class HttpServerScanner:
         try:
             # Try different process listing commands
             commands = [
-                ['ps', 'aux'],
-                ['ps', '-ef'],
-                ['ps'],
+                ["ps", "aux"],
+                ["ps", "-ef"],
+                ["ps"],
             ]
 
             output = None
@@ -180,7 +185,11 @@ class HttpServerScanner:
                 try:
                     result = container.exec_run(cmd, demux=False)
                     if result.exit_code == 0:
-                        output = result.output.decode('utf-8') if isinstance(result.output, bytes) else result.output
+                        output = (
+                            result.output.decode("utf-8")
+                            if isinstance(result.output, bytes)
+                            else result.output
+                        )
                         break
                 except Exception:
                     # Command not available in container, try next
@@ -189,9 +198,16 @@ class HttpServerScanner:
             # If ps is not available, try checking /proc
             if not output:
                 try:
-                    result = container.exec_run(['sh', '-c', 'cat /proc/*/cmdline 2>/dev/null | tr "\\0" " "'], demux=False)
+                    result = container.exec_run(
+                        ["sh", "-c", 'cat /proc/*/cmdline 2>/dev/null | tr "\\0" " "'],
+                        demux=False,
+                    )
                     if result.exit_code == 0:
-                        output = result.output.decode('utf-8') if isinstance(result.output, bytes) else result.output
+                        output = (
+                            result.output.decode("utf-8")
+                            if isinstance(result.output, bytes)
+                            else result.output
+                        )
                 except Exception:
                     # /proc not accessible
                     pass
@@ -202,13 +218,17 @@ class HttpServerScanner:
 
             for server_name, pattern in self.process_patterns.items():
                 if re.search(pattern, output, re.IGNORECASE):
-                    servers.append({
-                        'name': server_name,
-                        'current_version': None,
-                        'detection_method': 'process',
-                        'last_checked': datetime.utcnow(),
-                    })
-                    logger.info(f"Detected {server_name} from process list in {container.name}")
+                    servers.append(
+                        {
+                            "name": server_name,
+                            "current_version": None,
+                            "detection_method": "process",
+                            "last_checked": datetime.utcnow(),
+                        }
+                    )
+                    logger.info(
+                        f"Detected {server_name} from process list in {container.name}"
+                    )
 
         except docker.errors.APIError as e:
             logger.debug(f"Docker API error detecting from processes: {e}")
@@ -224,35 +244,47 @@ class HttpServerScanner:
         servers = []
 
         for server_name, config in self.server_patterns.items():
-            for cmd in config['commands']:
+            for cmd in config["commands"]:
                 try:
                     # Execute version command
                     result = container.exec_run(cmd.split(), demux=False)
 
                     if result.exit_code == 0:
-                        output = result.output.decode('utf-8') if isinstance(result.output, bytes) else result.output
+                        output = (
+                            result.output.decode("utf-8")
+                            if isinstance(result.output, bytes)
+                            else result.output
+                        )
 
                         # Extract version
-                        match = re.search(config['version_regex'], output)
+                        match = re.search(config["version_regex"], output)
                         if match:
                             version = match.group(1)
-                            servers.append({
-                                'name': server_name,
-                                'current_version': version,
-                                'detection_method': 'version_command',
-                                'last_checked': datetime.utcnow(),
-                            })
-                            logger.info(f"Detected {server_name} v{version} in {container.name}")
+                            servers.append(
+                                {
+                                    "name": server_name,
+                                    "current_version": version,
+                                    "detection_method": "version_command",
+                                    "last_checked": datetime.utcnow(),
+                                }
+                            )
+                            logger.info(
+                                f"Detected {server_name} v{version} in {container.name}"
+                            )
                             break  # Found version, no need to try other commands
 
                 except docker.errors.APIError as e:
-                    logger.debug(f"Docker API error running '{cmd}' for {server_name}: {e}")
+                    logger.debug(
+                        f"Docker API error running '{cmd}' for {server_name}: {e}"
+                    )
                     continue
                 except docker.errors.DockerException as e:
                     logger.debug(f"Docker error running '{cmd}' for {server_name}: {e}")
                     continue
                 except (UnicodeDecodeError, ValueError, AttributeError) as e:
-                    logger.debug(f"Failed to parse output of '{cmd}' for {server_name}: {e}")
+                    logger.debug(
+                        f"Failed to parse output of '{cmd}' for {server_name}: {e}"
+                    )
                     continue
 
         return servers
@@ -262,24 +294,25 @@ class HttpServerScanner:
     ) -> Optional[str]:
         """Get the latest version for a specific HTTP server."""
         config = self.server_patterns.get(server_name)
-        if not config or not config.get('latest_api'):
+        if not config or not config.get("latest_api"):
             return None
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 from urllib.parse import urlparse
-                parsed = urlparse(config['latest_api'])
-                if parsed.netloc == 'api.github.com' or parsed.netloc == 'github.com':
+
+                parsed = urlparse(config["latest_api"])
+                if parsed.netloc == "api.github.com" or parsed.netloc == "github.com":
                     # GitHub releases API
                     response = await client.get(
-                        config['latest_api'],
-                        headers={'Accept': 'application/vnd.github.v3+json'}
+                        config["latest_api"],
+                        headers={"Accept": "application/vnd.github.v3+json"},
                     )
                     if response.status_code == 200:
                         data = response.json()
-                        tag_name = data.get('tag_name', '')
+                        tag_name = data.get("tag_name", "")
                         # Remove 'v' prefix if present
-                        version = tag_name.lstrip('v')
+                        version = tag_name.lstrip("v")
                         return version
 
                 # Add other API patterns here as needed
@@ -287,7 +320,9 @@ class HttpServerScanner:
         except httpx.HTTPStatusError as e:
             logger.debug(f"HTTP error fetching latest version for {server_name}: {e}")
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.debug(f"Connection error fetching latest version for {server_name}: {e}")
+            logger.debug(
+                f"Connection error fetching latest version for {server_name}: {e}"
+            )
         except (ValueError, KeyError, AttributeError) as e:
             logger.debug(f"Failed to parse version data for {server_name}: {e}")
 
@@ -302,8 +337,8 @@ class HttpServerScanner:
 
         try:
             # Simple version comparison
-            current_parts = [int(x) for x in current.split('.')[:3]]
-            latest_parts = [int(x) for x in latest.split('.')[:3]]
+            current_parts = [int(x) for x in current.split(".")[:3]]
+            latest_parts = [int(x) for x in latest.split(".")[:3]]
 
             # Pad to 3 parts
             while len(current_parts) < 3:
@@ -313,7 +348,9 @@ class HttpServerScanner:
 
             return latest_parts > current_parts
         except (ValueError, TypeError, AttributeError) as e:
-            logger.debug(f"Failed to parse versions for comparison ({current} vs {latest}): {e}")
+            logger.debug(
+                f"Failed to parse versions for comparison ({current} vs {latest}): {e}"
+            )
             return False
 
     def _calculate_severity(
@@ -354,13 +391,13 @@ class HttpServerScanner:
             labels = container.labels or {}
 
             # Check for http.server.* labels
-            server_name = labels.get('http.server.name')
+            server_name = labels.get("http.server.name")
             if server_name:
                 server_info = {
-                    'name': server_name.lower(),
-                    'current_version': labels.get('http.server.version'),
-                    'detection_method': 'labels',
-                    'last_checked': datetime.utcnow(),
+                    "name": server_name.lower(),
+                    "current_version": labels.get("http.server.version"),
+                    "detection_method": "labels",
+                    "last_checked": datetime.utcnow(),
                 }
                 servers.append(server_info)
                 logger.info(f"Detected {server_name} from labels in {container.name}")
@@ -376,32 +413,36 @@ class HttpServerScanner:
 
         try:
             # Get container config
-            config = container.attrs.get('Config', {})
+            config = container.attrs.get("Config", {})
 
             # Check CMD and Entrypoint
-            cmd_parts = config.get('Cmd', []) or []
-            entrypoint_parts = config.get('Entrypoint', []) or []
+            cmd_parts = config.get("Cmd", []) or []
+            entrypoint_parts = config.get("Entrypoint", []) or []
 
             # Combine into single command string
-            full_cmd = ' '.join(entrypoint_parts + cmd_parts)
+            full_cmd = " ".join(entrypoint_parts + cmd_parts)
 
             # Check against patterns
             for server_name, pattern in self.process_patterns.items():
                 if re.search(pattern, full_cmd, re.IGNORECASE):
                     server_info = {
-                        'name': server_name,
-                        'current_version': None,
-                        'detection_method': 'container_config',
-                        'last_checked': datetime.utcnow(),
+                        "name": server_name,
+                        "current_version": None,
+                        "detection_method": "container_config",
+                        "last_checked": datetime.utcnow(),
                     }
 
                     # Try to extract version from command args (rare but possible)
-                    version_match = re.search(r'--version[=\s]+(\d+\.\d+\.\d+)', full_cmd)
+                    version_match = re.search(
+                        r"--version[=\s]+(\d+\.\d+\.\d+)", full_cmd
+                    )
                     if version_match:
-                        server_info['current_version'] = version_match.group(1)
+                        server_info["current_version"] = version_match.group(1)
 
                     servers.append(server_info)
-                    logger.info(f"Detected {server_name} from container config in {container.name}")
+                    logger.info(
+                        f"Detected {server_name} from container config in {container.name}"
+                    )
 
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug(f"Failed to detect from container config: {e}")

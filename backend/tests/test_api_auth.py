@@ -25,6 +25,7 @@ class TestAuthStatusEndpoint:
         """
         # Set auth mode to local to require setup
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -42,6 +43,7 @@ class TestAuthStatusEndpoint:
         When authentication is disabled (none), no setup is required.
         """
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "none")
         await db.commit()
 
@@ -56,6 +58,7 @@ class TestAuthStatusEndpoint:
     async def test_get_status_after_setup_local_auth(self, client, db, admin_user):
         """Test status returns correct auth_mode after setup."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -70,6 +73,7 @@ class TestAuthStatusEndpoint:
     async def test_get_status_oidc_enabled(self, client, db, admin_user):
         """Test status shows OIDC enabled when configured."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "oidc")
         await SettingsService.set(db, "oidc_enabled", "true")
         await db.commit()
@@ -92,7 +96,7 @@ class TestSetupEndpoint:
             "username": "admin",
             "email": "admin@example.com",
             "password": "AdminPass123!",
-            "full_name": "Admin User"
+            "full_name": "Admin User",
         }
 
         response = await client.post("/api/v1/auth/setup", json=setup_data)
@@ -106,6 +110,7 @@ class TestSetupEndpoint:
 
         # Verify admin was created in settings
         from app.services.settings_service import SettingsService
+
         username = await SettingsService.get(db, "admin_username")
         assert username == "admin"
 
@@ -122,6 +127,7 @@ class TestSetupEndpoint:
 
         # Verify auth_mode was set to local
         from app.services.settings_service import SettingsService
+
         auth_mode = await SettingsService.get(db, "auth_mode")
         assert auth_mode == "local"
 
@@ -143,6 +149,7 @@ class TestSetupEndpoint:
     async def test_setup_rejects_duplicate(self, client, db, admin_user):
         """Test setup fails when already configured."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -175,7 +182,7 @@ class TestSetupEndpoint:
             "username": "admin'; DROP TABLE settings; --",
             "email": "admin@example.com",
             "password": "AdminPass123!",
-            "full_name": "<script>alert('xss')</script>"
+            "full_name": "<script>alert('xss')</script>",
         }
 
         # Should fail validation due to invalid username characters
@@ -195,6 +202,7 @@ class TestSetupEndpoint:
 
         # Verify password was hashed (not stored in plaintext)
         from app.services.settings_service import SettingsService
+
         password_hash = await SettingsService.get(db, "admin_password_hash")
         assert password_hash is not None
         assert password_hash != "AdminPass123!"
@@ -220,6 +228,7 @@ class TestLoginEndpoint:
     async def test_login_success_returns_token(self, client, db, admin_user):
         """Test successful login returns JWT token."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -240,6 +249,7 @@ class TestLoginEndpoint:
     async def test_login_invalid_credentials(self, client, db, admin_user):
         """Test login fails with invalid credentials."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -266,6 +276,7 @@ class TestLoginEndpoint:
     async def test_login_disabled_when_auth_none(self, client, db):
         """Test login fails when auth_mode is none (no admin user exists)."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "none")
         await db.commit()
 
@@ -310,6 +321,7 @@ class TestLoginEndpoint:
     async def test_login_sets_jwt_cookie(self, client, db, admin_user):
         """Test login sets JWT in HTTP-only cookie."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -328,6 +340,7 @@ class TestLoginEndpoint:
         """Test login is exempt from CSRF protection."""
         # Login endpoint should be exempt from CSRF (unauthenticated users can't have token)
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -343,6 +356,7 @@ class TestLoginEndpoint:
     async def test_login_case_sensitive_username(self, client, db, admin_user):
         """Test username is case-sensitive."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -395,8 +409,7 @@ class TestLogoutEndpoint:
 
         # Create a token that expired 1 second ago
         token = create_access_token(
-            {"sub": admin_user["username"]},
-            expires_delta=timedelta(seconds=-1)
+            {"sub": admin_user["username"]}, expires_delta=timedelta(seconds=-1)
         )
 
         # Set the expired token
@@ -404,7 +417,10 @@ class TestLogoutEndpoint:
         response = await client.post("/api/v1/auth/logout")
 
         # Should fail - CSRF middleware runs first (403), or if CSRF passes, token expiry (401)
-        assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        assert response.status_code in [
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        ]
 
     async def test_logout_idempotent(self, authenticated_client):
         """Test logout is idempotent (can call multiple times)."""
@@ -415,7 +431,10 @@ class TestLogoutEndpoint:
         # Second logout (should also succeed or return 401)
         response = await authenticated_client.post("/api/v1/auth/logout")
         # Either succeeds or fails with 401 (both acceptable)
-        assert response.status_code in [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED]
+        assert response.status_code in [
+            status.HTTP_200_OK,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
 
     async def test_logout_clears_cookie(self, authenticated_client):
         """Test logout clears JWT cookie."""
@@ -458,8 +477,7 @@ class TestMeEndpoint:
 
         # Create a token that expired 1 second ago
         token = create_access_token(
-            {"sub": admin_user["username"]},
-            expires_delta=timedelta(seconds=-1)
+            {"sub": admin_user["username"]}, expires_delta=timedelta(seconds=-1)
         )
 
         # Set the expired token
@@ -534,6 +552,7 @@ class TestProfileUpdateEndpoint:
     async def test_update_profile_requires_auth(self, client, db):
         """Test profile update requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -577,7 +596,9 @@ class TestProfileUpdateEndpoint:
         # Should succeed (XSS is handled at output/rendering level)
         assert response.status_code == status.HTTP_200_OK
 
-    @pytest.mark.skip(reason="CSRF testing requires session middleware setup in test fixtures")
+    @pytest.mark.skip(
+        reason="CSRF testing requires session middleware setup in test fixtures"
+    )
     async def test_update_profile_csrf_required(self, authenticated_client):
         """Test profile update requires CSRF token."""
         # Profile update should require CSRF token
@@ -589,7 +610,9 @@ class TestProfileUpdateEndpoint:
 class TestPasswordChangeEndpoint:
     """Test suite for PUT /api/v1/auth/password endpoint."""
 
-    @pytest.mark.skip(reason="Database fixture isolation issue - admin credentials not visible to API request handler")
+    @pytest.mark.skip(
+        reason="Database fixture isolation issue - admin credentials not visible to API request handler"
+    )
     async def test_change_password_success(self, authenticated_client, admin_user, db):
         """Test password change succeeds with valid old password."""
         password_data = {
@@ -597,21 +620,29 @@ class TestPasswordChangeEndpoint:
             "new_password": "NewPassword456!",
         }
 
-        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/password", json=password_data
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "password changed" in data["message"].lower()
 
-    @pytest.mark.skip(reason="Database fixture isolation issue - admin credentials not visible to API request handler")
-    async def test_change_password_wrong_current(self, authenticated_client, admin_user, db):
+    @pytest.mark.skip(
+        reason="Database fixture isolation issue - admin credentials not visible to API request handler"
+    )
+    async def test_change_password_wrong_current(
+        self, authenticated_client, admin_user, db
+    ):
         """Test password change fails with wrong current password."""
         password_data = {
             "current_password": "WrongPassword123!",
             "new_password": "NewPassword456!",
         }
 
-        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/password", json=password_data
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "current password" in response.json()["detail"].lower()
@@ -623,11 +654,15 @@ class TestPasswordChangeEndpoint:
             "new_password": "weak",  # Too weak
         }
 
-        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/password", json=password_data
+        )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    @pytest.mark.skip(reason="Database fixture isolation issue - admin credentials not visible to API request handler")
+    @pytest.mark.skip(
+        reason="Database fixture isolation issue - admin credentials not visible to API request handler"
+    )
     async def test_change_password_same_as_old(self, authenticated_client):
         """Test password change rejects new password same as old."""
         password_data = {
@@ -635,7 +670,9 @@ class TestPasswordChangeEndpoint:
             "new_password": "AdminPassword123!",  # Same as current
         }
 
-        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
+        response = await authenticated_client.put(
+            "/api/v1/auth/password", json=password_data
+        )
 
         # May succeed (no specific validation for same password in current implementation)
         # Or may fail depending on business logic
@@ -644,6 +681,7 @@ class TestPasswordChangeEndpoint:
     async def test_change_password_requires_auth(self, client, db):
         """Test password change requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -663,8 +701,7 @@ class TestPasswordChangeEndpoint:
 
         # Create a token that expired 1 second ago
         token = create_access_token(
-            {"sub": admin_user["username"]},
-            expires_delta=timedelta(seconds=-1)
+            {"sub": admin_user["username"]}, expires_delta=timedelta(seconds=-1)
         )
 
         # Set the expired token
@@ -676,9 +713,14 @@ class TestPasswordChangeEndpoint:
         response = await client.put("/api/v1/auth/password", json=password_data)
 
         # Should fail - CSRF middleware runs first (403), or if CSRF passes, token expiry (401)
-        assert response.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        assert response.status_code in [
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        ]
 
-    @pytest.mark.skip(reason="CSRF testing requires session middleware setup in test fixtures")
+    @pytest.mark.skip(
+        reason="CSRF testing requires session middleware setup in test fixtures"
+    )
     async def test_change_password_csrf_required(self, authenticated_client):
         """Test password change requires CSRF token."""
         # Password change should require CSRF token

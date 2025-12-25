@@ -22,12 +22,20 @@ VALID_WEBHOOK_EVENTS = [
 class WebhookCreate(BaseModel):
     """Schema for creating a new webhook."""
 
-    name: str = Field(..., min_length=1, max_length=100, description="Unique webhook name")
+    name: str = Field(
+        ..., min_length=1, max_length=100, description="Unique webhook name"
+    )
     url: HttpUrl = Field(..., description="Webhook URL (HTTPS recommended)")
-    secret: str = Field(..., min_length=8, max_length=256, description="HMAC secret for signature")
-    events: List[str] = Field(..., min_length=1, description="List of event types to trigger on")
+    secret: str = Field(
+        ..., min_length=8, max_length=256, description="HMAC secret for signature"
+    )
+    events: List[str] = Field(
+        ..., min_length=1, description="List of event types to trigger on"
+    )
     enabled: bool = Field(default=True, description="Whether webhook is enabled")
-    retry_count: int = Field(default=3, ge=0, le=10, description="Number of retry attempts")
+    retry_count: int = Field(
+        default=3, ge=0, le=10, description="Number of retry attempts"
+    )
 
     @field_validator("events")
     @classmethod

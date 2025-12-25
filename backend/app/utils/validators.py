@@ -7,6 +7,7 @@ from typing import List, Optional
 
 class ValidationError(Exception):
     """Raised when validation fails."""
+
     pass
 
 
@@ -31,15 +32,36 @@ def validate_container_name(name: str) -> str:
 
     # Only allow alphanumeric, underscore, dash, and dot (Docker naming rules)
     # But dash cannot be at start (already checked)
-    if not re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$', name):
+    if not re.match(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$", name):
         raise ValidationError(
             "Container name must contain only alphanumeric characters, "
             "underscores, dashes, and dots"
         )
 
     # Reject any shell metacharacters
-    dangerous_chars = ['$', '`', '\\', '"', "'", ';', '|', '&', '<', '>',
-                       '(', ')', '{', '}', '[', ']', '*', '?', '!', '\n', '\r']
+    dangerous_chars = [
+        "$",
+        "`",
+        "\\",
+        '"',
+        "'",
+        ";",
+        "|",
+        "&",
+        "<",
+        ">",
+        "(",
+        ")",
+        "{",
+        "}",
+        "[",
+        "]",
+        "*",
+        "?",
+        "!",
+        "\n",
+        "\r",
+    ]
     if any(char in name for char in dangerous_chars):
         raise ValidationError("Container name contains forbidden characters")
 
@@ -66,7 +88,7 @@ def validate_service_name(name: str) -> str:
         raise ValidationError("Service name cannot be empty")
 
     # Service names should be alphanumeric + underscore/dash only
-    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         raise ValidationError(
             "Service name must contain only alphanumeric characters, "
             "underscores, and dashes"
@@ -83,7 +105,9 @@ def validate_service_name(name: str) -> str:
     return name
 
 
-def validate_compose_file_path(path: str, allowed_base: str = "/compose", strict: bool = True) -> Path:
+def validate_compose_file_path(
+    path: str, allowed_base: str = "/compose", strict: bool = True
+) -> Path:
     """Validate and resolve compose file path to prevent path traversal.
 
     Args:
@@ -100,7 +124,7 @@ def validate_compose_file_path(path: str, allowed_base: str = "/compose", strict
         raise ValidationError("Compose file path cannot be empty")
 
     # Check for dangerous patterns
-    dangerous_patterns = ['..', '//', '\\', '\x00']
+    dangerous_patterns = ["..", "//", "\\", "\x00"]
     if any(pattern in path for pattern in dangerous_patterns):
         raise ValidationError("Compose file path contains forbidden patterns")
 
@@ -119,7 +143,7 @@ def validate_compose_file_path(path: str, allowed_base: str = "/compose", strict
             raise ValidationError("Compose file path is not a file")
 
         # Check file extension
-        if file_path.suffix not in ['.yml', '.yaml']:
+        if file_path.suffix not in [".yml", ".yaml"]:
             raise ValidationError("Compose file must have .yml or .yaml extension")
 
     # Ensure path is within allowed base directory
@@ -127,9 +151,7 @@ def validate_compose_file_path(path: str, allowed_base: str = "/compose", strict
     try:
         file_path.relative_to(allowed_base_path)
     except ValueError:
-        raise ValidationError(
-            f"Compose file must be within {allowed_base} directory"
-        )
+        raise ValidationError(f"Compose file must be within {allowed_base} directory")
 
     return file_path
 
@@ -160,8 +182,25 @@ def validate_docker_compose_command(command: str) -> List[str]:
     clean_cmd = clean_cmd.strip()
 
     # Check for shell metacharacters (but allow quotes and hyphens for docker compose flags)
-    dangerous_chars = ['$', '`', '\\', ';', '|', '&', '<', '>',
-                       '(', ')', '{', '}', '*', '?', '!', '\n', '\r']
+    dangerous_chars = [
+        "$",
+        "`",
+        "\\",
+        ";",
+        "|",
+        "&",
+        "<",
+        ">",
+        "(",
+        ")",
+        "{",
+        "}",
+        "*",
+        "?",
+        "!",
+        "\n",
+        "\r",
+    ]
     if any(char in clean_cmd for char in dangerous_chars):
         raise ValidationError("Docker compose command contains forbidden characters")
 
@@ -173,16 +212,16 @@ def validate_docker_compose_command(command: str) -> List[str]:
         raise ValidationError("Invalid Docker compose command format")
 
     # Get the basename of the command (in case of full path like /usr/bin/docker)
-    cmd_basename = parts[0].split('/')[-1]
-    
+    cmd_basename = parts[0].split("/")[-1]
+
     # Check if it's docker-compose command
-    if cmd_basename == 'docker-compose':
+    if cmd_basename == "docker-compose":
         return command.split()
-    
+
     # Check if it's docker compose (parts[0] should be 'docker' or end with '/docker')
-    if cmd_basename != 'docker':
+    if cmd_basename != "docker":
         raise ValidationError("Command must start with 'docker' or 'docker-compose'")
-    
+
     # If using 'docker compose' format, ensure 'compose' is the second part
     if len(parts) < 2 or parts[1] not in ["compose", "compose-v2"]:
         raise ValidationError("Command must be 'docker compose' or 'docker-compose'")
@@ -196,7 +235,7 @@ def build_docker_compose_command(
     compose_file: Path,
     service_name: str,
     env_file: Optional[Path] = None,
-    action: str = "up"
+    action: str = "up",
 ) -> List[str]:
     """Build a safe Docker Compose command using list-based construction.
 
@@ -235,9 +274,7 @@ def build_docker_compose_command(
 
 
 def build_docker_command(
-    action: str,
-    container_name: str,
-    additional_args: Optional[List[str]] = None
+    action: str, container_name: str, additional_args: Optional[List[str]] = None
 ) -> List[str]:
     """Build a safe Docker command using list-based construction.
 
@@ -250,7 +287,15 @@ def build_docker_command(
         List of command parts ready for subprocess.run()
     """
     # Validate action
-    allowed_actions = ["restart", "stop", "start", "pause", "unpause", "inspect", "logs"]
+    allowed_actions = [
+        "restart",
+        "stop",
+        "start",
+        "pause",
+        "unpause",
+        "inspect",
+        "logs",
+    ]
     if action not in allowed_actions:
         raise ValidationError(f"Invalid Docker action: {action}")
 
@@ -261,7 +306,7 @@ def build_docker_command(
     if additional_args:
         # Validate each arg doesn't contain shell metacharacters
         for arg in additional_args:
-            if any(char in arg for char in ['$', '`', '\\', ';', '|', '&']):
+            if any(char in arg for char in ["$", "`", "\\", ";", "|", "&"]):
                 raise ValidationError(f"Invalid argument: {arg}")
         cmd.extend(additional_args)
 

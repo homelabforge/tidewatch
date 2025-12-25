@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 # Pushover priority mapping (-2 to 2 scale)
 PRIORITY_MAP = {
-    "min": -2,      # No notification
-    "low": -1,      # Quiet notification
-    "default": 0,   # Normal priority
-    "high": 1,      # High priority, bypass quiet hours
-    "urgent": 2,    # Emergency, requires acknowledgment
+    "min": -2,  # No notification
+    "low": -1,  # Quiet notification
+    "default": 0,  # Normal priority
+    "high": 1,  # High priority, bypass quiet hours
+    "urgent": 2,  # Emergency, requires acknowledgment
 }
 
 PUSHOVER_API_URL = "https://api.pushover.net/1/messages.json"
@@ -84,8 +84,8 @@ class PushoverNotificationService(NotificationService):
 
             # Emergency priority requires retry and expire parameters
             if pushover_priority == 2:
-                payload["retry"] = 60      # Retry every 60 seconds
-                payload["expire"] = 3600   # Expire after 1 hour
+                payload["retry"] = 60  # Retry every 60 seconds
+                payload["expire"] = 3600  # Expire after 1 hour
 
             response = await self.client.post(PUSHOVER_API_URL, data=payload)
             response.raise_for_status()
@@ -95,7 +95,9 @@ class PushoverNotificationService(NotificationService):
                 logger.info(f"[pushover] Sent notification: {title}")
                 return True
             else:
-                logger.error(f"[pushover] API error: {result.get('errors', 'Unknown error')}")
+                logger.error(
+                    f"[pushover] API error: {result.get('errors', 'Unknown error')}"
+                )
                 return False
 
         except httpx.HTTPStatusError as e:
@@ -122,7 +124,7 @@ class PushoverNotificationService(NotificationService):
                 data={
                     "token": self.api_token,
                     "user": self.user_key,
-                }
+                },
             )
 
             result = response.json()

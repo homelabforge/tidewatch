@@ -44,10 +44,7 @@ class VulnForgeClient:
             headers["Authorization"] = f"Basic {encoded}"
         # auth_type == "none" requires no headers
 
-        self.client = httpx.AsyncClient(
-            timeout=30.0,
-            headers=headers
-        )
+        self.client = httpx.AsyncClient(timeout=30.0, headers=headers)
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -89,7 +86,7 @@ class VulnForgeClient:
         name_parts = parts
         registry_explicit = False
 
-        if parts and ('.' in parts[0] or ':' in parts[0] or parts[0] == "localhost"):
+        if parts and ("." in parts[0] or ":" in parts[0] or parts[0] == "localhost"):
             registry = parts[0]
             name_parts = parts[1:]
             registry_explicit = True
@@ -112,7 +109,7 @@ class VulnForgeClient:
         target_registry: str,
         target_name: str,
         target_tag: str,
-        target_registry_explicit: bool
+        target_registry_explicit: bool,
     ) -> bool:
         """Determine if a VulnForge container matches the target image."""
         candidates: List[str] = []
@@ -140,7 +137,9 @@ class VulnForgeClient:
             if candidate_tag != target_tag:
                 continue
 
-            candidate_registry, candidate_name, candidate_registry_explicit = cls._parse_image_repo(repo_part)
+            candidate_registry, candidate_name, candidate_registry_explicit = (
+                cls._parse_image_repo(repo_part)
+            )
 
             if candidate_registry != target_registry:
                 if candidate_registry_explicit and target_registry_explicit:
@@ -184,7 +183,9 @@ class VulnForgeClient:
             image_ref = f"{image}:{tag}"
 
         target_repo, target_tag = image_ref.rsplit(":", 1)
-        target_registry, target_name, target_registry_explicit = self._parse_image_repo(target_repo)
+        target_registry, target_name, target_registry_explicit = self._parse_image_repo(
+            target_repo
+        )
 
         try:
             # Query VulnForge API for containers (VulnForge v1 API)
@@ -233,11 +234,16 @@ class VulnForgeClient:
             # Get CVE list from latest scan if available
             cves = []
             if last_scan and last_scan.get("vulnerabilities"):
-                cves = [v.get("cve_id") for v in last_scan["vulnerabilities"] if v.get("cve_id")]
+                cves = [
+                    v.get("cve_id")
+                    for v in last_scan["vulnerabilities"]
+                    if v.get("cve_id")
+                ]
 
             return {
                 "image": image_ref,
-                "scan_date": last_scan.get("finished_at") or last_scan.get("started_at"),
+                "scan_date": last_scan.get("finished_at")
+                or last_scan.get("started_at"),
                 "total_vulns": vuln_summary.get("total", 0),
                 "critical": vuln_summary.get("critical", 0),
                 "high": vuln_summary.get("high", 0),
@@ -265,7 +271,7 @@ class VulnForgeClient:
         current_image: str,
         current_tag: str,
         new_tag: str,
-        registry: str = "dockerhub"
+        registry: str = "dockerhub",
     ) -> Optional[Dict]:
         """Compare vulnerabilities between two image tags.
 
@@ -288,7 +294,9 @@ class VulnForgeClient:
 
         # If either is missing, can't compare
         if not current_vulns:
-            logger.warning(f"No current vulnerability data for {current_image}:{current_tag}")
+            logger.warning(
+                f"No current vulnerability data for {current_image}:{current_tag}"
+            )
             return None
 
         if not new_vulns:
@@ -349,7 +357,7 @@ class VulnForgeClient:
         total_delta: int,
         critical_delta: int,
         high_delta: int,
-        cves_fixed: List[str]
+        cves_fixed: List[str],
     ) -> str:
         """Generate update recommendation based on vulnerability deltas.
 
@@ -392,9 +400,7 @@ class VulnForgeClient:
 
         return "Review required"
 
-    async def trigger_scan(
-        self, container_id: int
-    ) -> bool:
+    async def trigger_scan(self, container_id: int) -> bool:
         """Trigger a vulnerability scan for a container in VulnForge.
 
         Args:
@@ -470,14 +476,14 @@ class VulnForgeClient:
         """
         container_id = await self.get_container_id_by_name(container_name)
         if not container_id:
-            logger.warning(f"Cannot trigger scan: container '{container_name}' not found in VulnForge")
+            logger.warning(
+                f"Cannot trigger scan: container '{container_name}' not found in VulnForge"
+            )
             return False
         return await self.trigger_scan(container_id)
 
     async def get_cve_delta(
-        self,
-        container_name: Optional[str] = None,
-        since_hours: int = 24
+        self, container_name: Optional[str] = None, since_hours: int = 24
     ) -> Optional[Dict]:
         """Get CVE delta from VulnForge's cve-delta endpoint.
 

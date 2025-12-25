@@ -27,7 +27,7 @@ class TestScanContainerEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -42,16 +42,18 @@ class TestScanContainerEndpoint:
             "total_vulnerabilities": 15,
             "severity_counts": {"CRITICAL": 2, "HIGH": 5, "MEDIUM": 6, "LOW": 2},
             "cve_list": ["CVE-2023-1234", "CVE-2023-5678"],
-            "risk_score": 7.5
+            "risk_score": 7.5,
         }
 
-        with patch('app.services.scan_service.VulnForgeClient') as mock_client:
+        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
+            response = await authenticated_client.post(
+                f"/api/v1/scan/container/{container.id}"
+            )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -77,13 +79,15 @@ class TestScanContainerEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
+        response = await authenticated_client.post(
+            f"/api/v1/scan/container/{container.id}"
+        )
 
         print(f"Response status: {response.status_code}")
         print(f"Response JSON: {response.json()}")
@@ -94,6 +98,7 @@ class TestScanContainerEndpoint:
         """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -105,7 +110,7 @@ class TestScanContainerEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -130,7 +135,7 @@ class TestScanAllContainersEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="nginx",
-                vulnforge_enabled=True
+                vulnforge_enabled=True,
             ),
             Container(
                 name=f"scan-all-2-{id(self)}",
@@ -139,8 +144,8 @@ class TestScanAllContainersEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="redis",
-                vulnforge_enabled=True
-            )
+                vulnforge_enabled=True,
+            ),
         ]
         db.add_all(containers)
         await db.commit()
@@ -154,10 +159,10 @@ class TestScanAllContainersEndpoint:
             "total_vulnerabilities": 5,
             "severity_counts": {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 2, "LOW": 0},
             "cve_list": ["CVE-2023-9999"],
-            "risk_score": 6.0
+            "risk_score": 6.0,
         }
 
-        with patch('app.services.scan_service.VulnForgeClient') as mock_client:
+        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
@@ -180,7 +185,7 @@ class TestScanAllContainersEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="nginx",
-                vulnforge_enabled=True
+                vulnforge_enabled=True,
             ),
             Container(
                 name=f"disabled-{id(self)}",
@@ -189,8 +194,8 @@ class TestScanAllContainersEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="redis",
-                vulnforge_enabled=False
-            )
+                vulnforge_enabled=False,
+            ),
         ]
         db.add_all(containers)
         await db.commit()
@@ -204,10 +209,10 @@ class TestScanAllContainersEndpoint:
             "total_vulnerabilities": 3,
             "severity_counts": {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 0},
             "cve_list": [],
-            "risk_score": 4.0
+            "risk_score": 4.0,
         }
 
-        with patch('app.services.scan_service.VulnForgeClient') as mock_client:
+        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
@@ -224,6 +229,7 @@ class TestScanAllContainersEndpoint:
         """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -245,7 +251,7 @@ class TestGetScanResultsEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -261,12 +267,14 @@ class TestGetScanResultsEndpoint:
             low_count=2,
             cves=["CVE-2023-1111", "CVE-2023-2222"],
             risk_score=6.5,
-            status="completed"
+            status="completed",
         )
         db.add(scan)
         await db.commit()
 
-        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
+        response = await authenticated_client.get(
+            f"/api/v1/scan/results/{container.id}"
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -284,13 +292,15 @@ class TestGetScanResultsEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
+        response = await authenticated_client.get(
+            f"/api/v1/scan/results/{container.id}"
+        )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "no scan results" in response.json()["detail"].lower()
@@ -305,7 +315,7 @@ class TestGetScanResultsEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -321,12 +331,14 @@ class TestGetScanResultsEndpoint:
             medium_count=1,
             low_count=0,
             cves=cve_list,
-            status="completed"
+            status="completed",
         )
         db.add(scan)
         await db.commit()
 
-        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
+        response = await authenticated_client.get(
+            f"/api/v1/scan/results/{container.id}"
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -338,6 +350,7 @@ class TestGetScanResultsEndpoint:
         """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -349,7 +362,7 @@ class TestGetScanResultsEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -375,7 +388,7 @@ class TestScanSummaryEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="nginx",
-                vulnforge_enabled=True
+                vulnforge_enabled=True,
             ),
             Container(
                 name=f"summary-2-{id(self)}",
@@ -384,8 +397,8 @@ class TestScanSummaryEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="redis",
-                vulnforge_enabled=True
-            )
+                vulnforge_enabled=True,
+            ),
         ]
         db.add_all(containers)
         await db.commit()
@@ -401,7 +414,7 @@ class TestScanSummaryEndpoint:
                 high_count=3,
                 medium_count=3,
                 low_count=2,
-                status="completed"
+                status="completed",
             ),
             VulnerabilityScan(
                 container_id=containers[1].id,
@@ -410,8 +423,8 @@ class TestScanSummaryEndpoint:
                 high_count=1,
                 medium_count=3,
                 low_count=1,
-                status="completed"
-            )
+                status="completed",
+            ),
         ]
         db.add_all(scans)
         await db.commit()
@@ -434,7 +447,7 @@ class TestScanSummaryEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            vulnforge_enabled=True
+            vulnforge_enabled=True,
         )
         db.add(container)
         await db.commit()
@@ -447,7 +460,7 @@ class TestScanSummaryEndpoint:
             high_count=7,
             medium_count=8,
             low_count=2,
-            status="completed"
+            status="completed",
         )
         db.add(scan)
         await db.commit()
@@ -469,6 +482,7 @@ class TestScanSummaryEndpoint:
         """Test requires authentication."""
         # Enable auth mode
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 

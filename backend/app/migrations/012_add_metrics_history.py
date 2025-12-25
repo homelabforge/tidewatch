@@ -20,7 +20,7 @@ async def table_exists(conn, table: str) -> bool:
     """Check if a table exists."""
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table"),
-        {"table": table}
+        {"table": table},
     )
     return result.fetchone() is not None
 
@@ -58,13 +58,19 @@ async def migrate():
 
                 logger.info("Creating indexes...")
                 await conn.execute(
-                    text("CREATE INDEX idx_metrics_history_container ON metrics_history(container_id)")
+                    text(
+                        "CREATE INDEX idx_metrics_history_container ON metrics_history(container_id)"
+                    )
                 )
                 await conn.execute(
-                    text("CREATE INDEX idx_metrics_history_collected ON metrics_history(collected_at)")
+                    text(
+                        "CREATE INDEX idx_metrics_history_collected ON metrics_history(collected_at)"
+                    )
                 )
                 await conn.execute(
-                    text("CREATE INDEX idx_container_collected ON metrics_history(container_id, collected_at)")
+                    text(
+                        "CREATE INDEX idx_container_collected ON metrics_history(container_id, collected_at)"
+                    )
                 )
                 logger.info("  ✓ Indexes created")
             else:

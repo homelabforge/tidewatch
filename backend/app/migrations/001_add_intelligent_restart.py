@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 async def check_column_exists(conn, table: str, column: str) -> bool:
     """Check if a column exists in a table."""
-    result = await conn.execute(
-        text(f"PRAGMA table_info({table})")
-    )
+    result = await conn.execute(text(f"PRAGMA table_info({table})"))
     columns = result.fetchall()
     return any(col[1] == column for col in columns)
 
@@ -40,7 +38,7 @@ async def check_table_exists(conn, table: str) -> bool:
     """Check if a table exists."""
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table"),
-        {"table": table}
+        {"table": table},
     )
     return result.fetchone() is not None
 
@@ -82,7 +80,8 @@ async def migrate():
             logger.info("Step 2: Creating container_restart_state table...")
 
             if not await check_table_exists(conn, "container_restart_state"):
-                await conn.execute(text("""
+                await conn.execute(
+                    text("""
                     CREATE TABLE container_restart_state (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         container_id INTEGER NOT NULL UNIQUE,
@@ -127,18 +126,25 @@ async def migrate():
 
                         FOREIGN KEY (container_id) REFERENCES containers (id) ON DELETE CASCADE
                     )
-                """))
+                """)
+                )
 
                 # Create indexes
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_state_container_id ON container_restart_state(container_id)"
-                ))
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_state_container_name ON container_restart_state(container_name)"
-                ))
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_state_next_retry ON container_restart_state(next_retry_at)"
-                ))
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_state_container_id ON container_restart_state(container_id)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_state_container_name ON container_restart_state(container_name)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_state_next_retry ON container_restart_state(next_retry_at)"
+                    )
+                )
 
                 logger.info("  ✓ Created container_restart_state table with indexes")
             else:
@@ -150,7 +156,8 @@ async def migrate():
             logger.info("Step 3: Creating container_restart_log table...")
 
             if not await check_table_exists(conn, "container_restart_log"):
-                await conn.execute(text("""
+                await conn.execute(
+                    text("""
                     CREATE TABLE container_restart_log (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         container_id INTEGER NOT NULL,
@@ -174,18 +181,25 @@ async def migrate():
 
                         FOREIGN KEY (container_id) REFERENCES containers (id) ON DELETE CASCADE
                     )
-                """))
+                """)
+                )
 
                 # Create indexes
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_log_container_id ON container_restart_log(container_id)"
-                ))
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_log_scheduled_at ON container_restart_log(scheduled_at)"
-                ))
-                await conn.execute(text(
-                    "CREATE INDEX idx_restart_log_success ON container_restart_log(success)"
-                ))
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_log_container_id ON container_restart_log(container_id)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_log_scheduled_at ON container_restart_log(scheduled_at)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_restart_log_success ON container_restart_log(success)"
+                    )
+                )
 
                 logger.info("  ✓ Created container_restart_log table with indexes")
             else:
@@ -196,7 +210,8 @@ async def migrate():
             # ================================================================
             logger.info("Step 4: Creating timestamp update trigger...")
 
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 CREATE TRIGGER IF NOT EXISTS update_restart_state_timestamp
                 AFTER UPDATE ON container_restart_state
                 BEGIN
@@ -204,7 +219,8 @@ async def migrate():
                     SET updated_at = CURRENT_TIMESTAMP
                     WHERE id = NEW.id;
                 END
-            """))
+            """)
+            )
             logger.info("  ✓ Created timestamp update trigger")
 
             # ================================================================
@@ -213,25 +229,84 @@ async def migrate():
             logger.info("Step 5: Adding restart settings...")
 
             settings = [
-                ('restart_monitor_enabled', 'true', 'restart', 'Enable automatic container restart monitoring'),
-                ('restart_monitor_interval', '30', 'restart', 'Interval in seconds to check container health (default: 30)'),
-                ('restart_default_strategy', 'exponential', 'restart', 'Default backoff strategy: exponential, linear, or fixed'),
-                ('restart_default_max_attempts', '10', 'restart', 'Default maximum restart attempts before giving up'),
-                ('restart_base_delay', '2', 'restart', 'Base delay in seconds for exponential backoff (default: 2)'),
-                ('restart_max_delay', '300', 'restart', 'Maximum delay in seconds between restart attempts (default: 300)'),
-                ('restart_success_window', '300', 'restart', 'Seconds a container must run successfully to reset failure count (default: 300)'),
-                ('restart_health_check_timeout', '60', 'restart', 'Timeout in seconds for health checks after restart (default: 60)'),
-                ('restart_enable_notifications', 'true', 'restart', 'Send ntfy notifications for restart events'),
-                ('restart_max_concurrent', '10', 'restart', 'Maximum number of concurrent restart operations (default: 10)'),
-                ('restart_cleanup_interval', '3600', 'restart', 'Interval in seconds to cleanup old restart state (default: 3600)'),
-                ('restart_log_retention_days', '30', 'restart', 'Number of days to retain restart logs (default: 30)'),
+                (
+                    "restart_monitor_enabled",
+                    "true",
+                    "restart",
+                    "Enable automatic container restart monitoring",
+                ),
+                (
+                    "restart_monitor_interval",
+                    "30",
+                    "restart",
+                    "Interval in seconds to check container health (default: 30)",
+                ),
+                (
+                    "restart_default_strategy",
+                    "exponential",
+                    "restart",
+                    "Default backoff strategy: exponential, linear, or fixed",
+                ),
+                (
+                    "restart_default_max_attempts",
+                    "10",
+                    "restart",
+                    "Default maximum restart attempts before giving up",
+                ),
+                (
+                    "restart_base_delay",
+                    "2",
+                    "restart",
+                    "Base delay in seconds for exponential backoff (default: 2)",
+                ),
+                (
+                    "restart_max_delay",
+                    "300",
+                    "restart",
+                    "Maximum delay in seconds between restart attempts (default: 300)",
+                ),
+                (
+                    "restart_success_window",
+                    "300",
+                    "restart",
+                    "Seconds a container must run successfully to reset failure count (default: 300)",
+                ),
+                (
+                    "restart_health_check_timeout",
+                    "60",
+                    "restart",
+                    "Timeout in seconds for health checks after restart (default: 60)",
+                ),
+                (
+                    "restart_enable_notifications",
+                    "true",
+                    "restart",
+                    "Send ntfy notifications for restart events",
+                ),
+                (
+                    "restart_max_concurrent",
+                    "10",
+                    "restart",
+                    "Maximum number of concurrent restart operations (default: 10)",
+                ),
+                (
+                    "restart_cleanup_interval",
+                    "3600",
+                    "restart",
+                    "Interval in seconds to cleanup old restart state (default: 3600)",
+                ),
+                (
+                    "restart_log_retention_days",
+                    "30",
+                    "restart",
+                    "Number of days to retain restart logs (default: 30)",
+                ),
             ]
 
             for key, value, category, description in settings:
                 # Check if setting already exists
                 result = await conn.execute(
-                    text("SELECT key FROM settings WHERE key = :key"),
-                    {"key": key}
+                    text("SELECT key FROM settings WHERE key = :key"), {"key": key}
                 )
                 if not result.fetchone():
                     await conn.execute(
@@ -239,7 +314,12 @@ async def migrate():
                             INSERT INTO settings (key, value, encrypted, category, description)
                             VALUES (:key, :value, 0, :category, :description)
                         """),
-                        {"key": key, "value": value, "category": category, "description": description}
+                        {
+                            "key": key,
+                            "value": value,
+                            "category": category,
+                            "description": description,
+                        },
                     )
                     logger.info(f"  ✓ Added setting: {key}")
                 else:
@@ -252,7 +332,9 @@ async def migrate():
 
             # Check tables
             result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%restart%' ORDER BY name")
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%restart%' ORDER BY name"
+                )
             )
             tables = [row[0] for row in result.fetchall()]
             logger.info(f"  Restart tables: {', '.join(tables)}")

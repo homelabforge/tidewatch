@@ -17,8 +17,12 @@ class SecretKey(Base):
 
     key_name = Column(String, primary_key=True, index=True)
     key_value = Column(String, nullable=False)  # Encrypted or plain based on key_type
-    key_type = Column(String, nullable=False)  # 'master', 'jwt', 'session', 'encryption'
+    key_type = Column(
+        String, nullable=False
+    )  # 'master', 'jwt', 'session', 'encryption'
     encrypted = Column(Boolean, default=False)  # True if encrypted with master key
     rotated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

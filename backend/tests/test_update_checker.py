@@ -31,14 +31,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="auto"  # Container allows auto, but global is disabled
+            policy="auto",  # Container allows auto, but global is disabled
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -58,14 +55,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="disabled"
+            policy="disabled",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -85,14 +79,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="manual"
+            policy="manual",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -112,14 +103,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="auto"
+            policy="auto",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -130,7 +118,9 @@ class TestAutoApprovalLogic:
         assert "allows all updates" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_approves_security_updates(self, make_update):
+    async def test_auto_approve_security_policy_approves_security_updates(
+        self, make_update
+    ):
         """Test security policy approves security updates only."""
         container = Container(
             name="test",
@@ -139,14 +129,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="security"
+            policy="security",
         )
 
         security_update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="security"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="security"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -157,7 +144,9 @@ class TestAutoApprovalLogic:
         assert "approves security updates" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_rejects_feature_updates(self, make_update):
+    async def test_auto_approve_security_policy_rejects_feature_updates(
+        self, make_update
+    ):
         """Test security policy rejects non-security updates."""
         container = Container(
             name="test",
@@ -166,14 +155,11 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="security"
+            policy="security",
         )
 
         feature_update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -219,7 +205,7 @@ class TestUpdateDetection:
             policy="manual",
             scope="patch",
             include_prereleases=False,
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
     @pytest.mark.asyncio
@@ -235,10 +221,17 @@ class TestUpdateDetection:
         existing_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_db.execute = AsyncMock(return_value=existing_result)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", return_value=False), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                return_value=False,
+            ),
+            patch("app.services.update_checker.event_bus.publish", return_value=None),
+        ):
             update = await UpdateChecker.check_container(mock_db, mock_container)
 
             assert update is None
@@ -262,12 +255,29 @@ class TestUpdateDetection:
         mock_dispatcher_instance = AsyncMock()
         mock_dispatcher_instance.notify_update_available = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", new_callable=AsyncMock, return_value=False), \
-             patch("app.services.update_checker.SettingsService.get_int", new_callable=AsyncMock, return_value=3), \
-             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock), \
-             patch("app.services.notifications.dispatcher.NotificationDispatcher", return_value=mock_dispatcher_instance):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_int",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch(
+                "app.services.update_checker.event_bus.publish", new_callable=AsyncMock
+            ),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher_instance,
+            ),
+        ):
             update = await UpdateChecker.check_container(mock_db, mock_container)
 
             assert update is not None
@@ -277,7 +287,9 @@ class TestUpdateDetection:
             assert mock_container.latest_tag == "1.25.3"
 
     @pytest.mark.asyncio
-    async def test_check_container_duplicate_update_returns_existing(self, mock_db, mock_container, make_update):
+    async def test_check_container_duplicate_update_returns_existing(
+        self, mock_db, mock_container, make_update
+    ):
         """Test check_container returns existing update if already present."""
         # Mock registry client
         mock_client = AsyncMock()
@@ -292,17 +304,24 @@ class TestUpdateDetection:
             to_tag="1.25.3",
             status="pending",
             reason_type="feature",
-            reason_summary="New features"
+            reason_summary="New features",
         )
 
         existing_result = MagicMock()
         existing_result.scalar_one_or_none = MagicMock(return_value=existing_update)
         mock_db.execute = AsyncMock(return_value=existing_result)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", return_value=False), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                return_value=False,
+            ),
+            patch("app.services.update_checker.event_bus.publish", return_value=None),
+        ):
             update = await UpdateChecker.check_container(mock_db, mock_container)
 
             # Should return existing update
@@ -323,25 +342,32 @@ class TestUpdateDetection:
             service_name="nginx",
             policy="manual",
             scope="patch",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         # Mock registry client
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)  # No new tag
-        mock_client.get_tag_metadata = AsyncMock(return_value={
-            "digest": "sha256:abc123def456"
-        })
+        mock_client.get_tag_metadata = AsyncMock(
+            return_value={"digest": "sha256:abc123def456"}
+        )
         mock_client.close = AsyncMock()
 
         existing_result = MagicMock()
         existing_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_db.execute = AsyncMock(return_value=existing_result)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", return_value=False), \
-             patch("app.services.update_checker.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                return_value=False,
+            ),
+            patch("app.services.update_checker.event_bus.publish", return_value=None),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Should have stored initial digest
@@ -361,15 +387,17 @@ class TestUpdateDetection:
             service_name="nginx",
             policy="manual",
             scope="patch",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         # Mock registry client
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)  # Tag unchanged
-        mock_client.get_tag_metadata = AsyncMock(return_value={
-            "digest": "sha256:newdigest456"  # Digest changed!
-        })
+        mock_client.get_tag_metadata = AsyncMock(
+            return_value={
+                "digest": "sha256:newdigest456"  # Digest changed!
+            }
+        )
         mock_client.close = AsyncMock()
 
         existing_result = MagicMock()
@@ -380,12 +408,29 @@ class TestUpdateDetection:
         mock_dispatcher_instance = AsyncMock()
         mock_dispatcher_instance.notify_update_available = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", new_callable=AsyncMock, return_value=False), \
-             patch("app.services.update_checker.SettingsService.get_int", new_callable=AsyncMock, return_value=3), \
-             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock), \
-             patch("app.services.notifications.dispatcher.NotificationDispatcher", return_value=mock_dispatcher_instance):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_int",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch(
+                "app.services.update_checker.event_bus.publish", new_callable=AsyncMock
+            ),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher_instance,
+            ),
+        ):
             update = await UpdateChecker.check_container(mock_db, container)
 
             # Should create update for digest change
@@ -419,7 +464,7 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual"
+                policy="manual",
             ),
             Container(
                 id=2,
@@ -429,12 +474,14 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/redis.yml",
                 service_name="redis",
-                policy="auto"
-            )
+                policy="auto",
+            ),
         ]
 
         container_result = MagicMock()
-        container_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=containers)))
+        container_result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=containers))
+        )
         mock_db.execute = AsyncMock(return_value=container_result)
 
         with patch.object(UpdateChecker, "check_container", return_value=None):
@@ -457,16 +504,20 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual"
+                policy="manual",
             )
         ]
 
         container_result = MagicMock()
-        container_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=containers)))
+        container_result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=containers))
+        )
         mock_db.execute = AsyncMock(return_value=container_result)
 
         # Mock check_container to return an update
-        mock_update = make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0")
+        mock_update = make_update(
+            id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0"
+        )
 
         with patch.object(UpdateChecker, "check_container", return_value=mock_update):
             stats = await UpdateChecker.check_all_containers(mock_db)
@@ -485,16 +536,20 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual"
+                policy="manual",
             )
         ]
 
         container_result = MagicMock()
-        container_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=containers)))
+        container_result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=containers))
+        )
         mock_db.execute = AsyncMock(return_value=container_result)
 
         # Mock check_container to raise an error
-        with patch.object(UpdateChecker, "check_container", side_effect=ValueError("Test error")):
+        with patch.object(
+            UpdateChecker, "check_container", side_effect=ValueError("Test error")
+        ):
             stats = await UpdateChecker.check_all_containers(mock_db)
 
             assert stats["errors"] == 1
@@ -531,7 +586,7 @@ class TestAutoApprovalExecution:
             service_name="nginx",
             policy="auto",  # Auto-approve policy
             scope="patch",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         # Mock registry client
@@ -547,12 +602,29 @@ class TestAutoApprovalExecution:
         mock_dispatcher_instance = AsyncMock()
         mock_dispatcher_instance.notify_update_available = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", new_callable=AsyncMock, return_value=True), \
-             patch("app.services.update_checker.SettingsService.get_int", new_callable=AsyncMock, return_value=3), \
-             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock), \
-             patch("app.services.notifications.dispatcher.NotificationDispatcher", return_value=mock_dispatcher_instance):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_int",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch(
+                "app.services.update_checker.event_bus.publish", new_callable=AsyncMock
+            ),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher_instance,
+            ),
+        ):
             update = await UpdateChecker.check_container(mock_db, container)
 
             # Should be auto-approved
@@ -590,7 +662,7 @@ class TestEventBusNotifications:
             compose_file="/compose/nginx.yml",
             service_name="nginx",
             policy="manual",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         mock_client = AsyncMock()
@@ -602,17 +674,27 @@ class TestEventBusNotifications:
         mock_db.execute = AsyncMock(return_value=existing_result)
 
         events = []
+
         async def capture_event(event):
             events.append(event)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", return_value=False), \
-             patch("app.services.update_checker.event_bus.publish", capture_event):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                return_value=False,
+            ),
+            patch("app.services.update_checker.event_bus.publish", capture_event),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Should have published update-check-started event
-            started_events = [e for e in events if e.get("type") == "update-check-started"]
+            started_events = [
+                e for e in events if e.get("type") == "update-check-started"
+            ]
             assert len(started_events) > 0
             assert started_events[0]["container_id"] == 1
             assert started_events[0]["container_name"] == "nginx"
@@ -629,7 +711,7 @@ class TestEventBusNotifications:
             compose_file="/compose/nginx.yml",
             service_name="nginx",
             policy="manual",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         mock_client = AsyncMock()
@@ -641,6 +723,7 @@ class TestEventBusNotifications:
         mock_db.execute = AsyncMock(return_value=existing_result)
 
         events = []
+
         async def capture_event(event):
             events.append(event)
 
@@ -648,22 +731,41 @@ class TestEventBusNotifications:
         mock_dispatcher_instance = AsyncMock()
         mock_dispatcher_instance.notify_update_available = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", new_callable=AsyncMock, return_value=False), \
-             patch("app.services.update_checker.SettingsService.get_int", new_callable=AsyncMock, return_value=3), \
-             patch("app.services.update_checker.event_bus.publish", capture_event), \
-             patch("app.services.notifications.dispatcher.NotificationDispatcher", return_value=mock_dispatcher_instance):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_int",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch("app.services.update_checker.event_bus.publish", capture_event),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher_instance,
+            ),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Should have published update-available event
-            available_events = [e for e in events if e.get("type") == "update-available"]
+            available_events = [
+                e for e in events if e.get("type") == "update-available"
+            ]
             assert len(available_events) > 0
             assert available_events[0]["from_tag"] == "1.0.0"
             assert available_events[0]["to_tag"] == "1.0.1"
 
     @pytest.mark.asyncio
-    async def test_check_container_publishes_error_event_on_registry_failure(self, mock_db):
+    async def test_check_container_publishes_error_event_on_registry_failure(
+        self, mock_db
+    ):
         """Test check_container publishes error event on registry failure."""
         container = Container(
             id=1,
@@ -675,18 +777,21 @@ class TestEventBusNotifications:
             service_name="nginx",
             policy="manual",
             vulnforge_enabled=False,
-            include_prereleases=True  # Set to True to avoid SettingsService call
+            include_prereleases=True,  # Set to True to avoid SettingsService call
         )
 
         import httpx
+
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_request = MagicMock()
 
-        mock_client.get_latest_tag = AsyncMock(side_effect=httpx.HTTPStatusError(
-            "Not found", request=mock_request, response=mock_response
-        ))
+        mock_client.get_latest_tag = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "Not found", request=mock_request, response=mock_response
+            )
+        )
         mock_client.close = AsyncMock()
 
         # Mock get_client as async function
@@ -694,12 +799,17 @@ class TestEventBusNotifications:
             return mock_client
 
         events = []
+
         async def capture_event(event):
             events.append(event)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", new=mock_get_client), \
-             patch("app.services.update_checker.event_bus.publish", new=capture_event):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                new=mock_get_client,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=capture_event),
+        ):
             update = await UpdateChecker.check_container(mock_db, container)
 
             assert update is None
@@ -724,12 +834,18 @@ class TestQueryHelpers:
     async def test_get_pending_updates_returns_pending_only(self, mock_db, make_update):
         """Test get_pending_updates returns only pending updates."""
         pending_updates = [
-            make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending"),
-            make_update(id=2, container_id=2, from_tag="2.0.0", to_tag="2.1.0", status="pending")
+            make_update(
+                id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending"
+            ),
+            make_update(
+                id=2, container_id=2, from_tag="2.0.0", to_tag="2.1.0", status="pending"
+            ),
         ]
 
         result = MagicMock()
-        result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=pending_updates)))
+        result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=pending_updates))
+        )
         mock_db.execute = AsyncMock(return_value=result)
 
         updates = await UpdateChecker.get_pending_updates(mock_db)
@@ -738,14 +854,20 @@ class TestQueryHelpers:
         assert all(u.status == "pending" for u in updates)
 
     @pytest.mark.asyncio
-    async def test_get_auto_approvable_updates_filters_by_policy(self, mock_db, make_update):
+    async def test_get_auto_approvable_updates_filters_by_policy(
+        self, mock_db, make_update
+    ):
         """Test get_auto_approvable_updates filters by container policy."""
         auto_updates = [
-            make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending")
+            make_update(
+                id=1, container_id=1, from_tag="1.0.0", to_tag="1.1.0", status="pending"
+            )
         ]
 
         result = MagicMock()
-        result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=auto_updates)))
+        result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=auto_updates))
+        )
         mock_db.execute = AsyncMock(return_value=result)
 
         updates = await UpdateChecker.get_auto_approvable_updates(mock_db)
@@ -778,19 +900,26 @@ class TestErrorHandling:
             compose_file="/compose/nginx.yml",
             service_name="nginx",
             policy="manual",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         mock_client = AsyncMock()
         import httpx
-        mock_client.get_latest_tag = AsyncMock(side_effect=httpx.HTTPStatusError(
-            "Not found", request=MagicMock(), response=MagicMock(status_code=404)
-        ))
+
+        mock_client.get_latest_tag = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "Not found", request=MagicMock(), response=MagicMock(status_code=404)
+            )
+        )
         mock_client.close = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+        ):
             update = await UpdateChecker.check_container(mock_db, container)
 
             # Should return None without crashing
@@ -808,17 +937,24 @@ class TestErrorHandling:
             compose_file="/compose/nginx.yml",
             service_name="nginx",
             policy="manual",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         mock_client = AsyncMock()
         import httpx
-        mock_client.get_latest_tag = AsyncMock(side_effect=httpx.ConnectError("Connection failed"))
+
+        mock_client.get_latest_tag = AsyncMock(
+            side_effect=httpx.ConnectError("Connection failed")
+        )
         mock_client.close = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+        ):
             update = await UpdateChecker.check_container(mock_db, container)
 
             assert update is None
@@ -835,16 +971,20 @@ class TestErrorHandling:
             compose_file="/compose/nginx.yml",
             service_name="nginx",
             policy="manual",
-            vulnforge_enabled=False
+            vulnforge_enabled=False,
         )
 
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(side_effect=ValueError("Test error"))
         mock_client.close = AsyncMock()
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", new=AsyncMock()):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Client should still be closed
@@ -864,14 +1004,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="patch-only"
+            policy="patch-only",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.0.1",
-            reason_type="bugfix"
+            container_id=1, from_tag="1.0.0", to_tag="1.0.1", reason_type="bugfix"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -891,14 +1028,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="patch-only"
+            policy="patch-only",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -918,14 +1052,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="patch-only"
+            policy="patch-only",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="2.0.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="2.0.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -945,14 +1076,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="minor-and-patch"
+            policy="minor-and-patch",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.0.1",
-            reason_type="bugfix"
+            container_id=1, from_tag="1.0.0", to_tag="1.0.1", reason_type="bugfix"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -972,14 +1100,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="minor-and-patch"
+            policy="minor-and-patch",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="1.1.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -999,14 +1124,11 @@ class TestSemverPolicies:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="minor-and-patch"
+            policy="minor-and-patch",
         )
 
         update = make_update(
-            container_id=1,
-            from_tag="1.0.0",
-            to_tag="2.0.0",
-            reason_type="feature"
+            container_id=1, from_tag="1.0.0", to_tag="2.0.0", reason_type="feature"
         )
 
         should_approve, reason = await UpdateChecker._should_auto_approve(
@@ -1029,17 +1151,33 @@ class TestSecurityUpdatesQuery:
         return db
 
     @pytest.mark.asyncio
-    async def test_get_security_updates_filters_by_reason_type(self, mock_db, make_update):
+    async def test_get_security_updates_filters_by_reason_type(
+        self, mock_db, make_update
+    ):
         """Test get_security_updates returns only security-type updates."""
         security_updates = [
-            make_update(id=1, container_id=1, from_tag="1.0.0", to_tag="1.0.1",
-                       status="pending", reason_type="security"),
-            make_update(id=2, container_id=2, from_tag="2.0.0", to_tag="2.0.1",
-                       status="pending", reason_type="security")
+            make_update(
+                id=1,
+                container_id=1,
+                from_tag="1.0.0",
+                to_tag="1.0.1",
+                status="pending",
+                reason_type="security",
+            ),
+            make_update(
+                id=2,
+                container_id=2,
+                from_tag="2.0.0",
+                to_tag="2.0.1",
+                status="pending",
+                reason_type="security",
+            ),
         ]
 
         result = MagicMock()
-        result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=security_updates)))
+        result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=security_updates))
+        )
         mock_db.execute = AsyncMock(return_value=result)
 
         updates = await UpdateChecker.get_security_updates(mock_db)
@@ -1051,7 +1189,9 @@ class TestSecurityUpdatesQuery:
     async def test_get_security_updates_orders_by_created_at_desc(self, mock_db):
         """Test get_security_updates returns newest first."""
         result = MagicMock()
-        result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        result.scalars = MagicMock(
+            return_value=MagicMock(all=MagicMock(return_value=[]))
+        )
         mock_db.execute = AsyncMock(return_value=result)
 
         await UpdateChecker.get_security_updates(mock_db)
@@ -1082,9 +1222,13 @@ class TestRaceConditionHandling:
 
         return db
 
-    @pytest.mark.skip(reason="IntegrityError race condition recovery test requires complex encryption mocking")
+    @pytest.mark.skip(
+        reason="IntegrityError race condition recovery test requires complex encryption mocking"
+    )
     @pytest.mark.asyncio
-    async def test_check_container_handles_integrity_error_race_condition(self, mock_db):
+    async def test_check_container_handles_integrity_error_race_condition(
+        self, mock_db
+    ):
         """Test check_container recovers from IntegrityError race condition.
 
         Note: This test is skipped due to encryption complexity in Update model.
@@ -1111,7 +1255,9 @@ class TestPrereleaseHandling:
         return db
 
     @pytest.mark.asyncio
-    async def test_check_container_respects_container_include_prereleases_true(self, mock_db):
+    async def test_check_container_respects_container_include_prereleases_true(
+        self, mock_db
+    ):
         """Test check_container uses include_prereleases=True when container setting is True."""
         container = Container(
             id=1,
@@ -1124,7 +1270,7 @@ class TestPrereleaseHandling:
             policy="manual",
             scope="patch",
             vulnforge_enabled=False,
-            include_prereleases=True  # Container-specific setting
+            include_prereleases=True,  # Container-specific setting
         )
 
         # Mock registry client
@@ -1136,9 +1282,15 @@ class TestPrereleaseHandling:
         existing_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_db.execute = AsyncMock(return_value=existing_result)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.event_bus.publish", new_callable=AsyncMock
+            ),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Should have called get_latest_tag with include_prereleases=True
@@ -1147,7 +1299,9 @@ class TestPrereleaseHandling:
             assert call_kwargs["include_prereleases"] is True
 
     @pytest.mark.asyncio
-    async def test_check_container_uses_global_prerelease_setting_when_container_false(self, mock_db):
+    async def test_check_container_uses_global_prerelease_setting_when_container_false(
+        self, mock_db
+    ):
         """Test check_container falls back to global prerelease setting."""
         container = Container(
             id=1,
@@ -1160,7 +1314,7 @@ class TestPrereleaseHandling:
             policy="manual",
             scope="patch",
             vulnforge_enabled=False,
-            include_prereleases=False  # Container-specific is False, should check global
+            include_prereleases=False,  # Container-specific is False, should check global
         )
 
         # Mock registry client
@@ -1172,10 +1326,20 @@ class TestPrereleaseHandling:
         existing_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_db.execute = AsyncMock(return_value=existing_result)
 
-        with patch("app.services.update_checker.RegistryClientFactory.get_client", return_value=mock_client), \
-             patch("app.services.update_checker.SettingsService.get_bool", new_callable=AsyncMock, return_value=True), \
-             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock):
-
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.services.update_checker.event_bus.publish", new_callable=AsyncMock
+            ),
+        ):
             await UpdateChecker.check_container(mock_db, container)
 
             # Should have called get_latest_tag with global prerelease=True

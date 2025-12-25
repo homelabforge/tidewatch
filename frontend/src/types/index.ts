@@ -63,6 +63,7 @@ export interface Update {
   published_date: string | null;
   image_size_delta: number;
   status: string;
+  scope_violation: number;
   approved_by: string | null;
   approved_at: string | null;
   retry_count: number;

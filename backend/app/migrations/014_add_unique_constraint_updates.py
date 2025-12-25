@@ -25,31 +25,37 @@ async def upgrade():
         print("Adding composite index and unique constraint to updates table...")
 
         # Create composite index for faster lookups
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS idx_update_lookup
             ON updates(container_id, from_tag, to_tag, status)
-        """))
+        """)
+        )
         print("✓ Created composite index idx_update_lookup")
 
         # Check if constraint already exists
-        result = await conn.execute(text("""
+        result = await conn.execute(
+            text("""
             SELECT name FROM sqlite_master
             WHERE type='index' AND name='uq_active_update'
-        """))
+        """)
+        )
         existing = result.scalar_one_or_none()
 
         if not existing:
             # Clean up duplicates before creating unique constraint
             # Keep only the most recent duplicate (by id) for each combination
             print("Cleaning up duplicate update records...")
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 DELETE FROM updates
                 WHERE id NOT IN (
                     SELECT MAX(id)
                     FROM updates
                     GROUP BY container_id, from_tag, to_tag, status
                 )
-            """))
+            """)
+            )
 
             result = await conn.execute(text("SELECT changes()"))
             deleted_count = result.scalar()
@@ -61,10 +67,12 @@ async def upgrade():
             # For SQLite, we'll create a unique index
             # This will prevent duplicates across all statuses, not just active ones
             # but that's acceptable for this use case
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 CREATE UNIQUE INDEX uq_active_update
                 ON updates(container_id, from_tag, to_tag, status)
-            """))
+            """)
+            )
             print("✓ Created unique constraint uq_active_update")
         else:
             print("✓ Unique constraint already exists")

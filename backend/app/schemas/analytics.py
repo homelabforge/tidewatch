@@ -30,4 +30,3 @@ class AnalyticsSummary(BaseModel):
     policy_distribution: List[DistributionItem]
     avg_update_duration_seconds: float
     total_cves_fixed: int
-

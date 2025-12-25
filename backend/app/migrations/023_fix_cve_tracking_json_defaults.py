@@ -19,6 +19,7 @@ from pathlib import Path
 def get_db_path() -> str:
     """Get the database path from environment or default location."""
     import os
+
     db_path = os.getenv("DATABASE_PATH")
     if db_path:
         return db_path
@@ -102,6 +103,7 @@ async def upgrade():
             print("\nRecent update_history records with CVE data:")
             for row in results:
                 import json
+
                 cve_count = len(json.loads(row[3])) if row[3] else 0
                 print(f"  ID {row[0]}: {row[1]} → {row[2]} ({cve_count} CVEs)")
 
@@ -118,8 +120,12 @@ async def upgrade():
 
 def downgrade():
     """Revert the migration (no-op for data backfill)."""
-    print("Downgrade for migration 023 is a no-op (server defaults removed at SQLAlchemy level)")
-    print("Note: We don't reverse the CVE data backfill as it represents corrected historical data")
+    print(
+        "Downgrade for migration 023 is a no-op (server defaults removed at SQLAlchemy level)"
+    )
+    print(
+        "Note: We don't reverse the CVE data backfill as it represents corrected historical data"
+    )
 
 
 if __name__ == "__main__":

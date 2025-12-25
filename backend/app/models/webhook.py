@@ -17,7 +17,9 @@ class Webhook(Base):
     name = Column(String, nullable=False, unique=True)
     url = Column(String, nullable=False)
     secret = Column(String, nullable=False)  # Encrypted HMAC secret for signature
-    events = Column(JSON, nullable=False, default=list)  # List of event types to trigger on
+    events = Column(
+        JSON, nullable=False, default=list
+    )  # List of event types to trigger on
     enabled = Column(Boolean, nullable=False, default=True)
     retry_count = Column(Integer, nullable=False, default=3)
 
@@ -28,7 +30,9 @@ class Webhook(Base):
 
     # Timestamps
     created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     def __repr__(self):
         return f"<Webhook(id={self.id}, name='{self.name}', url='{self.url}', enabled={self.enabled})>"

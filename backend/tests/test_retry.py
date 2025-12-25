@@ -59,6 +59,7 @@ class TestRetryDecorator:
     async def test_exponential_backoff(self):
         """Test that exponential backoff is applied."""
         import time
+
         call_times = []
 
         @async_retry(max_attempts=3, backoff_base=0.1)

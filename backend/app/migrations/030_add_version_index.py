@@ -21,9 +21,11 @@ async def upgrade():
     """Add composite index on (status, version) for faster concurrent lookups."""
     async with engine.begin() as conn:
         # Create index on status and version for optimized concurrent queries
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_updates_status_version ON updates(status, version)"
-        ))
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_updates_status_version ON updates(status, version)"
+            )
+        )
 
 
 async def downgrade():

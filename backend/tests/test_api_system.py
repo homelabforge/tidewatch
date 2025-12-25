@@ -26,7 +26,7 @@ class TestSystemInfoEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            policy="auto"
+            policy="auto",
         )
         container2 = Container(
             name="test-container-2",
@@ -35,7 +35,7 @@ class TestSystemInfoEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="redis",
-            policy="manual"
+            policy="manual",
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -56,6 +56,7 @@ class TestSystemInfoEndpoint:
     async def test_system_info_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -80,6 +81,7 @@ class TestVersionEndpoint:
     async def test_version_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -133,13 +135,15 @@ class TestHealthCheckEndpoint:
         assert "timestamp" in data
         # Timestamp should be in ISO format
         from datetime import datetime
+
         # Should not raise exception
-        datetime.fromisoformat(data["timestamp"].replace('Z', '+00:00'))
+        datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
 
     async def test_health_public_endpoint(self, client, db):
         """Test health endpoint is public (no auth required)."""
         # Even with auth enabled, health should be accessible
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -182,6 +186,7 @@ class TestReadinessProbeEndpoint:
         """Test readiness endpoint is public (no auth required)."""
         # Even with auth enabled, readiness should be accessible
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -199,7 +204,10 @@ class TestPrometheusMetricsEndpoint:
         response = await client.get("/api/v1/system/metrics")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
+        assert (
+            response.headers["content-type"]
+            == "text/plain; version=0.0.4; charset=utf-8"
+        )
 
         content = response.text
         assert "# HELP" in content
@@ -215,7 +223,7 @@ class TestPrometheusMetricsEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            policy="auto"
+            policy="auto",
         )
         db.add(container)
         await db.commit()
@@ -237,7 +245,7 @@ class TestPrometheusMetricsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -249,7 +257,7 @@ class TestPrometheusMetricsEndpoint:
             from_tag="1.20",
             to_tag="1.21",
             registry="docker.io",
-            status="pending"
+            status="pending",
         )
         db.add(update)
         await db.commit()
@@ -273,6 +281,7 @@ class TestPrometheusMetricsEndpoint:
         """Test metrics endpoint is public (no auth required)."""
         # Even with auth enabled, metrics should be accessible for Prometheus
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -294,7 +303,8 @@ class TestPrometheusMetricsEndpoint:
 
         # Check metrics have numeric values
         import re
+
         # Match lines like: tidewatch_containers_total 5
-        matches = re.findall(r'tidewatch_containers_total (\d+)', content)
+        matches = re.findall(r"tidewatch_containers_total (\d+)", content)
         assert len(matches) > 0
         assert int(matches[0]) >= 0

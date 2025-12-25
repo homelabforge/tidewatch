@@ -7,7 +7,7 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def async_retry(
@@ -15,7 +15,7 @@ def async_retry(
     backoff_base: float = 2.0,
     backoff_max: float = 60.0,
     exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None
+    on_retry: Optional[Callable[[Exception, int], None]] = None,
 ):
     """Decorator for retrying async functions with exponential backoff.
 
@@ -36,6 +36,7 @@ def async_retry(
                 async with session.get(url) as response:
                     return await response.json()
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
@@ -68,10 +69,13 @@ def async_retry(
 
             # This should never be reached due to raise on line 54, but satisfy type checker
             # If somehow reached, last_exception should be set from the loop
-            assert last_exception is not None, "No exception captured but max attempts reached"
+            assert last_exception is not None, (
+                "No exception captured but max attempts reached"
+            )
             raise last_exception
 
         return wrapper
+
     return decorator
 
 
@@ -80,7 +84,7 @@ def sync_retry(
     backoff_base: float = 2.0,
     backoff_max: float = 60.0,
     exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None
+    on_retry: Optional[Callable[[Exception, int], None]] = None,
 ):
     """Decorator for retrying sync functions with exponential backoff.
 
@@ -94,10 +98,12 @@ def sync_retry(
     Returns:
         Decorated function that retries on failure
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             import time
+
             last_exception: Optional[Exception] = None
 
             for attempt in range(1, max_attempts + 1):
@@ -127,8 +133,11 @@ def sync_retry(
 
             # This should never be reached due to raise on line 113, but satisfy type checker
             # If somehow reached, last_exception should be set from the loop
-            assert last_exception is not None, "No exception captured but max attempts reached"
+            assert last_exception is not None, (
+                "No exception captured but max attempts reached"
+            )
             raise last_exception
 
         return wrapper
+
     return decorator

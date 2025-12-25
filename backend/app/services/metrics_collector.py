@@ -39,10 +39,14 @@ class MetricsCollector:
         for container in containers:
             try:
                 # Check if container is running
-                is_running = await docker_stats_service.check_container_running(container.name)
+                is_running = await docker_stats_service.check_container_running(
+                    container.name
+                )
 
                 if not is_running:
-                    logger.debug(f"Container {container.name} is not running, skipping metrics collection")
+                    logger.debug(
+                        f"Container {container.name} is not running, skipping metrics collection"
+                    )
                     stats["skipped"] += 1
                     continue
 
@@ -73,7 +77,9 @@ class MetricsCollector:
                 stats["collected"] += 1
 
             except OperationalError as e:
-                logger.error(f"Database error collecting metrics for {container.name}: {e}")
+                logger.error(
+                    f"Database error collecting metrics for {container.name}: {e}"
+                )
                 stats["errors"] += 1
                 continue
             except (ValueError, KeyError, AttributeError) as e:
@@ -117,7 +123,9 @@ class MetricsCollector:
         await db.commit()
 
         if deleted_count > 0:
-            logger.info(f"Cleaned up {deleted_count} old metrics records (older than {days} days)")
+            logger.info(
+                f"Cleaned up {deleted_count} old metrics records (older than {days} days)"
+            )
 
         return deleted_count
 

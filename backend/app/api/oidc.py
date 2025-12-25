@@ -114,7 +114,9 @@ async def update_oidc_config(
     # If client_secret is masked, keep the existing secret instead of overwriting
     client_secret = oidc_config.client_secret
     if oidc_service.is_masked_secret(client_secret):
-        existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
+        existing_secret = await SettingsService.get(
+            db, "oidc_client_secret", default=""
+        )
         client_secret = existing_secret
 
     # Update OIDC settings
@@ -126,7 +128,10 @@ async def update_oidc_config(
     await SettingsService.set(db, "oidc_scopes", oidc_config.scopes)
     await SettingsService.set(db, "oidc_redirect_uri", oidc_config.redirect_uri or "")
 
-    logger.info("OIDC configuration updated by admin: %s", sanitize_log_message(admin["username"]))
+    logger.info(
+        "OIDC configuration updated by admin: %s",
+        sanitize_log_message(admin["username"]),
+    )
 
     return {"message": "OIDC configuration updated successfully"}
 
@@ -156,7 +161,9 @@ async def test_oidc_connection(
     # If client_secret is masked, use existing secret
     client_secret = oidc_config.client_secret
     if oidc_service.is_masked_secret(client_secret):
-        existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
+        existing_secret = await SettingsService.get(
+            db, "oidc_client_secret", default=""
+        )
         client_secret = existing_secret
 
     # Convert to config dict
@@ -169,7 +176,11 @@ async def test_oidc_connection(
     # Test connection
     result = await oidc_service.test_oidc_connection(config)
 
-    logger.info("OIDC connection test by admin %s: %s", sanitize_log_message(admin["username"]), "success" if result["success"] else "failed")
+    logger.info(
+        "OIDC connection test by admin %s: %s",
+        sanitize_log_message(admin["username"]),
+        "success" if result["success"] else "failed",
+    )
 
     return result
 
@@ -259,7 +270,10 @@ async def oidc_login(
         logger.error("OIDC configuration error: %s", e)
         raise HTTPException(status_code=500, detail="OIDC configuration error")
 
-    logger.info("Redirecting to OIDC provider for authentication (state: %s)", sanitize_log_message(state[:16]))
+    logger.info(
+        "Redirecting to OIDC provider for authentication (state: %s)",
+        sanitize_log_message(state[:16]),
+    )
     return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
 
 
@@ -285,7 +299,9 @@ async def oidc_callback(
     # Validate and consume state from database (one-time use)
     state_data = await oidc_service.validate_and_consume_state(db, state)
     if not state_data:
-        logger.warning("Invalid or expired state parameter: %s", sanitize_log_message(state[:16]))
+        logger.warning(
+            "Invalid or expired state parameter: %s", sanitize_log_message(state[:16])
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state parameter. Please try logging in again.",
@@ -358,7 +374,9 @@ async def oidc_callback(
         try:
             userinfo = await oidc_service.get_userinfo(access_token, metadata)
         except (httpx.TimeoutException, httpx.ConnectError):
-            logger.warning("Failed to fetch userinfo, continuing with ID token claims only")
+            logger.warning(
+                "Failed to fetch userinfo, continuing with ID token claims only"
+            )
 
     # Link OIDC to admin account
     try:
@@ -387,6 +405,7 @@ async def oidc_callback(
 
     # Get admin profile
     from app.services.auth import get_admin_profile
+
     admin_profile = await get_admin_profile(db)
     if not admin_profile:
         raise HTTPException(
@@ -409,7 +428,9 @@ async def oidc_callback(
     frontend_url = f"{scheme}://{host}"
     redirect_url = f"{frontend_url}/"
 
-    redirect_response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    redirect_response = RedirectResponse(
+        url=redirect_url, status_code=status.HTTP_302_FOUND
+    )
     redirect_response.set_cookie(
         key=JWT_COOKIE_NAME,
         value=jwt_token,
@@ -465,6 +486,7 @@ async def link_oidc_account(
 
     # Get admin profile
     from app.services.auth import get_admin_profile
+
     admin_profile = await get_admin_profile(db)
     if not admin_profile:
         raise HTTPException(
@@ -479,7 +501,9 @@ async def link_oidc_account(
         expires_delta=access_token_expires,
     )
 
-    logger.info("OIDC account linked successfully for admin: %s", admin_profile["username"])
+    logger.info(
+        "OIDC account linked successfully for admin: %s", admin_profile["username"]
+    )
 
     # Set httpOnly cookie
     response.set_cookie(

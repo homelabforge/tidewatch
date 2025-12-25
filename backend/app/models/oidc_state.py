@@ -22,9 +22,7 @@ class OIDCState(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     # Index for efficient cleanup of expired states
-    __table_args__ = (
-        Index('idx_oidc_states_expires_at', 'expires_at'),
-    )
+    __table_args__ = (Index("idx_oidc_states_expires_at", "expires_at"),)
 
     def __repr__(self):
         return f"<OIDCState(state={self.state[:16]}..., expires_at={self.expires_at})>"

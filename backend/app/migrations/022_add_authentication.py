@@ -30,7 +30,7 @@ async def check_table_exists(conn, table: str) -> bool:
     """Check if a table exists."""
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table"),
-        {"table": table}
+        {"table": table},
     )
     return result.fetchone() is not None
 
@@ -50,7 +50,8 @@ async def migrate():
             logger.info("Step 1: Creating oidc_states table...")
 
             if not await check_table_exists(conn, "oidc_states"):
-                await conn.execute(text("""
+                await conn.execute(
+                    text("""
                     CREATE TABLE oidc_states (
                         state TEXT PRIMARY KEY NOT NULL,
                         nonce TEXT NOT NULL,
@@ -58,12 +59,15 @@ async def migrate():
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                         expires_at TIMESTAMP NOT NULL
                     )
-                """))
+                """)
+                )
 
                 # Create index for cleanup operations
-                await conn.execute(text(
-                    "CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)"
-                ))
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)"
+                    )
+                )
 
                 logger.info("  ✓ Created oidc_states table with indexes")
             else:
@@ -75,7 +79,8 @@ async def migrate():
             logger.info("Step 2: Creating oidc_pending_links table...")
 
             if not await check_table_exists(conn, "oidc_pending_links"):
-                await conn.execute(text("""
+                await conn.execute(
+                    text("""
                     CREATE TABLE oidc_pending_links (
                         token TEXT PRIMARY KEY NOT NULL,
                         username TEXT NOT NULL,
@@ -86,15 +91,20 @@ async def migrate():
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                         expires_at TIMESTAMP NOT NULL
                     )
-                """))
+                """)
+                )
 
                 # Create indexes
-                await conn.execute(text(
-                    "CREATE INDEX idx_oidc_pending_links_username ON oidc_pending_links(username)"
-                ))
-                await conn.execute(text(
-                    "CREATE INDEX idx_oidc_pending_links_expires_at ON oidc_pending_links(expires_at)"
-                ))
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_oidc_pending_links_username ON oidc_pending_links(username)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "CREATE INDEX idx_oidc_pending_links_expires_at ON oidc_pending_links(expires_at)"
+                    )
+                )
 
                 logger.info("  ✓ Created oidc_pending_links table with indexes")
             else:
@@ -107,38 +117,125 @@ async def migrate():
 
             settings = [
                 # Auth mode
-                ('auth_mode', 'none', 'security', 'Authentication mode (none, local, oidc)', False),
-
+                (
+                    "auth_mode",
+                    "none",
+                    "security",
+                    "Authentication mode (none, local, oidc)",
+                    False,
+                ),
                 # Admin profile
-                ('admin_username', '', 'security', 'Administrator username', False),
-                ('admin_email', '', 'security', 'Administrator email address', False),
-                ('admin_password_hash', '', 'security', 'Administrator password hash (Argon2)', True),
-                ('admin_full_name', '', 'security', 'Administrator full name', False),
-                ('admin_auth_method', 'local', 'security', 'Admin authentication method (local or oidc)', False),
-                ('admin_oidc_subject', '', 'security', 'Admin OIDC subject (sub claim)', False),
-                ('admin_oidc_provider', '', 'security', 'Admin OIDC provider name', False),
-                ('admin_created_at', '', 'security', 'Timestamp when admin account was created', False),
-                ('admin_last_login', '', 'security', 'Timestamp of last admin login', False),
-
+                ("admin_username", "", "security", "Administrator username", False),
+                ("admin_email", "", "security", "Administrator email address", False),
+                (
+                    "admin_password_hash",
+                    "",
+                    "security",
+                    "Administrator password hash (Argon2)",
+                    True,
+                ),
+                ("admin_full_name", "", "security", "Administrator full name", False),
+                (
+                    "admin_auth_method",
+                    "local",
+                    "security",
+                    "Admin authentication method (local or oidc)",
+                    False,
+                ),
+                (
+                    "admin_oidc_subject",
+                    "",
+                    "security",
+                    "Admin OIDC subject (sub claim)",
+                    False,
+                ),
+                (
+                    "admin_oidc_provider",
+                    "",
+                    "security",
+                    "Admin OIDC provider name",
+                    False,
+                ),
+                (
+                    "admin_created_at",
+                    "",
+                    "security",
+                    "Timestamp when admin account was created",
+                    False,
+                ),
+                (
+                    "admin_last_login",
+                    "",
+                    "security",
+                    "Timestamp of last admin login",
+                    False,
+                ),
                 # OIDC/SSO configuration
-                ('oidc_enabled', 'false', 'security', 'Enable OIDC/SSO authentication', False),
-                ('oidc_provider_name', '', 'security', 'OIDC provider name (e.g., Authentik, Keycloak)', False),
-                ('oidc_issuer_url', '', 'security', 'OIDC issuer/discovery URL', False),
-                ('oidc_client_id', '', 'security', 'OIDC client ID', False),
-                ('oidc_client_secret', '', 'security', 'OIDC client secret', True),
-                ('oidc_redirect_uri', '', 'security', 'OIDC redirect URI (auto-generated if empty)', False),
-                ('oidc_scopes', 'openid profile email', 'security', 'OIDC scopes to request (space-separated)', False),
-                ('oidc_username_claim', 'preferred_username', 'security', 'OIDC claim to use for username', False),
-                ('oidc_email_claim', 'email', 'security', 'OIDC claim to use for email address', False),
-                ('oidc_link_token_expire_minutes', '5', 'security', 'Pending link token expiry in minutes', False),
-                ('oidc_link_max_password_attempts', '3', 'security', 'Max password attempts for account linking', False),
+                (
+                    "oidc_enabled",
+                    "false",
+                    "security",
+                    "Enable OIDC/SSO authentication",
+                    False,
+                ),
+                (
+                    "oidc_provider_name",
+                    "",
+                    "security",
+                    "OIDC provider name (e.g., Authentik, Keycloak)",
+                    False,
+                ),
+                ("oidc_issuer_url", "", "security", "OIDC issuer/discovery URL", False),
+                ("oidc_client_id", "", "security", "OIDC client ID", False),
+                ("oidc_client_secret", "", "security", "OIDC client secret", True),
+                (
+                    "oidc_redirect_uri",
+                    "",
+                    "security",
+                    "OIDC redirect URI (auto-generated if empty)",
+                    False,
+                ),
+                (
+                    "oidc_scopes",
+                    "openid profile email",
+                    "security",
+                    "OIDC scopes to request (space-separated)",
+                    False,
+                ),
+                (
+                    "oidc_username_claim",
+                    "preferred_username",
+                    "security",
+                    "OIDC claim to use for username",
+                    False,
+                ),
+                (
+                    "oidc_email_claim",
+                    "email",
+                    "security",
+                    "OIDC claim to use for email address",
+                    False,
+                ),
+                (
+                    "oidc_link_token_expire_minutes",
+                    "5",
+                    "security",
+                    "Pending link token expiry in minutes",
+                    False,
+                ),
+                (
+                    "oidc_link_max_password_attempts",
+                    "3",
+                    "security",
+                    "Max password attempts for account linking",
+                    False,
+                ),
             ]
 
             for key, value, category, description, encrypted in settings:
                 # Check if setting already exists
                 result = await conn.execute(
-                    text("SELECT key FROM settings WHERE key = :key"),
-                    {"key": key}
+                    text("SELECT key FROM settings WHERE key = :key"), {"key": key}
                 )
                 if not result.fetchone():
                     await conn.execute(
@@ -151,8 +248,8 @@ async def migrate():
                             "value": value,
                             "encrypted": 1 if encrypted else 0,
                             "category": category,
-                            "description": description
-                        }
+                            "description": description,
+                        },
                     )
                     logger.info(f"  ✓ Added setting: {key}")
                 else:
@@ -165,14 +262,18 @@ async def migrate():
 
             # Check tables
             result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%oidc%' ORDER BY name")
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%oidc%' ORDER BY name"
+                )
             )
             tables = [row[0] for row in result.fetchall()]
             logger.info(f"  OIDC tables: {', '.join(tables)}")
 
             # Check auth settings
             result = await conn.execute(
-                text("SELECT COUNT(*) FROM settings WHERE key LIKE 'auth_%' OR key LIKE 'admin_%' OR key LIKE 'oidc_%'")
+                text(
+                    "SELECT COUNT(*) FROM settings WHERE key LIKE 'auth_%' OR key LIKE 'admin_%' OR key LIKE 'oidc_%'"
+                )
             )
             setting_count = result.scalar()
             logger.info(f"  Auth settings: {setting_count}")

@@ -355,7 +355,7 @@ class TestUpdateWindowEdgeCases:
     def test_handles_all_day_window(self):
         """Test handles all-day window."""
         window = "00:00-23:59"
-        
+
         # Any time should be inside
         check_time = datetime(2025, 1, 15, 12, 0)
         assert UpdateWindow.is_in_window(window, check_time) is True
@@ -418,7 +418,7 @@ class TestUpdateWindowEdgeCases:
         days1 = UpdateWindow._parse_days("Mon,Wed,Fri")
         # Full names
         days2 = UpdateWindow._parse_days("Monday,Wednesday,Friday")
-        
+
         assert days1 == days2 == {0, 2, 4}
 
     def test_weekend_only_window(self):

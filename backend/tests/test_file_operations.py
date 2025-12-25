@@ -95,7 +95,9 @@ class TestValidateFilePathForUpdate:
         # NOTE: Path.resolve() follows symlinks, so the resolved path won't be a symlink
         # The is_symlink() check in file_operations.py happens AFTER resolve()
         # This test is skipped because symlink detection after resolve() doesn't work as expected
-        pytest.skip("Symlink detection after Path.resolve() is ineffective - resolved path is not a symlink")
+        pytest.skip(
+            "Symlink detection after Path.resolve() is ineffective - resolved path is not a symlink"
+        )
 
     def test_rejects_file_too_large(self, tmp_path):
         """Test rejects file exceeding MAX_FILE_SIZE."""
@@ -115,10 +117,12 @@ class TestValidateFilePathForUpdate:
 
             # Mock os.access to return False for R_OK
             with patch("os.access") as mock_access:
+
                 def access_side_effect(path, mode):
                     if mode == os.R_OK:
                         return False
                     return True
+
                 mock_access.side_effect = access_side_effect
 
                 with pytest.raises(PathValidationError, match="No read permission"):
@@ -132,10 +136,12 @@ class TestValidateFilePathForUpdate:
 
             # Mock os.access to return False for W_OK
             with patch("os.access") as mock_access:
+
                 def access_side_effect(path, mode):
                     if mode == os.W_OK:
                         return False
                     return True
+
                 mock_access.side_effect = access_side_effect
 
                 with pytest.raises(PathValidationError, match="No write permission"):
@@ -312,7 +318,9 @@ class TestCreateTimestampedBackup:
         # This test is skipped because mocking stat() is complex and the size check
         # is redundant with the existence check in practice (if backup exists and copy2
         # succeeded, sizes will match)
-        pytest.skip("Backup size verification is redundant with shutil.copy2 success check")
+        pytest.skip(
+            "Backup size verification is redundant with shutil.copy2 success check"
+        )
 
 
 class TestAtomicFileWrite:
@@ -493,7 +501,10 @@ class TestRestoreFromBackup:
             return original_exists(self)
 
         with patch.object(Path, "exists", mock_exists):
-            with patch("shutil.copy2", side_effect=lambda s, t: copy_called.__setitem__(0, True)):
+            with patch(
+                "shutil.copy2",
+                side_effect=lambda s, t: copy_called.__setitem__(0, True),
+            ):
                 with pytest.raises(FileOperationError, match="target not created"):
                     restore_from_backup(backup, target)
 
@@ -508,6 +519,7 @@ class TestCleanupOldBackups:
 
         # Create 10 backup files with different timestamps
         import time
+
         backups = []
         for i in range(10):
             backup = tmp_path / f"test.txt.backup.2025011{i:02d}-120000"
@@ -524,7 +536,7 @@ class TestCleanupOldBackups:
         remaining = sorted(
             tmp_path.glob("test.txt.backup.*"),
             key=lambda p: p.stat().st_mtime,
-            reverse=True
+            reverse=True,
         )
         assert len(remaining) == 5
 

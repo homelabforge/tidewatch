@@ -1,5 +1,5 @@
 import { Container } from '../types';
-import { Package, Calendar, ToggleLeft, ToggleRight, Shield, ShieldAlert, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Package, Calendar, ToggleLeft, ToggleRight, Shield, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -28,21 +28,19 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
         {/* Status Badge removed - runtime status not available */}
       </div>
 
-      {/* Update Badges */}
-      <div className="mb-3 space-y-2">
-        {hasUpdate && (
+      {/* Update Badge - Single unified badge */}
+      <div className="mb-3">
+        {hasUpdate ? (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/20 text-accent border border-accent/30">
             Update Available
+            {container.latest_tag && ` → ${container.latest_tag}`}
           </span>
-        )}
-
-        {/* Major update blocked by scope indicator */}
-        {!hasUpdate && container.latest_major_tag && container.scope !== 'major' && (
+        ) : container.latest_major_tag && container.scope !== 'major' ? (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
             <AlertTriangle size={12} className="mr-1" />
-            Major Update Available (Scope: {container.scope})
+            Major Update (Blocked by {container.scope})
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* Info Grid */}
@@ -101,26 +99,6 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
           </div>
         )}
       </div>
-
-      {/* Restart Info */}
-      {(container.restart_policy || container.auto_restart_enabled) && (
-        <div className="mt-3 pt-3 border-t border-tide-border flex items-center justify-between gap-3">
-          {/* Docker Restart Policy */}
-          {container.restart_policy && (
-            <span className="text-xs text-tide-text-muted">
-              Docker: <span className="text-tide-text">{container.restart_policy}</span>
-            </span>
-          )}
-
-          {/* TideWatch Auto-Restart Badge */}
-          {container.auto_restart_enabled && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/30">
-              <RefreshCw size={10} />
-              Auto-Restart
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

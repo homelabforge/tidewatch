@@ -28,13 +28,15 @@ class MigrationRunner:
     async def _ensure_migration_tracking_table(self) -> None:
         """Create schema_migrations table if it doesn't exist."""
         async with self.engine.begin() as conn:
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     migration_name VARCHAR(255) NOT NULL UNIQUE,
                     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
                 )
-            """))
+            """)
+            )
             logger.debug("Migration tracking table verified")
 
     async def _get_applied_migrations(self) -> Set[str]:
@@ -45,9 +47,9 @@ class MigrationRunner:
             Set of migration names (without .py extension)
         """
         async with self.engine.begin() as conn:
-            result = await conn.execute(text(
-                "SELECT migration_name FROM schema_migrations ORDER BY id"
-            ))
+            result = await conn.execute(
+                text("SELECT migration_name FROM schema_migrations ORDER BY id")
+            )
             applied = {row[0] for row in result}
             logger.debug(f"Found {len(applied)} applied migration(s)")
             return applied
@@ -60,9 +62,10 @@ class MigrationRunner:
             name: Migration name (without .py extension)
         """
         async with self.engine.begin() as conn:
-            await conn.execute(text(
-                "INSERT INTO schema_migrations (migration_name) VALUES (:name)"
-            ), {"name": name})
+            await conn.execute(
+                text("INSERT INTO schema_migrations (migration_name) VALUES (:name)"),
+                {"name": name},
+            )
             logger.debug(f"Marked migration '{name}' as applied")
 
     def _discover_migrations(self) -> List[Tuple[str, Path]]:
@@ -119,7 +122,9 @@ class MigrationRunner:
             migration_func = module.up
 
         if migration_func is None:
-            raise AttributeError(f"Migration {name} missing upgrade(), migrate(), or up() function")
+            raise AttributeError(
+                f"Migration {name} missing upgrade(), migrate(), or up() function"
+            )
 
         logger.info(f"Running migration: {name}")
         # Check if function expects a db parameter

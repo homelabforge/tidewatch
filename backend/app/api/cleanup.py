@@ -25,7 +25,7 @@ def _parse_exclude_patterns(patterns_str: str) -> List[str]:
 
 @router.get("/stats")
 async def get_disk_usage(
-    admin: Optional[dict] = Depends(require_auth)
+    admin: Optional[dict] = Depends(require_auth),
 ) -> Dict[str, Any]:
     """Get Docker disk usage statistics.
 
@@ -36,7 +36,9 @@ async def get_disk_usage(
         return {"success": True, "stats": stats}
     except Exception as e:
         logger.error(f"Error getting disk usage stats: {sanitize_log_message(str(e))}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve disk usage statistics")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve disk usage statistics"
+        )
 
 
 @router.get("/preview")
@@ -53,7 +55,9 @@ async def preview_cleanup(
     # Get settings
     cleanup_mode = mode or await SettingsService.get(db, "cleanup_mode", "dangling")
     cleanup_days = days or await SettingsService.get_int(db, "cleanup_after_days", 7)
-    exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+    exclude_patterns_str = await SettingsService.get(
+        db, "cleanup_exclude_patterns", "-dev,rollback"
+    )
     exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
     preview = await CleanupService.get_cleanup_preview(
@@ -69,15 +73,19 @@ async def preview_cleanup(
             "mode": cleanup_mode,
             "days": cleanup_days,
             "exclude_patterns": exclude_patterns,
-        }
+        },
     }
 
 
 @router.post("/images")
 async def cleanup_images(
     admin: Optional[dict] = Depends(require_auth),
-    dangling_only: bool = Query(True, description="Only remove dangling (untagged) images"),
-    older_than_days: Optional[int] = Query(None, description="Remove images older than X days"),
+    dangling_only: bool = Query(
+        True, description="Only remove dangling (untagged) images"
+    ),
+    older_than_days: Optional[int] = Query(
+        None, description="Remove images older than X days"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Clean up Docker images.
@@ -86,7 +94,9 @@ async def cleanup_images(
         dangling_only: If True, only removes untagged images
         older_than_days: If provided, also removes images older than this threshold
     """
-    exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+    exclude_patterns_str = await SettingsService.get(
+        db, "cleanup_exclude_patterns", "-dev,rollback"
+    )
     exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
     result = {"success": True, "images_removed": 0, "space_reclaimed": 0}
@@ -98,13 +108,19 @@ async def cleanup_images(
 
     # Optionally remove old images
     if not dangling_only and older_than_days:
-        old_result = await CleanupService.cleanup_old_images(older_than_days, exclude_patterns)
+        old_result = await CleanupService.cleanup_old_images(
+            older_than_days, exclude_patterns
+        )
         result["images_removed"] += old_result.get("images_removed", 0)
         result["space_reclaimed"] += old_result.get("space_reclaimed", 0)
 
-    result["space_reclaimed_formatted"] = CleanupService._format_bytes(result["space_reclaimed"])
+    result["space_reclaimed_formatted"] = CleanupService._format_bytes(
+        result["space_reclaimed"]
+    )
 
-    logger.info(f"Image cleanup complete: {result['images_removed']} images, {result['space_reclaimed_formatted']}")
+    logger.info(
+        f"Image cleanup complete: {result['images_removed']} images, {result['space_reclaimed_formatted']}"
+    )
 
     return result
 
@@ -120,12 +136,16 @@ async def cleanup_containers(
     Respects exclude patterns from settings.
     """
     try:
-        exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+        exclude_patterns_str = await SettingsService.get(
+            db, "cleanup_exclude_patterns", "-dev,rollback"
+        )
         exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
         result = await CleanupService.prune_exited_containers(exclude_patterns)
 
-        logger.info(f"Container cleanup complete: {result.get('containers_removed', 0)} containers removed")
+        logger.info(
+            f"Container cleanup complete: {result.get('containers_removed', 0)} containers removed"
+        )
 
         return {"success": result.get("success", False), **result}
     except Exception as e:
@@ -153,7 +173,9 @@ async def cleanup_all(
     cleanup_mode = mode or await SettingsService.get(db, "cleanup_mode", "dangling")
     cleanup_days = days or await SettingsService.get_int(db, "cleanup_after_days", 7)
     cleanup_containers = await SettingsService.get_bool(db, "cleanup_containers", True)
-    exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+    exclude_patterns_str = await SettingsService.get(
+        db, "cleanup_exclude_patterns", "-dev,rollback"
+    )
     exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
     result = await CleanupService.run_cleanup(
@@ -180,7 +202,9 @@ async def run_cleanup_now(
     cleanup_mode = await SettingsService.get(db, "cleanup_mode", "dangling")
     cleanup_days = await SettingsService.get_int(db, "cleanup_after_days", 7)
     cleanup_containers = await SettingsService.get_bool(db, "cleanup_containers", True)
-    exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback")
+    exclude_patterns_str = await SettingsService.get(
+        db, "cleanup_exclude_patterns", "-dev,rollback"
+    )
     exclude_patterns = _parse_exclude_patterns(exclude_patterns_str)
 
     logger.info(f"Manual cleanup triggered (mode={cleanup_mode}, days={cleanup_days})")
@@ -216,8 +240,12 @@ async def get_cleanup_settings(
             "enabled": await SettingsService.get_bool(db, "cleanup_old_images", False),
             "mode": await SettingsService.get(db, "cleanup_mode", "dangling"),
             "days": await SettingsService.get_int(db, "cleanup_after_days", 7),
-            "cleanup_containers": await SettingsService.get_bool(db, "cleanup_containers", True),
+            "cleanup_containers": await SettingsService.get_bool(
+                db, "cleanup_containers", True
+            ),
             "schedule": await SettingsService.get(db, "cleanup_schedule", "0 4 * * *"),
-            "exclude_patterns": await SettingsService.get(db, "cleanup_exclude_patterns", "-dev,rollback"),
-        }
+            "exclude_patterns": await SettingsService.get(
+                db, "cleanup_exclude_patterns", "-dev,rollback"
+            ),
+        },
     }

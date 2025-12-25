@@ -21,9 +21,7 @@ class TestGetHistoryEndpoint:
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -34,10 +32,10 @@ class TestGetHistoryEndpoint:
             history = UpdateHistory(
                 container_id=container.id,
                 container_name=container.name,
-                from_tag=f"1.{19+i}",
-                to_tag=f"1.{20+i}",
+                from_tag=f"1.{19 + i}",
+                to_tag=f"1.{20 + i}",
                 status="success",
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
             )
             db.add(history)
         await db.commit()
@@ -49,15 +47,15 @@ class TestGetHistoryEndpoint:
         assert isinstance(data, list)
         assert len(data) >= 3
 
-    async def test_get_history_pagination(self, authenticated_client, db, make_container):
+    async def test_get_history_pagination(
+        self, authenticated_client, db, make_container
+    ):
         """Test pagination with limit and offset."""
         from app.models.history import UpdateHistory
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -69,9 +67,9 @@ class TestGetHistoryEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="success",
-                created_at=datetime.now(timezone.utc) - timedelta(minutes=10-i)
+                created_at=datetime.now(timezone.utc) - timedelta(minutes=10 - i),
             )
             db.add(history)
         await db.commit()
@@ -88,20 +86,18 @@ class TestGetHistoryEndpoint:
         data = response.json()
         assert len(data) <= 5
 
-    async def test_get_history_filter_by_container(self, authenticated_client, db, make_container):
+    async def test_get_history_filter_by_container(
+        self, authenticated_client, db, make_container
+    ):
         """Test filtering by container_id."""
         from app.models.history import UpdateHistory
 
         # Create two test containers
         container1 = make_container(
-            name="test-container-1",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container-1", image="nginx:1.20", current_tag="1.20"
         )
         container2 = make_container(
-            name="test-container-2",
-            image="redis:6.0",
-            current_tag="6.0"
+            name="test-container-2", image="redis:6.0", current_tag="6.0"
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -115,7 +111,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         history2 = UpdateHistory(
             container_id=container2.id,
@@ -123,13 +119,15 @@ class TestGetHistoryEndpoint:
             from_tag="5.9",
             to_tag="6.0",
             status="success",
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add_all([history1, history2])
         await db.commit()
 
         # Filter by container1
-        response = await authenticated_client.get(f"/api/v1/history?container_id={container1.id}")
+        response = await authenticated_client.get(
+            f"/api/v1/history?container_id={container1.id}"
+        )
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         # Should only contain container1 events
@@ -137,7 +135,9 @@ class TestGetHistoryEndpoint:
             if event["event_type"] == "update":
                 assert event["container_id"] == container1.id
 
-    async def test_get_history_filter_by_status(self, authenticated_client, db, make_container):
+    async def test_get_history_filter_by_status(
+        self, authenticated_client, db, make_container
+    ):
         """Test filtering by status (success, failed, rolled_back)."""
         from app.models.history import UpdateHistory
 
@@ -148,7 +148,7 @@ class TestGetHistoryEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -162,7 +162,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.18",
             to_tag="1.19",
             status="success",
-            started_at=now - timedelta(hours=2)
+            started_at=now - timedelta(hours=2),
         )
         history2 = UpdateHistory(
             container_id=container.id,
@@ -170,7 +170,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="failed",
-            started_at=now - timedelta(hours=1)
+            started_at=now - timedelta(hours=1),
         )
         history3 = UpdateHistory(
             container_id=container.id,
@@ -178,22 +178,28 @@ class TestGetHistoryEndpoint:
             from_tag="1.20",
             to_tag="1.21",
             status="success",
-            started_at=now
+            started_at=now,
         )
         db.add_all([history1, history2, history3])
         await db.commit()
 
         # Filter by status=success
-        response = await authenticated_client.get("/api/v1/history", params={"status": "success"})
+        response = await authenticated_client.get(
+            "/api/v1/history", params={"status": "success"}
+        )
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
 
         # Verify only success status returned
-        success_events = [e for e in data if e["status"] == "success" and e["event_type"] == "update"]
+        success_events = [
+            e for e in data if e["status"] == "success" and e["event_type"] == "update"
+        ]
         assert len(success_events) >= 2
         assert all(e["status"] == "success" for e in success_events)
 
-    async def test_get_history_filter_by_date_range(self, authenticated_client, db, make_container):
+    async def test_get_history_filter_by_date_range(
+        self, authenticated_client, db, make_container
+    ):
         """Test filtering by date range."""
         from app.models.history import UpdateHistory
 
@@ -204,7 +210,7 @@ class TestGetHistoryEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -218,7 +224,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.18",
             to_tag="1.19",
             status="success",
-            started_at=now - timedelta(days=3)
+            started_at=now - timedelta(days=3),
         )
         history2 = UpdateHistory(
             container_id=container.id,
@@ -226,7 +232,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            started_at=now - timedelta(days=1)
+            started_at=now - timedelta(days=1),
         )
         history3 = UpdateHistory(
             container_id=container.id,
@@ -234,7 +240,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.20",
             to_tag="1.21",
             status="success",
-            started_at=now
+            started_at=now,
         )
         db.add_all([history1, history2, history3])
         await db.commit()
@@ -243,8 +249,7 @@ class TestGetHistoryEndpoint:
         start_date = (now - timedelta(days=2)).isoformat()
         end_date = now.isoformat()
         response = await authenticated_client.get(
-            "/api/v1/history",
-            params={"start_date": start_date, "end_date": end_date}
+            "/api/v1/history", params={"start_date": start_date, "end_date": end_date}
         )
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -255,19 +260,21 @@ class TestGetHistoryEndpoint:
 
         # Verify all returned events are within date range
         for event in update_events:
-            event_time = datetime.fromisoformat(event["started_at"].replace('Z', '+00:00'))
+            event_time = datetime.fromisoformat(
+                event["started_at"].replace("Z", "+00:00")
+            )
             assert event_time >= now - timedelta(days=2)
             assert event_time <= now
 
-    async def test_get_history_sort_by_created_at(self, authenticated_client, db, make_container):
+    async def test_get_history_sort_by_created_at(
+        self, authenticated_client, db, make_container
+    ):
         """Test sorting by created_at descending."""
         from app.models.history import UpdateHistory
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -282,7 +289,7 @@ class TestGetHistoryEndpoint:
             to_tag="1.19",
             status="success",
             created_at=now - timedelta(hours=2),
-            started_at=now - timedelta(hours=2)
+            started_at=now - timedelta(hours=2),
         )
         history2 = UpdateHistory(
             container_id=container.id,
@@ -291,7 +298,7 @@ class TestGetHistoryEndpoint:
             to_tag="1.20",
             status="success",
             created_at=now - timedelta(hours=1),
-            started_at=now - timedelta(hours=1)
+            started_at=now - timedelta(hours=1),
         )
         history3 = UpdateHistory(
             container_id=container.id,
@@ -300,7 +307,7 @@ class TestGetHistoryEndpoint:
             to_tag="1.21",
             status="success",
             created_at=now,
-            started_at=now
+            started_at=now,
         )
         db.add_all([history1, history2, history3])
         await db.commit()
@@ -313,13 +320,18 @@ class TestGetHistoryEndpoint:
         if len(data) >= 3:
             update_events = [e for e in data if e["event_type"] == "update"][:3]
             for i in range(len(update_events) - 1):
-                current = datetime.fromisoformat(update_events[i]["started_at"].replace('Z', '+00:00'))
-                next_item = datetime.fromisoformat(update_events[i+1]["started_at"].replace('Z', '+00:00'))
+                current = datetime.fromisoformat(
+                    update_events[i]["started_at"].replace("Z", "+00:00")
+                )
+                next_item = datetime.fromisoformat(
+                    update_events[i + 1]["started_at"].replace("Z", "+00:00")
+                )
                 assert current >= next_item
 
     async def test_get_history_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -337,15 +349,15 @@ class TestGetHistoryEndpoint:
 class TestGetHistoryEventEndpoint:
     """Test suite for GET /api/v1/history/{id} endpoint."""
 
-    async def test_get_history_event_valid_id(self, authenticated_client, db, make_container):
+    async def test_get_history_event_valid_id(
+        self, authenticated_client, db, make_container
+    ):
         """Test get history entry by valid ID."""
         from app.models.history import UpdateHistory
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -358,7 +370,7 @@ class TestGetHistoryEventEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
@@ -376,15 +388,15 @@ class TestGetHistoryEventEndpoint:
         response = await authenticated_client.get("/api/v1/history/999999")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_get_history_event_includes_error_details(self, authenticated_client, db, make_container):
+    async def test_get_history_event_includes_error_details(
+        self, authenticated_client, db, make_container
+    ):
         """Test includes error details if failed."""
         from app.models.history import UpdateHistory
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -398,7 +410,7 @@ class TestGetHistoryEventEndpoint:
             to_tag="1.20",
             status="failed",
             error_message="Failed to pull image: connection timeout",
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
@@ -410,15 +422,15 @@ class TestGetHistoryEventEndpoint:
         assert data["status"] == "failed"
         assert data["error_message"] == "Failed to pull image: connection timeout"
 
-    async def test_get_history_event_includes_rollback_info(self, authenticated_client, db, make_container):
+    async def test_get_history_event_includes_rollback_info(
+        self, authenticated_client, db, make_container
+    ):
         """Test includes rollback info if rolled back."""
         from app.models.history import UpdateHistory
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -434,7 +446,7 @@ class TestGetHistoryEventEndpoint:
             status="rolled_back",
             rolled_back_at=rolled_back_time,
             can_rollback=False,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
@@ -451,16 +463,16 @@ class TestGetHistoryEventEndpoint:
 class TestRollbackEndpoint:
     """Test suite for POST /api/v1/history/{id}/rollback endpoint."""
 
-    async def test_rollback_successful_update(self, authenticated_client, db, mock_docker_client, make_container):
+    async def test_rollback_successful_update(
+        self, authenticated_client, db, mock_docker_client, make_container
+    ):
         """Test rollback of successful update initiates rollback."""
         from app.models.history import UpdateHistory
         from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -474,7 +486,7 @@ class TestRollbackEndpoint:
             to_tag="1.20",
             status="success",
             can_rollback=True,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
@@ -484,29 +496,33 @@ class TestRollbackEndpoint:
         mock_result = {
             "success": True,
             "message": "Rollback completed successfully",
-            "history_id": history.id
+            "history_id": history.id,
         }
 
-        with patch('app.api.history.UpdateEngine.rollback_update', new_callable=AsyncMock) as mock_rollback:
+        with patch(
+            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+        ) as mock_rollback:
             mock_rollback.return_value = mock_result
 
-            response = await authenticated_client.post(f"/api/v1/history/{history.id}/rollback")
+            response = await authenticated_client.post(
+                f"/api/v1/history/{history.id}/rollback"
+            )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert data["success"] is True
             mock_rollback.assert_called_once()
 
-    async def test_rollback_failed_update(self, authenticated_client, db, make_container):
+    async def test_rollback_failed_update(
+        self, authenticated_client, db, make_container
+    ):
         """Test rollback of failed update returns 400."""
         from app.models.history import UpdateHistory
         from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -520,30 +536,34 @@ class TestRollbackEndpoint:
             to_tag="1.20",
             status="failed",
             can_rollback=False,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
         await db.refresh(history)
 
         # Mock rollback to raise ValueError for failed update
-        with patch('app.api.history.UpdateEngine.rollback_update', new_callable=AsyncMock) as mock_rollback:
+        with patch(
+            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+        ) as mock_rollback:
             mock_rollback.side_effect = ValueError("Cannot rollback failed update")
 
-            response = await authenticated_client.post(f"/api/v1/history/{history.id}/rollback")
+            response = await authenticated_client.post(
+                f"/api/v1/history/{history.id}/rollback"
+            )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    async def test_rollback_already_rolled_back(self, authenticated_client, db, make_container):
+    async def test_rollback_already_rolled_back(
+        self, authenticated_client, db, make_container
+    ):
         """Test rollback of already rolled back update returns 400."""
         from app.models.history import UpdateHistory
         from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
-            name="test-container",
-            image="nginx:1.20",
-            current_tag="1.20"
+            name="test-container", image="nginx:1.20", current_tag="1.20"
         )
         db.add(container)
         await db.commit()
@@ -558,17 +578,21 @@ class TestRollbackEndpoint:
             status="rolled_back",
             rolled_back_at=datetime.now(timezone.utc),
             can_rollback=False,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
         await db.refresh(history)
 
         # Mock rollback to raise ValueError for already rolled back
-        with patch('app.api.history.UpdateEngine.rollback_update', new_callable=AsyncMock) as mock_rollback:
+        with patch(
+            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+        ) as mock_rollback:
             mock_rollback.side_effect = ValueError("Update already rolled back")
 
-            response = await authenticated_client.post(f"/api/v1/history/{history.id}/rollback")
+            response = await authenticated_client.post(
+                f"/api/v1/history/{history.id}/rollback"
+            )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -577,12 +601,16 @@ class TestRollbackEndpoint:
         """Test rollback when container version changed returns 400."""
         pass
 
-    @pytest.mark.skip(reason="Requires UpdateEngine rollback implementation verification")
+    @pytest.mark.skip(
+        reason="Requires UpdateEngine rollback implementation verification"
+    )
     async def test_rollback_creates_history(self, authenticated_client, db):
         """Test rollback creates new history entry."""
         pass
 
-    async def test_rollback_event_bus_notification(self, authenticated_client, db, mock_event_bus):
+    async def test_rollback_event_bus_notification(
+        self, authenticated_client, db, mock_event_bus
+    ):
         """Test rollback emits event bus notification."""
         # Attempt rollback (will fail without valid history, but tests fixture)
         response = await authenticated_client.post("/api/v1/history/999/rollback")
@@ -591,11 +619,16 @@ class TestRollbackEndpoint:
         # When rollback is implemented, verify event bus publish was called:
         # if response.status_code == status.HTTP_200_OK:
         #     mock_event_bus.publish.assert_called()
-        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        assert response.status_code in [
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST,
+        ]
 
     async def test_rollback_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -617,7 +650,7 @@ class TestHistoryStatsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -630,9 +663,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="success",
-                started_at=now - timedelta(hours=i)
+                started_at=now - timedelta(hours=i),
             )
             db.add(history)
 
@@ -641,9 +674,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"2.{i}",
-                to_tag=f"2.{i+1}",
+                to_tag=f"2.{i + 1}",
                 status="failed",
-                started_at=now - timedelta(hours=i+7)
+                started_at=now - timedelta(hours=i + 7),
             )
             db.add(history)
         await db.commit()
@@ -666,7 +699,7 @@ class TestHistoryStatsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -679,9 +712,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="success" if i % 2 == 0 else "failed",
-                started_at=now - timedelta(hours=i)
+                started_at=now - timedelta(hours=i),
             )
             db.add(history)
         await db.commit()
@@ -693,7 +726,9 @@ class TestHistoryStatsEndpoint:
         assert "total_updates" in data
         assert data["total_updates"] >= 5
 
-    async def test_stats_average_update_time(self, authenticated_client, db, make_container):
+    async def test_stats_average_update_time(
+        self, authenticated_client, db, make_container
+    ):
         """Test returns average update time."""
         from app.models.history import UpdateHistory
 
@@ -704,7 +739,7 @@ class TestHistoryStatsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -717,10 +752,10 @@ class TestHistoryStatsEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="success",
                 started_at=now - timedelta(hours=i),
-                duration_seconds=duration
+                duration_seconds=duration,
             )
             db.add(history)
         await db.commit()
@@ -743,7 +778,7 @@ class TestHistoryStatsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -756,9 +791,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container.id,
                 container_name=container.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="failed",
-                started_at=now - timedelta(hours=i)
+                started_at=now - timedelta(hours=i),
             )
             db.add(history)
         await db.commit()
@@ -770,7 +805,9 @@ class TestHistoryStatsEndpoint:
         assert "failed_count" in data
         assert data["failed_count"] >= 3
 
-    async def test_stats_most_updated_containers(self, authenticated_client, db, make_container):
+    async def test_stats_most_updated_containers(
+        self, authenticated_client, db, make_container
+    ):
         """Test returns most frequently updated containers."""
         from app.models.history import UpdateHistory
 
@@ -781,7 +818,7 @@ class TestHistoryStatsEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx1"
+            service_name="nginx1",
         )
         container2 = make_container(
             name=f"most-updated-2-{id(self)}",
@@ -789,7 +826,7 @@ class TestHistoryStatsEndpoint:
             current_tag="6",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="redis"
+            service_name="redis",
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -803,9 +840,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container1.id,
                 container_name=container1.name,
                 from_tag=f"1.{i}",
-                to_tag=f"1.{i+1}",
+                to_tag=f"1.{i + 1}",
                 status="success",
-                started_at=now - timedelta(hours=i)
+                started_at=now - timedelta(hours=i),
             )
             db.add(history)
 
@@ -814,9 +851,9 @@ class TestHistoryStatsEndpoint:
                 container_id=container2.id,
                 container_name=container2.name,
                 from_tag=f"6.{i}",
-                to_tag=f"6.{i+1}",
+                to_tag=f"6.{i + 1}",
                 status="success",
-                started_at=now - timedelta(hours=i+5)
+                started_at=now - timedelta(hours=i + 5),
             )
             db.add(history)
         await db.commit()
@@ -829,12 +866,18 @@ class TestHistoryStatsEndpoint:
         assert isinstance(data["most_updated_containers"], list)
 
         # Find our containers in the results
-        our_containers = [c for c in data["most_updated_containers"]
-                         if c["container_name"] in [container1.name, container2.name]]
+        our_containers = [
+            c
+            for c in data["most_updated_containers"]
+            if c["container_name"] in [container1.name, container2.name]
+        ]
 
         if len(our_containers) > 0:
             # Container 1 should have more updates than Container 2
-            container1_stats = next((c for c in our_containers if c["container_name"] == container1.name), None)
+            container1_stats = next(
+                (c for c in our_containers if c["container_name"] == container1.name),
+                None,
+            )
             if container1_stats:
                 assert container1_stats["update_count"] == 5
 

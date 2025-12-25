@@ -19,7 +19,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", default_db)
 # Ensure database directory exists (skip for in-memory databases used in tests)
 if DATABASE_URL.startswith("sqlite") and ":memory:" not in DATABASE_URL:
     # Extract path from URL (handle both sqlite:/// and sqlite://)
-    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite+aiosqlite://", "")
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace(
+        "sqlite+aiosqlite://", ""
+    )
 
     # Validate database path to prevent path traversal
     # Allow /data directory for production and /tmp for tests
@@ -48,6 +50,7 @@ if "sqlite" in DATABASE_URL:
     # StaticPool maintains a single connection, better than NullPool which recreates connections
     # This reduces connection overhead while avoiding SQLite's locking issues
     from sqlalchemy.pool import StaticPool
+
     engine = create_async_engine(
         DATABASE_URL,
         echo=False,
@@ -108,7 +111,9 @@ async def init_db():
             # Enable foreign keys
             await conn.execute(text("PRAGMA foreign_keys=ON"))
 
-            logger.info("SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout")
+            logger.info(
+                "SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout"
+            )
 
     # Run pending migrations
     try:

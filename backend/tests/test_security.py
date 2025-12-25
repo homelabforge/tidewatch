@@ -133,7 +133,10 @@ class TestMaskSensitive:
 
     def test_custom_mask_character(self):
         """Test custom mask character."""
-        assert mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
+        assert (
+            mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X")
+            == "XXXcdef"
+        )
         assert mask_sensitive("password", visible_chars=3, mask_char="#") == "###ord"
 
     def test_never_shows_beginning(self):
@@ -146,8 +149,8 @@ class TestMaskSensitive:
         """Test output is safe for logging."""
         sensitive_values = [
             "ghp_1234567890abcdefghij",  # GitHub token
-            "xoxb-1234567890-abcdef",     # Slack token
-            "AIzaSyABC123_xyz",           # Google API key
+            "xoxb-1234567890-abcdef",  # Slack token
+            "AIzaSyABC123_xyz",  # Google API key
         ]
         for value in sensitive_values:
             masked = mask_sensitive(value)
@@ -382,7 +385,10 @@ class TestValidateImageName:
     def test_validates_image_with_registry(self):
         """Test validates image name with registry."""
         assert validate_image_name("docker.io/nginx:latest") == "docker.io/nginx:latest"
-        assert validate_image_name("ghcr.io/user/repo:v1.0.0") == "ghcr.io/user/repo:v1.0.0"
+        assert (
+            validate_image_name("ghcr.io/user/repo:v1.0.0")
+            == "ghcr.io/user/repo:v1.0.0"
+        )
 
     def test_validates_image_with_namespace(self):
         """Test validates image name with namespace."""

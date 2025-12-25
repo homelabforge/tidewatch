@@ -41,11 +41,13 @@ def validate_container_name(name: str) -> bool:
     if not name or len(name) > 255:
         return False
     # Docker naming pattern: [a-zA-Z0-9][a-zA-Z0-9_.-]*
-    pattern = r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$'
+    pattern = r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
     return bool(re.match(pattern, name))
 
 
-def validate_compose_file_path(file_path: str, allowed_base_dir: Optional[str] = None) -> bool:
+def validate_compose_file_path(
+    file_path: str, allowed_base_dir: Optional[str] = None
+) -> bool:
     """Validate compose file path to prevent path traversal attacks.
 
     Args:
@@ -59,7 +61,7 @@ def validate_compose_file_path(file_path: str, allowed_base_dir: Optional[str] =
         return False
 
     # Check for dangerous patterns before resolving
-    dangerous_patterns = ['..', '//', '\\', '\x00']
+    dangerous_patterns = ["..", "//", "\\", "\x00"]
     if any(pattern in file_path for pattern in dangerous_patterns):
         logger.warning(f"Dangerous patterns detected in path: {file_path}")
         return False
@@ -74,7 +76,7 @@ def validate_compose_file_path(file_path: str, allowed_base_dir: Optional[str] =
             return False
 
         # Check file extension
-        if resolved_path.suffix.lower() not in ['.yml', '.yaml']:
+        if resolved_path.suffix.lower() not in [".yml", ".yaml"]:
             logger.warning(f"Invalid file extension: {resolved_path.suffix}")
             return False
 
@@ -120,10 +122,10 @@ def validate_tag_format(tag: str) -> bool:
     if tag.startswith("sha256:"):
         # Validate sha256 digest format
         digest = tag[7:]
-        return bool(re.match(r'^[a-fA-F0-9]{64}$', digest))
+        return bool(re.match(r"^[a-fA-F0-9]{64}$", digest))
 
     # Regular tag validation
-    pattern = r'^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$'
+    pattern = r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$"
     return bool(re.match(pattern, tag))
 
 
@@ -149,13 +151,19 @@ class ComposeParser:
         # Allowed base directories: /compose (production), /tmp (tests), /srv/raid0/docker/compose (homelab)
         try:
             if compose_dir.startswith("/compose"):
-                validated_dir = sanitize_path(compose_dir, "/compose", allow_symlinks=False)
+                validated_dir = sanitize_path(
+                    compose_dir, "/compose", allow_symlinks=False
+                )
             elif compose_dir.startswith("/tmp"):
                 validated_dir = sanitize_path(compose_dir, "/tmp", allow_symlinks=False)
             elif compose_dir.startswith("/srv/raid0/docker/compose"):
-                validated_dir = sanitize_path(compose_dir, "/srv/raid0/docker/compose", allow_symlinks=False)
+                validated_dir = sanitize_path(
+                    compose_dir, "/srv/raid0/docker/compose", allow_symlinks=False
+                )
             else:
-                logger.warning(f"Compose directory outside allowed paths: {sanitize_log_message(compose_dir)}")
+                logger.warning(
+                    f"Compose directory outside allowed paths: {sanitize_log_message(compose_dir)}"
+                )
                 return []
 
             if not validated_dir.exists():
@@ -163,11 +171,15 @@ class ComposeParser:
                 return []
 
         except (ValueError, FileNotFoundError) as e:
-            logger.error(f"Invalid compose directory path: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid compose directory path: {sanitize_log_message(str(e))}"
+            )
             return []
 
         containers = []
-        compose_files = list(validated_dir.glob("*.yml")) + list(validated_dir.glob("*.yaml"))
+        compose_files = list(validated_dir.glob("*.yml")) + list(
+            validated_dir.glob("*.yaml")
+        )
 
         logger.info(f"Found {len(compose_files)} compose files in {compose_dir}")
 
@@ -190,9 +202,7 @@ class ComposeParser:
         return containers
 
     @staticmethod
-    async def _parse_compose_file(
-        file_path: str, db: AsyncSession
-    ) -> List[Container]:
+    async def _parse_compose_file(file_path: str, db: AsyncSession) -> List[Container]:
         """Parse a single compose file.
 
         Args:
@@ -219,7 +229,9 @@ class ComposeParser:
 
             # Validate container name to prevent command injection
             if not validate_container_name(service_name):
-                logger.warning(f"Invalid container name '{service_name}', skipping for security")
+                logger.warning(
+                    f"Invalid container name '{service_name}', skipping for security"
+                )
                 continue
 
             image = service_config.get("image")
@@ -251,11 +263,15 @@ class ComposeParser:
             scope = scope_label or "patch"
             vulnforge_label = labels.get("tidewatch.vulnforge")
             vulnforge_enabled = (
-                vulnforge_label.lower() == "true" if isinstance(vulnforge_label, str) else True
+                vulnforge_label.lower() == "true"
+                if isinstance(vulnforge_label, str)
+                else True
             )
             prereleases_label = labels.get("tidewatch.include_prereleases")
             include_prereleases = (
-                prereleases_label.lower() == "true" if isinstance(prereleases_label, str) else False
+                prereleases_label.lower() == "true"
+                if isinstance(prereleases_label, str)
+                else False
             )
             enabled = labels.get("tidewatch.enabled", "true").lower() == "true"
 
@@ -264,11 +280,16 @@ class ComposeParser:
                 continue
 
             # Determine health check URL & method
-            health_check_url = labels.get("tidewatch.health_check_url") or labels.get("tidewatch.healthcheck")
+            health_check_url = labels.get("tidewatch.health_check_url") or labels.get(
+                "tidewatch.healthcheck"
+            )
             if not health_check_url:
-                health_check_url = ComposeParser._extract_healthcheck_url(service_config.get("healthcheck"), service_name)
+                health_check_url = ComposeParser._extract_healthcheck_url(
+                    service_config.get("healthcheck"), service_name
+                )
             health_check_method = ComposeParser._normalize_health_check_method(
-                labels.get("tidewatch.health_check_method") or labels.get("tidewatch.healthcheck_method")
+                labels.get("tidewatch.health_check_method")
+                or labels.get("tidewatch.healthcheck_method")
             )
 
             # Create container object
@@ -293,7 +314,9 @@ class ComposeParser:
             containers.append(container)
             container.__dict__["_policy_from_compose"] = policy_label is not None
             container.__dict__["_scope_from_compose"] = scope_label is not None
-            container.__dict__["_prereleases_from_compose"] = prereleases_label is not None
+            container.__dict__["_prereleases_from_compose"] = (
+                prereleases_label is not None
+            )
             container.__dict__["_vulnforge_from_compose"] = vulnforge_label is not None
             container.__dict__["_health_method_from_compose"] = (
                 labels.get("tidewatch.health_check_method") is not None
@@ -416,30 +439,38 @@ class ComposeParser:
 
             # Enforce key length limit
             if len(key) > MAX_KEY_LENGTH:
-                logger.warning(f"Label key too long ({len(key)} chars), truncating: {key[:50]}...")
+                logger.warning(
+                    f"Label key too long ({len(key)} chars), truncating: {key[:50]}..."
+                )
                 key = key[:MAX_KEY_LENGTH]
 
             # Docker labels allow: [a-zA-Z0-9._-]
             # We'll be more permissive but log suspicious patterns
-            if any(char in key for char in ['\n', '\r', '\0', '\x00']):
-                logger.warning(f"Skipping label with control characters in key: {key[:50]}")
+            if any(char in key for char in ["\n", "\r", "\0", "\x00"]):
+                logger.warning(
+                    f"Skipping label with control characters in key: {key[:50]}"
+                )
                 continue
 
             # Convert value to string and enforce length limit (use original key)
             value = str(labels[original_key])
             if len(value) > MAX_VALUE_LENGTH:
-                logger.warning(f"Label value too long ({len(value)} chars), truncating for key: {key}")
+                logger.warning(
+                    f"Label value too long ({len(value)} chars), truncating for key: {key}"
+                )
                 value = value[:MAX_VALUE_LENGTH]
 
             # Filter control characters from value
-            if any(char in value for char in ['\0', '\x00']):
+            if any(char in value for char in ["\0", "\x00"]):
                 logger.warning(f"Filtering null bytes from label value for key: {key}")
-                value = value.replace('\0', '').replace('\x00', '')
+                value = value.replace("\0", "").replace("\x00", "")
 
             sanitized[key] = value
 
         if len(labels) > MAX_LABELS:
-            logger.warning(f"Too many labels ({len(labels)}), only processing first {MAX_LABELS}")
+            logger.warning(
+                f"Too many labels ({len(labels)}), only processing first {MAX_LABELS}"
+            )
 
         return sanitized
 
@@ -467,12 +498,16 @@ class ComposeParser:
         for candidate in candidates:
             # Limit input length to prevent ReDoS attacks
             if len(candidate) > 4096:
-                logger.warning(f"Healthcheck candidate too long ({len(candidate)} chars), skipping")
+                logger.warning(
+                    f"Healthcheck candidate too long ({len(candidate)} chars), skipping"
+                )
                 continue
 
             match = url_pattern.search(candidate)
             if match:
-                return ComposeParser._normalize_healthcheck_url(match.group(0), service_name)
+                return ComposeParser._normalize_healthcheck_url(
+                    match.group(0), service_name
+                )
 
         return None
 
@@ -501,7 +536,9 @@ class ComposeParser:
         if method in {"auto", "http", "docker"}:
             return method
 
-        logger.warning(f"Unknown tidewatch health check method '{value}', defaulting to auto")
+        logger.warning(
+            f"Unknown tidewatch health check method '{value}', defaulting to auto"
+        )
         return "auto"
 
     @staticmethod
@@ -565,27 +602,45 @@ class ComposeParser:
                     existing.labels = container.labels
                     changed = True
 
-                if getattr(container, "_policy_from_compose", False) and existing.policy != container.policy:
+                if (
+                    getattr(container, "_policy_from_compose", False)
+                    and existing.policy != container.policy
+                ):
                     existing.policy = container.policy
                     changed = True
 
-                if getattr(container, "_scope_from_compose", False) and existing.scope != container.scope:
+                if (
+                    getattr(container, "_scope_from_compose", False)
+                    and existing.scope != container.scope
+                ):
                     existing.scope = container.scope
                     changed = True
 
-                if getattr(container, "_prereleases_from_compose", False) and existing.include_prereleases != container.include_prereleases:
+                if (
+                    getattr(container, "_prereleases_from_compose", False)
+                    and existing.include_prereleases != container.include_prereleases
+                ):
                     existing.include_prereleases = container.include_prereleases
                     changed = True
 
-                if getattr(container, "_vulnforge_from_compose", False) and existing.vulnforge_enabled != container.vulnforge_enabled:
+                if (
+                    getattr(container, "_vulnforge_from_compose", False)
+                    and existing.vulnforge_enabled != container.vulnforge_enabled
+                ):
                     existing.vulnforge_enabled = container.vulnforge_enabled
                     changed = True
 
-                if container.health_check_url is not None and existing.health_check_url != container.health_check_url:
+                if (
+                    container.health_check_url is not None
+                    and existing.health_check_url != container.health_check_url
+                ):
                     existing.health_check_url = container.health_check_url
                     changed = True
 
-                if getattr(container, "_health_method_from_compose", False) and existing.health_check_method != container.health_check_method:
+                if (
+                    getattr(container, "_health_method_from_compose", False)
+                    and existing.health_check_method != container.health_check_method
+                ):
                     existing.health_check_method = container.health_check_method
                     changed = True
 
@@ -636,7 +691,9 @@ class ComposeParser:
             # Update if different
             if container.restart_policy != restart_policy:
                 container.restart_policy = restart_policy
-                logger.debug(f"Updated restart policy for {container.name}: {restart_policy}")
+                logger.debug(
+                    f"Updated restart policy for {container.name}: {restart_policy}"
+                )
 
     @staticmethod
     async def _cleanup_stale_updates(
@@ -657,7 +714,7 @@ class ComposeParser:
         result = await db.execute(
             select(Update).where(
                 Update.reason_type == "stale",
-                Update.status.in_(["pending", "approved"])
+                Update.status.in_(["pending", "approved"]),
             )
         )
         stale_updates = result.scalars().all()
@@ -688,7 +745,9 @@ class ComposeParser:
         from datetime import datetime, timedelta, timezone
 
         # Check if stale detection is enabled
-        enabled = await SettingsService.get_bool(db, "stale_detection_enabled", default=True)
+        enabled = await SettingsService.get_bool(
+            db, "stale_detection_enabled", default=True
+        )
         if not enabled:
             logger.debug("Stale detection is disabled")
             return
@@ -741,11 +800,13 @@ class ComposeParser:
                 select(Update).where(
                     Update.container_id == container.id,
                     Update.reason_type == "stale",
-                    Update.status.in_(["pending", "approved"])
+                    Update.status.in_(["pending", "approved"]),
                 )
             )
             if existing_update.scalar_one_or_none():
-                logger.debug(f"Container {container.name} already has stale notification")
+                logger.debug(
+                    f"Container {container.name} already has stale notification"
+                )
                 continue
 
             # Check if snoozed
@@ -753,7 +814,7 @@ class ComposeParser:
                 select(Update).where(
                     Update.container_id == container.id,
                     Update.reason_type == "stale",
-                    Update.snoozed_until > now
+                    Update.snoozed_until > now,
                 )
             )
             if snoozed_update.scalar_one_or_none():
@@ -785,7 +846,10 @@ class ComposeParser:
 
     @staticmethod
     async def update_compose_file(
-        file_path: str, service_name: str, new_tag: str, db: Optional[AsyncSession] = None
+        file_path: str,
+        service_name: str,
+        new_tag: str,
+        db: Optional[AsyncSession] = None,
     ) -> bool:
         """Update a compose file with a new image tag.
 
@@ -817,9 +881,13 @@ class ComposeParser:
                 try:
                     allowed_dir = await SettingsService.get(db, "compose_directory")
                 except OperationalError as e:
-                    logger.warning(f"Database error fetching compose directory from settings: {e}")
+                    logger.warning(
+                        f"Database error fetching compose directory from settings: {e}"
+                    )
                 except (ValueError, KeyError, AttributeError) as e:
-                    logger.warning(f"Invalid settings data fetching compose directory: {e}")
+                    logger.warning(
+                        f"Invalid settings data fetching compose directory: {e}"
+                    )
 
             # Validate file path to prevent path traversal
             if not validate_compose_file_path(file_path, allowed_dir):
@@ -916,11 +984,15 @@ class ComposeParser:
 
                     # Limit input length to prevent ReDoS
                     if len(test_str) > 4096:
-                        logger.warning(f"Healthcheck test string too long ({len(test_str)} chars), truncating")
+                        logger.warning(
+                            f"Healthcheck test string too long ({len(test_str)} chars), truncating"
+                        )
                         test_str = test_str[:4096]
 
                     # Extract URL path from curl command with length limits
-                    url_match = re.search(r"https?://[^/\s]{1,253}(/[^\s]{0,1000})", test_str)
+                    url_match = re.search(
+                        r"https?://[^/\s]{1,253}(/[^\s]{0,1000})", test_str
+                    )
                     if url_match:
                         health_path = url_match.group(1)
                     else:
@@ -955,13 +1027,19 @@ class ComposeParser:
             return None
 
         except YAMLError as e:
-            logger.error(f"YAML parsing error extracting health check URL from {compose_file}: {e}")
+            logger.error(
+                f"YAML parsing error extracting health check URL from {compose_file}: {e}"
+            )
             return None
         except (OSError, PermissionError) as e:
-            logger.error(f"File access error extracting health check URL from {compose_file}: {e}")
+            logger.error(
+                f"File access error extracting health check URL from {compose_file}: {e}"
+            )
             return None
         except (ValueError, KeyError, AttributeError) as e:
-            logger.error(f"Invalid compose data extracting health check URL from {compose_file}: {e}")
+            logger.error(
+                f"Invalid compose data extracting health check URL from {compose_file}: {e}"
+            )
             return None
 
     @staticmethod
@@ -990,7 +1068,9 @@ class ComposeParser:
                 return repo_path
 
             # Handle LinuxServer.io images
-            if image.startswith("lscr.io/linuxserver/") or image.startswith("linuxserver/"):
+            if image.startswith("lscr.io/linuxserver/") or image.startswith(
+                "linuxserver/"
+            ):
                 # Extract app name
                 app_name = image.split("/")[-1]
                 # LinuxServer.io pattern: linuxserver/docker-{app}
@@ -1080,5 +1160,7 @@ class ComposeParser:
             return None
 
         except (ValueError, KeyError, AttributeError, TypeError) as e:
-            logger.error(f"Invalid image format extracting release source from '{image}': {e}")
+            logger.error(
+                f"Invalid image format extracting release source from '{image}': {e}"
+            )
             return None

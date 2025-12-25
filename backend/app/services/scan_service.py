@@ -34,17 +34,19 @@ class ScanService:
             Exception: If scan fails
         """
         # Get container
-        result = await db.execute(
-            select(Container).where(Container.id == container_id)
-        )
+        result = await db.execute(select(Container).where(Container.id == container_id))
         container = result.scalar_one_or_none()
 
         if not container:
             raise ValueError(f"Container with ID {container_id} not found")
 
-        logger.info(f"Container {container.name}: vulnforge_enabled={container.vulnforge_enabled}")
+        logger.info(
+            f"Container {container.name}: vulnforge_enabled={container.vulnforge_enabled}"
+        )
         if not container.vulnforge_enabled:
-            error_msg = f"VulnForge scanning is disabled for container '{container.name}'"
+            error_msg = (
+                f"VulnForge scanning is disabled for container '{container.name}'"
+            )
             logger.error(f"Raising ValueError: {error_msg}")
             raise ValueError(error_msg)
 
@@ -124,9 +126,7 @@ class ScanService:
             List of scan results
         """
         # Get all containers with VulnForge enabled
-        result = await db.execute(
-            select(Container).where(Container.vulnforge_enabled)
-        )
+        result = await db.execute(select(Container).where(Container.vulnforge_enabled))
         containers = result.scalars().all()
 
         scan_results = []
@@ -210,7 +210,7 @@ class ScanService:
         subquery = (
             select(
                 VulnerabilityScan.container_id,
-                func.max(VulnerabilityScan.scanned_at).label("latest_scan")
+                func.max(VulnerabilityScan.scanned_at).label("latest_scan"),
             )
             .group_by(VulnerabilityScan.container_id)
             .subquery()
@@ -221,8 +221,8 @@ class ScanService:
                 subquery,
                 and_(
                     VulnerabilityScan.container_id == subquery.c.container_id,
-                    VulnerabilityScan.scanned_at == subquery.c.latest_scan
-                )
+                    VulnerabilityScan.scanned_at == subquery.c.latest_scan,
+                ),
             )
         )
         latest_scans = latest_scans_result.scalars().all()
@@ -236,8 +236,7 @@ class ScanService:
 
         # Containers at risk (critical or high vulnerabilities)
         containers_at_risk = sum(
-            1 for scan in latest_scans
-            if scan.critical_count > 0 or scan.high_count > 0
+            1 for scan in latest_scans if scan.critical_count > 0 or scan.high_count > 0
         )
 
         # Get last scan timestamp

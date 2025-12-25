@@ -39,6 +39,7 @@ def get_version() -> str:
         logger.warning(f"Could not read version from pyproject.toml: {e}")
         return "0.0.0-dev"
 
+
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -89,12 +90,14 @@ async def lifespan(app: FastAPI):
         # Find all in_progress records using raw SQL
         result = await db.execute(
             text("SELECT id FROM update_history WHERE status = :status"),
-            {"status": "in_progress"}
+            {"status": "in_progress"},
         )
         stuck_records = result.fetchall()
 
         if stuck_records:
-            logger.warning(f"Found {len(stuck_records)} stuck update history records, marking as failed")
+            logger.warning(
+                f"Found {len(stuck_records)} stuck update history records, marking as failed"
+            )
             # Update records using raw SQL
             await db.execute(
                 text("""
@@ -108,8 +111,8 @@ async def lifespan(app: FastAPI):
                     "new_status": "failed",
                     "error_msg": "Update interrupted by application restart",
                     "completed_at": datetime.now(timezone.utc).isoformat(),
-                    "old_status": "in_progress"
-                }
+                    "old_status": "in_progress",
+                },
             )
             await db.commit()
             logger.info(f"Cleaned up {len(stuck_records)} stuck update history records")
@@ -163,17 +166,25 @@ cors_origins_env = os.getenv("CORS_ORIGINS")
 if cors_origins_env:
     if cors_origins_env == "*":
         cors_origins = ["*"]
-        logger.warning("⚠️  CORS configured with wildcard (*) - not recommended for production")
+        logger.warning(
+            "⚠️  CORS configured with wildcard (*) - not recommended for production"
+        )
     else:
-        cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+        cors_origins = [
+            origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
+        ]
         logger.info(f"CORS origins from environment: {cors_origins}")
 else:
     cors_origins = DEFAULT_CORS_ORIGINS
-    logger.info(f"Using default CORS origins (localhost development): {len(cors_origins)} origins")
+    logger.info(
+        f"Using default CORS origins (localhost development): {len(cors_origins)} origins"
+    )
 
 # Validate CORS configuration
 if cors_origins == ["*"] and os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true":
-    logger.warning("⚠️  CORS wildcard (*) with allow_credentials=True is not allowed by browsers in production")
+    logger.warning(
+        "⚠️  CORS wildcard (*) with allow_credentials=True is not allowed by browsers in production"
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -191,6 +202,7 @@ app.add_middleware(
 # Only enable rate limiting in production (not during tests)
 if os.getenv("TIDEWATCH_TESTING", "false").lower() != "true":
     from app.middleware import RateLimitMiddleware
+
     app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
     logger.info("✓ Rate limiting middleware enabled (60 req/min)")
 else:
@@ -201,6 +213,7 @@ else:
 # (last added = first executed). CSRF needs session to be available, so SessionMiddleware
 # must be added after CSRF so it executes before CSRF.
 from app.middleware.csrf import CSRFProtectionMiddleware  # noqa: E402
+
 app.add_middleware(CSRFProtectionMiddleware)
 
 # Session middleware for CSRF protection
@@ -209,7 +222,9 @@ from app.utils.security import sanitize_path  # noqa: E402
 
 try:
     # Validate session secret file path (must be in /data)
-    session_secret_file = sanitize_path("/data/session_secret.key", "/data", allow_symlinks=False)
+    session_secret_file = sanitize_path(
+        "/data/session_secret.key", "/data", allow_symlinks=False
+    )
 
     if session_secret_file.exists():
         session_secret = session_secret_file.read_text().strip()
@@ -226,7 +241,9 @@ except (ValueError, FileNotFoundError) as e:
     logger.error(f"Invalid session secret file path: {e}")
     # Fall back to temporary in-memory secret (will change on restart)
     session_secret = secrets.token_urlsafe(32)
-    logger.warning("Using temporary in-memory session secret (will invalidate sessions on restart)")
+    logger.warning(
+        "Using temporary in-memory session secret (will invalidate sessions on restart)"
+    )
 
 app.add_middleware(
     SessionMiddleware,
@@ -279,7 +296,9 @@ async def security_headers_middleware(request: Request, call_next):
 
     # HSTS - only in production with HTTPS
     if os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
 
     # Content Security Policy
     # Note: This is a basic policy. Adjust based on your frontend requirements.
@@ -299,6 +318,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 # Global Exception Handler
 from fastapi.responses import JSONResponse  # noqa: E402
+
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
@@ -321,8 +341,8 @@ async def generic_exception_handler(request: Request, exc: Exception):
         extra={
             "path": request.url.path,
             "method": request.method,
-            "client": request.client.host if request.client else "unknown"
-        }
+            "client": request.client.host if request.client else "unknown",
+        },
     )
 
     # Return generic error message unless debug mode
@@ -330,11 +350,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
         # Development mode - show detailed error
         return JSONResponse(
             status_code=500,
-            content={
-                "detail": str(exc),
-                "type": type(exc).__name__,
-                "debug": True
-            }
+            content={"detail": str(exc), "type": type(exc).__name__, "debug": True},
         )
 
     # Production mode - generic error message
@@ -342,7 +358,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={
             "detail": "An internal error occurred. Please contact support if this persists."
-        }
+        },
     )
 
 
@@ -370,6 +386,7 @@ async def metrics():
 
 # API routes
 from app.api import api_router  # noqa: E402
+
 app.include_router(api_router)
 
 # Serve frontend static files (in production)
@@ -378,7 +395,9 @@ static_dir = Path("/app/static")
 
 if static_dir.exists():
     # Serve static assets (CSS, JS, images)
-    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+    app.mount(
+        "/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets"
+    )
 
     # Serve frontend
     from fastapi.responses import FileResponse, JSONResponse
@@ -418,9 +437,12 @@ if __name__ == "__main__":
     # Use same server as production (Granian) for consistency
     cmd = [
         "granian",
-        "--interface", "asgi",
-        "--host", "0.0.0.0",
-        "--port", "8788",
+        "--interface",
+        "asgi",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8788",
         "--reload",  # Auto-reload for development
         "app.main:app",
     ]

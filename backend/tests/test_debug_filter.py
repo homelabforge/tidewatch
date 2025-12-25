@@ -1,4 +1,5 @@
 """Debug test to see what's happening with filtering."""
+
 import pytest
 from app.models.container import Container
 
@@ -14,7 +15,7 @@ async def test_filter_debug(authenticated_client, db):
         registry="docker.io",
         compose_file="/compose/test.yml",
         service_name="nginx",
-        policy="auto"
+        policy="auto",
     )
     container2 = Container(
         name="debug-manual-2",
@@ -23,7 +24,7 @@ async def test_filter_debug(authenticated_client, db):
         registry="docker.io",
         compose_file="/compose/test.yml",
         service_name="redis",
-        policy="manual"
+        policy="manual",
     )
     db.add_all([container1, container2])
     await db.commit()
@@ -47,5 +48,7 @@ async def test_filter_debug(authenticated_client, db):
         print(f"  - {c['name']}: policy={c['policy']}")
 
     # This should only return 1
-    assert len(data) == 1, f"Expected 1 container with policy=auto, got {len(data)}: {[c['name'] for c in data]}"
+    assert len(data) == 1, (
+        f"Expected 1 container with policy=auto, got {len(data)}: {[c['name'] for c in data]}"
+    )
     assert data[0]["policy"] == "auto"

@@ -19,7 +19,7 @@ from app.services.registry_client import (
     is_prerelease_tag,
     TagCache,
     canonical_arch_suffix,
-    NON_PEP440_PRERELEASE_INDICATORS
+    NON_PEP440_PRERELEASE_INDICATORS,
 )
 
 
@@ -156,8 +156,11 @@ class TestTagCache:
 
         # Manually expire the entry
         import time
+
         time.sleep(0.001)
-        cache._cache["dockerhub:nginx"]["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+        cache._cache["dockerhub:nginx"]["expires_at"] = datetime.now(
+            timezone.utc
+        ) - timedelta(seconds=1)
 
         # Should return None (expired)
         assert cache.get("dockerhub:nginx") is None
@@ -263,6 +266,7 @@ class TestVersionComparison:
     def mock_client(self):
         """Create mock registry client."""
         from app.services.registry_client import DockerHubClient
+
         client = DockerHubClient()
         return client
 
@@ -373,6 +377,7 @@ class TestWindowsImageDetection:
     def mock_client(self):
         """Create mock registry client."""
         from app.services.registry_client import DockerHubClient
+
         return DockerHubClient()
 
     def test_detects_windowsservercore_tags(self, mock_client):
@@ -411,6 +416,7 @@ class TestArchitectureMismatchDetection:
     def mock_client(self):
         """Create mock registry client."""
         from app.services.registry_client import DockerHubClient
+
         return DockerHubClient()
 
     def test_extract_arch_suffix_detects_amd64(self, mock_client):
@@ -451,12 +457,16 @@ class TestArchitectureMismatchDetection:
         """Test no mismatch when neither tag has architecture suffix."""
         assert mock_client._has_arch_mismatch("1.2.3", "1.2.4") is False
 
-    def test_has_arch_mismatch_current_has_suffix_candidate_no_suffix(self, mock_client):
+    def test_has_arch_mismatch_current_has_suffix_candidate_no_suffix(
+        self, mock_client
+    ):
         """Test mismatch when current has arch suffix but candidate doesn't."""
         # User pinned to architecture-specific tag, avoid switching styles
         assert mock_client._has_arch_mismatch("1.2.3-amd64", "1.2.4") is True
 
-    def test_has_arch_mismatch_candidate_has_suffix_current_no_suffix(self, mock_client):
+    def test_has_arch_mismatch_candidate_has_suffix_current_no_suffix(
+        self, mock_client
+    ):
         """Test behavior when candidate has arch suffix but current doesn't."""
         # Allow only if candidate matches host architecture
         # This test depends on HOST_ARCH_CANONICAL which varies by system
@@ -529,11 +539,8 @@ class TestDockerHubClient:
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "results": [
-                {"name": "latest"},
-                {"name": "1.25.3"}
-            ],
-            "next": None
+            "results": [{"name": "latest"}, {"name": "1.25.3"}],
+            "next": None,
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -556,7 +563,7 @@ class TestDockerHubClient:
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "results": [{"name": "latest"}],
-            "next": None
+            "next": None,
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -583,7 +590,7 @@ class TestDockerHubClient:
         page1_response = MagicMock()
         page1_response.json.return_value = {
             "results": [{"name": "1.0.0"}, {"name": "1.1.0"}],
-            "next": "https://hub.docker.com/v2/repositories/library/nginx/tags?page=2"
+            "next": "https://hub.docker.com/v2/repositories/library/nginx/tags?page=2",
         }
         page1_response.raise_for_status = MagicMock()
 
@@ -591,11 +598,13 @@ class TestDockerHubClient:
         page2_response = MagicMock()
         page2_response.json.return_value = {
             "results": [{"name": "1.2.0"}],
-            "next": None
+            "next": None,
         }
         page2_response.raise_for_status = MagicMock()
 
-        with patch.object(client.client, "get", side_effect=[page1_response, page2_response]):
+        with patch.object(
+            client.client, "get", side_effect=[page1_response, page2_response]
+        ):
             tags = await client.get_all_tags("nginx")
 
             # Should have all tags from both pages
@@ -619,7 +628,7 @@ class TestDockerHubClient:
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "results": [{"name": "latest"}],
-            "next": None
+            "next": None,
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -688,6 +697,7 @@ class TestVersionNormalizationEdgeCases:
     def mock_client(self):
         """Create mock registry client."""
         from app.services.registry_client import DockerHubClient
+
         return DockerHubClient()
 
     def test_normalize_version_with_leading_zeros(self, mock_client):

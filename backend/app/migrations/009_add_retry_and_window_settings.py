@@ -32,21 +32,25 @@ async def upgrade():
 
     async with engine.begin() as conn:
         # Retry configuration settings
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT OR IGNORE INTO settings (key, value, description, category)
             VALUES
             ('update_retry_max_attempts', '3', 'Maximum retry attempts for failed updates (0-10)', 'updates'),
             ('update_retry_backoff_multiplier', '3.0', 'Exponential backoff multiplier for retry delays (1.0-10.0)', 'updates');
-        """))
+        """)
+        )
         logger.info("✅ Added retry configuration settings")
 
         # Update window settings
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT OR IGNORE INTO settings (key, value, description, category)
             VALUES
             ('default_update_window', '', 'Default update window for new containers (e.g., 22:00-06:00 or Mon-Fri:02:00-06:00)', 'updates'),
             ('update_window_enforcement', 'strict', 'Update window enforcement (strict: block updates outside window, advisory: warn but allow)', 'updates');
-        """))
+        """)
+        )
         logger.info("✅ Added update window settings")
 
     await engine.dispose()

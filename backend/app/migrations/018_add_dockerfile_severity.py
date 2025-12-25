@@ -33,7 +33,9 @@ async def migrate():
             if not await column_exists(conn, "dockerfile_dependencies", "severity"):
                 logger.info("Adding severity column to dockerfile_dependencies…")
                 await conn.execute(
-                    text("ALTER TABLE dockerfile_dependencies ADD COLUMN severity VARCHAR NOT NULL DEFAULT 'info'")
+                    text(
+                        "ALTER TABLE dockerfile_dependencies ADD COLUMN severity VARCHAR NOT NULL DEFAULT 'info'"
+                    )
                 )
                 logger.info("  ✓ Column added")
             else:

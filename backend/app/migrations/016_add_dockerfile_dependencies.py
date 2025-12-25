@@ -26,7 +26,8 @@ async def upgrade():
         print("Creating dockerfile_dependencies table...")
 
         # Create the table
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS dockerfile_dependencies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 container_id INTEGER NOT NULL,
@@ -45,32 +46,41 @@ async def upgrade():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (container_id) REFERENCES containers (id) ON DELETE CASCADE
             )
-        """))
+        """)
+        )
         print("✓ Created dockerfile_dependencies table")
 
         # Create indexes
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS ix_dockerfile_dependencies_container_id
             ON dockerfile_dependencies(container_id)
-        """))
+        """)
+        )
         print("✓ Created index ix_dockerfile_dependencies_container_id")
 
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS ix_dockerfile_dependencies_dependency_type
             ON dockerfile_dependencies(dependency_type)
-        """))
+        """)
+        )
         print("✓ Created index ix_dockerfile_dependencies_dependency_type")
 
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS ix_dockerfile_dependencies_update_available
             ON dockerfile_dependencies(update_available)
-        """))
+        """)
+        )
         print("✓ Created index ix_dockerfile_dependencies_update_available")
 
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS ix_dockerfile_dependencies_last_checked
             ON dockerfile_dependencies(last_checked)
-        """))
+        """)
+        )
         print("✓ Created index ix_dockerfile_dependencies_last_checked")
 
         print("Migration completed successfully!")
@@ -82,10 +92,18 @@ async def downgrade():
         print("Dropping dockerfile_dependencies table...")
 
         # Drop indexes (SQLite will drop them automatically with the table, but being explicit)
-        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_container_id"))
-        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_dependency_type"))
-        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_update_available"))
-        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_last_checked"))
+        await conn.execute(
+            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_container_id")
+        )
+        await conn.execute(
+            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_dependency_type")
+        )
+        await conn.execute(
+            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_update_available")
+        )
+        await conn.execute(
+            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_last_checked")
+        )
         print("✓ Dropped indexes")
 
         # Drop table

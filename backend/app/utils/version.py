@@ -19,14 +19,14 @@ def parse_version(version: str) -> Tuple[int, int, int]:
         ValueError: If version string cannot be parsed
     """
     # Remove common prefixes and suffixes
-    version = version.lstrip('v')
+    version = version.lstrip("v")
 
     # Split on common delimiters and take first part
     # e.g., "3.14-alpine" -> "3.14"
-    version = version.split('-')[0].split('_')[0]
+    version = version.split("-")[0].split("_")[0]
 
     # Parse version parts
-    parts = version.split('.')
+    parts = version.split(".")
     if len(parts) < 1:
         raise ValueError(f"Invalid version format: {version}")
 
@@ -68,7 +68,9 @@ def get_version_change_type(from_version: str, to_version: str) -> Optional[str]
         return None
 
     except (ValueError, IndexError) as e:
-        logger.debug(f"Could not parse versions '{from_version}' -> '{to_version}': {e}")
+        logger.debug(
+            f"Could not parse versions '{from_version}' -> '{to_version}': {e}"
+        )
         return None
 
 

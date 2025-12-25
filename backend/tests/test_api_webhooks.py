@@ -53,6 +53,7 @@ class TestListWebhooksEndpoint:
     async def test_list_webhooks_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -75,7 +76,9 @@ class TestCreateWebhookEndpoint:
             "retry_count": 3,
         }
 
-        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
+        response = await authenticated_client.post(
+            "/api/v1/webhooks", json=webhook_data
+        )
 
         if response.status_code != status.HTTP_201_CREATED:
             print(f"Response status: {response.status_code}")
@@ -97,7 +100,9 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
+        response = await authenticated_client.post(
+            "/api/v1/webhooks", json=webhook_data
+        )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -110,10 +115,15 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
+        response = await authenticated_client.post(
+            "/api/v1/webhooks", json=webhook_data
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "private" in response.json()["detail"].lower() or "internal" in response.json()["detail"].lower()
+        assert (
+            "private" in response.json()["detail"].lower()
+            or "internal" in response.json()["detail"].lower()
+        )
 
     async def test_create_webhook_duplicate_name(self, authenticated_client, db):
         """Test creating webhook with duplicate name returns 409."""
@@ -135,7 +145,9 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
+        response = await authenticated_client.post(
+            "/api/v1/webhooks", json=webhook_data
+        )
 
         assert response.status_code == status.HTTP_409_CONFLICT
 
@@ -148,13 +160,16 @@ class TestCreateWebhookEndpoint:
             "events": ["invalid_event", "another_bad_event"],
         }
 
-        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
+        response = await authenticated_client.post(
+            "/api/v1/webhooks", json=webhook_data
+        )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_create_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -201,6 +216,7 @@ class TestGetWebhookEndpoint:
     async def test_get_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -230,7 +246,9 @@ class TestUpdateWebhookEndpoint:
             "events": ["update_applied", "update_failed"],
         }
 
-        response = await authenticated_client.put(f"/api/v1/webhooks/{webhook.id}", json=update_data)
+        response = await authenticated_client.put(
+            f"/api/v1/webhooks/{webhook.id}", json=update_data
+        )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -242,7 +260,9 @@ class TestUpdateWebhookEndpoint:
         """Test updating non-existent webhook returns 404."""
         update_data = {"name": "new-name"}
 
-        response = await authenticated_client.put("/api/v1/webhooks/99999", json=update_data)
+        response = await authenticated_client.put(
+            "/api/v1/webhooks/99999", json=update_data
+        )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -260,13 +280,16 @@ class TestUpdateWebhookEndpoint:
 
         update_data = {"url": "http://192.168.1.1/webhook"}
 
-        response = await authenticated_client.put(f"/api/v1/webhooks/{webhook.id}", json=update_data)
+        response = await authenticated_client.put(
+            f"/api/v1/webhooks/{webhook.id}", json=update_data
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     async def test_update_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -297,7 +320,9 @@ class TestDeleteWebhookEndpoint:
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         # Verify webhook was deleted
-        verify_response = await authenticated_client.get(f"/api/v1/webhooks/{webhook.id}")
+        verify_response = await authenticated_client.get(
+            f"/api/v1/webhooks/{webhook.id}"
+        )
         assert verify_response.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_delete_webhook_invalid_id(self, authenticated_client):
@@ -309,6 +334,7 @@ class TestDeleteWebhookEndpoint:
     async def test_delete_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -343,7 +369,9 @@ class TestTestWebhookEndpoint:
             mock_instance.post = AsyncMock(return_value=mock_response)
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(f"/api/v1/webhooks/{webhook.id}/test")
+            response = await authenticated_client.post(
+                f"/api/v1/webhooks/{webhook.id}/test"
+            )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -373,7 +401,9 @@ class TestTestWebhookEndpoint:
             mock_instance.post = AsyncMock(return_value=mock_response)
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(f"/api/v1/webhooks/{webhook.id}/test")
+            response = await authenticated_client.post(
+                f"/api/v1/webhooks/{webhook.id}/test"
+            )
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -389,6 +419,7 @@ class TestTestWebhookEndpoint:
     async def test_test_webhook_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 

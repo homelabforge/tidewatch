@@ -30,7 +30,9 @@ class AppDependency:
     socket_score: Optional[float] = None  # Socket.dev security score (0-100)
     severity: str = "info"  # critical, high, medium, low, info
     dependency_type: str = "production"  # production, development, optional, peer
-    manifest_file: str = "unknown"  # Path to manifest file (package.json, requirements.txt, etc.)
+    manifest_file: str = (
+        "unknown"  # Path to manifest file (package.json, requirements.txt, etc.)
+    )
     last_checked: Optional[datetime] = None
 
 
@@ -67,17 +69,21 @@ class DependencyScanner:
             path_str = str(abs_path)
             if path_str.startswith("/projects/"):
                 # Convert /projects/foo to /srv/raid0/docker/build/foo
-                relative_part = path_str[len("/projects/"):]
+                relative_part = path_str[len("/projects/") :]
                 return relative_part
             elif path_str.startswith(str(self.ALLOWED_BASE_PATH)):
                 # Already under ALLOWED_BASE_PATH, get relative part
                 return str(abs_path.relative_to(self.ALLOWED_BASE_PATH))
             else:
                 # Fallback - return the path as-is
-                logger.warning(f"Manifest path {sanitize_log_message(str(file_path))} not under /projects or {sanitize_log_message(str(self.ALLOWED_BASE_PATH))}")
+                logger.warning(
+                    f"Manifest path {sanitize_log_message(str(file_path))} not under /projects or {sanitize_log_message(str(self.ALLOWED_BASE_PATH))}"
+                )
                 return str(file_path)
         except Exception as e:
-            logger.error(f"Error normalizing manifest path {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Error normalizing manifest path {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+            )
             return str(file_path)
 
     async def scan_container_dependencies(
@@ -104,10 +110,14 @@ class DependencyScanner:
             project_root = self._find_project_root(compose_file, service_name)
 
         if not project_root or not project_root.exists():
-            logger.warning(f"Could not determine project root for {sanitize_log_message(str(service_name))}")
+            logger.warning(
+                f"Could not determine project root for {sanitize_log_message(str(service_name))}"
+            )
             return dependencies
 
-        logger.info(f"Scanning dependencies for {sanitize_log_message(str(service_name))} in {sanitize_log_message(str(project_root))}")
+        logger.info(
+            f"Scanning dependencies for {sanitize_log_message(str(service_name))} in {sanitize_log_message(str(project_root))}"
+        )
 
         # Scan for different dependency types
         dependencies.extend(await self._scan_npm(project_root))
@@ -118,7 +128,9 @@ class DependencyScanner:
 
         return dependencies
 
-    def _find_project_root(self, compose_file: str, service_name: str) -> Optional[Path]:
+    def _find_project_root(
+        self, compose_file: str, service_name: str
+    ) -> Optional[Path]:
         """
         Find the project root directory from mounted projects directory.
 
@@ -136,7 +148,9 @@ class DependencyScanner:
             project_name = compose_path.stem
 
             # Remove common suffixes like -dev, -prod, _dev, _prod from service_name
-            clean_service_name = re.sub(r'[-_](dev|prod|test|staging)$', '', service_name)
+            clean_service_name = re.sub(
+                r"[-_](dev|prod|test|staging)$", "", service_name
+            )
 
             # Try multiple patterns
             possible_paths = [
@@ -150,16 +164,24 @@ class DependencyScanner:
 
             for path in possible_paths:
                 if path.exists() and path.is_dir():
-                    logger.info(f"Found project root: {sanitize_log_message(str(path))}")
+                    logger.info(
+                        f"Found project root: {sanitize_log_message(str(path))}"
+                    )
                     return path
 
-            logger.warning(f"No project root found. Tried: {sanitize_log_message(str([str(p) for p in possible_paths]))}")
+            logger.warning(
+                f"No project root found. Tried: {sanitize_log_message(str([str(p) for p in possible_paths]))}"
+            )
             return None
         except (OSError, PermissionError) as e:
-            logger.error(f"File system error finding project root: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"File system error finding project root: {sanitize_log_message(str(e))}"
+            )
             return None
         except ValueError as e:
-            logger.error(f"Invalid path finding project root: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid path finding project root: {sanitize_log_message(str(e))}"
+            )
             return None
 
     async def _scan_npm(self, project_root: Path) -> List[AppDependency]:
@@ -176,9 +198,13 @@ class DependencyScanner:
 
         for package_json in locations:
             if package_json.exists():
-                logger.info(f"Found package.json at {sanitize_log_message(str(package_json))}")
+                logger.info(
+                    f"Found package.json at {sanitize_log_message(str(package_json))}"
+                )
                 content = package_json.read_text()
-                dependencies.extend(await self._parse_package_json(content, package_json))
+                dependencies.extend(
+                    await self._parse_package_json(content, package_json)
+                )
 
         return dependencies
 
@@ -190,17 +216,28 @@ class DependencyScanner:
         locations = [
             # pyproject.toml
             (project_root / "pyproject.toml", self._parse_pyproject_content),
-            (project_root / "backend" / "pyproject.toml", self._parse_pyproject_content),
+            (
+                project_root / "backend" / "pyproject.toml",
+                self._parse_pyproject_content,
+            ),
             (project_root / "api" / "pyproject.toml", self._parse_pyproject_content),
             # requirements.txt
             (project_root / "requirements.txt", self._parse_requirements_content),
-            (project_root / "backend" / "requirements.txt", self._parse_requirements_content),
-            (project_root / "api" / "requirements.txt", self._parse_requirements_content),
+            (
+                project_root / "backend" / "requirements.txt",
+                self._parse_requirements_content,
+            ),
+            (
+                project_root / "api" / "requirements.txt",
+                self._parse_requirements_content,
+            ),
         ]
 
         for file_path, parser in locations:
             if file_path.exists():
-                logger.info(f"Found Python dependency file at {sanitize_log_message(str(file_path))}")
+                logger.info(
+                    f"Found Python dependency file at {sanitize_log_message(str(file_path))}"
+                )
                 content = file_path.read_text()
                 dependencies.extend(await parser(content, file_path))
 
@@ -216,7 +253,9 @@ class DependencyScanner:
 
         for composer_json in locations:
             if composer_json.exists():
-                logger.info(f"Found composer.json at {sanitize_log_message(str(composer_json))}")
+                logger.info(
+                    f"Found composer.json at {sanitize_log_message(str(composer_json))}"
+                )
                 content = composer_json.read_text()
                 return await self._parse_composer_json(content, composer_json)
 
@@ -248,13 +287,17 @@ class DependencyScanner:
 
         for cargo_toml in locations:
             if cargo_toml.exists():
-                logger.info(f"Found Cargo.toml at {sanitize_log_message(str(cargo_toml))}")
+                logger.info(
+                    f"Found Cargo.toml at {sanitize_log_message(str(cargo_toml))}"
+                )
                 content = cargo_toml.read_text()
                 return await self._parse_cargo_toml_content(content, cargo_toml)
 
         return []
 
-    async def _parse_package_json(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_package_json(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse package.json content."""
         try:
             data = json.loads(content)
@@ -330,13 +373,19 @@ class DependencyScanner:
 
             return dependencies
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in package.json: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid JSON in package.json: {sanitize_log_message(str(e))}"
+            )
             return []
         except (KeyError, ValueError) as e:
-            logger.error(f"Invalid package.json structure: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid package.json structure: {sanitize_log_message(str(e))}"
+            )
             return []
 
-    async def _parse_toml_deps(self, section_content: str, dep_type: str, manifest_file: str) -> List[AppDependency]:
+    async def _parse_toml_deps(
+        self, section_content: str, dep_type: str, manifest_file: str
+    ) -> List[AppDependency]:
         """Parse TOML dependency section and return list of dependencies."""
         dependencies = []
         for line in section_content.split("\n"):
@@ -378,7 +427,9 @@ class DependencyScanner:
 
         return dependencies
 
-    async def _parse_pyproject_content(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_pyproject_content(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse pyproject.toml content."""
         try:
             dependencies = []
@@ -393,16 +444,22 @@ class DependencyScanner:
                 re.DOTALL,
             )
             if prod_section:
-                deps = await self._parse_toml_deps(prod_section.group(1), "production", manifest_file)
+                deps = await self._parse_toml_deps(
+                    prod_section.group(1), "production", manifest_file
+                )
                 dependencies.extend(deps)
 
             # Parse [project.optional-dependencies.*] - optional/development (subtable format)
-            optional_pattern = r"\[project\.optional-dependencies\.([^\]]+)\](.*?)(?=\[|$)"
+            optional_pattern = (
+                r"\[project\.optional-dependencies\.([^\]]+)\](.*?)(?=\[|$)"
+            )
             for match in re.finditer(optional_pattern, content, re.DOTALL):
                 group_name = match.group(1)
                 # Treat 'dev' group as development, others as optional
                 dep_type = "development" if group_name == "dev" else "optional"
-                deps = await self._parse_toml_deps(match.group(2), dep_type, manifest_file)
+                deps = await self._parse_toml_deps(
+                    match.group(2), dep_type, manifest_file
+                )
                 dependencies.extend(deps)
 
             # Parse [project.optional-dependencies] with inline groups (e.g., dev = [...])
@@ -415,13 +472,17 @@ class DependencyScanner:
                 section_content = optional_inline.group(1)
                 # Find inline group definitions like: dev = ["package>=1.0", ...]
                 # Match group_name = [ ... ] where ... can span multiple lines
-                group_pattern = r'([a-zA-Z0-9_-]+)\s*=\s*\[\s*(.*?)\s*\]'
-                for group_match in re.finditer(group_pattern, section_content, re.DOTALL):
+                group_pattern = r"([a-zA-Z0-9_-]+)\s*=\s*\[\s*(.*?)\s*\]"
+                for group_match in re.finditer(
+                    group_pattern, section_content, re.DOTALL
+                ):
                     group_name = group_match.group(1)
                     group_deps = group_match.group(2)
                     # Treat 'dev' group as development, others as optional
                     dep_type = "development" if group_name == "dev" else "optional"
-                    deps = await self._parse_toml_deps(group_deps, dep_type, manifest_file)
+                    deps = await self._parse_toml_deps(
+                        group_deps, dep_type, manifest_file
+                    )
                     dependencies.extend(deps)
 
             # Parse [tool.poetry.dependencies] - production
@@ -431,24 +492,34 @@ class DependencyScanner:
                 re.DOTALL,
             )
             if poetry_section:
-                deps = await self._parse_toml_deps(poetry_section.group(1), "production", manifest_file)
+                deps = await self._parse_toml_deps(
+                    poetry_section.group(1), "production", manifest_file
+                )
                 dependencies.extend(deps)
 
             # Parse [tool.poetry.group.*.dependencies] - development/optional
-            poetry_group_pattern = r"\[tool\.poetry\.group\.([^\]]+)\.dependencies\](.*?)(?=\[|$)"
+            poetry_group_pattern = (
+                r"\[tool\.poetry\.group\.([^\]]+)\.dependencies\](.*?)(?=\[|$)"
+            )
             for match in re.finditer(poetry_group_pattern, content, re.DOTALL):
                 group_name = match.group(1)
                 # Treat 'dev' group as development, others as optional
                 dep_type = "development" if group_name == "dev" else "optional"
-                deps = await self._parse_toml_deps(match.group(2), dep_type, manifest_file)
+                deps = await self._parse_toml_deps(
+                    match.group(2), dep_type, manifest_file
+                )
                 dependencies.extend(deps)
 
             return dependencies
         except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid pyproject.toml structure: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid pyproject.toml structure: {sanitize_log_message(str(e))}"
+            )
             return []
 
-    async def _parse_requirements_content(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_requirements_content(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse requirements.txt content."""
         try:
             dependencies = []
@@ -486,10 +557,14 @@ class DependencyScanner:
 
             return dependencies
         except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid requirements.txt structure: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid requirements.txt structure: {sanitize_log_message(str(e))}"
+            )
             return []
 
-    async def _parse_composer_json(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_composer_json(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse composer.json content."""
         try:
             data = json.loads(content)
@@ -530,13 +605,19 @@ class DependencyScanner:
 
             return dependencies
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in composer.json: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid JSON in composer.json: {sanitize_log_message(str(e))}"
+            )
             return []
         except (KeyError, ValueError) as e:
-            logger.error(f"Invalid composer.json structure: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid composer.json structure: {sanitize_log_message(str(e))}"
+            )
             return []
 
-    async def _parse_go_mod_content(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_go_mod_content(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse go.mod content."""
         try:
             dependencies = []
@@ -562,7 +643,8 @@ class DependencyScanner:
                             ecosystem="go",
                             current_version=clean_version,
                             latest_version=latest,
-                            update_available=latest is not None and latest != clean_version,
+                            update_available=latest is not None
+                            and latest != clean_version,
                             manifest_file=manifest_file,
                             last_checked=datetime.utcnow(),
                         )
@@ -576,7 +658,9 @@ class DependencyScanner:
             logger.error(f"Invalid go.mod structure: {sanitize_log_message(str(e))}")
             return []
 
-    async def _parse_cargo_toml_content(self, content: str, file_path: Path) -> List[AppDependency]:
+    async def _parse_cargo_toml_content(
+        self, content: str, file_path: Path
+    ) -> List[AppDependency]:
         """Parse Cargo.toml content."""
         try:
             dependencies = []
@@ -594,7 +678,9 @@ class DependencyScanner:
                     if not line or line.startswith("#"):
                         continue
 
-                    match = re.match(r'^([a-zA-Z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', line)
+                    match = re.match(
+                        r'^([a-zA-Z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', line
+                    )
                     if not match:
                         match = re.match(
                             r'^([a-zA-Z0-9_-]+)\s*=\s*\{.*?version\s*=\s*["\']([^"\']+)["\']',
@@ -624,7 +710,9 @@ class DependencyScanner:
 
             return dependencies
         except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid Cargo.toml structure: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Invalid Cargo.toml structure: {sanitize_log_message(str(e))}"
+            )
             return []
 
     def _clean_version(self, version: str) -> str:
@@ -676,13 +764,21 @@ class DependencyScanner:
                     data = response.json()
                     return data.get("version")
         except httpx.HTTPStatusError as e:
-            logger.debug(f"HTTP error fetching npm version for {sanitize_log_message(str(package))}: {e.response.status_code}")
+            logger.debug(
+                f"HTTP error fetching npm version for {sanitize_log_message(str(package))}: {e.response.status_code}"
+            )
         except httpx.ConnectError as e:
-            logger.debug(f"Connection error fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Connection error fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except httpx.TimeoutException as e:
-            logger.debug(f"Timeout fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Timeout fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except (ValueError, KeyError) as e:
-            logger.debug(f"Invalid response fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Invalid response fetching npm version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         return None
 
     async def _get_pypi_latest(self, package: str) -> Optional[str]:
@@ -694,13 +790,21 @@ class DependencyScanner:
                     data = response.json()
                     return data.get("info", {}).get("version")
         except httpx.HTTPStatusError as e:
-            logger.debug(f"HTTP error fetching PyPI version for {sanitize_log_message(str(package))}: {e.response.status_code}")
+            logger.debug(
+                f"HTTP error fetching PyPI version for {sanitize_log_message(str(package))}: {e.response.status_code}"
+            )
         except httpx.ConnectError as e:
-            logger.debug(f"Connection error fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Connection error fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except httpx.TimeoutException as e:
-            logger.debug(f"Timeout fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Timeout fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except (ValueError, KeyError) as e:
-            logger.debug(f"Invalid response fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Invalid response fetching PyPI version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         return None
 
     async def _get_packagist_latest(self, package: str) -> Optional[str]:
@@ -723,13 +827,21 @@ class DependencyScanner:
                         if versions:
                             return versions[0]
         except httpx.HTTPStatusError as e:
-            logger.debug(f"HTTP error fetching Packagist version for {sanitize_log_message(str(package))}: {e.response.status_code}")
+            logger.debug(
+                f"HTTP error fetching Packagist version for {sanitize_log_message(str(package))}: {e.response.status_code}"
+            )
         except httpx.ConnectError as e:
-            logger.debug(f"Connection error fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Connection error fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except httpx.TimeoutException as e:
-            logger.debug(f"Timeout fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Timeout fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except (ValueError, KeyError) as e:
-            logger.debug(f"Invalid response fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Invalid response fetching Packagist version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         return None
 
     async def _get_crates_latest(self, package: str) -> Optional[str]:
@@ -745,13 +857,21 @@ class DependencyScanner:
                     crate = data.get("crate", {})
                     return crate.get("max_version")
         except httpx.HTTPStatusError as e:
-            logger.debug(f"HTTP error fetching crates.io version for {sanitize_log_message(str(package))}: {e.response.status_code}")
+            logger.debug(
+                f"HTTP error fetching crates.io version for {sanitize_log_message(str(package))}: {e.response.status_code}"
+            )
         except httpx.ConnectError as e:
-            logger.debug(f"Connection error fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Connection error fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except httpx.TimeoutException as e:
-            logger.debug(f"Timeout fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Timeout fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         except (ValueError, KeyError) as e:
-            logger.debug(f"Invalid response fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Invalid response fetching crates.io version for {sanitize_log_message(str(package))}: {sanitize_log_message(str(e))}"
+            )
         return None
 
     async def _get_go_latest(self, module: str) -> Optional[str]:
@@ -765,13 +885,21 @@ class DependencyScanner:
                     data = response.json()
                     return data.get("Version", "").lstrip("v")
         except httpx.HTTPStatusError as e:
-            logger.debug(f"HTTP error fetching Go version for {sanitize_log_message(str(module))}: {e.response.status_code}")
+            logger.debug(
+                f"HTTP error fetching Go version for {sanitize_log_message(str(module))}: {e.response.status_code}"
+            )
         except httpx.ConnectError as e:
-            logger.debug(f"Connection error fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Connection error fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}"
+            )
         except httpx.TimeoutException as e:
-            logger.debug(f"Timeout fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Timeout fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}"
+            )
         except (ValueError, KeyError) as e:
-            logger.debug(f"Invalid response fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Invalid response fetching Go version for {sanitize_log_message(str(module))}: {sanitize_log_message(str(e))}"
+            )
         return None
 
     async def persist_dependencies(
@@ -810,7 +938,11 @@ class DependencyScanner:
             # Update or create each new dependency
             for new_dep in dependencies:
                 # Use manifest_file from dependency if set, otherwise fall back to ecosystem-based guess
-                manifest_file = new_dep.manifest_file if new_dep.manifest_file != "unknown" else self._get_manifest_file_for_dependency(new_dep)
+                manifest_file = (
+                    new_dep.manifest_file
+                    if new_dep.manifest_file != "unknown"
+                    else self._get_manifest_file_for_dependency(new_dep)
+                )
 
                 key = (new_dep.name, new_dep.ecosystem, manifest_file)
                 seen_keys.add(key)
@@ -843,7 +975,9 @@ class DependencyScanner:
                             existing.ignored_at = None
                             existing.ignored_reason = None
 
-                    logger.debug(f"Updated existing dependency: {sanitize_log_message(str(existing.name))} ({sanitize_log_message(str(existing.ecosystem))})")
+                    logger.debug(
+                        f"Updated existing dependency: {sanitize_log_message(str(existing.name))} ({sanitize_log_message(str(existing.ecosystem))})"
+                    )
                 else:
                     # Add new dependency
                     db_dep = AppDependencyModel(
@@ -861,21 +995,29 @@ class DependencyScanner:
                         last_checked=datetime.utcnow(),
                     )
                     db.add(db_dep)
-                    logger.debug(f"Created new dependency: {sanitize_log_message(str(new_dep.name))} ({sanitize_log_message(str(new_dep.ecosystem))})")
+                    logger.debug(
+                        f"Created new dependency: {sanitize_log_message(str(new_dep.name))} ({sanitize_log_message(str(new_dep.ecosystem))})"
+                    )
 
             # Remove dependencies that are no longer detected
             for key, existing in existing_deps.items():
                 if key not in seen_keys:
-                    logger.debug(f"Removing old dependency: {sanitize_log_message(str(existing.name))} ({sanitize_log_message(str(existing.ecosystem))})")
+                    logger.debug(
+                        f"Removing old dependency: {sanitize_log_message(str(existing.name))} ({sanitize_log_message(str(existing.ecosystem))})"
+                    )
                     await db.delete(existing)
 
             await db.commit()
-            logger.info(f"Persisted {sanitize_log_message(str(len(dependencies)))} app dependencies for container {sanitize_log_message(str(container_id))}")
+            logger.info(
+                f"Persisted {sanitize_log_message(str(len(dependencies)))} app dependencies for container {sanitize_log_message(str(container_id))}"
+            )
             return len(dependencies)
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Failed to persist app dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Failed to persist app dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            )
             raise
 
     def _get_manifest_file_for_dependency(self, dep: AppDependency) -> str:
@@ -924,7 +1066,9 @@ class DependencyScanner:
             return list(db_deps)
 
         except Exception as e:
-            logger.error(f"Failed to fetch persisted app dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Failed to fetch persisted app dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            )
             raise
 
 

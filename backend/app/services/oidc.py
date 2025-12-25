@@ -77,9 +77,7 @@ async def _cleanup_expired_states(db: AsyncSession):
         db: Database session
     """
     cutoff = datetime.now(timezone.utc)
-    await db.execute(
-        delete(OIDCState).where(OIDCState.expires_at <= cutoff)
-    )
+    await db.execute(delete(OIDCState).where(OIDCState.expires_at <= cutoff))
     await db.commit()
 
 
@@ -155,7 +153,11 @@ async def get_provider_metadata(issuer_url: str) -> Optional[Dict[str, Any]]:
     try:
         validate_oidc_url(issuer_url)
     except (SSRFProtectionError, ValueError) as e:
-        logger.error("SSRF protection blocked OIDC issuer URL: %s - %s", mask_sensitive(issuer_url, visible_chars=20), str(e))
+        logger.error(
+            "SSRF protection blocked OIDC issuer URL: %s - %s",
+            mask_sensitive(issuer_url, visible_chars=20),
+            str(e),
+        )
         raise SSRFProtectionError(f"Invalid OIDC issuer URL: {e}")
 
     # Try standard OIDC discovery endpoint
@@ -165,7 +167,11 @@ async def get_provider_metadata(issuer_url: str) -> Optional[Dict[str, Any]]:
     try:
         validate_oidc_url(discovery_url)
     except (SSRFProtectionError, ValueError) as e:
-        logger.error("SSRF protection blocked OIDC discovery URL: %s - %s", mask_sensitive(discovery_url, visible_chars=20), str(e))
+        logger.error(
+            "SSRF protection blocked OIDC discovery URL: %s - %s",
+            mask_sensitive(discovery_url, visible_chars=20),
+            str(e),
+        )
         raise SSRFProtectionError(f"Invalid OIDC discovery URL: {e}")
 
     try:
@@ -175,14 +181,24 @@ async def get_provider_metadata(issuer_url: str) -> Optional[Dict[str, Any]]:
             response.raise_for_status()
             metadata = response.json()
 
-            logger.info("Successfully fetched OIDC metadata from %s", mask_sensitive(discovery_url, visible_chars=20))
+            logger.info(
+                "Successfully fetched OIDC metadata from %s",
+                mask_sensitive(discovery_url, visible_chars=20),
+            )
             return metadata
 
     except httpx.TimeoutException:
-        logger.error("OIDC metadata request timeout: %s", mask_sensitive(discovery_url, visible_chars=20))
+        logger.error(
+            "OIDC metadata request timeout: %s",
+            mask_sensitive(discovery_url, visible_chars=20),
+        )
         return None
     except httpx.ConnectError as e:
-        logger.error("Cannot connect to OIDC provider: %s: %s", mask_sensitive(discovery_url, visible_chars=20), str(e))
+        logger.error(
+            "Cannot connect to OIDC provider: %s: %s",
+            mask_sensitive(discovery_url, visible_chars=20),
+            str(e),
+        )
         return None
     except httpx.HTTPStatusError as e:
         logger.error("OIDC provider returned error: %s", str(e))
@@ -219,14 +235,16 @@ async def store_oidc_state(db: AsyncSession, state: str, redirect_uri: str, nonc
         nonce=nonce,
         redirect_uri=redirect_uri,
         created_at=datetime.now(timezone.utc),
-        expires_at=OIDCState.get_expiry_time(minutes=10)
+        expires_at=OIDCState.get_expiry_time(minutes=10),
     )
     db.add(oidc_state)
     await db.commit()
     logger.debug("Stored OIDC state: %s...", state[:16])
 
 
-async def validate_and_consume_state(db: AsyncSession, state: str) -> Optional[Dict[str, Any]]:
+async def validate_and_consume_state(
+    db: AsyncSession, state: str
+) -> Optional[Dict[str, Any]]:
     """Validate and consume OIDC state from database (one-time use).
 
     Args:
@@ -239,9 +257,7 @@ async def validate_and_consume_state(db: AsyncSession, state: str) -> Optional[D
     await _cleanup_expired_states(db)
 
     # Find and validate state
-    result = await db.execute(
-        select(OIDCState).where(OIDCState.state == state)
-    )
+    result = await db.execute(select(OIDCState).where(OIDCState.state == state))
     oidc_state = result.scalar_one_or_none()
 
     if not oidc_state:
@@ -323,6 +339,7 @@ async def create_authorization_url(
 
     # Construct URL
     from urllib.parse import urlencode
+
     auth_url = f"{auth_endpoint}?{urlencode(params)}"
 
     logger.info("Created OIDC authorization URL for state: %s", state)
@@ -355,7 +372,9 @@ async def exchange_code_for_tokens(
     try:
         validate_oidc_url(token_endpoint)
     except (SSRFProtectionError, ValueError) as e:
-        logger.error("SSRF protection blocked token endpoint: %s - %s", token_endpoint, str(e))
+        logger.error(
+            "SSRF protection blocked token endpoint: %s - %s", token_endpoint, str(e)
+        )
         return None
 
     # Prepare token request
@@ -383,7 +402,9 @@ async def exchange_code_for_tokens(
 
             # Log response details for debugging
             if response.status_code != 200:
-                logger.error("Token exchange failed with status %s", response.status_code)
+                logger.error(
+                    "Token exchange failed with status %s", response.status_code
+                )
                 logger.error("Response body: %s", response.text)
 
             response.raise_for_status()
@@ -426,7 +447,11 @@ async def get_userinfo(
     try:
         validate_oidc_url(userinfo_endpoint)
     except (SSRFProtectionError, ValueError) as e:
-        logger.error("SSRF protection blocked userinfo endpoint: %s - %s", userinfo_endpoint, str(e))
+        logger.error(
+            "SSRF protection blocked userinfo endpoint: %s - %s",
+            userinfo_endpoint,
+            str(e),
+        )
         return None
 
     try:
@@ -507,7 +532,7 @@ async def verify_id_token(
         )
         claims.validate()
 
-        logger.info("Successfully verified ID token for subject: %s", claims.get('sub'))
+        logger.info("Successfully verified ID token for subject: %s", claims.get("sub"))
         return dict(claims)
 
     except JoseError as e:
@@ -551,7 +576,9 @@ async def link_oidc_to_admin(
     # Update last login
     await update_admin_last_login(db)
 
-    logger.info("Linked OIDC account to admin user (sub: %s, provider: %s)", sub, provider_name)
+    logger.info(
+        "Linked OIDC account to admin user (sub: %s, provider: %s)", sub, provider_name
+    )
 
 
 async def create_pending_link(
@@ -591,7 +618,7 @@ async def create_pending_link(
         provider_name=provider_name,
         attempt_count=0,
         created_at=datetime.now(timezone.utc),
-        expires_at=OIDCPendingLink.get_expiry_time(minutes=expire_minutes)
+        expires_at=OIDCPendingLink.get_expiry_time(minutes=expire_minutes),
     )
 
     db.add(pending_link)
@@ -637,7 +664,9 @@ async def verify_pending_link(
         return None
 
     # Check max attempts
-    max_attempts = await SettingsService.get(db, "oidc_link_max_password_attempts", default="3")
+    max_attempts = await SettingsService.get(
+        db, "oidc_link_max_password_attempts", default="3"
+    )
     if pending_link.attempt_count >= int(max_attempts):
         logger.warning("Max password attempts exceeded for pending link")
         await db.delete(pending_link)
@@ -659,7 +688,9 @@ async def verify_pending_link(
         # Increment attempt count
         pending_link.attempt_count += 1
         await db.commit()
-        logger.warning("Invalid password for pending link (attempt %d)", pending_link.attempt_count)
+        logger.warning(
+            "Invalid password for pending link (attempt %d)", pending_link.attempt_count
+        )
         return None
 
     # Password verified - parse claims and delete token
@@ -667,7 +698,9 @@ async def verify_pending_link(
     await db.delete(pending_link)
     await db.commit()
 
-    logger.info("Pending link verified successfully for username: %s", pending_link.username)
+    logger.info(
+        "Pending link verified successfully for username: %s", pending_link.username
+    )
     return claims
 
 

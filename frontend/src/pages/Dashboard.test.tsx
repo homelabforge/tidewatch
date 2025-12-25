@@ -138,6 +138,7 @@ describe('Dashboard', () => {
       published_date: null,
       image_size_delta: 0,
       status: 'pending',
+      scope_violation: 0,
       approved_by: null,
       approved_at: null,
       retry_count: 0,

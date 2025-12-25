@@ -33,19 +33,23 @@ async def upgrade():
 
         # Add is_my_project column with default False
         if not await column_exists(conn, "containers", "is_my_project"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE containers
                 ADD COLUMN is_my_project BOOLEAN NOT NULL DEFAULT 0
-            """))
+            """)
+            )
             print("✓ Added is_my_project column")
         else:
             print("⏭️  Skipped is_my_project column (already exists)")
 
         # Create index for faster filtering
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS ix_containers_is_my_project
             ON containers(is_my_project)
-        """))
+        """)
+        )
         print("✓ Created index ix_containers_is_my_project")
 
         print("Migration completed successfully!")
@@ -67,7 +71,9 @@ async def downgrade():
         # 2. Copy data
         # 3. Drop old table
         # 4. Rename new table
-        print("⚠ Note: SQLite doesn't support DROP COLUMN. Manual intervention required for full rollback.")
+        print(
+            "⚠ Note: SQLite doesn't support DROP COLUMN. Manual intervention required for full rollback."
+        )
 
         print("Rollback completed!")
 

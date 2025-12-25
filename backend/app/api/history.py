@@ -73,13 +73,21 @@ def get_restart_performed_by(restart: ContainerRestartLog) -> str:
 
     if trigger.startswith("manual"):
         return "User"
-    elif trigger in ["exit_code", "health_check", "oom_killed", "signal_killed_SIGKILL", "signal_killed_SIGTERM"]:
+    elif trigger in [
+        "exit_code",
+        "health_check",
+        "oom_killed",
+        "signal_killed_SIGKILL",
+        "signal_killed_SIGTERM",
+    ]:
         return "Auto-Restart"
     else:
         return "System"
 
 
-def transform_restart_to_event(restart: ContainerRestartLog) -> UnifiedHistoryEventSchema:
+def transform_restart_to_event(
+    restart: ContainerRestartLog,
+) -> UnifiedHistoryEventSchema:
     """Transform ContainerRestartLog model to unified event schema."""
     # Calculate duration if completed
     duration = None
@@ -110,12 +118,20 @@ def transform_restart_to_event(restart: ContainerRestartLog) -> UnifiedHistoryEv
 async def list_history(
     admin: Optional[dict] = Depends(require_auth),
     container_id: int = None,
-    status: Optional[str] = Query(None, description="Filter by status (success, failed, rolled_back)"),
-    start_date: Optional[str] = Query(None, description="Filter by start date (ISO format)"),
-    end_date: Optional[str] = Query(None, description="Filter by end date (ISO format)"),
+    status: Optional[str] = Query(
+        None, description="Filter by status (success, failed, rolled_back)"
+    ),
+    start_date: Optional[str] = Query(
+        None, description="Filter by start date (ISO format)"
+    ),
+    end_date: Optional[str] = Query(
+        None, description="Filter by end date (ISO format)"
+    ),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(50, ge=1, le=500, description="Maximum number of records to return"),
-    db: AsyncSession = Depends(get_db)
+    limit: int = Query(
+        50, ge=1, le=500, description="Maximum number of records to return"
+    ),
+    db: AsyncSession = Depends(get_db),
 ) -> List[UnifiedHistoryEventSchema]:
     """List unified history (updates + restarts) with pagination.
 
@@ -136,30 +152,38 @@ async def list_history(
     fetch_limit = min(limit * 3, 500)
 
     # Query updates - undefer event_type to load it eagerly
-    update_query = select(UpdateHistory).options(
-        undefer(UpdateHistory.event_type),
-        undefer(UpdateHistory.dependency_type),
-        undefer(UpdateHistory.dependency_id),
-        undefer(UpdateHistory.dependency_name),
-    ).order_by(UpdateHistory.created_at.desc())
+    update_query = (
+        select(UpdateHistory)
+        .options(
+            undefer(UpdateHistory.event_type),
+            undefer(UpdateHistory.dependency_type),
+            undefer(UpdateHistory.dependency_id),
+            undefer(UpdateHistory.dependency_name),
+        )
+        .order_by(UpdateHistory.created_at.desc())
+    )
     if container_id:
         update_query = update_query.where(UpdateHistory.container_id == container_id)
     if status:
         update_query = update_query.where(UpdateHistory.status == status)
     if start_date:
-        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
         update_query = update_query.where(UpdateHistory.started_at >= start_dt)
     if end_date:
-        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
         update_query = update_query.where(UpdateHistory.started_at <= end_dt)
     update_query = update_query.limit(fetch_limit)
 
     # Query restarts (only completed ones)
-    restart_query = select(ContainerRestartLog).where(
-        ContainerRestartLog.completed_at.isnot(None)
-    ).order_by(ContainerRestartLog.created_at.desc())
+    restart_query = (
+        select(ContainerRestartLog)
+        .where(ContainerRestartLog.completed_at.isnot(None))
+        .order_by(ContainerRestartLog.created_at.desc())
+    )
     if container_id:
-        restart_query = restart_query.where(ContainerRestartLog.container_id == container_id)
+        restart_query = restart_query.where(
+            ContainerRestartLog.container_id == container_id
+        )
     restart_query = restart_query.limit(fetch_limit)
 
     # Execute queries
@@ -182,13 +206,12 @@ async def list_history(
     unified_events.sort(key=lambda e: e.started_at, reverse=True)
 
     # Apply pagination
-    return unified_events[skip:skip + limit]
+    return unified_events[skip : skip + limit]
 
 
 @router.get("/stats")
 async def get_history_stats(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get update history statistics.
 
@@ -203,9 +226,7 @@ async def get_history_stats(
     from sqlalchemy import func
 
     # Get total updates count
-    total_result = await db.execute(
-        select(func.count(UpdateHistory.id))
-    )
+    total_result = await db.execute(select(func.count(UpdateHistory.id)))
     total_updates = total_result.scalar() or 0
 
     # Get successful updates count
@@ -221,7 +242,9 @@ async def get_history_stats(
     failed_count = failed_result.scalar() or 0
 
     # Calculate success rate
-    success_rate = (successful_updates / total_updates * 100) if total_updates > 0 else 0.0
+    success_rate = (
+        (successful_updates / total_updates * 100) if total_updates > 0 else 0.0
+    )
 
     # Get average update time (only for completed updates)
     avg_time_result = await db.execute(
@@ -235,7 +258,7 @@ async def get_history_stats(
     most_updated_result = await db.execute(
         select(
             UpdateHistory.container_name,
-            func.count(UpdateHistory.id).label("update_count")
+            func.count(UpdateHistory.id).label("update_count"),
         )
         .group_by(UpdateHistory.container_name)
         .order_by(func.count(UpdateHistory.id).desc())
@@ -243,8 +266,7 @@ async def get_history_stats(
     )
     most_updated_rows = most_updated_result.all()
     most_updated_containers = [
-        {"container_name": row[0], "update_count": row[1]}
-        for row in most_updated_rows
+        {"container_name": row[0], "update_count": row[1]} for row in most_updated_rows
     ]
 
     return {
@@ -252,7 +274,7 @@ async def get_history_stats(
         "total_updates": total_updates,
         "avg_update_time": round(float(avg_update_time), 2) if avg_update_time else 0.0,
         "failed_count": failed_count,
-        "most_updated_containers": most_updated_containers
+        "most_updated_containers": most_updated_containers,
     }
 
 
@@ -260,7 +282,7 @@ async def get_history_stats(
 async def get_history(
     history_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> UpdateHistorySchema:
     """Get history record details.
 
@@ -292,7 +314,7 @@ async def get_history(
 async def rollback_update(
     history_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Rollback an update.
 
@@ -312,8 +334,7 @@ async def rollback_update(
 
         if not result["success"]:
             raise HTTPException(
-                status_code=500,
-                detail=result.get("message", "Rollback failed")
+                status_code=500, detail=result.get("message", "Rollback failed")
             )
 
         return result

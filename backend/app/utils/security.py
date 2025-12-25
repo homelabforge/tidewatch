@@ -44,12 +44,14 @@ def sanitize_log_message(msg: Union[str, bytes, int, float, None]) -> str:
 
     # Remove newlines, tabs, and all control characters
     # Pattern matches: \n, \r, \t, and control chars (0x00-0x1f, 0x7f-0x9f)
-    sanitized = re.sub(r'[\n\r\t\x00-\x1f\x7f-\x9f]', '', msg_str)
+    sanitized = re.sub(r"[\n\r\t\x00-\x1f\x7f-\x9f]", "", msg_str)
 
     return sanitized
 
 
-def mask_sensitive(value: Union[str, None], visible_chars: int = 4, mask_char: str = "*") -> str:
+def mask_sensitive(
+    value: Union[str, None], visible_chars: int = 4, mask_char: str = "*"
+) -> str:
     """Mask sensitive values, showing only the last N characters.
 
     Used to prevent sensitive data exposure in logs and API responses while
@@ -93,7 +95,11 @@ def mask_sensitive(value: Union[str, None], visible_chars: int = 4, mask_char: s
     return f"{mask_char * 3}{visible_part}"
 
 
-def sanitize_path(user_path: Union[str, Path], base_dir: Union[str, Path], allow_symlinks: bool = False) -> Path:
+def sanitize_path(
+    user_path: Union[str, Path],
+    base_dir: Union[str, Path],
+    allow_symlinks: bool = False,
+) -> Path:
     """Safely resolve user-provided paths within a base directory.
 
     Prevents path traversal attacks (e.g., "../../etc/passwd") by:
@@ -221,23 +227,23 @@ def is_safe_filename(filename: str, allow_dots: bool = True) -> bool:
         return False
 
     # Reject path separators
-    if '/' in filename or '\\' in filename:
+    if "/" in filename or "\\" in filename:
         return False
 
     # Reject null bytes (can be used for path truncation)
-    if '\x00' in filename:
+    if "\x00" in filename:
         return False
 
     # Reject control characters
-    if re.search(r'[\x00-\x1f\x7f-\x9f]', filename):
+    if re.search(r"[\x00-\x1f\x7f-\x9f]", filename):
         return False
 
     # Optionally reject hidden files
-    if not allow_dots and filename.startswith('.'):
+    if not allow_dots and filename.startswith("."):
         return False
 
     # Reject special directory names
-    if filename in ('.', '..'):
+    if filename in (".", ".."):
         return False
 
     return True
@@ -269,10 +275,9 @@ def validate_container_name(name: str) -> str:
         raise ValueError("Container name cannot be empty")
 
     # Docker container name regex: starts with alphanumeric, then alphanumeric + _ . -
-    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', name):
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$", name):
         raise ValueError(
-            f"Invalid container name: {name}. "
-            "Must match [a-zA-Z0-9][a-zA-Z0-9_.-]*"
+            f"Invalid container name: {name}. Must match [a-zA-Z0-9][a-zA-Z0-9_.-]*"
         )
 
     return name
@@ -302,17 +307,17 @@ def validate_image_name(image: str) -> str:
         raise ValueError("Image name cannot be empty")
 
     # Basic validation: no path traversal patterns
-    if '..' in image or image.startswith('/'):
+    if ".." in image or image.startswith("/"):
         raise ValueError(f"Invalid image name: {image}")
 
     # Check for control characters
-    if re.search(r'[\x00-\x1f\x7f-\x9f]', image):
+    if re.search(r"[\x00-\x1f\x7f-\x9f]", image):
         raise ValueError(f"Invalid image name contains control characters: {image}")
 
     # Docker image name pattern (simplified):
     # [registry/][namespace/]repository[:tag|@digest]
     # Allow: alphanumeric, dots, hyphens, underscores, slashes, colons, @
-    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$', image):
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$", image):
         raise ValueError(f"Invalid image name format: {image}")
 
     return image

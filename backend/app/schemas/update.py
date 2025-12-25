@@ -27,6 +27,7 @@ class UpdateSchema(BaseModel):
     published_date: Optional[datetime] = None
     image_size_delta: int
     status: str
+    scope_violation: int = 0
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     rejected_by: Optional[str] = None
@@ -54,7 +55,9 @@ class UpdateApproval(BaseModel):
 class UpdateApply(BaseModel):
     """Update apply request."""
 
-    triggered_by: str = "user"  # Who triggered the update: username, "system", "scheduler"
+    triggered_by: str = (
+        "user"  # Who triggered the update: username, "system", "scheduler"
+    )
 
 
 class UpdateReasoning(BaseModel):

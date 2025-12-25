@@ -33,16 +33,14 @@ class DependencyManager:
         """
         # Sort keys and convert sets to sorted lists for deterministic serialization
         normalized = {
-            name: sorted(list(deps))
-            for name, deps in sorted(dependencies.items())
+            name: sorted(list(deps)) for name, deps in sorted(dependencies.items())
         }
         serialized = json.dumps(normalized, sort_keys=True)
         return hashlib.md5(serialized.encode()).hexdigest()
 
     @staticmethod
     async def get_update_order(
-        db: AsyncSession,
-        container_names: List[str]
+        db: AsyncSession, container_names: List[str]
     ) -> List[str]:
         """Get containers in dependency-ordered update sequence with caching.
 
@@ -74,7 +72,9 @@ class DependencyManager:
         for name in container_names:
             container = containers.get(name)
             if not container:
-                logger.warning(f"Container {sanitize_log_message(str(name))} not found in database")
+                logger.warning(
+                    f"Container {sanitize_log_message(str(name))} not found in database"
+                )
                 dependencies[name] = set()
                 continue
 
@@ -85,10 +85,7 @@ class DependencyManager:
                     deps_list = json.loads(container.dependencies)
                     if isinstance(deps_list, list):
                         # Only include dependencies that are in the update list
-                        deps = {
-                            d for d in deps_list
-                            if d in container_names
-                        }
+                        deps = {d for d in deps_list if d in container_names}
                 except json.JSONDecodeError:
                     logger.warning(
                         f"Invalid dependencies JSON for {name}: "
@@ -100,7 +97,9 @@ class DependencyManager:
         # Check cache first
         cache_key = DependencyManager._generate_cache_key(dependencies)
         if cache_key in _dependency_cache:
-            logger.debug(f"Cache hit for dependency resolution ({sanitize_log_message(str(len(container_names)))} containers)")
+            logger.debug(
+                f"Cache hit for dependency resolution ({sanitize_log_message(str(len(container_names)))} containers)"
+            )
             return _dependency_cache[cache_key]
 
         # Perform topological sort
@@ -109,7 +108,9 @@ class DependencyManager:
 
             # Cache the result
             _dependency_cache[cache_key] = result_order
-            logger.debug(f"Cached dependency resolution for {sanitize_log_message(str(len(container_names)))} containers")
+            logger.debug(
+                f"Cached dependency resolution for {sanitize_log_message(str(len(container_names)))} containers"
+            )
 
             # Limit cache size to prevent memory issues (keep last 100 results)
             if len(_dependency_cache) > 100:
@@ -175,8 +176,7 @@ class DependencyManager:
 
     @staticmethod
     async def auto_detect_dependencies(
-        db: AsyncSession,
-        container_name: str
+        db: AsyncSession, container_name: str
     ) -> List[str]:
         """Auto-detect container dependencies from Docker compose links/depends_on.
 
@@ -212,9 +212,7 @@ class DependencyManager:
 
     @staticmethod
     async def update_container_dependencies(
-        db: AsyncSession,
-        container_name: str,
-        dependencies: List[str]
+        db: AsyncSession, container_name: str, dependencies: List[str]
     ):
         """Update container dependencies and reverse-update dependents.
 
@@ -250,7 +248,9 @@ class DependencyManager:
         # Update reverse dependencies (dependents)
         # Remove this container from old dependencies' dependents lists
         for dep_name in old_deps - new_deps:
-            await DependencyManager._remove_from_dependents(db, dep_name, container_name)
+            await DependencyManager._remove_from_dependents(
+                db, dep_name, container_name
+            )
 
         # Add this container to new dependencies' dependents lists
         for dep_name in new_deps - old_deps:
@@ -260,15 +260,11 @@ class DependencyManager:
         DependencyManager.clear_dependency_cache()
 
         await db.commit()
-        logger.info(
-            f"Updated dependencies for {container_name}: {dependencies}"
-        )
+        logger.info(f"Updated dependencies for {container_name}: {dependencies}")
 
     @staticmethod
     async def _add_to_dependents(
-        db: AsyncSession,
-        container_name: str,
-        dependent_name: str
+        db: AsyncSession, container_name: str, dependent_name: str
     ):
         """Add a dependent to a container's dependents list.
 
@@ -305,9 +301,7 @@ class DependencyManager:
 
     @staticmethod
     async def _remove_from_dependents(
-        db: AsyncSession,
-        container_name: str,
-        dependent_name: str
+        db: AsyncSession, container_name: str, dependent_name: str
     ):
         """Remove a dependent from a container's dependents list.
 
@@ -340,9 +334,7 @@ class DependencyManager:
 
     @staticmethod
     async def validate_dependencies(
-        db: AsyncSession,
-        container_name: str,
-        dependencies: List[str]
+        db: AsyncSession, container_name: str, dependencies: List[str]
     ) -> Tuple[bool, Optional[str]]:
         """Validate that dependencies exist and won't create cycles.
 

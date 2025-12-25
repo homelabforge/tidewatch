@@ -39,7 +39,12 @@ class ProjectScanner:
 
         if not auto_scan or auto_scan.lower() != "true":
             logger.info("My Projects auto-scan is disabled")
-            return {"added": 0, "updated": 0, "skipped": 0, "error": "Auto-scan disabled"}
+            return {
+                "added": 0,
+                "updated": 0,
+                "skipped": 0,
+                "error": "Auto-scan disabled",
+            }
 
         if not projects_dir:
             projects_dir = "/projects"
@@ -48,22 +53,47 @@ class ProjectScanner:
         # Allowed base directories: /projects (production), /tmp (tests), /srv/raid0/docker/build (homelab)
         try:
             if projects_dir.startswith("/projects"):
-                projects_path = sanitize_path(projects_dir, "/projects", allow_symlinks=False)
+                projects_path = sanitize_path(
+                    projects_dir, "/projects", allow_symlinks=False
+                )
             elif projects_dir.startswith("/tmp"):
-                projects_path = sanitize_path(projects_dir, "/tmp", allow_symlinks=False)
+                projects_path = sanitize_path(
+                    projects_dir, "/tmp", allow_symlinks=False
+                )
             elif projects_dir.startswith("/srv/raid0/docker/build"):
-                projects_path = sanitize_path(projects_dir, "/srv/raid0/docker/build", allow_symlinks=False)
+                projects_path = sanitize_path(
+                    projects_dir, "/srv/raid0/docker/build", allow_symlinks=False
+                )
             else:
-                logger.warning(f"Projects directory outside allowed paths: {sanitize_log_message(projects_dir)}")
-                return {"added": 0, "updated": 0, "skipped": 0, "error": "Invalid directory path"}
+                logger.warning(
+                    f"Projects directory outside allowed paths: {sanitize_log_message(projects_dir)}"
+                )
+                return {
+                    "added": 0,
+                    "updated": 0,
+                    "skipped": 0,
+                    "error": "Invalid directory path",
+                }
 
             if not projects_path.exists():
                 logger.warning(f"Projects directory does not exist: {projects_path}")
-                return {"added": 0, "updated": 0, "skipped": 0, "error": f"Directory not found: {projects_path}"}
+                return {
+                    "added": 0,
+                    "updated": 0,
+                    "skipped": 0,
+                    "error": f"Directory not found: {projects_path}",
+                }
 
         except (ValueError, FileNotFoundError) as e:
-            logger.error(f"Invalid projects directory path: {sanitize_log_message(str(e))}")
-            return {"added": 0, "updated": 0, "skipped": 0, "error": f"Invalid directory path: {str(e)}"}
+            logger.error(
+                f"Invalid projects directory path: {sanitize_log_message(str(e))}"
+            )
+            return {
+                "added": 0,
+                "updated": 0,
+                "skipped": 0,
+                "error": f"Invalid directory path: {str(e)}",
+            }
 
         logger.info(f"Scanning projects directory: {projects_dir}")
 
@@ -113,7 +143,9 @@ class ProjectScanner:
         if removed > 0:
             await self.db.commit()
 
-        logger.info(f"Scan complete: {added} added, {updated} updated, {skipped} skipped, {removed} removed")
+        logger.info(
+            f"Scan complete: {added} added, {updated} updated, {skipped} skipped, {removed} removed"
+        )
 
         result_dict = {
             "added": added,
@@ -149,7 +181,15 @@ class ProjectScanner:
                 return ("skipped", None)
 
             # Infrastructure services to skip
-            skip_services = {"postgres", "redis", "mysql", "mariadb", "mongodb", "rabbitmq", "elasticsearch"}
+            skip_services = {
+                "postgres",
+                "redis",
+                "mysql",
+                "mariadb",
+                "mongodb",
+                "rabbitmq",
+                "elasticsearch",
+            }
 
             # Try to find service ending with -dev first
             dev_service = None
@@ -266,7 +306,9 @@ class ProjectScanner:
         """
         try:
             # Check if auto-scan is enabled
-            auto_scan_enabled = await SettingsService.get(self.db, "dockerfile_auto_scan")
+            auto_scan_enabled = await SettingsService.get(
+                self.db, "dockerfile_auto_scan"
+            )
             if not auto_scan_enabled or auto_scan_enabled.lower() != "true":
                 return
 
@@ -287,7 +329,9 @@ class ProjectScanner:
             )
             container = result.scalar_one_or_none()
             if not container:
-                logger.warning(f"Container {container_id} not found for Dockerfile scan")
+                logger.warning(
+                    f"Container {container_id} not found for Dockerfile scan"
+                )
                 return
 
             logger.info(f"Auto-scanning Dockerfile for container {container_id}")
@@ -300,13 +344,19 @@ class ProjectScanner:
             )
 
         except (OSError, PermissionError) as e:
-            logger.error(f"File access error auto-scanning Dockerfile for container {container_id}: {e}")
+            logger.error(
+                f"File access error auto-scanning Dockerfile for container {container_id}: {e}"
+            )
             # Don't raise - this is optional functionality
         except OperationalError as e:
-            logger.error(f"Database error auto-scanning Dockerfile for container {container_id}: {e}")
+            logger.error(
+                f"Database error auto-scanning Dockerfile for container {container_id}: {e}"
+            )
             # Don't raise - this is optional functionality
         except (ImportError, AttributeError) as e:
-            logger.error(f"Parser dependency error auto-scanning Dockerfile for container {container_id}: {e}")
+            logger.error(
+                f"Parser dependency error auto-scanning Dockerfile for container {container_id}: {e}"
+            )
             # Don't raise - this is optional functionality
         except (ValueError, KeyError, TypeError) as e:
             logger.error(f"Invalid Dockerfile data for container {container_id}: {e}")

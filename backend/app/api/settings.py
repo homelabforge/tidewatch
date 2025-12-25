@@ -59,7 +59,9 @@ async def get_settings_by_category(
                 if len(setting.value) > 12:
                     setting.value = f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
                 elif len(setting.value) > 4:
-                    setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
+                    setting.value = (
+                        f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
+                    )
                 else:
                     setting.value = "****"
 
@@ -135,7 +137,7 @@ async def batch_update_settings(
             if "key" not in update or "value" not in update:
                 raise HTTPException(
                     status_code=400,
-                    detail="Each update must have 'key' and 'value' fields"
+                    detail="Each update must have 'key' and 'value' fields",
                 )
 
         # Apply all updates in transaction
@@ -149,7 +151,9 @@ async def batch_update_settings(
     except HTTPException:
         raise
     except Exception as e:
-        safe_error_response(logger, e, "Failed to batch update settings", status_code=500)
+        safe_error_response(
+            logger, e, "Failed to batch update settings", status_code=500
+        )
 
 
 @router.post("/reset")
@@ -203,28 +207,25 @@ async def test_docker_connection(
                 "version": version,
                 "api_version": api_version,
                 "containers": containers,
-            }
+            },
         }
     except docker.errors.DockerException:
         return {
             "success": False,
             "message": "Failed to connect to Docker",
-            "details": {
-                "docker_host": docker_socket,
-                "error": "An error occurred"
-            }
+            "details": {"docker_host": docker_socket, "error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError, AttributeError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -250,7 +251,7 @@ async def test_vulnforge_connection(
             return {
                 "success": False,
                 "message": "VulnForge URL not configured",
-                "details": {}
+                "details": {},
             }
 
         # Build auth headers based on configured type
@@ -259,6 +260,7 @@ async def test_vulnforge_connection(
             headers["Authorization"] = f"Bearer {api_key}"
         elif auth_type == "basic_auth" and username and password:
             import base64
+
             credentials = f"{username}:{password}"
             encoded = base64.b64encode(credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
@@ -273,7 +275,9 @@ async def test_vulnforge_connection(
             # Try to get container count from API
             container_count = "N/A"
             try:
-                containers_response = await client.get(f"{base_url}/api/v1/containers/", headers=headers)
+                containers_response = await client.get(
+                    f"{base_url}/api/v1/containers/", headers=headers
+                )
                 if containers_response.status_code == 200:
                     data = containers_response.json()
                     container_count = data.get("total", len(data.get("containers", [])))
@@ -294,7 +298,7 @@ async def test_vulnforge_connection(
                     "url": base_url,
                     "auth_type": auth_status,
                     "containers": container_count,
-                }
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -303,8 +307,8 @@ async def test_vulnforge_connection(
             "details": {
                 "url": vulnforge_url,
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
@@ -312,26 +316,26 @@ async def test_vulnforge_connection(
             "message": "Cannot connect to VulnForge",
             "details": {
                 "url": vulnforge_url,
-                "error": "Connection refused or host unreachable"
-            }
+                "error": "Connection refused or host unreachable",
+            },
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "VulnForge connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -348,14 +352,16 @@ async def test_ntfy_connection(
     try:
         # Get ntfy settings
         ntfy_enabled = await SettingsService.get_bool(db, "ntfy_enabled")
-        ntfy_server = await SettingsService.get(db, "ntfy_server") or await SettingsService.get(db, "ntfy_url")
+        ntfy_server = await SettingsService.get(
+            db, "ntfy_server"
+        ) or await SettingsService.get(db, "ntfy_url")
         ntfy_topic = await SettingsService.get(db, "ntfy_topic")
 
         if not ntfy_enabled:
             return {
                 "success": False,
                 "message": "ntfy notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not ntfy_server or not ntfy_topic:
@@ -364,8 +370,8 @@ async def test_ntfy_connection(
                 "message": "ntfy server or topic not configured",
                 "details": {
                     "server_configured": bool(ntfy_server),
-                    "topic_configured": bool(ntfy_topic)
-                }
+                    "topic_configured": bool(ntfy_topic),
+                },
             }
 
         # Send test notification
@@ -379,8 +385,8 @@ async def test_ntfy_connection(
                 headers={
                     "Title": "TideWatch: Connection Test",
                     "Priority": "default",
-                    "Tags": "white_check_mark,ocean"
-                }
+                    "Tags": "white_check_mark,ocean",
+                },
             )
             response.raise_for_status()
 
@@ -390,8 +396,8 @@ async def test_ntfy_connection(
                 "details": {
                     "server": server_url,
                     "topic": ntfy_topic,
-                    "message": "Check your ntfy client for the test notification"
-                }
+                    "message": "Check your ntfy client for the test notification",
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -401,8 +407,8 @@ async def test_ntfy_connection(
                 "server": ntfy_server,
                 "topic": ntfy_topic,
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
@@ -410,26 +416,26 @@ async def test_ntfy_connection(
             "message": "Cannot connect to ntfy server",
             "details": {
                 "server": ntfy_server,
-                "error": "Connection refused or host unreachable"
-            }
+                "error": "Connection refused or host unreachable",
+            },
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "ntfy connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -454,8 +460,8 @@ async def test_dockerhub_connection(
                 "message": "Docker Hub credentials not configured",
                 "details": {
                     "username_configured": bool(dockerhub_username),
-                    "token_configured": bool(dockerhub_token)
-                }
+                    "token_configured": bool(dockerhub_token),
+                },
             }
 
         # Authenticate with Docker Hub API
@@ -463,10 +469,7 @@ async def test_dockerhub_connection(
             # Step 1: Get JWT token
             auth_response = await client.post(
                 "https://hub.docker.com/v2/users/login",
-                json={
-                    "username": dockerhub_username,
-                    "password": dockerhub_token
-                }
+                json={"username": dockerhub_username, "password": dockerhub_token},
             )
 
             if auth_response.status_code != 200:
@@ -476,8 +479,8 @@ async def test_dockerhub_connection(
                     "details": {
                         "username": dockerhub_username,
                         "status_code": auth_response.status_code,
-                        "error": "Invalid credentials"
-                    }
+                        "error": "Invalid credentials",
+                    },
                 }
 
             auth_data = auth_response.json()
@@ -486,8 +489,7 @@ async def test_dockerhub_connection(
             # Step 2: Test authenticated request
             headers = {"Authorization": f"Bearer {token}"}
             profile_response = await client.get(
-                f"https://hub.docker.com/v2/users/{dockerhub_username}",
-                headers=headers
+                f"https://hub.docker.com/v2/users/{dockerhub_username}", headers=headers
             )
             profile_response.raise_for_status()
 
@@ -499,8 +501,8 @@ async def test_dockerhub_connection(
                 "details": {
                     "username": dockerhub_username,
                     "profile_url": f"https://hub.docker.com/u/{dockerhub_username}",
-                    "authenticated": True
-                }
+                    "authenticated": True,
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -508,34 +510,32 @@ async def test_dockerhub_connection(
             "message": f"Docker Hub API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to Docker Hub",
-            "details": {
-                "error": "Connection refused or network unreachable"
-            }
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Docker Hub connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -558,7 +558,7 @@ async def test_gotify_connection(
             return {
                 "success": False,
                 "message": "Gotify notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not gotify_server or not gotify_token:
@@ -567,8 +567,8 @@ async def test_gotify_connection(
                 "message": "Gotify server or token not configured",
                 "details": {
                     "server_configured": bool(gotify_server),
-                    "token_configured": bool(gotify_token)
-                }
+                    "token_configured": bool(gotify_token),
+                },
             }
 
         # Send test notification
@@ -582,8 +582,8 @@ async def test_gotify_connection(
                 json={
                     "title": "TideWatch: Connection Test",
                     "message": "If you see this, Gotify notifications are working! 🌊",
-                    "priority": 5
-                }
+                    "priority": 5,
+                },
             )
             response.raise_for_status()
 
@@ -592,8 +592,8 @@ async def test_gotify_connection(
                 "message": "Test notification sent successfully",
                 "details": {
                     "server": server_url,
-                    "message": "Check your Gotify client for the test notification"
-                }
+                    "message": "Check your Gotify client for the test notification",
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -602,8 +602,8 @@ async def test_gotify_connection(
             "details": {
                 "server": gotify_server,
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
@@ -611,26 +611,26 @@ async def test_gotify_connection(
             "message": "Cannot connect to Gotify server",
             "details": {
                 "server": gotify_server,
-                "error": "Connection refused or host unreachable"
-            }
+                "error": "Connection refused or host unreachable",
+            },
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Gotify connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -653,7 +653,7 @@ async def test_pushover_connection(
             return {
                 "success": False,
                 "message": "Pushover notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not pushover_user_key or not pushover_api_token:
@@ -662,8 +662,8 @@ async def test_pushover_connection(
                 "message": "Pushover user key or API token not configured",
                 "details": {
                     "user_key_configured": bool(pushover_user_key),
-                    "api_token_configured": bool(pushover_api_token)
-                }
+                    "api_token_configured": bool(pushover_api_token),
+                },
             }
 
         # Send test notification
@@ -675,8 +675,8 @@ async def test_pushover_connection(
                     "user": pushover_user_key,
                     "title": "TideWatch: Connection Test",
                     "message": "If you see this, Pushover notifications are working! 🌊",
-                    "priority": 0
-                }
+                    "priority": 0,
+                },
             )
             response.raise_for_status()
 
@@ -685,7 +685,7 @@ async def test_pushover_connection(
                 "message": "Test notification sent successfully",
                 "details": {
                     "message": "Check your Pushover client for the test notification"
-                }
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -693,32 +693,32 @@ async def test_pushover_connection(
             "message": f"Pushover API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to Pushover API",
-            "details": {"error": "Connection refused or network unreachable"}
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Pushover connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -740,14 +740,14 @@ async def test_slack_connection(
             return {
                 "success": False,
                 "message": "Slack notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not slack_webhook_url:
             return {
                 "success": False,
                 "message": "Slack webhook URL not configured",
-                "details": {"webhook_configured": False}
+                "details": {"webhook_configured": False},
             }
 
         # Send test notification
@@ -757,8 +757,8 @@ async def test_slack_connection(
                 json={
                     "text": "🌊 *TideWatch: Connection Test*\n\nIf you see this, Slack notifications are working!",
                     "username": "TideWatch",
-                    "icon_emoji": ":ocean:"
-                }
+                    "icon_emoji": ":ocean:",
+                },
             )
             response.raise_for_status()
 
@@ -767,7 +767,7 @@ async def test_slack_connection(
                 "message": "Test notification sent successfully",
                 "details": {
                     "message": "Check your Slack channel for the test notification"
-                }
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -775,32 +775,32 @@ async def test_slack_connection(
             "message": f"Slack API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to Slack",
-            "details": {"error": "Connection refused or network unreachable"}
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Slack connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -822,14 +822,14 @@ async def test_discord_connection(
             return {
                 "success": False,
                 "message": "Discord notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not discord_webhook_url:
             return {
                 "success": False,
                 "message": "Discord webhook URL not configured",
-                "details": {"webhook_configured": False}
+                "details": {"webhook_configured": False},
             }
 
         # Send test notification
@@ -838,12 +838,14 @@ async def test_discord_connection(
                 discord_webhook_url,
                 json={
                     "username": "TideWatch",
-                    "embeds": [{
-                        "title": "🌊 Connection Test",
-                        "description": "If you see this, Discord notifications are working!",
-                        "color": 3447003  # Blue color
-                    }]
-                }
+                    "embeds": [
+                        {
+                            "title": "🌊 Connection Test",
+                            "description": "If you see this, Discord notifications are working!",
+                            "color": 3447003,  # Blue color
+                        }
+                    ],
+                },
             )
             response.raise_for_status()
 
@@ -852,7 +854,7 @@ async def test_discord_connection(
                 "message": "Test notification sent successfully",
                 "details": {
                     "message": "Check your Discord channel for the test notification"
-                }
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -860,32 +862,32 @@ async def test_discord_connection(
             "message": f"Discord API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to Discord",
-            "details": {"error": "Connection refused or network unreachable"}
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Discord connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -908,7 +910,7 @@ async def test_telegram_connection(
             return {
                 "success": False,
                 "message": "Telegram notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not telegram_bot_token or not telegram_chat_id:
@@ -917,8 +919,8 @@ async def test_telegram_connection(
                 "message": "Telegram bot token or chat ID not configured",
                 "details": {
                     "bot_token_configured": bool(telegram_bot_token),
-                    "chat_id_configured": bool(telegram_chat_id)
-                }
+                    "chat_id_configured": bool(telegram_chat_id),
+                },
             }
 
         # Send test notification
@@ -928,8 +930,8 @@ async def test_telegram_connection(
                 json={
                     "chat_id": telegram_chat_id,
                     "text": "🌊 *TideWatch: Connection Test*\n\nIf you see this, Telegram notifications are working!",
-                    "parse_mode": "Markdown"
-                }
+                    "parse_mode": "Markdown",
+                },
             )
             response.raise_for_status()
 
@@ -938,7 +940,7 @@ async def test_telegram_connection(
                 return {
                     "success": False,
                     "message": f"Telegram API error: {result.get('description', 'Unknown error')}",
-                    "details": {"error": result.get("description")}
+                    "details": {"error": result.get("description")},
                 }
 
             return {
@@ -946,8 +948,8 @@ async def test_telegram_connection(
                 "message": "Test notification sent successfully",
                 "details": {
                     "chat_id": telegram_chat_id,
-                    "message": "Check your Telegram chat for the test notification"
-                }
+                    "message": "Check your Telegram chat for the test notification",
+                },
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -955,32 +957,32 @@ async def test_telegram_connection(
             "message": f"Telegram API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to Telegram API",
-            "details": {"error": "Connection refused or network unreachable"}
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "Telegram connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
 
 
@@ -1008,7 +1010,7 @@ async def test_email_connection(
             return {
                 "success": False,
                 "message": "Email notifications are disabled",
-                "details": {"enabled": False}
+                "details": {"enabled": False},
             }
 
         if not all([smtp_host, smtp_user, smtp_password, from_address, to_address]):
@@ -1020,8 +1022,8 @@ async def test_email_connection(
                     "smtp_user_configured": bool(smtp_user),
                     "smtp_password_configured": bool(smtp_password),
                     "from_address_configured": bool(from_address),
-                    "to_address_configured": bool(to_address)
-                }
+                    "to_address_configured": bool(to_address),
+                },
             }
 
         # Send test email
@@ -1045,7 +1047,7 @@ async def test_email_connection(
             username=smtp_user,
             password=smtp_password,
             start_tls=use_tls,
-            timeout=30.0
+            timeout=30.0,
         )
 
         return {
@@ -1057,8 +1059,8 @@ async def test_email_connection(
                 "from": from_address,
                 "to": to_address,
                 "tls": use_tls,
-                "message": "Check your inbox for the test email"
-            }
+                "message": "Check your inbox for the test email",
+            },
         }
     except aiosmtplib.SMTPException:
         logger.error("SMTP test failed", exc_info=True)
@@ -1068,8 +1070,8 @@ async def test_email_connection(
             "details": {
                 "smtp_host": smtp_host,
                 "smtp_port": smtp_port,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except ConnectionRefusedError:
         return {
@@ -1078,32 +1080,32 @@ async def test_email_connection(
             "details": {
                 "smtp_host": smtp_host,
                 "smtp_port": smtp_port,
-                "error": "Connection refused"
-            }
+                "error": "Connection refused",
+            },
         }
     except TimeoutError:
         return {
             "success": False,
             "message": "SMTP connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except ImportError:
         return {
             "success": False,
             "message": "aiosmtplib not installed",
-            "details": {"error": "Email support requires the aiosmtplib package"}
+            "details": {"error": "Email support requires the aiosmtplib package"},
         }
 
 
@@ -1128,8 +1130,8 @@ async def test_ghcr_connection(
                 "message": "GHCR credentials not configured",
                 "details": {
                     "username_configured": bool(ghcr_username),
-                    "token_configured": bool(ghcr_token)
-                }
+                    "token_configured": bool(ghcr_token),
+                },
             }
 
         # Test authentication with GHCR
@@ -1138,13 +1140,10 @@ async def test_ghcr_connection(
             # Test with GitHub API to verify token
             headers = {
                 "Authorization": f"Bearer {ghcr_token}",
-                "Accept": "application/vnd.github+json"
+                "Accept": "application/vnd.github+json",
             }
 
-            response = await client.get(
-                "https://api.github.com/user",
-                headers=headers
-            )
+            response = await client.get("https://api.github.com/user", headers=headers)
 
             if response.status_code == 200:
                 user_data = response.json()
@@ -1158,8 +1157,8 @@ async def test_ghcr_connection(
                         "details": {
                             "configured_username": ghcr_username,
                             "token_username": github_username,
-                            "error": "Configured username doesn't match the token owner"
-                        }
+                            "error": "Configured username doesn't match the token owner",
+                        },
                     }
 
                 return {
@@ -1168,8 +1167,8 @@ async def test_ghcr_connection(
                     "details": {
                         "username": github_username,
                         "profile_url": f"https://github.com/{github_username}",
-                        "authenticated": True
-                    }
+                        "authenticated": True,
+                    },
                 }
             elif response.status_code == 401:
                 return {
@@ -1177,8 +1176,8 @@ async def test_ghcr_connection(
                     "message": "GHCR authentication failed",
                     "details": {
                         "username": ghcr_username,
-                        "error": "Invalid token or token expired"
-                    }
+                        "error": "Invalid token or token expired",
+                    },
                 }
             else:
                 return {
@@ -1186,8 +1185,8 @@ async def test_ghcr_connection(
                     "message": f"GitHub API error: {response.status_code}",
                     "details": {
                         "status_code": response.status_code,
-                        "error": response.text
-                    }
+                        "error": response.text,
+                    },
                 }
     except httpx.HTTPStatusError as e:
         return {
@@ -1195,32 +1194,30 @@ async def test_ghcr_connection(
             "message": f"GHCR API error: {e.response.status_code}",
             "details": {
                 "status_code": e.response.status_code,
-                "error": "An error occurred"
-            }
+                "error": "An error occurred",
+            },
         }
     except httpx.ConnectError:
         return {
             "success": False,
             "message": "Cannot connect to GitHub",
-            "details": {
-                "error": "Connection refused or network unreachable"
-            }
+            "details": {"error": "Connection refused or network unreachable"},
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "message": "GitHub connection timeout",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except OperationalError:
         return {
             "success": False,
             "message": "Database error",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }
     except (ValueError, KeyError):
         return {
             "success": False,
             "message": "Invalid configuration or response",
-            "details": {"error": "An error occurred"}
+            "details": {"error": "An error occurred"},
         }

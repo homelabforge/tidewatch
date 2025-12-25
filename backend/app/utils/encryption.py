@@ -61,22 +61,22 @@ class EncryptionService:
         if not key_str:
             raise ValueError(
                 "Encryption key not configured. Set TIDEWATCH_ENCRYPTION_KEY environment variable. "
-                "Generate a key with: python -c \"from cryptography.fernet import Fernet; "
-                "print(Fernet.generate_key().decode())\""
+                'Generate a key with: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
             )
 
         # Validate key format and create Fernet cipher
         try:
             # Fernet expects bytes, convert from string
-            key_bytes = key_str.encode('utf-8')
+            key_bytes = key_str.encode("utf-8")
             self.cipher = Fernet(key_bytes)
             logger.debug("Encryption service initialized successfully")
         except Exception as e:
             raise ValueError(
                 f"Invalid encryption key format: {e}. "
                 "Key must be a valid base64-encoded Fernet key (44 characters). "
-                "Generate with: python -c \"from cryptography.fernet import Fernet; "
-                "print(Fernet.generate_key().decode())\""
+                'Generate with: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
             )
 
     def encrypt(self, plaintext: str) -> str:
@@ -107,9 +107,9 @@ class EncryptionService:
 
         try:
             # Fernet.encrypt() expects bytes, returns bytes
-            encrypted_bytes = self.cipher.encrypt(plaintext.encode('utf-8'))
+            encrypted_bytes = self.cipher.encrypt(plaintext.encode("utf-8"))
             # Convert to string for database storage
-            return encrypted_bytes.decode('utf-8')
+            return encrypted_bytes.decode("utf-8")
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
             raise
@@ -143,11 +143,13 @@ class EncryptionService:
 
         try:
             # Fernet.decrypt() expects bytes, returns bytes
-            decrypted_bytes = self.cipher.decrypt(ciphertext.encode('utf-8'))
+            decrypted_bytes = self.cipher.decrypt(ciphertext.encode("utf-8"))
             # Convert to string
-            return decrypted_bytes.decode('utf-8')
+            return decrypted_bytes.decode("utf-8")
         except InvalidToken:
-            logger.error("Decryption failed: Invalid token (wrong key or tampered data)")
+            logger.error(
+                "Decryption failed: Invalid token (wrong key or tampered data)"
+            )
             raise ValueError(
                 "Failed to decrypt data. This could mean:\n"
                 "1. Encryption key has changed\n"
@@ -190,7 +192,7 @@ class EncryptionService:
         # After base64 encoding, they typically start with "gAAAAA"
         # This is because Fernet format is: version (1 byte = 0x80) + timestamp (8 bytes)
         # 0x80 in base64 is 'g'
-        return value.startswith('gAAAAA')
+        return value.startswith("gAAAAA")
 
 
 # Global encryption service instance (lazy initialization)

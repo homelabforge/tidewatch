@@ -16,8 +16,7 @@ router = APIRouter()
 
 @router.get("/widget", response_class=HTMLResponse)
 async def get_widget(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> HTMLResponse:
     """Get Homepage widget HTML.
 
@@ -214,8 +213,7 @@ async def get_widget(
 
 @router.get("/widget/data")
 async def get_widget_data(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get widget data as JSON for custom integrations."""
     # Get container stats

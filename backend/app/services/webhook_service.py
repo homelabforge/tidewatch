@@ -17,7 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.webhook import Webhook
-from app.schemas.webhook import WebhookCreate, WebhookUpdate, WebhookSchema, WebhookTestResponse
+from app.schemas.webhook import (
+    WebhookCreate,
+    WebhookUpdate,
+    WebhookSchema,
+    WebhookTestResponse,
+)
 from app.utils.encryption import encrypt_value, decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -28,14 +33,14 @@ class WebhookService:
 
     # SSRF protection: block these IP ranges
     BLOCKED_IP_RANGES = [
-        ipaddress.ip_network("127.0.0.0/8"),      # Loopback
-        ipaddress.ip_network("10.0.0.0/8"),       # Private
-        ipaddress.ip_network("172.16.0.0/12"),    # Private
-        ipaddress.ip_network("192.168.0.0/16"),   # Private
-        ipaddress.ip_network("169.254.0.0/16"),   # Link-local
-        ipaddress.ip_network("::1/128"),          # IPv6 loopback
-        ipaddress.ip_network("fc00::/7"),         # IPv6 private
-        ipaddress.ip_network("fe80::/10"),        # IPv6 link-local
+        ipaddress.ip_network("127.0.0.0/8"),  # Loopback
+        ipaddress.ip_network("10.0.0.0/8"),  # Private
+        ipaddress.ip_network("172.16.0.0/12"),  # Private
+        ipaddress.ip_network("192.168.0.0/16"),  # Private
+        ipaddress.ip_network("169.254.0.0/16"),  # Link-local
+        ipaddress.ip_network("::1/128"),  # IPv6 loopback
+        ipaddress.ip_network("fc00::/7"),  # IPv6 private
+        ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
     ]
 
     @staticmethod
@@ -67,7 +72,9 @@ class WebhookService:
             return True
 
     @staticmethod
-    async def create_webhook(db: AsyncSession, webhook_data: WebhookCreate) -> WebhookSchema:
+    async def create_webhook(
+        db: AsyncSession, webhook_data: WebhookCreate
+    ) -> WebhookSchema:
         """Create a new webhook with SSRF protection.
 
         Args:
@@ -222,18 +229,13 @@ class WebhookService:
             Hex-encoded signature
         """
         signature = hmac.new(
-            secret.encode("utf-8"),
-            payload.encode("utf-8"),
-            hashlib.sha256
+            secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
         ).hexdigest()
         return signature
 
     @staticmethod
     async def trigger_webhook(
-        db: AsyncSession,
-        webhook_id: int,
-        event: str,
-        payload: Dict[str, Any]
+        db: AsyncSession, webhook_id: int, event: str, payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Trigger a specific webhook with an event payload.
 
@@ -256,7 +258,10 @@ class WebhookService:
             return {"success": False, "error": "Webhook is disabled"}
 
         if event not in webhook.events:
-            return {"success": False, "error": f"Webhook not subscribed to event '{event}'"}
+            return {
+                "success": False,
+                "error": f"Webhook not subscribed to event '{event}'",
+            }
 
         # Decrypt secret
         try:
@@ -289,7 +294,7 @@ class WebhookService:
                             "X-Webhook-Signature": signature,
                             "X-Webhook-Event": event,
                             "User-Agent": "TideWatch-Webhook/1.0",
-                        }
+                        },
                     )
 
                     if response.status_code >= 200 and response.status_code < 300:
@@ -305,7 +310,9 @@ class WebhookService:
                             "attempt": attempt + 1,
                         }
                     else:
-                        last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                        last_error = (
+                            f"HTTP {response.status_code}: {response.text[:200]}"
+                        )
 
             except httpx.TimeoutException:
                 last_error = "Request timeout"
@@ -316,7 +323,7 @@ class WebhookService:
 
             # If not last attempt, wait before retrying
             if attempt < webhook.retry_count:
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # All attempts failed
         webhook.last_triggered = datetime.now(timezone.utc)
@@ -324,7 +331,9 @@ class WebhookService:
         webhook.last_error = last_error
         await db.commit()
 
-        logger.error(f"Webhook {webhook.name} delivery failed after {webhook.retry_count + 1} attempts: {last_error}")
+        logger.error(
+            f"Webhook {webhook.name} delivery failed after {webhook.retry_count + 1} attempts: {last_error}"
+        )
         return {
             "success": False,
             "error": last_error,
@@ -349,9 +358,7 @@ class WebhookService:
 
         if not webhook:
             return WebhookTestResponse(
-                success=False,
-                message="Webhook not found",
-                error="Webhook not found"
+                success=False, message="Webhook not found", error="Webhook not found"
             )
 
         # Decrypt secret
@@ -360,9 +367,7 @@ class WebhookService:
         except Exception as e:
             logger.error(f"Failed to decrypt webhook secret: {e}")
             return WebhookTestResponse(
-                success=False,
-                message="Failed to decrypt webhook secret",
-                error=str(e)
+                success=False, message="Failed to decrypt webhook secret", error=str(e)
             )
 
         # Test payload
@@ -373,7 +378,7 @@ class WebhookService:
                 "message": "This is a test webhook from TideWatch",
                 "webhook_id": webhook_id,
                 "webhook_name": webhook.name,
-            }
+            },
         }
         payload_json = json.dumps(test_payload)
         signature = WebhookService._generate_signature(payload_json, decrypted_secret)
@@ -389,7 +394,7 @@ class WebhookService:
                         "X-Webhook-Signature": signature,
                         "X-Webhook-Event": "test",
                         "User-Agent": "TideWatch-Webhook/1.0",
-                    }
+                    },
                 )
 
                 response_time = (time.time() - start_time) * 1000
@@ -399,7 +404,7 @@ class WebhookService:
                         success=True,
                         status_code=response.status_code,
                         response_time_ms=response_time,
-                        message=f"Test successful (HTTP {response.status_code})"
+                        message=f"Test successful (HTTP {response.status_code})",
                     )
                 else:
                     return WebhookTestResponse(
@@ -407,25 +412,21 @@ class WebhookService:
                         status_code=response.status_code,
                         response_time_ms=response_time,
                         message=f"Test failed (HTTP {response.status_code})",
-                        error=response.text[:200]
+                        error=response.text[:200],
                     )
 
         except httpx.TimeoutException:
             return WebhookTestResponse(
                 success=False,
                 message="Test failed (timeout)",
-                error="Request timeout after 10 seconds"
+                error="Request timeout after 10 seconds",
             )
         except httpx.RequestError as e:
             return WebhookTestResponse(
-                success=False,
-                message="Test failed (connection error)",
-                error=str(e)
+                success=False, message="Test failed (connection error)", error=str(e)
             )
         except Exception as e:
             logger.error(f"Webhook test failed: {e}")
             return WebhookTestResponse(
-                success=False,
-                message="Test failed (unexpected error)",
-                error=str(e)
+                success=False, message="Test failed (unexpected error)", error=str(e)
             )

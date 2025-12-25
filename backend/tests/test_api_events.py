@@ -16,6 +16,7 @@ class TestEventStreamEndpoint:
     async def test_stream_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -29,10 +30,19 @@ class TestEventStreamEndpoint:
         """Test SSE connection opens successfully."""
         mock_queue = asyncio.Queue()
 
-        with patch('app.api.events.event_bus.subscribe', new_callable=AsyncMock) as mock_subscribe, \
-             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock) as mock_unsub, \
-             patch('app.api.events.Request.is_disconnected', new_callable=AsyncMock, return_value=True):
-
+        with (
+            patch(
+                "app.api.events.event_bus.subscribe", new_callable=AsyncMock
+            ) as mock_subscribe,
+            patch(
+                "app.api.events.event_bus.unsubscribe", new_callable=AsyncMock
+            ) as mock_unsub,
+            patch(
+                "app.api.events.Request.is_disconnected",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
             mock_subscribe.return_value = mock_queue
 
             # Act - Open stream connection with a short timeout for the first chunk
@@ -43,7 +53,10 @@ class TestEventStreamEndpoint:
             ) as response:
                 # Assert - Check headers immediately
                 assert response.status_code == status.HTTP_200_OK
-                assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+                assert (
+                    response.headers["content-type"]
+                    == "text/event-stream; charset=utf-8"
+                )
 
                 # Read the first line; Request.is_disconnected is patched to end the stream after it
                 line_iter = response.aiter_lines()
@@ -58,10 +71,19 @@ class TestEventStreamEndpoint:
         """Test stream sends initial connected event."""
         mock_queue = asyncio.Queue()
 
-        with patch('app.api.events.event_bus.subscribe', new_callable=AsyncMock) as mock_subscribe, \
-             patch('app.api.events.event_bus.unsubscribe', new_callable=AsyncMock) as mock_unsub, \
-             patch('app.api.events.Request.is_disconnected', new_callable=AsyncMock, return_value=True):
-
+        with (
+            patch(
+                "app.api.events.event_bus.subscribe", new_callable=AsyncMock
+            ) as mock_subscribe,
+            patch(
+                "app.api.events.event_bus.unsubscribe", new_callable=AsyncMock
+            ) as mock_unsub,
+            patch(
+                "app.api.events.Request.is_disconnected",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
             mock_subscribe.return_value = mock_queue
 
             # Act - Open stream and read connected event
@@ -90,12 +112,14 @@ class TestEventStreamEndpoint:
 
         test_bus = EventBus()
 
-        with patch('app.api.events.event_bus', test_bus):
+        with patch("app.api.events.event_bus", test_bus):
             # Subscribe to the bus
             queue = await test_bus.subscribe()
 
             # Publish test event
-            await test_bus.publish({"type": "container_update", "container": "nginx", "status": "updated"})
+            await test_bus.publish(
+                {"type": "container_update", "container": "nginx", "status": "updated"}
+            )
 
             # Act - Get message from queue
             message = await asyncio.wait_for(queue.get(), timeout=1.0)

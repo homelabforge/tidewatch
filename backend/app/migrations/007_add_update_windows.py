@@ -42,9 +42,11 @@ async def upgrade():
 
     async with engine.begin() as conn:
         if not await column_exists(conn, "containers", "update_window"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE containers ADD COLUMN update_window TEXT NULL;
-            """))
+            """)
+            )
             logger.info("✅ Added update_window column to containers table")
             logger.info("   Format: 'HH:MM-HH:MM' or 'Days:HH:MM-HH:MM'")
         else:

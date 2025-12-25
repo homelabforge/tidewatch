@@ -32,11 +32,9 @@ SENSITIVE_SETTINGS = [
     # Registry credentials
     "dockerhub_token",
     "ghcr_token",
-
     # VulnForge integration
     "vulnforge_api_key",
     "vulnforge_password",
-
     # Notification service tokens
     "ntfy_token",
     "gotify_token",
@@ -45,13 +43,10 @@ SENSITIVE_SETTINGS = [
     "slack_webhook_url",
     "discord_webhook_url",
     "telegram_bot_token",
-
     # Email/SMTP
     "email_smtp_password",
-
     # OIDC (if present - may be added later)
     "oidc_client_secret",
-
     # Admin (if present - stored separately from DEFAULTS)
     "admin_password_hash",
 ]
@@ -71,7 +66,7 @@ async def upgrade():
             # Check if setting exists
             result = await conn.execute(
                 text("SELECT key, encrypted FROM settings WHERE key = :key"),
-                {"key": setting_key}
+                {"key": setting_key},
             )
             setting = result.fetchone()
 
@@ -84,7 +79,7 @@ async def upgrade():
                     # Mark as encrypted
                     await conn.execute(
                         text("UPDATE settings SET encrypted = TRUE WHERE key = :key"),
-                        {"key": setting_key}
+                        {"key": setting_key},
                     )
                     print(f"✓ Marked {setting_key} as encrypted")
                     marked_count += 1
@@ -100,7 +95,9 @@ async def upgrade():
         print("")
         print("⚠️  IMPORTANT: Values are NOT encrypted by this migration.")
         print("   Existing values remain in plain text until re-saved.")
-        print("   Configure TIDEWATCH_ENCRYPTION_KEY and update sensitive settings in UI.")
+        print(
+            "   Configure TIDEWATCH_ENCRYPTION_KEY and update sensitive settings in UI."
+        )
 
 
 async def downgrade():
@@ -114,7 +111,7 @@ async def downgrade():
             # Unmark as encrypted
             result = await conn.execute(
                 text("UPDATE settings SET encrypted = FALSE WHERE key = :key"),
-                {"key": setting_key}
+                {"key": setting_key},
             )
             if result.rowcount > 0:
                 print(f"✓ Unmarked {setting_key}")

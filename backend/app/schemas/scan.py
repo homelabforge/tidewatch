@@ -31,6 +31,8 @@ class ScanSummarySchema(BaseModel):
 
     total_containers_scanned: int
     total_vulnerabilities: int
-    severity_breakdown: Dict[str, int]  # {"critical": X, "high": Y, "medium": Z, "low": W}
+    severity_breakdown: Dict[
+        str, int
+    ]  # {"critical": X, "high": Y, "medium": Z, "low": W}
     last_scan: Optional[datetime] = None
     containers_at_risk: int  # Containers with critical or high vulnerabilities

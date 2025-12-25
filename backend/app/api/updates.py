@@ -29,8 +29,10 @@ async def list_updates(
     status: str = None,
     container_id: Optional[int] = Query(None, description="Filter by container ID"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
-    db: AsyncSession = Depends(get_db)
+    limit: int = Query(
+        100, ge=1, le=1000, description="Maximum number of records to return"
+    ),
+    db: AsyncSession = Depends(get_db),
 ) -> List[UpdateSchema]:
     """List updates by status with pagination.
 
@@ -66,8 +68,7 @@ async def list_updates(
 
 @router.get("/pending", response_model=List[UpdateSchema])
 async def get_pending_updates(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> List[UpdateSchema]:
     """Get all pending updates."""
     updates = await UpdateChecker.get_pending_updates(db)
@@ -76,8 +77,7 @@ async def get_pending_updates(
 
 @router.get("/auto-approvable", response_model=List[UpdateSchema])
 async def get_auto_approvable_updates(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> List[UpdateSchema]:
     """Get updates that can be auto-approved."""
     updates = await UpdateChecker.get_auto_approvable_updates(db)
@@ -86,8 +86,7 @@ async def get_auto_approvable_updates(
 
 @router.get("/security", response_model=List[UpdateSchema])
 async def get_security_updates(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> List[UpdateSchema]:
     """Get security-related updates."""
     updates = await UpdateChecker.get_security_updates(db)
@@ -96,8 +95,7 @@ async def get_security_updates(
 
 @router.post("/check")
 async def check_updates(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Check all containers for updates.
 
@@ -108,7 +106,7 @@ async def check_updates(
     return {
         "success": True,
         "stats": stats,
-        "message": f"Checked {stats['checked']} containers, found {stats['updates_found']} updates"
+        "message": f"Checked {stats['checked']} containers, found {stats['updates_found']} updates",
     }
 
 
@@ -116,7 +114,7 @@ async def check_updates(
 async def check_container_update(
     container_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Check a specific container for updates.
 
@@ -126,9 +124,7 @@ async def check_container_update(
     Returns:
         Update info if available
     """
-    result = await db.execute(
-        select(Container).where(Container.id == container_id)
-    )
+    result = await db.execute(select(Container).where(Container.id == container_id))
     container = result.scalar_one_or_none()
 
     if not container:
@@ -143,13 +139,13 @@ async def check_container_update(
         return {
             "success": True,
             "update_available": True,
-            "update": UpdateSchema.model_validate(update)
+            "update": UpdateSchema.model_validate(update),
         }
     else:
         return {
             "success": True,
             "update_available": False,
-            "message": "No updates available"
+            "message": "No updates available",
         }
 
 
@@ -157,7 +153,7 @@ async def check_container_update(
 async def batch_approve_updates(
     update_ids: List[int] = Body(..., embed=True),
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Batch approve multiple updates.
 
@@ -184,12 +180,19 @@ async def batch_approve_updates(
 
                 # Idempotency check - already approved is OK
                 if update.status == "approved":
-                    approved.append({"id": update_id, "container_id": update.container_id})
+                    approved.append(
+                        {"id": update_id, "container_id": update.container_id}
+                    )
                     continue
 
                 # Only allow pending -> approved transition
                 if update.status != "pending":
-                    failed.append({"id": update_id, "reason": f"Invalid status transition: {update.status} -> approved"})
+                    failed.append(
+                        {
+                            "id": update_id,
+                            "reason": f"Invalid status transition: {update.status} -> approved",
+                        }
+                    )
                     continue
 
                 # Approve the update with version increment
@@ -205,11 +208,22 @@ async def batch_approve_updates(
 
         except OperationalError as e:
             # Database lock/conflict - likely concurrent modification
-            logger.warning(f"Database conflict approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
+            logger.warning(
+                f"Database conflict approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
+            )
+            failed.append(
+                {
+                    "id": update_id,
+                    "reason": "Database conflict - concurrent modification detected",
+                }
+            )
         except Exception as e:
-            logger.error(f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
+            logger.error(
+                f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
+            )
+            failed.append(
+                {"id": update_id, "reason": "An error occurred processing the update"}
+            )
 
     return {
         "approved": approved,
@@ -217,8 +231,8 @@ async def batch_approve_updates(
         "summary": {
             "total": len(update_ids),
             "approved_count": len(approved),
-            "failed_count": len(failed)
-        }
+            "failed_count": len(failed),
+        },
     }
 
 
@@ -227,7 +241,7 @@ async def batch_reject_updates(
     update_ids: List[int] = Body(..., embed=True),
     reason: Optional[str] = Body(None, embed=True),
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Batch reject multiple updates.
 
@@ -255,12 +269,19 @@ async def batch_reject_updates(
 
                 # Idempotency check - already rejected is OK
                 if update.status == "rejected":
-                    rejected.append({"id": update_id, "container_id": update.container_id})
+                    rejected.append(
+                        {"id": update_id, "container_id": update.container_id}
+                    )
                     continue
 
                 # Only allow pending/approved -> rejected transition
                 if update.status not in ["pending", "approved"]:
-                    failed.append({"id": update_id, "reason": f"Invalid status transition: {update.status} -> rejected"})
+                    failed.append(
+                        {
+                            "id": update_id,
+                            "reason": f"Invalid status transition: {update.status} -> rejected",
+                        }
+                    )
                     continue
 
                 # Reject the update with version increment
@@ -278,11 +299,22 @@ async def batch_reject_updates(
 
         except OperationalError as e:
             # Database lock/conflict - likely concurrent modification
-            logger.warning(f"Database conflict rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": "Database conflict - concurrent modification detected"})
+            logger.warning(
+                f"Database conflict rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
+            )
+            failed.append(
+                {
+                    "id": update_id,
+                    "reason": "Database conflict - concurrent modification detected",
+                }
+            )
         except Exception as e:
-            logger.error(f"Error rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}")
-            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
+            logger.error(
+                f"Error rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
+            )
+            failed.append(
+                {"id": update_id, "reason": "An error occurred processing the update"}
+            )
 
     return {
         "rejected": rejected,
@@ -290,8 +322,8 @@ async def batch_reject_updates(
         "summary": {
             "total": len(update_ids),
             "rejected_count": len(rejected),
-            "failed_count": len(failed)
-        }
+            "failed_count": len(failed),
+        },
     }
 
 
@@ -299,7 +331,7 @@ async def batch_reject_updates(
 async def get_update(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Get update details.
 
@@ -309,9 +341,7 @@ async def get_update(
     Returns:
         Update details
     """
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -325,7 +355,7 @@ async def approve_update(
     update_id: int,
     approval: UpdateApproval,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Approve an update.
 
@@ -338,9 +368,7 @@ async def approve_update(
     """
     # Use nested transaction for atomicity and concurrent safety
     async with db.begin_nested():
-        result = await db.execute(
-            select(Update).where(Update.id == update_id)
-        )
+        result = await db.execute(select(Update).where(Update.id == update_id))
         update = result.scalar_one_or_none()
 
         if not update:
@@ -350,14 +378,14 @@ async def approve_update(
         if update.status == "approved":
             return {
                 "success": True,
-                "message": f"Update already approved for container {update.container_id}"
+                "message": f"Update already approved for container {update.container_id}",
             }
 
         # Only allow pending -> approved transition
         if update.status != "pending":
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot approve update with status: {update.status}"
+                detail=f"Cannot approve update with status: {update.status}",
             )
 
         update.status = "approved"
@@ -369,7 +397,7 @@ async def approve_update(
 
     return {
         "success": True,
-        "message": f"Update approved for container {update.container_id}"
+        "message": f"Update approved for container {update.container_id}",
     }
 
 
@@ -378,7 +406,7 @@ async def apply_update(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
     request: UpdateApply = UpdateApply(),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Apply an approved update.
 
@@ -397,12 +425,13 @@ async def apply_update(
         Result of the update operation
     """
     try:
-        result = await UpdateEngine.apply_update(db, update_id, triggered_by=request.triggered_by)
+        result = await UpdateEngine.apply_update(
+            db, update_id, triggered_by=request.triggered_by
+        )
 
         if not result["success"]:
             raise HTTPException(
-                status_code=500,
-                detail=result.get("message", "Update failed")
+                status_code=500, detail=result.get("message", "Update failed")
             )
 
         return result
@@ -422,7 +451,7 @@ async def reject_update(
     update_id: int,
     reason: Optional[str] = Body(None, embed=True),
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Reject an update.
 
@@ -435,9 +464,7 @@ async def reject_update(
     """
     from datetime import datetime, timezone
 
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -445,8 +472,7 @@ async def reject_update(
 
     if update.status not in ["pending", "pending_retry"]:
         raise HTTPException(
-            status_code=400,
-            detail=f"Update is already {update.status}"
+            status_code=400, detail=f"Update is already {update.status}"
         )
 
     # Wrap status updates in transaction for atomicity
@@ -470,7 +496,7 @@ async def reject_update(
 
     return {
         "success": True,
-        "message": f"Update rejected for container {update.container_id}"
+        "message": f"Update rejected for container {update.container_id}",
     }
 
 
@@ -478,7 +504,7 @@ async def reject_update(
 async def cancel_retry(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Cancel a pending retry and reset update to pending status.
 
@@ -488,9 +514,7 @@ async def cancel_retry(
     Returns:
         Updated update object
     """
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -499,7 +523,7 @@ async def cancel_retry(
     if update.status != "pending_retry":
         raise HTTPException(
             status_code=400,
-            detail=f"Update is not in pending_retry status (current: {update.status})"
+            detail=f"Update is not in pending_retry status (current: {update.status})",
         )
 
     # Reset retry state
@@ -518,7 +542,7 @@ async def cancel_retry(
 async def delete_update(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Delete an update record.
 
@@ -528,9 +552,7 @@ async def delete_update(
     Returns:
         Success message
     """
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -546,7 +568,7 @@ async def delete_update(
 async def snooze_update(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Snooze/dismiss a stale container notification.
 
@@ -562,9 +584,7 @@ async def snooze_update(
     from datetime import datetime, timedelta, timezone
     from app.services.settings_service import SettingsService
 
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -585,7 +605,7 @@ async def snooze_update(
     return {
         "success": True,
         "message": f"Update snoozed for {threshold_days} days",
-        "snoozed_until": snooze_until.isoformat()
+        "snoozed_until": snooze_until.isoformat(),
     }
 
 
@@ -593,7 +613,7 @@ async def snooze_update(
 async def remove_container_from_db(
     update_id: int,
     admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Remove a stale container from the database entirely.
 
@@ -610,9 +630,7 @@ async def remove_container_from_db(
     from app.models.restart_state import ContainerRestartState
     from app.models.restart_log import ContainerRestartLog
 
-    result = await db.execute(
-        select(Update).where(Update.id == update_id)
-    )
+    result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
 
     if not update:
@@ -621,7 +639,7 @@ async def remove_container_from_db(
     if update.reason_type != "stale":
         raise HTTPException(
             status_code=400,
-            detail="Only stale container notifications can use remove-container action"
+            detail="Only stale container notifications can use remove-container action",
         )
 
     # Get container
@@ -644,15 +662,21 @@ async def remove_container_from_db(
                 select(UpdateHistory).where(UpdateHistory.container_id == container.id)
             )
             await db.execute(
-                UpdateHistory.__table__.delete().where(UpdateHistory.container_id == container.id)
+                UpdateHistory.__table__.delete().where(
+                    UpdateHistory.container_id == container.id
+                )
             )
 
             # 2. Delete restart state and logs
             await db.execute(
-                ContainerRestartState.__table__.delete().where(ContainerRestartState.container_id == container.id)
+                ContainerRestartState.__table__.delete().where(
+                    ContainerRestartState.container_id == container.id
+                )
             )
             await db.execute(
-                ContainerRestartLog.__table__.delete().where(ContainerRestartLog.container_id == container.id)
+                ContainerRestartLog.__table__.delete().where(
+                    ContainerRestartLog.container_id == container.id
+                )
             )
 
             # 3. Delete all updates for this container
@@ -665,38 +689,39 @@ async def remove_container_from_db(
 
         await db.commit()
 
-        logger.info(f"Removed stale container from database: {sanitize_log_message(str(container_name))}")
+        logger.info(
+            f"Removed stale container from database: {sanitize_log_message(str(container_name))}"
+        )
 
         return {
             "success": True,
-            "message": f"Container '{container_name}' removed from database"
+            "message": f"Container '{container_name}' removed from database",
         }
     except IntegrityError as e:
         await db.rollback()
-        logger.error(f"Database constraint violation removing container: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Database constraint violation removing container: {sanitize_log_message(str(e))}"
+        )
         raise HTTPException(
-            status_code=500,
-            detail="Database constraint error during container removal"
+            status_code=500, detail="Database constraint error during container removal"
         )
     except OperationalError as e:
         await db.rollback()
-        logger.error(f"Database error removing container: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Database error removing container: {sanitize_log_message(str(e))}"
+        )
         raise HTTPException(
-            status_code=500,
-            detail="Database error during container removal"
+            status_code=500, detail="Database error during container removal"
         )
     except (KeyError, AttributeError) as e:
         await db.rollback()
         logger.error(f"Invalid data removing container: {sanitize_log_message(str(e))}")
-        raise HTTPException(
-            status_code=500,
-            detail="Invalid container data"
-        )
+        raise HTTPException(status_code=500, detail="Invalid container data")
 
 
 @router.get("/scheduler/status")
 async def get_scheduler_status(
-    admin: Optional[dict] = Depends(require_auth)
+    admin: Optional[dict] = Depends(require_auth),
 ) -> Dict[str, Any]:
     """Get background scheduler status.
 
@@ -704,15 +729,12 @@ async def get_scheduler_status(
         Scheduler status and next run time
     """
     status = scheduler_service.get_status()
-    return {
-        "success": True,
-        "scheduler": status
-    }
+    return {"success": True, "scheduler": status}
 
 
 @router.post("/scheduler/trigger")
 async def trigger_scheduler(
-    admin: Optional[dict] = Depends(require_auth)
+    admin: Optional[dict] = Depends(require_auth),
 ) -> Dict[str, Any]:
     """Manually trigger an update check outside the schedule.
 
@@ -721,22 +743,20 @@ async def trigger_scheduler(
     """
     try:
         await scheduler_service.trigger_update_check()
-        return {
-            "success": True,
-            "message": "Update check triggered successfully"
-        }
+        return {"success": True, "message": "Update check triggered successfully"}
     except (ImportError, ModuleNotFoundError, AttributeError) as e:
         logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(f"Invalid data triggering update check: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Invalid data triggering update check: {sanitize_log_message(str(e))}"
+        )
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")
 
 
 @router.post("/scheduler/reload")
 async def reload_scheduler(
-    admin: Optional[dict] = Depends(require_auth),
-    db: AsyncSession = Depends(get_db)
+    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """Reload scheduler configuration from settings.
 
@@ -751,14 +771,20 @@ async def reload_scheduler(
         return {
             "success": True,
             "message": "Scheduler reloaded successfully",
-            "scheduler": status
+            "scheduler": status,
         }
     except OperationalError as e:
-        logger.error(f"Database error reloading scheduler: {sanitize_log_message(str(e))}")
-        raise HTTPException(status_code=500, detail="Database error reloading configuration")
+        logger.error(
+            f"Database error reloading scheduler: {sanitize_log_message(str(e))}"
+        )
+        raise HTTPException(
+            status_code=500, detail="Database error reloading configuration"
+        )
     except (ImportError, ModuleNotFoundError, AttributeError) as e:
         logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(f"Invalid data reloading scheduler: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Invalid data reloading scheduler: {sanitize_log_message(str(e))}"
+        )
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")

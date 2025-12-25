@@ -106,16 +106,16 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                 f"for {request.method} {request.url.path}"
             )
             return JSONResponse(
-                status_code=403,
-                content={"detail": "CSRF token missing"}
+                status_code=403, content={"detail": "CSRF token missing"}
             )
 
         # Tokens must match using constant-time comparison
         if not secrets.compare_digest(session_token, header_token):
-            logger.warning(f"CSRF validation failed: token mismatch for {request.method} {request.url.path}")
+            logger.warning(
+                f"CSRF validation failed: token mismatch for {request.method} {request.url.path}"
+            )
             return JSONResponse(
-                status_code=403,
-                content={"detail": "CSRF token invalid"}
+                status_code=403, content={"detail": "CSRF token invalid"}
             )
 
         # Token valid, proceed with request

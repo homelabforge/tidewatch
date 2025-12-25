@@ -2,7 +2,16 @@
 
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, JSON, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    Float,
+    JSON,
+    ForeignKey,
+)
 from sqlalchemy.sql import func
 
 from app.db import Base
@@ -21,14 +30,18 @@ class ContainerRestartState(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Container reference
-    container_id = Column(Integer, ForeignKey("containers.id"), nullable=False, unique=True, index=True)
+    container_id = Column(
+        Integer, ForeignKey("containers.id"), nullable=False, unique=True, index=True
+    )
     container_name = Column(String, nullable=False, index=True)
 
     # Restart tracking
     consecutive_failures = Column(Integer, default=0, nullable=False)
     total_restarts = Column(Integer, default=0, nullable=False)
     last_exit_code = Column(Integer, nullable=True)
-    last_failure_reason = Column(String, nullable=True)  # "exit_code_1", "health_check_failed", "oom_killed"
+    last_failure_reason = Column(
+        String, nullable=True
+    )  # "exit_code_1", "health_check_failed", "oom_killed"
 
     # Backoff state
     current_backoff_seconds = Column(Float, default=0.0, nullable=False)
@@ -38,12 +51,16 @@ class ContainerRestartState(Base):
     # Success tracking (for reset logic)
     last_successful_start = Column(DateTime(timezone=True), nullable=True)
     last_failure_at = Column(DateTime(timezone=True), nullable=True)
-    success_window_seconds = Column(Integer, default=300, nullable=False)  # 5 minutes default
+    success_window_seconds = Column(
+        Integer, default=300, nullable=False
+    )  # 5 minutes default
 
     # Configuration (per-container overrides)
     enabled = Column(Boolean, default=True, nullable=False)
     max_attempts = Column(Integer, default=10, nullable=False)
-    backoff_strategy = Column(String, default="exponential", nullable=False)  # exponential, linear, fixed
+    backoff_strategy = Column(
+        String, default="exponential", nullable=False
+    )  # exponential, linear, fixed
     base_delay_seconds = Column(Float, default=2.0, nullable=False)
     max_delay_seconds = Column(Float, default=300.0, nullable=False)
 
@@ -57,9 +74,18 @@ class ContainerRestartState(Base):
     pause_reason = Column(String, nullable=True)
 
     # Metadata
-    restart_history = Column(JSON, default=list, nullable=False)  # Last N restart timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    restart_history = Column(
+        JSON, default=list, nullable=False
+    )  # Last N restart timestamps
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
     def __repr__(self) -> str:
         return (
@@ -76,7 +102,11 @@ class ContainerRestartState(Base):
         if not self.paused_until:
             return False
         # Ensure both datetimes are timezone-aware for comparison
-        paused_until = self.paused_until.replace(tzinfo=timezone.utc) if self.paused_until.tzinfo is None else self.paused_until
+        paused_until = (
+            self.paused_until.replace(tzinfo=timezone.utc)
+            if self.paused_until.tzinfo is None
+            else self.paused_until
+        )
         return datetime.now(timezone.utc) < paused_until
 
     @property
@@ -89,7 +119,11 @@ class ContainerRestartState(Base):
             return True
 
         # Ensure both datetimes are timezone-aware for comparison
-        next_retry = self.next_retry_at.replace(tzinfo=timezone.utc) if self.next_retry_at.tzinfo is None else self.next_retry_at
+        next_retry = (
+            self.next_retry_at.replace(tzinfo=timezone.utc)
+            if self.next_retry_at.tzinfo is None
+            else self.next_retry_at
+        )
         return datetime.now(timezone.utc) >= next_retry
 
     @property
@@ -99,7 +133,11 @@ class ContainerRestartState(Base):
             return None
 
         # Ensure both datetimes are timezone-aware for comparison
-        last_start = self.last_successful_start.replace(tzinfo=timezone.utc) if self.last_successful_start.tzinfo is None else self.last_successful_start
+        last_start = (
+            self.last_successful_start.replace(tzinfo=timezone.utc)
+            if self.last_successful_start.tzinfo is None
+            else self.last_successful_start
+        )
         return (datetime.now(timezone.utc) - last_start).total_seconds()
 
     @property

@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 # Discord embed color mapping (decimal color values)
 COLOR_MAP = {
-    "min": 0x808080,      # Gray
-    "low": 0x36a64f,      # Green
+    "min": 0x808080,  # Gray
+    "low": 0x36A64F,  # Green
     "default": 0x2196F3,  # Blue
-    "high": 0xff9800,     # Orange
-    "urgent": 0xf44336,   # Red
+    "high": 0xFF9800,  # Orange
+    "urgent": 0xF44336,  # Red
 }
 
 
@@ -78,25 +78,25 @@ class DiscordNotificationService(NotificationService):
             emoji_prefix = ""
             if tags:
                 emoji_map = {
-                    "package": "\U0001F4E6",
-                    "arrow_up": "\u2B06\uFE0F",
-                    "shield": "\U0001F6E1\uFE0F",
-                    "rotating_light": "\U0001F6A8",
+                    "package": "\U0001f4e6",
+                    "arrow_up": "\u2b06\ufe0f",
+                    "shield": "\U0001f6e1\ufe0f",
+                    "rotating_light": "\U0001f6a8",
                     "white_check_mark": "\u2705",
-                    "x": "\u274C",
-                    "warning": "\u26A0\uFE0F",
-                    "rewind": "\u23EE\uFE0F",
-                    "ocean": "\U0001F30A",
-                    "mag": "\U0001F50D",
-                    "whale": "\U0001F433",
-                    "rocket": "\U0001F680",
+                    "x": "\u274c",
+                    "warning": "\u26a0\ufe0f",
+                    "rewind": "\u23ee\ufe0f",
+                    "ocean": "\U0001f30a",
+                    "mag": "\U0001f50d",
+                    "whale": "\U0001f433",
+                    "rocket": "\U0001f680",
                     "sparkles": "\u2728",
-                    "hammer_and_wrench": "\U0001F6E0\uFE0F",
-                    "gear": "\u2699\uFE0F",
-                    "repeat": "\U0001F501",
-                    "alarm_clock": "\u23F0",
-                    "arrows_counterclockwise": "\U0001F504",
-                    "sos": "\U0001F198",
+                    "hammer_and_wrench": "\U0001f6e0\ufe0f",
+                    "gear": "\u2699\ufe0f",
+                    "repeat": "\U0001f501",
+                    "alarm_clock": "\u23f0",
+                    "arrows_counterclockwise": "\U0001f504",
+                    "sos": "\U0001f198",
                 }
                 emojis = [emoji_map.get(tag, "") for tag in tags[:3]]
                 emoji_prefix = " ".join(e for e in emojis if e) + " "

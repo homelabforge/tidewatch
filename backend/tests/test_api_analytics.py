@@ -55,7 +55,7 @@ class TestAnalyticsSummaryEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="nginx",
-                policy="auto"
+                policy="auto",
             ),
             Container(
                 name="manual-container",
@@ -64,7 +64,7 @@ class TestAnalyticsSummaryEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="redis",
-                policy="manual"
+                policy="manual",
             ),
         ]
         db.add_all(containers)
@@ -92,7 +92,7 @@ class TestAnalyticsSummaryEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -106,7 +106,7 @@ class TestAnalyticsSummaryEndpoint:
             to_tag="1.20",
             status="success",
             started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc)
+            completed_at=datetime.now(timezone.utc),
         )
         db.add(history)
         await db.commit()
@@ -127,7 +127,7 @@ class TestAnalyticsSummaryEndpoint:
             current_tag="1.20",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -141,7 +141,7 @@ class TestAnalyticsSummaryEndpoint:
             to_tag="1.21",
             status="failed",
             started_at=datetime.now(timezone.utc),
-            error_message="Test failure"
+            error_message="Test failure",
         )
         db.add(history)
         await db.commit()
@@ -162,7 +162,7 @@ class TestAnalyticsSummaryEndpoint:
             current_tag="1.21",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -177,7 +177,7 @@ class TestAnalyticsSummaryEndpoint:
             status="success",
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
-            cves_fixed=["CVE-2023-1234", "CVE-2023-5678"]
+            cves_fixed=["CVE-2023-1234", "CVE-2023-5678"],
         )
         db.add(history)
         await db.commit()
@@ -205,7 +205,7 @@ class TestAnalyticsSummaryEndpoint:
             current_tag="1.21",
             registry="docker.io",
             compose_file="/compose/test.yml",
-            service_name="nginx"
+            service_name="nginx",
         )
         db.add(container)
         await db.commit()
@@ -222,7 +222,7 @@ class TestAnalyticsSummaryEndpoint:
             to_tag="1.21",
             status="success",
             started_at=started,
-            completed_at=completed
+            completed_at=completed,
         )
         db.add(history)
         await db.commit()
@@ -237,6 +237,7 @@ class TestAnalyticsSummaryEndpoint:
     async def test_summary_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -244,7 +245,9 @@ class TestAnalyticsSummaryEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_summary_vulnerability_trends_structure(self, authenticated_client, db):
+    async def test_summary_vulnerability_trends_structure(
+        self, authenticated_client, db
+    ):
         """Test vulnerability trends have correct structure."""
         response = await authenticated_client.get("/api/v1/analytics/summary")
 

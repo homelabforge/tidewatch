@@ -5,7 +5,8 @@ from sqlalchemy import text
 
 async def upgrade(db):
     """Create webhooks table."""
-    await db.execute(text("""
+    await db.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS webhooks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -20,19 +21,24 @@ async def upgrade(db):
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    """))
+    """)
+    )
 
     # Create index on name for faster lookups
-    await db.execute(text("""
+    await db.execute(
+        text("""
         CREATE INDEX IF NOT EXISTS idx_webhooks_name
         ON webhooks(name)
-    """))
+    """)
+    )
 
     # Create index on enabled for filtering active webhooks
-    await db.execute(text("""
+    await db.execute(
+        text("""
         CREATE INDEX IF NOT EXISTS idx_webhooks_enabled
         ON webhooks(enabled)
-    """))
+    """)
+    )
 
     await db.commit()
 

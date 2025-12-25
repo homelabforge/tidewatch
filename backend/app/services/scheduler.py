@@ -113,7 +113,9 @@ class SchedulerService:
 
             # Add Dockerfile dependencies update check job (runs based on setting, default daily at 3 AM)
             if dockerfile_schedule != "disabled":
-                cron_schedule = "0 3 * * 0" if dockerfile_schedule == "weekly" else "0 3 * * *"
+                cron_schedule = (
+                    "0 3 * * 0" if dockerfile_schedule == "weekly" else "0 3 * * *"
+                )
                 self.scheduler.add_job(
                     self._run_dockerfile_dependencies_check,
                     CronTrigger.from_crontab(cron_schedule),
@@ -172,6 +174,7 @@ class SchedulerService:
         if self.scheduler:
             try:
                 import asyncio
+
                 self.scheduler.shutdown(wait=False)
                 # Give event loop a chance to process shutdown
                 await asyncio.sleep(0)
@@ -245,14 +248,20 @@ class SchedulerService:
                 self._last_check = datetime.now(timezone.utc)
 
                 # Persist to settings for recovery after restarts
-                await SettingsService.set(db, "scheduler_last_check", self._last_check.isoformat())
+                await SettingsService.set(
+                    db, "scheduler_last_check", self._last_check.isoformat()
+                )
 
         except (OperationalError, IntegrityError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during scheduled update check after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during scheduled update check after {duration:.2f}s: {e}"
+            )
         except (KeyError, ValueError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Invalid data during scheduled update check after {duration:.2f}s: {e}")
+            logger.error(
+                f"Invalid data during scheduled update check after {duration:.2f}s: {e}"
+            )
 
     async def _run_auto_apply(self):
         """Apply approved updates for containers with auto policies.
@@ -294,13 +303,13 @@ class SchedulerService:
                             and_(
                                 Update.status == "approved",
                                 Update.approved_by == "system",
-                                Container.policy.in_(["auto", "security"])
+                                Container.policy.in_(["auto", "security"]),
                             ),
                             # Pending retries that are ready
                             and_(
                                 Update.status == "pending_retry",
-                                Update.next_retry_at <= now
-                            )
+                                Update.next_retry_at <= now,
+                            ),
                         )
                     )
                     .order_by(Update.created_at.asc())  # FIFO order
@@ -351,10 +360,14 @@ class SchedulerService:
                     update_map = {u.container_name: u for u in eligible_updates}
                     ordered_updates = [update_map[name] for name in ordered_names]
                 except (ValueError, KeyError) as e:
-                    logger.error(f"Dependency ordering failed (invalid data): {e}, using original order")
+                    logger.error(
+                        f"Dependency ordering failed (invalid data): {e}, using original order"
+                    )
                     ordered_updates = eligible_updates
                 except OperationalError as e:
-                    logger.error(f"Database error during dependency ordering: {e}, using original order")
+                    logger.error(
+                        f"Database error during dependency ordering: {e}, using original order"
+                    )
                     ordered_updates = eligible_updates
 
                 logger.info(
@@ -393,10 +406,14 @@ class SchedulerService:
 
                     except OperationalError as e:
                         failed += 1
-                        logger.error(f"Database error auto-applying update {update.id}: {e}")
+                        logger.error(
+                            f"Database error auto-applying update {update.id}: {e}"
+                        )
                     except (ValueError, KeyError) as e:
                         failed += 1
-                        logger.error(f"Invalid data auto-applying update {update.id}: {e}")
+                        logger.error(
+                            f"Invalid data auto-applying update {update.id}: {e}"
+                        )
 
                 duration = (datetime.now() - start_time).total_seconds()
                 logger.info(
@@ -406,13 +423,19 @@ class SchedulerService:
 
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during auto-apply job after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during auto-apply job after {duration:.2f}s: {e}"
+            )
         except (ImportError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Failed to import required module during auto-apply after {duration:.2f}s: {e}")
+            logger.error(
+                f"Failed to import required module during auto-apply after {duration:.2f}s: {e}"
+            )
         except (ValueError, KeyError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Invalid data during auto-apply job after {duration:.2f}s: {e}")
+            logger.error(
+                f"Invalid data during auto-apply job after {duration:.2f}s: {e}"
+            )
 
     async def _run_metrics_collection(self):
         """Run metrics collection job.
@@ -425,6 +448,7 @@ class SchedulerService:
         try:
             async with AsyncSessionLocal() as db:
                 from app.services.metrics_collector import metrics_collector
+
                 stats = await metrics_collector.collect_all_metrics(db)
 
                 duration = (datetime.now() - start_time).total_seconds()
@@ -434,10 +458,14 @@ class SchedulerService:
                 )
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during metrics collection after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during metrics collection after {duration:.2f}s: {e}"
+            )
         except (ImportError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Failed to import metrics collector after {duration:.2f}s: {e}")
+            logger.error(
+                f"Failed to import metrics collector after {duration:.2f}s: {e}"
+            )
         except (KeyError, ValueError) as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Invalid metrics data after {duration:.2f}s: {e}")
@@ -453,6 +481,7 @@ class SchedulerService:
         try:
             async with AsyncSessionLocal() as db:
                 from app.services.metrics_collector import metrics_collector
+
                 deleted = await metrics_collector.cleanup_old_metrics(db, days=30)
 
                 duration = (datetime.now() - start_time).total_seconds()
@@ -462,10 +491,14 @@ class SchedulerService:
                 )
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during metrics cleanup after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during metrics cleanup after {duration:.2f}s: {e}"
+            )
         except (ImportError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Failed to import metrics collector after {duration:.2f}s: {e}")
+            logger.error(
+                f"Failed to import metrics collector after {duration:.2f}s: {e}"
+            )
 
     async def _run_dockerfile_dependencies_check(self):
         """Run Dockerfile dependencies update check job.
@@ -485,8 +518,8 @@ class SchedulerService:
                 parser = DockerfileParser()
                 stats = await parser.check_all_for_updates(db)
 
-                total_scanned = stats.get('total_scanned', 0)
-                updates_found = stats.get('updates_found', 0)
+                total_scanned = stats.get("total_scanned", 0)
+                updates_found = stats.get("updates_found", 0)
 
                 # Send notifications for dependencies with updates
                 if updates_found > 0:
@@ -497,14 +530,17 @@ class SchedulerService:
                     result = await db.execute(stmt)
                     deps_with_updates = result.scalars().all()
 
-                    from app.services.notifications.dispatcher import NotificationDispatcher
+                    from app.services.notifications.dispatcher import (
+                        NotificationDispatcher,
+                    )
+
                     dispatcher = NotificationDispatcher(db)
                     for dep in deps_with_updates:
                         await dispatcher.notify_dockerfile_update(
                             image_name=dep.image_name,
                             from_tag=dep.current_tag,
                             to_tag=dep.latest_tag or "unknown",
-                            dependency_type=dep.dependency_type
+                            dependency_type=dep.dependency_type,
                         )
 
                 duration = (datetime.now() - start_time).total_seconds()
@@ -515,13 +551,17 @@ class SchedulerService:
 
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during Dockerfile dependencies check after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during Dockerfile dependencies check after {duration:.2f}s: {e}"
+            )
         except (ImportError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Failed to import required module after {duration:.2f}s: {e}")
         except (KeyError, ValueError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Invalid data during Dockerfile dependencies check after {duration:.2f}s: {e}")
+            logger.error(
+                f"Invalid data during Dockerfile dependencies check after {duration:.2f}s: {e}"
+            )
 
     async def _run_docker_cleanup(self):
         """Run Docker resource cleanup job.
@@ -537,13 +577,23 @@ class SchedulerService:
                 from app.services.cleanup_service import CleanupService
 
                 # Get cleanup settings
-                cleanup_mode = await SettingsService.get(db, "cleanup_mode", default="dangling")
-                cleanup_days = await SettingsService.get_int(db, "cleanup_after_days", default=7)
-                cleanup_containers = await SettingsService.get_bool(db, "cleanup_containers", default=True)
-                exclude_patterns_str = await SettingsService.get(db, "cleanup_exclude_patterns", default="-dev,rollback")
+                cleanup_mode = await SettingsService.get(
+                    db, "cleanup_mode", default="dangling"
+                )
+                cleanup_days = await SettingsService.get_int(
+                    db, "cleanup_after_days", default=7
+                )
+                cleanup_containers = await SettingsService.get_bool(
+                    db, "cleanup_containers", default=True
+                )
+                exclude_patterns_str = await SettingsService.get(
+                    db, "cleanup_exclude_patterns", default="-dev,rollback"
+                )
 
                 # Parse exclude patterns
-                exclude_patterns = [p.strip() for p in exclude_patterns_str.split(",") if p.strip()]
+                exclude_patterns = [
+                    p.strip() for p in exclude_patterns_str.split(",") if p.strip()
+                ]
 
                 # Run cleanup
                 result = await CleanupService.run_cleanup(
@@ -563,9 +613,14 @@ class SchedulerService:
 
                 # Send notification if enabled and cleanup was performed
                 # Note: Docker cleanup notifications use the system notification group
-                total_removed = result.get('images_removed', 0) + result.get('containers_removed', 0)
+                total_removed = result.get("images_removed", 0) + result.get(
+                    "containers_removed", 0
+                )
                 if total_removed > 0:
-                    from app.services.notifications.dispatcher import NotificationDispatcher
+                    from app.services.notifications.dispatcher import (
+                        NotificationDispatcher,
+                    )
+
                     dispatcher = NotificationDispatcher(db)
 
                     # Use check_complete event type for system notifications
@@ -583,13 +638,17 @@ class SchedulerService:
 
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Database error during Docker cleanup after {duration:.2f}s: {e}")
+            logger.error(
+                f"Database error during Docker cleanup after {duration:.2f}s: {e}"
+            )
         except (ImportError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Failed to import cleanup service after {duration:.2f}s: {e}")
         except (KeyError, ValueError) as e:
             duration = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Invalid data during Docker cleanup after {duration:.2f}s: {e}")
+            logger.error(
+                f"Invalid data during Docker cleanup after {duration:.2f}s: {e}"
+            )
 
     async def trigger_update_check(self):
         """Manually trigger an update check outside the schedule.
@@ -630,7 +689,9 @@ class SchedulerService:
                 "enabled": self._enabled,
                 "schedule": self._check_schedule,
                 "next_run": None,
-                "last_check": self._last_check.isoformat() if self._last_check else None,
+                "last_check": self._last_check.isoformat()
+                if self._last_check
+                else None,
             }
 
         job = self.scheduler.get_job("update_check")

@@ -22,8 +22,7 @@ from app.db import engine
 async def setting_exists(conn, key: str) -> bool:
     """Check if a setting exists in the settings table."""
     result = await conn.execute(
-        text("SELECT COUNT(*) FROM settings WHERE key = :key"),
-        {"key": key}
+        text("SELECT COUNT(*) FROM settings WHERE key = :key"), {"key": key}
     )
     count = result.scalar()
     return count > 0
@@ -36,7 +35,8 @@ async def upgrade():
 
         # Add theme setting if it doesn't exist
         if not await setting_exists(conn, "theme"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 INSERT INTO settings (key, value, category, description, encrypted)
                 VALUES (
                     'theme',
@@ -45,7 +45,8 @@ async def upgrade():
                     'User interface theme (light or dark)',
                     0
                 )
-            """))
+            """)
+            )
             print("✓ Added theme setting with default value 'dark'")
         else:
             print("⏭️  Skipped theme setting (already exists)")

@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 # Priority to X-Priority header mapping
 PRIORITY_MAP = {
-    "min": "5",       # Lowest
-    "low": "4",       # Low
-    "default": "3",   # Normal
-    "high": "2",      # High
-    "urgent": "1",    # Highest
+    "min": "5",  # Lowest
+    "low": "4",  # Low
+    "default": "3",  # Normal
+    "high": "2",  # High
+    "urgent": "1",  # Highest
 }
 
 
@@ -84,17 +84,17 @@ class EmailNotificationService(NotificationService):
             subject = title
             if tags:
                 emoji_map = {
-                    "package": "\U0001F4E6",
-                    "arrow_up": "\u2B06",
-                    "shield": "\U0001F6E1",
-                    "rotating_light": "\U0001F6A8",
+                    "package": "\U0001f4e6",
+                    "arrow_up": "\u2b06",
+                    "shield": "\U0001f6e1",
+                    "rotating_light": "\U0001f6a8",
                     "white_check_mark": "\u2705",
-                    "x": "\u274C",
-                    "warning": "\u26A0",
-                    "rewind": "\u23EE",
-                    "ocean": "\U0001F30A",
-                    "whale": "\U0001F433",
-                    "rocket": "\U0001F680",
+                    "x": "\u274c",
+                    "warning": "\u26a0",
+                    "rewind": "\u23ee",
+                    "ocean": "\U0001f30a",
+                    "whale": "\U0001f433",
+                    "rocket": "\U0001f680",
                 }
                 emojis = [emoji_map.get(tag, "") for tag in tags[:2]]
                 prefix = "".join(e for e in emojis if e)
@@ -124,7 +124,7 @@ class EmailNotificationService(NotificationService):
                     </div>
                     <div style="padding: 20px;">
                         <p style="margin: 0; white-space: pre-wrap; color: #333;">{message}</p>
-                        {f'<p style="margin-top: 20px;"><a href="{url}" style="color: #14b8a6;">View in TideWatch →</a></p>' if url else ''}
+                        {f'<p style="margin-top: 20px;"><a href="{url}" style="color: #14b8a6;">View in TideWatch →</a></p>' if url else ""}
                     </div>
                     <div style="padding: 15px 20px; background: #f9f9f9; border-top: 1px solid #eee; font-size: 12px; color: #666;">
                         Sent by TideWatch

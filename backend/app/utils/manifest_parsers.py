@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ManifestUpdateError(Exception):
     """Base exception for manifest update errors."""
+
     pass
 
 
@@ -28,7 +29,7 @@ def update_package_json(
     file_path: Path,
     package_name: str,
     new_version: str,
-    dependency_type: str = "dependencies"
+    dependency_type: str = "dependencies",
 ) -> Tuple[bool, str]:
     """
     Update package version in package.json.
@@ -43,16 +44,20 @@ def update_package_json(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Check if dependency exists in specified section
         if dependency_type not in data:
-            logger.warning(f"Section {sanitize_log_message(str(dependency_type))} not found in {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Section {sanitize_log_message(str(dependency_type))} not found in {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
         if package_name not in data[dependency_type]:
-            logger.warning(f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(dependency_type))} section")
+            logger.warning(
+                f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(dependency_type))} section"
+            )
             return False, ""
 
         # Update version, preserving semver prefix (^, ~, etc.)
@@ -68,7 +73,9 @@ def update_package_json(
                     break
 
         # Apply prefix to new version if it doesn't already have one
-        if prefix and not any(new_version.startswith(p) for p in ["^", "~", ">=", "<=", ">", "<"]):
+        if prefix and not any(
+            new_version.startswith(p) for p in ["^", "~", ">=", "<=", ">", "<"]
+        ):
             new_version = prefix + new_version
 
         data[dependency_type][package_name] = new_version
@@ -76,21 +83,25 @@ def update_package_json(
         # Serialize back to JSON with proper formatting
         updated_content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
-        logger.info(f"Updated {sanitize_log_message(str(package_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in package.json")
+        logger.info(
+            f"Updated {sanitize_log_message(str(package_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in package.json"
+        )
         return True, updated_content
 
     except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"JSON decode error in {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
 
 
 def update_requirements_txt(
-    file_path: Path,
-    package_name: str,
-    new_version: str
+    file_path: Path, package_name: str, new_version: str
 ) -> Tuple[bool, str]:
     """
     Update package version in requirements.txt.
@@ -110,22 +121,22 @@ def update_requirements_txt(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
         for i, line in enumerate(lines):
             # Skip comments and empty lines
             stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
+            if not stripped or stripped.startswith("#"):
                 continue
 
             # Match package name with version specifier
             # Handles: package==1.2.3, package>=1.2.3, package~=1.2.0
             match = re.match(
-                rf'^({re.escape(package_name)})\s*([=<>~!]+)\s*([^\s#]+)(.*)$',
+                rf"^({re.escape(package_name)})\s*([=<>~!]+)\s*([^\s#]+)(.*)$",
                 line,
-                re.IGNORECASE
+                re.IGNORECASE,
             )
 
             if match:
@@ -139,28 +150,33 @@ def update_requirements_txt(
                 lines[i] = new_line
                 updated = True
 
-                logger.info(f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in requirements.txt")
+                logger.info(
+                    f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in requirements.txt"
+                )
                 break
 
         if not updated:
-            logger.warning(f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
-        return True, ''.join(lines)
+        return True, "".join(lines)
 
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except UnicodeDecodeError as e:
-        logger.error(f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
 
 
 def update_pyproject_toml(
-    file_path: Path,
-    package_name: str,
-    new_version: str,
-    section: str = "dependencies"
+    file_path: Path, package_name: str, new_version: str, section: str = "dependencies"
 ) -> Tuple[bool, str]:
     """
     Update package version in pyproject.toml.
@@ -180,7 +196,7 @@ def update_pyproject_toml(
     """
     try:
         # Read file as text (not using tomllib since we need to preserve formatting)
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
@@ -189,18 +205,21 @@ def update_pyproject_toml(
 
         # Map section parameter to actual TOML section patterns
         if section == "dependencies":
-            section_patterns = [r'^\[project\.dependencies\]', r'^dependencies\s*=\s*\[']
+            section_patterns = [
+                r"^\[project\.dependencies\]",
+                r"^dependencies\s*=\s*\[",
+            ]
         elif section == "development":
             section_patterns = [
-                r'^\[project\.optional-dependencies\.dev\]',
-                r'^\[project\.optional-dependencies\]',  # Look for inline dev = [...]
-                r'^\[tool\.poetry\.group\.dev\.dependencies\]'
+                r"^\[project\.optional-dependencies\.dev\]",
+                r"^\[project\.optional-dependencies\]",  # Look for inline dev = [...]
+                r"^\[tool\.poetry\.group\.dev\.dependencies\]",
             ]
         elif section == "optional":
-            section_patterns = [r'^\[project\.optional-dependencies\]']
+            section_patterns = [r"^\[project\.optional-dependencies\]"]
         else:
             # Custom section name
-            section_patterns = [rf'^\[.*{re.escape(section)}.*\]']
+            section_patterns = [rf"^\[.*{re.escape(section)}.*\]"]
 
         for i, line in enumerate(lines):
             # Check if we're entering a target section
@@ -208,7 +227,7 @@ def update_pyproject_toml(
                 in_target_section = True
                 continue
             # Check if we're leaving the section (new section starts)
-            elif line.strip().startswith('['):
+            elif line.strip().startswith("["):
                 in_target_section = False
                 continue
 
@@ -216,7 +235,7 @@ def update_pyproject_toml(
                 # Format 1: Key-value style (Poetry): package = "^1.2.3"
                 kv_match = re.match(
                     rf'^(\s*)({re.escape(package_name)})\s*=\s*["\']([^"\']+)["\'](.*)$',
-                    line
+                    line,
                 )
 
                 if kv_match:
@@ -239,13 +258,15 @@ def update_pyproject_toml(
                     lines[i] = new_line
                     updated = True
 
-                    logger.info(f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in pyproject.toml (key-value format)")
+                    logger.info(
+                        f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in pyproject.toml (key-value format)"
+                    )
                     break
 
                 # Format 2: Array style (PEP 621): "package>=1.2.3",
                 array_match = re.match(
                     rf'^(\s*)["\']({re.escape(package_name)})([><=~!]+)([^"\']+)["\'](.*)$',
-                    line
+                    line,
                 )
 
                 if array_match:
@@ -260,20 +281,28 @@ def update_pyproject_toml(
                     lines[i] = new_line
                     updated = True
 
-                    logger.info(f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in pyproject.toml (array format)")
+                    logger.info(
+                        f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in pyproject.toml (array format)"
+                    )
                     break
 
         if not updated:
-            logger.warning(f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(section))} section of {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(section))} section of {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
-        return True, ''.join(lines)
+        return True, "".join(lines)
 
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except UnicodeDecodeError as e:
-        logger.error(f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
 
 
@@ -281,7 +310,7 @@ def update_composer_json(
     file_path: Path,
     package_name: str,
     new_version: str,
-    dependency_type: str = "require"
+    dependency_type: str = "require",
 ) -> Tuple[bool, str]:
     """
     Update package version in composer.json (PHP).
@@ -296,15 +325,19 @@ def update_composer_json(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         if dependency_type not in data:
-            logger.warning(f"Section {sanitize_log_message(str(dependency_type))} not found in {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Section {sanitize_log_message(str(dependency_type))} not found in {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
         if package_name not in data[dependency_type]:
-            logger.warning(f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(dependency_type))} section")
+            logger.warning(
+                f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(dependency_type))} section"
+            )
             return False, ""
 
         # Update version
@@ -314,22 +347,25 @@ def update_composer_json(
         # Serialize back to JSON with proper formatting (4 spaces for PHP convention)
         updated_content = json.dumps(data, indent=4, ensure_ascii=False) + "\n"
 
-        logger.info(f"Updated {sanitize_log_message(str(package_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in composer.json")
+        logger.info(
+            f"Updated {sanitize_log_message(str(package_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in composer.json"
+        )
         return True, updated_content
 
     except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"JSON decode error in {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
 
 
 def update_cargo_toml(
-    file_path: Path,
-    package_name: str,
-    new_version: str,
-    section: str = "dependencies"
+    file_path: Path, package_name: str, new_version: str, section: str = "dependencies"
 ) -> Tuple[bool, str]:
     """
     Update package version in Cargo.toml (Rust).
@@ -344,7 +380,7 @@ def update_cargo_toml(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
@@ -352,10 +388,10 @@ def update_cargo_toml(
 
         for i, line in enumerate(lines):
             # Track if we're in the right section
-            if re.match(rf'^\[{re.escape(section)}\]', line):
+            if re.match(rf"^\[{re.escape(section)}\]", line):
                 in_section = True
                 continue
-            elif line.strip().startswith('['):
+            elif line.strip().startswith("["):
                 in_section = False
                 continue
 
@@ -363,7 +399,7 @@ def update_cargo_toml(
                 # Match simple format: package = "1.2.3"
                 simple_match = re.match(
                     rf'^({re.escape(package_name)})\s*=\s*["\']([^"\']+)["\'](.*)$',
-                    line
+                    line,
                 )
 
                 if simple_match:
@@ -375,13 +411,15 @@ def update_cargo_toml(
                     lines[i] = new_line
                     updated = True
 
-                    logger.info(f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in Cargo.toml")
+                    logger.info(
+                        f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in Cargo.toml"
+                    )
                     break
 
                 # Match table format: package = { version = "1.2.3", features = [...] }
                 table_match = re.match(
                     rf'^({re.escape(package_name)})\s*=\s*\{{\s*version\s*=\s*["\']([^"\']+)["\']',
-                    line
+                    line,
                 )
 
                 if table_match:
@@ -391,33 +429,39 @@ def update_cargo_toml(
                     # Replace just the version part
                     new_line = re.sub(
                         r'(version\s*=\s*["\'])([^"\']+)(["\'])',
-                        rf'\g<1>{new_version}\g<3>',
-                        line
+                        rf"\g<1>{new_version}\g<3>",
+                        line,
                     )
                     lines[i] = new_line
                     updated = True
 
-                    logger.info(f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in Cargo.toml")
+                    logger.info(
+                        f"Updated {sanitize_log_message(str(pkg_name))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in Cargo.toml"
+                    )
                     break
 
         if not updated:
-            logger.warning(f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(section))} section of {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Package {sanitize_log_message(str(package_name))} not found in {sanitize_log_message(str(section))} section of {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
-        return True, ''.join(lines)
+        return True, "".join(lines)
 
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except UnicodeDecodeError as e:
-        logger.error(f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
 
 
 def update_go_mod(
-    file_path: Path,
-    module_name: str,
-    new_version: str
+    file_path: Path, module_name: str, new_version: str
 ) -> Tuple[bool, str]:
     """
     Update module version in go.mod.
@@ -431,19 +475,18 @@ def update_go_mod(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         # Ensure version starts with 'v'
-        if not new_version.startswith('v'):
-            new_version = f'v{new_version}'
+        if not new_version.startswith("v"):
+            new_version = f"v{new_version}"
 
         updated = False
         for i, line in enumerate(lines):
             # Match require statements: module v1.2.3
             match = re.match(
-                rf'^\s*({re.escape(module_name)})\s+(v[\d.]+)(.*)$',
-                line.strip()
+                rf"^\s*({re.escape(module_name)})\s+(v[\d.]+)(.*)$", line.strip()
             )
 
             if match:
@@ -457,18 +500,26 @@ def update_go_mod(
                 lines[i] = new_line
                 updated = True
 
-                logger.info(f"Updated {sanitize_log_message(str(module))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in go.mod")
+                logger.info(
+                    f"Updated {sanitize_log_message(str(module))} from {sanitize_log_message(str(old_version))} to {sanitize_log_message(str(new_version))} in go.mod"
+                )
                 break
 
         if not updated:
-            logger.warning(f"Module {sanitize_log_message(str(module_name))} not found in {sanitize_log_message(str(file_path))}")
+            logger.warning(
+                f"Module {sanitize_log_message(str(module_name))} not found in {sanitize_log_message(str(file_path))}"
+            )
             return False, ""
 
-        return True, ''.join(lines)
+        return True, "".join(lines)
 
     except (OSError, PermissionError) as e:
-        logger.error(f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"File system error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""
     except UnicodeDecodeError as e:
-        logger.error(f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+        logger.error(
+            f"Encoding error updating {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
+        )
         return False, ""

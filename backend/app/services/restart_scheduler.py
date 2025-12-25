@@ -99,9 +99,7 @@ class RestartSchedulerService:
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid data in restart monitor loop: {e}")
 
-    async def _check_and_schedule_restart(
-        self, db: AsyncSession, container: Container
-    ):
+    async def _check_and_schedule_restart(self, db: AsyncSession, container: Container):
         """Check if container needs restart and schedule if needed.
 
         Args:
@@ -115,7 +113,11 @@ class RestartSchedulerService:
             # Check if already scheduled
             if state.next_retry_at:
                 # Ensure timezone-aware comparison (SQLite returns naive datetimes)
-                next_retry = state.next_retry_at.replace(tzinfo=timezone.utc) if state.next_retry_at.tzinfo is None else state.next_retry_at
+                next_retry = (
+                    state.next_retry_at.replace(tzinfo=timezone.utc)
+                    if state.next_retry_at.tzinfo is None
+                    else state.next_retry_at
+                )
                 if next_retry > datetime.now(timezone.utc):
                     # Already scheduled, skip
                     return
@@ -125,9 +127,7 @@ class RestartSchedulerService:
                 db, container.id
             )
             if not allowed:
-                logger.debug(
-                    f"Circuit breaker open for {container.name}: {reason}"
-                )
+                logger.debug(f"Circuit breaker open for {container.name}: {reason}")
                 return
 
             # Check container status
@@ -211,7 +211,9 @@ class RestartSchedulerService:
                     db, "restart_notify_on_max_retries", default=True
                 )
                 if notify:
-                    from app.services.notifications.dispatcher import NotificationDispatcher
+                    from app.services.notifications.dispatcher import (
+                        NotificationDispatcher,
+                    )
 
                     dispatcher = NotificationDispatcher(db)
                     await dispatcher.notify_max_retries_reached(
@@ -254,15 +256,18 @@ class RestartSchedulerService:
 
         except OperationalError as e:
             logger.error(
-                f"Database error checking restart for {container.name}: {e}", exc_info=True
+                f"Database error checking restart for {container.name}: {e}",
+                exc_info=True,
             )
         except (ImportError, AttributeError) as e:
             logger.error(
-                f"Service dependency error checking restart for {container.name}: {e}", exc_info=True
+                f"Service dependency error checking restart for {container.name}: {e}",
+                exc_info=True,
             )
         except (ValueError, KeyError) as e:
             logger.error(
-                f"Invalid data checking restart for {container.name}: {e}", exc_info=True
+                f"Invalid data checking restart for {container.name}: {e}",
+                exc_info=True,
             )
 
     async def _execute_restart(self, container_id: int, attempt_number: int):
@@ -335,11 +340,15 @@ class RestartSchedulerService:
                         db, "restart_notify_on_failure", default=True
                     )
                     if notify:
-                        from app.services.notifications.dispatcher import NotificationDispatcher
+                        from app.services.notifications.dispatcher import (
+                            NotificationDispatcher,
+                        )
 
                         dispatcher = NotificationDispatcher(db)
                         await dispatcher.notify_restart_failure(
-                            container.name, attempt_number, result.get("error", "Unknown error")
+                            container.name,
+                            attempt_number,
+                            result.get("error", "Unknown error"),
                         )
 
             except OperationalError as e:
@@ -397,7 +406,9 @@ class RestartSchedulerService:
             except OperationalError as e:
                 logger.error(f"Database error in cleanup job: {e}", exc_info=True)
             except (ImportError, AttributeError) as e:
-                logger.error(f"Service dependency error in cleanup job: {e}", exc_info=True)
+                logger.error(
+                    f"Service dependency error in cleanup job: {e}", exc_info=True
+                )
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid data in cleanup job: {e}", exc_info=True)
 

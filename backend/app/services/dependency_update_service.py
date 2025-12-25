@@ -84,12 +84,16 @@ class DependencyUpdateService:
         # Remove registry prefix if present
         if "/" in image_name:
             parts = image_name.split("/")
-            image_name = parts[-1]  # Take last part (e.g., "python" from "docker.io/library/python")
+            image_name = parts[
+                -1
+            ]  # Take last part (e.g., "python" from "docker.io/library/python")
 
         return DependencyUpdateService.DOCKER_IMAGE_GITHUB_REPOS.get(image_name.lower())
 
     @staticmethod
-    async def _get_github_repo_for_package(package_name: str, ecosystem: str) -> Optional[str]:
+    async def _get_github_repo_for_package(
+        package_name: str, ecosystem: str
+    ) -> Optional[str]:
         """Get GitHub repo for a package from its registry.
 
         Args:
@@ -105,7 +109,9 @@ class DependencyUpdateService:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 if ecosystem == "npm":
                     # Fetch from npm registry
-                    response = await client.get(f"https://registry.npmjs.org/{package_name}")
+                    response = await client.get(
+                        f"https://registry.npmjs.org/{package_name}"
+                    )
                     if response.status_code == 200:
                         data = response.json()
                         repo_url = data.get("repository", {})
@@ -118,13 +124,20 @@ class DependencyUpdateService:
 
                         # Extract owner/repo from GitHub URL
                         if "github.com/" in repo_url:
-                            parts = repo_url.split("github.com/")[-1].rstrip("/").removesuffix(".git").split("/")
+                            parts = (
+                                repo_url.split("github.com/")[-1]
+                                .rstrip("/")
+                                .removesuffix(".git")
+                                .split("/")
+                            )
                             if len(parts) >= 2:
                                 return f"{parts[0]}/{parts[1]}"
 
                 elif ecosystem == "pypi":
                     # Fetch from PyPI JSON API
-                    response = await client.get(f"https://pypi.org/pypi/{package_name}/json")
+                    response = await client.get(
+                        f"https://pypi.org/pypi/{package_name}/json"
+                    )
                     if response.status_code == 200:
                         data = response.json()
                         project_urls = data.get("info", {}).get("project_urls", {})
@@ -133,12 +146,19 @@ class DependencyUpdateService:
                         for key in ["Source", "Repository", "Homepage", "GitHub"]:
                             url = project_urls.get(key, "")
                             if "github.com/" in url:
-                                parts = url.split("github.com/")[-1].rstrip("/").removesuffix(".git").split("/")
+                                parts = (
+                                    url.split("github.com/")[-1]
+                                    .rstrip("/")
+                                    .removesuffix(".git")
+                                    .split("/")
+                                )
                                 if len(parts) >= 2:
                                     return f"{parts[0]}/{parts[1]}"
 
         except Exception as e:
-            logger.debug(f"Could not fetch GitHub repo for {sanitize_log_message(str(package_name))} ({sanitize_log_message(str(ecosystem))}): {sanitize_log_message(str(e))}")
+            logger.debug(
+                f"Could not fetch GitHub repo for {sanitize_log_message(str(package_name))} ({sanitize_log_message(str(ecosystem))}): {sanitize_log_message(str(e))}"
+            )
 
         return None
 
@@ -147,7 +167,7 @@ class DependencyUpdateService:
         db: AsyncSession,
         dependency_id: int,
         new_version: str,
-        triggered_by: str = "user"
+        triggered_by: str = "user",
     ) -> Dict[str, Any]:
         """
         Update Dockerfile FROM instruction.
@@ -176,7 +196,9 @@ class DependencyUpdateService:
         try:
             # Get dependency
             result = await db.execute(
-                select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
+                select(DockerfileDependency).where(
+                    DockerfileDependency.id == dependency_id
+                )
             )
             dependency = result.scalar_one_or_none()
 
@@ -258,9 +280,13 @@ class DependencyUpdateService:
                 if backup_path:
                     try:
                         restore_from_backup(backup_path, validated_path)
-                        logger.warning(f"Restored backup after write failure: {sanitize_log_message(str(e))}")
+                        logger.warning(
+                            f"Restored backup after write failure: {sanitize_log_message(str(e))}"
+                        )
                     except FileOperationError as restore_error:
-                        logger.error(f"Failed to restore backup: {sanitize_log_message(str(restore_error))}")
+                        logger.error(
+                            f"Failed to restore backup: {sanitize_log_message(str(restore_error))}"
+                        )
 
                 return {
                     "success": False,
@@ -316,16 +342,22 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Unexpected error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
+            )
 
             # Try to restore backup
             if backup_path and Path(backup_path).exists():
                 try:
                     file_path = Path("/projects") / dependency.dockerfile_path
                     restore_from_backup(Path(backup_path), file_path)
-                    logger.warning(f"Restored backup after unexpected error: {sanitize_log_message(str(e))}")
+                    logger.warning(
+                        f"Restored backup after unexpected error: {sanitize_log_message(str(e))}"
+                    )
                 except Exception as restore_error:
-                    logger.error(f"Failed to restore backup: {sanitize_log_message(str(restore_error))}")
+                    logger.error(
+                        f"Failed to restore backup: {sanitize_log_message(str(restore_error))}"
+                    )
 
             return {
                 "success": False,
@@ -336,10 +368,7 @@ class DependencyUpdateService:
 
     @staticmethod
     async def update_http_server_label(
-        db: AsyncSession,
-        server_id: int,
-        new_version: str,
-        triggered_by: str = "user"
+        db: AsyncSession, server_id: int, new_version: str, triggered_by: str = "user"
     ) -> Dict[str, Any]:
         """
         Update http.server.version label in Dockerfile.
@@ -491,7 +520,9 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Unexpected error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
+            )
 
             if backup_path and Path(backup_path).exists():
                 try:
@@ -512,7 +543,7 @@ class DependencyUpdateService:
         db: AsyncSession,
         dependency_id: int,
         new_version: str,
-        triggered_by: str = "user"
+        triggered_by: str = "user",
     ) -> Dict[str, Any]:
         """
         Update app dependency in manifest file.
@@ -587,50 +618,47 @@ class DependencyUpdateService:
 
             if manifest_name == "package.json":
                 # Map dependency_type to package.json section names
-                section_name = "dependencies" if dependency.dependency_type == "production" else "devDependencies"
+                section_name = (
+                    "dependencies"
+                    if dependency.dependency_type == "production"
+                    else "devDependencies"
+                )
                 success, updated_content = update_package_json(
-                    validated_path,
-                    dependency.name,
-                    new_version,
-                    section_name
+                    validated_path, dependency.name, new_version, section_name
                 )
             elif manifest_name == "requirements.txt":
                 success, updated_content = update_requirements_txt(
-                    validated_path,
-                    dependency.name,
-                    new_version
+                    validated_path, dependency.name, new_version
                 )
             elif manifest_name == "pyproject.toml":
                 # Map dependency_type to pyproject.toml section
                 # dependency_type can be: production, development, optional, peer
                 section = dependency.dependency_type  # Use dependency_type directly
                 success, updated_content = update_pyproject_toml(
-                    validated_path,
-                    dependency.name,
-                    new_version,
-                    section
+                    validated_path, dependency.name, new_version, section
                 )
             elif manifest_name == "composer.json":
                 success, updated_content = update_composer_json(
                     validated_path,
                     dependency.name,
                     new_version,
-                    "require" if dependency.dependency_type == "production" else "require-dev"
+                    "require"
+                    if dependency.dependency_type == "production"
+                    else "require-dev",
                 )
             elif manifest_name == "cargo.toml":
                 # Map dependency_type to Cargo.toml section
-                section = "dependencies" if dependency.dependency_type == "production" else "dev-dependencies"
+                section = (
+                    "dependencies"
+                    if dependency.dependency_type == "production"
+                    else "dev-dependencies"
+                )
                 success, updated_content = update_cargo_toml(
-                    validated_path,
-                    dependency.name,
-                    new_version,
-                    section
+                    validated_path, dependency.name, new_version, section
                 )
             elif manifest_name == "go.mod":
                 success, updated_content = update_go_mod(
-                    validated_path,
-                    dependency.name,
-                    new_version
+                    validated_path, dependency.name, new_version
                 )
             else:
                 return {
@@ -710,7 +738,9 @@ class DependencyUpdateService:
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}")
+            logger.error(
+                f"Unexpected error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
+            )
 
             if backup_path and Path(backup_path).exists():
                 try:
@@ -728,10 +758,7 @@ class DependencyUpdateService:
 
     @staticmethod
     async def preview_update(
-        db: AsyncSession,
-        dependency_type: str,
-        dependency_id: int,
-        new_version: str
+        db: AsyncSession, dependency_type: str, dependency_id: int, new_version: str
     ) -> Dict[str, Any]:
         """
         Generate preview of update without applying.
@@ -741,7 +768,9 @@ class DependencyUpdateService:
         try:
             if dependency_type == "dockerfile":
                 result = await db.execute(
-                    select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
+                    select(DockerfileDependency).where(
+                        DockerfileDependency.id == dependency_id
+                    )
                 )
                 dependency = result.scalar_one_or_none()
 
@@ -751,20 +780,28 @@ class DependencyUpdateService:
                 # Try to fetch changelog
                 changelog_text = None
                 changelog_url = None
-                github_repo = DependencyUpdateService._get_github_repo_for_image(dependency.image_name)
+                github_repo = DependencyUpdateService._get_github_repo_for_image(
+                    dependency.image_name
+                )
                 if github_repo:
                     try:
                         fetcher = ChangelogFetcher()
                         # Extract version number without tag suffix (e.g., "3.15.0" from "3.15.0-slim")
                         version_parts = new_version.split("-")
                         version_number = version_parts[0]
-                        changelog_result = await fetcher.fetch(github_repo, dependency.image_name, version_number)
+                        changelog_result = await fetcher.fetch(
+                            github_repo, dependency.image_name, version_number
+                        )
                         if changelog_result:
                             changelog_text = changelog_result.raw_text
                             changelog_url = changelog_result.url
-                            logger.info(f"Fetched changelog for {sanitize_log_message(str(dependency.image_name))}:{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}")
+                            logger.info(
+                                f"Fetched changelog for {sanitize_log_message(str(dependency.image_name))}:{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}"
+                            )
                     except Exception as e:
-                        logger.warning(f"Failed to fetch changelog for {sanitize_log_message(str(dependency.image_name))}: {sanitize_log_message(str(e))}")
+                        logger.warning(
+                            f"Failed to fetch changelog for {sanitize_log_message(str(dependency.image_name))}: {sanitize_log_message(str(e))}"
+                        )
 
                 return {
                     "current_line": f"FROM {dependency.image_name}:{dependency.current_tag}",
@@ -807,35 +844,49 @@ class DependencyUpdateService:
                 # Try to fetch changelog
                 changelog_text = None
                 changelog_url = None
-                github_repo = await DependencyUpdateService._get_github_repo_for_package(
-                    dependency.name, dependency.ecosystem
+                github_repo = (
+                    await DependencyUpdateService._get_github_repo_for_package(
+                        dependency.name, dependency.ecosystem
+                    )
                 )
                 if github_repo:
                     try:
                         fetcher = ChangelogFetcher()
-                        changelog_result = await fetcher.fetch(github_repo, dependency.name, new_version)
+                        changelog_result = await fetcher.fetch(
+                            github_repo, dependency.name, new_version
+                        )
                         if changelog_result:
                             changelog_text = changelog_result.raw_text
                             changelog_url = changelog_result.url
-                            logger.info(f"Fetched changelog for {sanitize_log_message(str(dependency.name))}@{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}")
+                            logger.info(
+                                f"Fetched changelog for {sanitize_log_message(str(dependency.name))}@{sanitize_log_message(str(new_version))} from {sanitize_log_message(str(github_repo))}"
+                            )
                     except Exception as e:
-                        logger.warning(f"Failed to fetch changelog for {sanitize_log_message(str(dependency.name))}: {sanitize_log_message(str(e))}")
+                        logger.warning(
+                            f"Failed to fetch changelog for {sanitize_log_message(str(dependency.name))}: {sanitize_log_message(str(e))}"
+                        )
 
                 # Format depends on manifest type
                 manifest_name = Path(dependency.manifest_file).name.lower()
 
                 if manifest_name == "package.json":
-                    current_line = f'"{dependency.name}": "{dependency.current_version}"'
+                    current_line = (
+                        f'"{dependency.name}": "{dependency.current_version}"'
+                    )
                     new_line = f'"{dependency.name}": "{new_version}"'
-                elif manifest_name in ["requirements.txt", "pyproject.toml", "cargo.toml"]:
+                elif manifest_name in [
+                    "requirements.txt",
+                    "pyproject.toml",
+                    "cargo.toml",
+                ]:
                     current_line = f'{dependency.name} = "{dependency.current_version}"'
                     new_line = f'{dependency.name} = "{new_version}"'
                 elif manifest_name == "go.mod":
-                    current_line = f'{dependency.name} {dependency.current_version}'
-                    new_line = f'{dependency.name} {new_version}'
+                    current_line = f"{dependency.name} {dependency.current_version}"
+                    new_line = f"{dependency.name} {new_version}"
                 else:
-                    current_line = f'{dependency.name}: {dependency.current_version}'
-                    new_line = f'{dependency.name}: {new_version}'
+                    current_line = f"{dependency.name}: {dependency.current_version}"
+                    new_line = f"{dependency.name}: {new_version}"
 
                 return {
                     "current_line": current_line,

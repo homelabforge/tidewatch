@@ -37,10 +37,7 @@ class TokenBucket:
         elapsed = now - self.last_refill
 
         # Refill tokens based on elapsed time
-        self.tokens = min(
-            self.capacity,
-            self.tokens + (elapsed * self.refill_rate)
-        )
+        self.tokens = min(self.capacity, self.tokens + (elapsed * self.refill_rate))
         self.last_refill = now
 
         if self.tokens >= tokens:
@@ -105,7 +102,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Remove buckets that haven't been used in 5 minutes (reduced from 10)
         expired_keys = [
-            key for key, bucket in self.buckets.items()
+            key
+            for key, bucket in self.buckets.items()
             if now - bucket.last_refill > 300  # 5 minutes
         ]
 
@@ -120,9 +118,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if len(self.buckets) > max_buckets:
             # Sort by last_refill time and keep only the newest max_buckets
             sorted_buckets = sorted(
-                self.buckets.items(),
-                key=lambda x: x[1].last_refill,
-                reverse=True
+                self.buckets.items(), key=lambda x: x[1].last_refill, reverse=True
             )
             self.buckets = dict(sorted_buckets[:max_buckets])
             logger.warning(
@@ -152,7 +148,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Endpoint-specific rate limits (stricter for critical operations)
         endpoint_limits = {
-            "/api/v1/containers/": (5, 60),  # 5 requests per minute for container operations
+            "/api/v1/containers/": (
+                5,
+                60,
+            ),  # 5 requests per minute for container operations
             "/api/v1/updates/": (3, 60),  # 3 requests per minute for update operations
             "/api/v1/settings": (10, 60),  # 10 requests per minute for settings
             "/api/v1/auth/login": (5, 300),  # 5 login attempts per 5 minutes
@@ -178,7 +177,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Try to consume a token
         if not bucket.consume():
-            logger.warning(f"Rate limit exceeded for IP: {client_ip} on endpoint: {request.url.path}")
+            logger.warning(
+                f"Rate limit exceeded for IP: {client_ip} on endpoint: {request.url.path}"
+            )
 
             # Calculate retry-after based on endpoint
             retry_after = 60
@@ -190,7 +191,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             raise HTTPException(
                 status_code=429,
                 detail="Rate limit exceeded. Please try again later.",
-                headers={"Retry-After": str(retry_after)}
+                headers={"Retry-After": str(retry_after)},
             )
 
         # Periodic cleanup

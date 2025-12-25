@@ -56,7 +56,9 @@ class TestEncryptionService:
 
         assert "Invalid encryption key format" in str(exc_info.value)
 
-    def test_initialization_from_environment_variable(self, encryption_key, monkeypatch):
+    def test_initialization_from_environment_variable(
+        self, encryption_key, monkeypatch
+    ):
         """Test EncryptionService loads key from environment."""
         monkeypatch.setenv("TIDEWATCH_ENCRYPTION_KEY", encryption_key)
         service = EncryptionService()
@@ -211,6 +213,7 @@ class TestGlobalEncryptionFunctions:
     def reset_global_service(self):
         """Reset global encryption service before each test."""
         import app.utils.encryption
+
         app.utils.encryption._encryption_service = None
         yield
         app.utils.encryption._encryption_service = None
@@ -347,4 +350,5 @@ class TestEncryptionSecurityProperties:
 
         # Should only contain base64 URL-safe characters
         import re
-        assert re.match(r'^[A-Za-z0-9_-]+$', encrypted.replace('=', ''))
+
+        assert re.match(r"^[A-Za-z0-9_-]+$", encrypted.replace("=", ""))

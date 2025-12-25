@@ -33,10 +33,12 @@ async def migrate():
         if "snoozed_until" in columns:
             logger.info("  ⚠ Column already exists, skipping")
         else:
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE updates
                 ADD COLUMN snoozed_until DATETIME
-            """))
+            """)
+            )
             logger.info("  ✓ Column added")
 
         logger.info("Migration completed ✅")

@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Slack color mapping for attachments
 COLOR_MAP = {
-    "min": "#808080",      # Gray
-    "low": "#36a64f",      # Green
+    "min": "#808080",  # Gray
+    "low": "#36a64f",  # Green
     "default": "#2196F3",  # Blue
-    "high": "#ff9800",     # Orange
-    "urgent": "#f44336",   # Red
+    "high": "#ff9800",  # Orange
+    "urgent": "#f44336",  # Red
 }
 
 
@@ -128,7 +128,9 @@ class SlackNotificationService(NotificationService):
                 logger.info(f"[slack] Sent notification: {sanitize_log_message(title)}")
                 return True
             else:
-                logger.error(f"[slack] Unexpected response: {sanitize_log_message(response.text)}")
+                logger.error(
+                    f"[slack] Unexpected response: {sanitize_log_message(response.text)}"
+                )
                 return False
 
         except httpx.HTTPStatusError as e:

@@ -18,7 +18,7 @@ class ContainerMonitorService:
     def __init__(self) -> None:
         """Initialize with Docker client."""
         # Use DOCKER_HOST if set, otherwise use default Unix socket
-        docker_host = os.environ.get('DOCKER_HOST', 'unix:///var/run/docker.sock')
+        docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
         self.client = docker.DockerClient(base_url=docker_host)
 
     async def get_container_state(self, container_name: str) -> Optional[Dict]:
@@ -32,7 +32,9 @@ class ContainerMonitorService:
         """
         # Validate container name to prevent command injection
         if not validate_container_name(container_name):
-            logger.warning(f"Invalid container name '{container_name}', rejecting for security")
+            logger.warning(
+                f"Invalid container name '{container_name}', rejecting for security"
+            )
             return {"error": "Invalid container name", "running": False}
 
         try:
@@ -191,7 +193,9 @@ class ContainerMonitorService:
         }
 
     @staticmethod
-    def categorize_failure(exit_code: Optional[int], oom_killed: bool, error: str) -> str:
+    def categorize_failure(
+        exit_code: Optional[int], oom_killed: bool, error: str
+    ) -> str:
         """Categorize the type of container failure.
 
         Args:

@@ -23,17 +23,26 @@ class UpdateWindow:
 
     # Day name mappings
     DAY_NAMES = {
-        "mon": 0, "monday": 0,
-        "tue": 1, "tuesday": 1,
-        "wed": 2, "wednesday": 2,
-        "thu": 3, "thursday": 3,
-        "fri": 4, "friday": 4,
-        "sat": 5, "saturday": 5,
-        "sun": 6, "sunday": 6,
+        "mon": 0,
+        "monday": 0,
+        "tue": 1,
+        "tuesday": 1,
+        "wed": 2,
+        "wednesday": 2,
+        "thu": 3,
+        "thursday": 3,
+        "fri": 4,
+        "friday": 4,
+        "sat": 5,
+        "saturday": 5,
+        "sun": 6,
+        "sunday": 6,
     }
 
     @staticmethod
-    def is_in_window(update_window: Optional[str], check_time: Optional[datetime] = None) -> bool:
+    def is_in_window(
+        update_window: Optional[str], check_time: Optional[datetime] = None
+    ) -> bool:
         """Check if current time is within the update window.
 
         Args:
@@ -56,9 +65,7 @@ class UpdateWindow:
             # Check if current day is allowed
             current_day = check_time.weekday()
             if days is not None and current_day not in days:
-                logger.debug(
-                    f"Current day {current_day} not in allowed days {days}"
-                )
+                logger.debug(f"Current day {current_day} not in allowed days {days}")
                 return False
 
             # Check if current time is in range
@@ -112,7 +119,7 @@ class UpdateWindow:
         time_part = window_str
 
         # Look for day specification pattern (letters/hyphens/commas followed by colon then digits)
-        match = re.match(r'^([A-Za-z\-,]+):(.+)$', window_str)
+        match = re.match(r"^([A-Za-z\-,]+):(.+)$", window_str)
         if match:
             # This looks like "Days:HH:MM-HH:MM"
             days_part = match.group(1)

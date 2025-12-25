@@ -74,7 +74,9 @@ class UnifiedHistoryEventSchema(BaseModel):
     final_container_status: Optional[str] = None
 
     # Dependency-specific fields (nullable for non-dependency events)
-    dependency_type: Optional[str] = None  # 'dockerfile', 'http_server', 'app_dependency'
+    dependency_type: Optional[str] = (
+        None  # 'dockerfile', 'http_server', 'app_dependency'
+    )
     dependency_id: Optional[int] = None
     dependency_name: Optional[str] = None
 

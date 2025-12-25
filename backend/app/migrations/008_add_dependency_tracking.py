@@ -46,24 +46,30 @@ async def upgrade():
     async with engine.begin() as conn:
         # Add dependencies column
         if not await column_exists(conn, "containers", "dependencies"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE containers ADD COLUMN dependencies TEXT NULL;
-            """))
+            """)
+            )
             logger.info("✅ Added dependencies column")
         else:
             logger.info("⏭️  Skipped dependencies column (already exists)")
 
         # Add dependents column
         if not await column_exists(conn, "containers", "dependents"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 ALTER TABLE containers ADD COLUMN dependents TEXT NULL;
-            """))
+            """)
+            )
             logger.info("✅ Added dependents column")
         else:
             logger.info("⏭️  Skipped dependents column (already exists)")
 
     await engine.dispose()
-    logger.info("✅ Migration 008 completed: Dependency tracking added to containers table")
+    logger.info(
+        "✅ Migration 008 completed: Dependency tracking added to containers table"
+    )
 
 
 async def main():

@@ -16,21 +16,22 @@ from datetime import datetime, timezone
 class TestGetRestartStateEndpoint:
     """Test suite for GET /api/v1/restarts/{container_id}/state endpoint."""
 
-    async def test_get_restart_state_existing(self, authenticated_client, db, make_container):
+    async def test_get_restart_state_existing(
+        self, authenticated_client, db, make_container
+    ):
         """Test returns restart state for existing container."""
         # Arrange - Create container
         container = make_container(
-            name="test-container",
-            image="nginx",
-            current_tag="1.20",
-            policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="manual"
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         # Act
-        response = await authenticated_client.get(f"/api/v1/restarts/{container.id}/state")
+        response = await authenticated_client.get(
+            f"/api/v1/restarts/{container.id}/state"
+        )
 
         # Assert
         assert response.status_code == status.HTTP_200_OK
@@ -50,6 +51,7 @@ class TestGetRestartStateEndpoint:
     async def test_get_restart_state_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -63,30 +65,31 @@ class TestGetRestartStateEndpoint:
 class TestManualRestartEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/manual-restart endpoint."""
 
-    async def test_manual_restart_success(self, authenticated_client, db, make_container):
+    async def test_manual_restart_success(
+        self, authenticated_client, db, make_container
+    ):
         """Test manually triggers container restart."""
         # Arrange - Create container
         container = make_container(
-            name="test-container",
-            image="nginx",
-            current_tag="1.20",
-            policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="manual"
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         # Mock RestartService
-        with patch('app.api.restarts.RestartService.execute_restart', new_callable=AsyncMock) as mock_restart:
+        with patch(
+            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+        ) as mock_restart:
             mock_restart.return_value = {
                 "success": True,
-                "message": "Container restarted successfully"
+                "message": "Container restarted successfully",
             }
 
             # Act
             response = await authenticated_client.post(
                 f"/api/v1/restarts/{container.id}/manual-restart",
-                json={"reason": "Manual testing", "skip_backoff": False}
+                json={"reason": "Manual testing", "skip_backoff": False},
             )
 
             # Assert
@@ -96,30 +99,31 @@ class TestManualRestartEndpoint:
             assert "restarted" in data["message"].lower()
             mock_restart.assert_called_once()
 
-    async def test_manual_restart_with_skip_backoff(self, authenticated_client, db, make_container):
+    async def test_manual_restart_with_skip_backoff(
+        self, authenticated_client, db, make_container
+    ):
         """Test manual restart can skip backoff."""
         # Arrange - Create container
         container = make_container(
-            name="test-container",
-            image="nginx",
-            current_tag="1.20",
-            policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="manual"
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         # Mock RestartService
-        with patch('app.api.restarts.RestartService.execute_restart', new_callable=AsyncMock) as mock_restart:
+        with patch(
+            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+        ) as mock_restart:
             mock_restart.return_value = {
                 "success": True,
-                "message": "Container restarted successfully"
+                "message": "Container restarted successfully",
             }
 
             # Act
             response = await authenticated_client.post(
                 f"/api/v1/restarts/{container.id}/manual-restart",
-                json={"reason": "Skip backoff test", "skip_backoff": True}
+                json={"reason": "Skip backoff test", "skip_backoff": True},
             )
 
             # Assert
@@ -127,30 +131,31 @@ class TestManualRestartEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_manual_restart_failure(self, authenticated_client, db, make_container):
+    async def test_manual_restart_failure(
+        self, authenticated_client, db, make_container
+    ):
         """Test handles restart failure."""
         # Arrange - Create container
         container = make_container(
-            name="test-container",
-            image="nginx",
-            current_tag="1.20",
-            policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="manual"
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         # Mock RestartService failure
-        with patch('app.api.restarts.RestartService.execute_restart', new_callable=AsyncMock) as mock_restart:
+        with patch(
+            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+        ) as mock_restart:
             mock_restart.return_value = {
                 "success": False,
-                "error": "Docker daemon not responding"
+                "error": "Docker daemon not responding",
             }
 
             # Act
             response = await authenticated_client.post(
                 f"/api/v1/restarts/{container.id}/manual-restart",
-                json={"reason": "Test failure", "skip_backoff": False}
+                json={"reason": "Test failure", "skip_backoff": False},
             )
 
             # Assert
@@ -162,13 +167,14 @@ class TestManualRestartEndpoint:
     async def test_manual_restart_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
         # Act
         response = await client.post(
             "/api/v1/restarts/1/manual-restart",
-            json={"reason": "test", "skip_backoff": False}
+            json={"reason": "test", "skip_backoff": False},
         )
 
         # Assert
@@ -188,7 +194,7 @@ class TestResetRestartStateEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual"
+            policy="manual",
         )
         db.add(container)
         await db.commit()
@@ -199,15 +205,14 @@ class TestResetRestartStateEndpoint:
             container_name=container.name,
             consecutive_failures=5,
             current_backoff_seconds=120.0,
-            max_retries_reached=True
+            max_retries_reached=True,
         )
         db.add(restart_state)
         await db.commit()
 
         # Act
         response = await authenticated_client.post(
-            f"/api/v1/restarts/{container.id}/reset",
-            json={"reason": "Manual reset"}
+            f"/api/v1/restarts/{container.id}/reset", json={"reason": "Manual reset"}
         )
 
         # Assert
@@ -219,14 +224,13 @@ class TestResetRestartStateEndpoint:
         assert data["state"]["current_backoff_seconds"] == 0.0
         assert data["state"]["max_retries_reached"] is False
 
-    async def test_reset_restart_state_no_state(self, authenticated_client, db, make_container):
+    async def test_reset_restart_state_no_state(
+        self, authenticated_client, db, make_container
+    ):
         """Test returns 404 if restart state doesn't exist."""
         # Arrange - Create container without restart state
         container = make_container(
-            name="test-container",
-            image="nginx",
-            current_tag="1.20",
-            policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="manual"
         )
         db.add(container)
         await db.commit()
@@ -234,8 +238,7 @@ class TestResetRestartStateEndpoint:
 
         # Act
         response = await authenticated_client.post(
-            f"/api/v1/restarts/{container.id}/reset",
-            json={"reason": "Test"}
+            f"/api/v1/restarts/{container.id}/reset", json={"reason": "Test"}
         )
 
         # Assert
@@ -244,13 +247,13 @@ class TestResetRestartStateEndpoint:
     async def test_reset_restart_state_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
         # Act
         response = await client.post(
-            "/api/v1/restarts/1/reset",
-            json={"reason": "test"}
+            "/api/v1/restarts/1/reset", json={"reason": "test"}
         )
 
         # Assert
@@ -270,16 +273,14 @@ class TestPauseRestartEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual"
+            policy="manual",
         )
         db.add(container)
         await db.commit()
         await db.refresh(container)
 
         restart_state = ContainerRestartState(
-            container_id=container.id,
-            container_name=container.name,
-            enabled=True
+            container_id=container.id, container_name=container.name, enabled=True
         )
         db.add(restart_state)
         await db.commit()
@@ -287,7 +288,7 @@ class TestPauseRestartEndpoint:
         # Act
         response = await authenticated_client.post(
             f"/api/v1/restarts/{container.id}/pause",
-            json={"duration_seconds": 3600, "reason": "Maintenance"}
+            json={"duration_seconds": 3600, "reason": "Maintenance"},
         )
 
         # Assert
@@ -300,13 +301,14 @@ class TestPauseRestartEndpoint:
     async def test_pause_restart_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
         # Act
         response = await client.post(
             "/api/v1/restarts/1/pause",
-            json={"duration_seconds": 3600, "reason": "test"}
+            json={"duration_seconds": 3600, "reason": "test"},
         )
 
         # Assert
@@ -327,7 +329,7 @@ class TestResumeRestartEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual"
+            policy="manual",
         )
         db.add(container)
         await db.commit()
@@ -338,13 +340,15 @@ class TestResumeRestartEndpoint:
             container_name=container.name,
             enabled=True,
             paused_until=datetime.now(timezone.utc) + timedelta(hours=1),
-            pause_reason="Maintenance"
+            pause_reason="Maintenance",
         )
         db.add(restart_state)
         await db.commit()
 
         # Act
-        response = await authenticated_client.post(f"/api/v1/restarts/{container.id}/resume")
+        response = await authenticated_client.post(
+            f"/api/v1/restarts/{container.id}/resume"
+        )
 
         # Assert
         assert response.status_code == status.HTTP_200_OK
@@ -357,6 +361,7 @@ class TestResumeRestartEndpoint:
     async def test_resume_restart_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
@@ -381,7 +386,7 @@ class TestRestartStatsEndpoint:
                 image="nginx",
                 current_tag="1.20",
                 registry="docker.io",
-                policy="manual"
+                policy="manual",
             )
             db.add(container)
             await db.commit()
@@ -390,7 +395,7 @@ class TestRestartStatsEndpoint:
             restart_state = ContainerRestartState(
                 container_id=container.id,
                 container_name=container.name,
-                consecutive_failures=i
+                consecutive_failures=i,
             )
             db.add(restart_state)
 
@@ -409,6 +414,7 @@ class TestRestartStatsEndpoint:
     async def test_restart_stats_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
+
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
