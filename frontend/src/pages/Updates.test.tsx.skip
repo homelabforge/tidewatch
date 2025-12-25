@@ -77,23 +77,67 @@ const mockUpdates = [
     id: 1,
     container_id: 1,
     container_name: 'nginx',
+    from_tag: '1.20.0',
+    to_tag: '1.21.0',
+    registry: 'docker.io',
+    status: 'pending',
+    reason_type: 'security',
+    reason_summary: 'Security patch',
+    recommendation: 'Highly recommended',
+    changelog: null,
+    changelog_url: null,
+    cves_fixed: ['CVE-2025-1234'],
+    current_vulns: 0,
+    new_vulns: 0,
+    vuln_delta: 0,
+    published_date: null,
+    image_size_delta: 0,
+    scope_violation: 0,
+    approved_by: null,
+    approved_at: null,
+    retry_count: 0,
+    max_retries: 3,
+    next_retry_at: null,
+    last_error: null,
+    backoff_multiplier: 3,
+    snoozed_until: null,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
     current_version: '1.20.0',
     available_version: '1.21.0',
-    status: 'pending',
-    reason_type: 'minor',
-    cves_fixed: [],
-    created_at: '2025-01-01T00:00:00Z',
   },
   {
     id: 2,
     container_id: 2,
     container_name: 'postgres',
+    from_tag: '13.5',
+    to_tag: '14.0',
+    registry: 'docker.io',
+    status: 'approved',
+    reason_type: 'feature',
+    reason_summary: 'Major version update',
+    recommendation: 'Recommended',
+    changelog: null,
+    changelog_url: null,
+    cves_fixed: [],
+    current_vulns: 0,
+    new_vulns: 0,
+    vuln_delta: 0,
+    published_date: null,
+    image_size_delta: 0,
+    scope_violation: 0,
+    approved_by: null,
+    approved_at: null,
+    retry_count: 0,
+    max_retries: 3,
+    next_retry_at: null,
+    last_error: null,
+    backoff_multiplier: 3,
+    snoozed_until: null,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
     current_version: '13.5',
     available_version: '14.0',
-    status: 'approved',
-    reason_type: 'major',
-    cves_fixed: [],
-    created_at: '2025-01-01T00:00:00Z',
   },
   {
     id: 3,
@@ -181,7 +225,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
@@ -281,7 +325,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
@@ -291,7 +335,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const securityButton = screen.getByText(/Security \(2\)/)
@@ -306,7 +350,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const allButton = screen.getByText('All Updates')
@@ -326,7 +370,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       // All updates except mysql (which is applied)
@@ -339,14 +383,14 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const pendingButton = screen.getByText(/Pending \(3\)/)
       fireEvent.click(pendingButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for mongo/)).toBeInTheDocument()
@@ -358,7 +402,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const approvedButton = screen.getByText(/Approved \(1\)/)
@@ -368,14 +412,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to rejected updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const rejectedButton = screen.getByText(/Rejected \(1\)/)
@@ -385,14 +429,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for redis/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to stale updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const staleButton = screen.getByText(/Stale \(1\)/)
@@ -402,14 +446,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for mongo/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to retrying updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const retryingButton = screen.getByText(/Retrying \(1\)/)
@@ -419,14 +463,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for rabbitmq/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to applied updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const appliedButton = screen.getByText(/Applied \(1\)/)
@@ -436,14 +480,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for mysql/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
     })
 
     it('highlights active filter button', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const pendingButton = screen.getByText(/Pending \(3\)/)
@@ -464,7 +508,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const checkAllButtons = screen.getAllByText('Check All')
@@ -484,7 +528,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const checkAllButtons = screen.getAllByText('Check All')
@@ -503,7 +547,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const checkAllButtons = screen.getAllByText('Check All')
@@ -521,7 +565,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const checkAllButtons = screen.getAllByText('Check All')
@@ -548,7 +592,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const approveButtons = screen.getAllByText('Approve')
@@ -571,7 +615,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -597,7 +641,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -625,7 +669,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -646,7 +690,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -671,7 +715,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -691,7 +735,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const snoozeButtons = screen.getAllByText('Snooze')
@@ -713,7 +757,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const removeButtons = screen.getAllByText('Remove Container')
@@ -737,7 +781,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const cancelButtons = screen.getAllByText('Cancel Retry')
@@ -759,7 +803,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const deleteButtons = screen.getAllByText('Delete')
@@ -785,7 +829,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const approveButtons = screen.getAllByText('Approve')
@@ -806,7 +850,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -829,7 +873,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -850,7 +894,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const snoozeButtons = screen.getAllByText('Snooze')
@@ -871,7 +915,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const removeButtons = screen.getAllByText('Remove Container')
@@ -891,7 +935,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const cancelButtons = screen.getAllByText('Cancel Retry')
@@ -912,7 +956,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       const deleteButtons = screen.getAllByText('Delete')
@@ -952,7 +996,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       // Filter to a status with no updates
@@ -979,7 +1023,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       // nginx update has no CVEs, should render without security info
@@ -992,7 +1036,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/nginx/)).toBeInTheDocument()
       })
 
       // Switch to applied filter to see mysql update (which has CVEs)

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Scope violation warnings on update detail cards with actionable guidance
   - Auto re-check updates when scope changes (single container only)
   - New API endpoint: `POST /api/v1/containers/{id}/recheck-updates`
+  - Migration 033 adds `scope_violation` column to updates table for tracking blocked major versions
 
 - **Non-Semver Tag Tracking** - Extended digest-based tracking from "latest" to ALL non-semver tags
   - Tags like `lts`, `stable`, `alpine`, `edge` now properly tracked via digest comparison
@@ -27,21 +28,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fallback to regex HTML stripping on conversion failure
   - Fixes display issues for containers with HTML-formatted release notes (e.g., Portainer)
 
+- **Two-Row Badge System** - Reorganized container card badges for better clarity
+  - Row 1 (Static): Auto-Restart badge and other policy-based indicators
+  - Row 2 (Dynamic): Update Available badges with severity-based coloring
+  - Minimum height prevents layout shift when badges are absent
+  - Clear visual separation between static configuration and dynamic update status
+
 ### Changed
 - **Backend**: Migration 032 adds `latest_major_tag` column to containers table (auto-runs on startup)
+- **Backend**: Migration 033 adds `scope_violation` column to updates table
 - **Backend**: Registry clients now perform dual-check (scope-filtered + always-major)
 - **Backend**: Generalized `_check_latest_digest()` to `_check_digest_change()` accepting any tag name
 - **Backend**: Added `get_latest_major_tag()` method to all registry client implementations
 - **Backend**: ChangelogFetcher now detects and converts HTML content to markdown automatically
 - **Backend**: Added `_is_html_content()` and `_convert_html_to_markdown()` methods to changelog service
+- **Backend**: UpdateHistory creation now sets `event_type="update"` for proper history display
 - **Frontend**: Container interface updated with `latest_major_tag` field
 - **Frontend**: Updates page fetches containers in parallel for scope violation warnings
 - **Frontend**: UpdateCard component accepts optional container prop for warnings
 - **Frontend**: ContainerModal auto re-checks updates on scope change
+- **Frontend**: ContainerCard badges reorganized into two-row layout at bottom of card
+- **Frontend**: Update badge colors now properly reflect severity (patch=gray, minor=blue, major=orange)
 
 ### Fixed
 - **Settings Page**: Removed VulnForge Basic Auth option (now API-key only for external access)
 - **Settings Page**: Fixed `setTestingDocker is not defined` error in VulnForge connection testing
+- **Badge System**: Restored Auto-Restart badge that was accidentally removed
+- **Badge Colors**: Fixed all update badges showing orange regardless of severity
+  - Added `getUpdateSeverity()` helper to parse semver and determine patch/minor/major
+  - Applied proper color scheme: patch=gray, minor=blue, major=orange
+  - Handles both semver (1.2.3) and non-semver tags with defaults
+- **History Events**: Fixed manual container updates showing "Unknown" in EVENT column
+  - Root cause: `event_type` field not being set during UpdateHistory creation
+  - Now sets `event_type="update"` for all update executions
+  - Proper event rendering in History page based on event_type
 - Non-semver tags (lts, stable, alpine) no longer filtered out during update discovery
 - Portainer and similar containers using suffixed tags now properly detect updates
 

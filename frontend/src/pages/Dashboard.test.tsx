@@ -59,8 +59,8 @@ describe('Dashboard', () => {
       vulnforge_enabled: false,
       current_vuln_count: 0,
       is_my_project: true,
-      update_available: false,
-      latest_tag: null,
+      update_available: true,
+      latest_tag: '1.21',
       latest_major_tag: null,
       last_checked: null,
       last_updated: null,
@@ -569,7 +569,7 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         // nginx has a pending update
-        expect(screen.getByText('Update Available')).toBeInTheDocument()
+        expect(screen.getByText(/Update Available/)).toBeInTheDocument()
       })
     })
   })

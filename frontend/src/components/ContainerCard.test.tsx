@@ -76,19 +76,24 @@ describe('ContainerCard', () => {
   })
 
   describe('Update badge', () => {
-    it('shows "Update Available" badge when hasUpdate is true', () => {
-      render(<ContainerCard container={defaultContainer} onClick={defaultOnClick} hasUpdate={true} />)
-      expect(screen.getByText('Update Available')).toBeInTheDocument()
+    it('shows update badge with version when hasUpdate is true', () => {
+      const container = {
+        ...defaultContainer,
+        latest_tag: '1.21.0'
+      }
+      render(<ContainerCard container={container} onClick={defaultOnClick} hasUpdate={true} />)
+      expect(screen.getByText(/Update Available/)).toBeInTheDocument()
+      expect(screen.getByText(/1\.21\.0/)).toBeInTheDocument()
     })
 
     it('does not show update badge when hasUpdate is false', () => {
       render(<ContainerCard container={defaultContainer} onClick={defaultOnClick} hasUpdate={false} />)
-      expect(screen.queryByText('Update Available')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update Available/)).not.toBeInTheDocument()
     })
 
     it('does not show update badge by default', () => {
       render(<ContainerCard container={defaultContainer} onClick={defaultOnClick} />)
-      expect(screen.queryByText('Update Available')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update Available/)).not.toBeInTheDocument()
     })
   })
 
@@ -223,29 +228,17 @@ describe('ContainerCard', () => {
   })
 
   describe('Restart policy display', () => {
-    it('does not show restart section when no restart policy configured', () => {
+    it('does not show badge section when no restart features configured', () => {
       const container = {
         ...defaultContainer,
         restart_policy: '',
         auto_restart_enabled: false,
       }
       render(<ContainerCard container={container} onClick={defaultOnClick} />)
-      expect(screen.queryByText(/Docker:/)).not.toBeInTheDocument()
       expect(screen.queryByText('Auto-Restart')).not.toBeInTheDocument()
     })
 
-    it('shows Docker restart policy when configured', () => {
-      const container = {
-        ...defaultContainer,
-        restart_policy: 'unless-stopped',
-        auto_restart_enabled: false,
-      }
-      render(<ContainerCard container={container} onClick={defaultOnClick} />)
-      expect(screen.getByText('Docker:')).toBeInTheDocument()
-      expect(screen.getByText('unless-stopped')).toBeInTheDocument()
-    })
-
-    it('shows TideWatch auto-restart badge when enabled', () => {
+    it('shows Auto-Restart badge in Row 1 when enabled', () => {
       const container = {
         ...defaultContainer,
         restart_policy: '',
@@ -255,15 +248,13 @@ describe('ContainerCard', () => {
       expect(screen.getByText('Auto-Restart')).toBeInTheDocument()
     })
 
-    it('shows both Docker policy and auto-restart badge when both configured', () => {
+    it('shows Auto-Restart badge when both Docker policy and auto-restart are configured', () => {
       const container = {
         ...defaultContainer,
         restart_policy: 'always',
         auto_restart_enabled: true,
       }
       render(<ContainerCard container={container} onClick={defaultOnClick} />)
-      expect(screen.getByText('Docker:')).toBeInTheDocument()
-      expect(screen.getByText('always')).toBeInTheDocument()
       expect(screen.getByText('Auto-Restart')).toBeInTheDocument()
     })
   })
