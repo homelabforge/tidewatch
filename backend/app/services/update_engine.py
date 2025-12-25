@@ -158,6 +158,7 @@ class UpdateEngine:
             to_tag=update.to_tag,
             update_id=update.id,
             update_type=update_type,  # Auto or manual update
+            event_type="update",  # Set event_type for proper display in history
             status="in_progress",
             triggered_by=triggered_by,  # Track who triggered the update
             reason=update.reason_summary,
