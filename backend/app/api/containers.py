@@ -939,7 +939,7 @@ async def recheck_updates(
             f"Failed to re-check updates for {container.name}: {e}", exc_info=True
         )
         raise HTTPException(
-            status_code=500, detail=f"Failed to re-check updates: {str(e)}"
+            status_code=500, detail="Failed to re-check updates"
         )
 
 

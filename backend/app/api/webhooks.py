@@ -68,7 +68,8 @@ async def create_webhook(
         return created_webhook
     except ValueError as e:
         # SSRF protection or validation error
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.warning(f"Webhook creation validation failed: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook configuration")
     except Exception as e:
         # Check for unique constraint violation
         if "UNIQUE constraint failed" in str(e) or "unique" in str(e).lower():
@@ -143,7 +144,8 @@ async def update_webhook(
         return updated_webhook
     except ValueError as e:
         # SSRF protection or validation error
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.warning(f"Webhook update validation failed: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook configuration")
     except HTTPException:
         raise
     except Exception as e:
