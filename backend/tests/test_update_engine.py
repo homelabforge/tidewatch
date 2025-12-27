@@ -129,13 +129,14 @@ class TestBackupAndRestore:
         ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
-            assert backup_path.startswith("/data/backups/sonarr.yml.backup.")
+            # Single backup file per compose (no timestamp)
+            assert backup_path == "/data/backups/sonarr.yml.backup"
             mock_makedirs.assert_called_once_with("/data/backups", exist_ok=True)
             mock_copy.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_backup_includes_timestamp_in_filename(self):
-        """Test backup filename includes timestamp."""
+    async def test_backup_overwrites_previous_backup(self):
+        """Test backup uses single file that overwrites previous backup."""
         compose_file = "/compose/media/sonarr.yml"
 
         with (
@@ -145,11 +146,9 @@ class TestBackupAndRestore:
         ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
-            # Should match pattern: sonarr.yml.backup.1234567890
-            assert ".backup." in backup_path
-            # Extract timestamp part
-            timestamp_str = backup_path.split(".backup.")[1]
-            assert timestamp_str.isdigit()
+            # Should be a single file without timestamp
+            assert backup_path == "/data/backups/sonarr.yml.backup"
+            assert ".backup." not in backup_path  # No timestamp separator
 
     @pytest.mark.asyncio
     async def test_backup_raises_on_permission_error(self):
@@ -169,7 +168,7 @@ class TestBackupAndRestore:
     async def test_restore_copies_backup_to_original_path(self):
         """Test restore copies backup file back to original path."""
         compose_file = "/compose/media/sonarr.yml"
-        backup_path = "/data/backups/sonarr.yml.backup.1234567890"
+        backup_path = "/data/backups/sonarr.yml.backup"
 
         with patch("shutil.copy2") as mock_copy:
             await UpdateEngine._restore_compose_file(compose_file, backup_path)
@@ -180,7 +179,7 @@ class TestBackupAndRestore:
     async def test_restore_raises_on_permission_error(self):
         """Test restore raises PermissionError when copy fails."""
         compose_file = "/compose/media/sonarr.yml"
-        backup_path = "/data/backups/sonarr.yml.backup.1234567890"
+        backup_path = "/data/backups/sonarr.yml.backup"
 
         with patch("shutil.copy2", side_effect=PermissionError("Permission denied")):
             with pytest.raises(PermissionError):
@@ -679,7 +678,7 @@ class TestApplyUpdateOrchestration:
 
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
 
-        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup.123")
+        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
         mock_pull = AsyncMock(return_value={"success": True})
         mock_execute = AsyncMock(return_value={"success": True})
@@ -722,7 +721,7 @@ class TestApplyUpdateOrchestration:
 
         async def track_backup(*args):
             call_order.append("backup")
-            return "/data/backups/sonarr.yml.backup.123"
+            return "/data/backups/sonarr.yml.backup"
 
         async def track_compose_update(*args):
             call_order.append("compose_update")
@@ -779,7 +778,7 @@ class TestApplyUpdateOrchestration:
 
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
 
-        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup.123")
+        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
         mock_pull = AsyncMock(return_value={"success": True})
         mock_execute = AsyncMock(return_value={"success": True})
@@ -823,7 +822,7 @@ class TestApplyUpdateOrchestration:
 
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
 
-        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup.123")
+        mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
         mock_pull = AsyncMock(return_value={"success": False, "error": "Network error"})
 
@@ -895,7 +894,7 @@ class TestRollbackUpdate:
             update_type="manual",
             status="success",
             can_rollback=True,
-            backup_path="/data/backups/sonarr.yml.backup.123",
+            backup_path="/data/backups/sonarr.yml.backup",
             triggered_by="user",
         )
 
