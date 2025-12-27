@@ -104,6 +104,43 @@ def is_prerelease_tag(tag: str) -> bool:
     return False
 
 
+def extract_tag_pattern(tag: str) -> str:
+    """Extract a structural pattern from a Docker tag for comparison.
+
+    Converts numeric sequences to 'N' while preserving literal parts.
+    This allows matching tags with the same structure but different versions.
+
+    Examples:
+        '4.0.16.2944-ls300' -> 'N.N.N.N-lsN'
+        '5.14-version-2.0.0.5344' -> 'N.N-version-N.N.N.N'
+        'latest' -> 'latest'
+        'v1.2.3' -> 'vN.N.N'
+        '3.12-alpine' -> 'N.N-alpine'
+
+    Args:
+        tag: Docker image tag
+
+    Returns:
+        Pattern string with numeric parts replaced by 'N'
+    """
+    # Replace sequences of digits with 'N'
+    pattern = re.sub(r"\d+", "N", tag)
+    return pattern
+
+
+def tags_have_matching_pattern(current_tag: str, candidate_tag: str) -> bool:
+    """Check if two tags have the same structural pattern.
+
+    Args:
+        current_tag: The current tag in use
+        candidate_tag: A candidate tag being considered for update
+
+    Returns:
+        True if patterns match, False otherwise
+    """
+    return extract_tag_pattern(current_tag) == extract_tag_pattern(candidate_tag)
+
+
 # Simple in-memory cache for registry tags with TTL
 class TagCache:
     """Thread-safe in-memory cache for registry tags with TTL."""
@@ -1238,6 +1275,10 @@ class LSCRClient(RegistryClient):
         for t in tags:
             # Skip tags with common pre-release/development indicators (unless explicitly allowed)
             if not include_prereleases and is_prerelease_tag(t):
+                continue
+            # Skip tags with different structural patterns
+            # (e.g., 4.0.16.2944-ls300 vs 5.14-version-2.0.0.5344)
+            if not tags_have_matching_pattern(current_tag, t):
                 continue
             # Only include tags that have valid semantic versions
             if self._parse_semver(t) is not None:

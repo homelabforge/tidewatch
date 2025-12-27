@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.7] - 2025-12-27
+
+### Fixed
+- **CRITICAL: LSCR Registry Tag Mismatch** - Fixed TideWatch suggesting updates with mismatched tag patterns
+  - Root cause: LSCR registry (`lscr.io`) returns stale/incorrect tag list that differs from Docker Hub
+  - Example: Sonarr on `4.0.16.2944-ls300` was suggested to update to `5.14-version-2.0.0.5344` (completely different tag format)
+  - Added `extract_tag_pattern()` function to convert tags to structural patterns (e.g., `4.0.16.2944-ls300` → `N.N.N.N-lsN`)
+  - Added `tags_have_matching_pattern()` helper to compare tag structures
+  - LSCRClient now filters out tags that don't match the current tag's pattern
+  - Prevents cross-release-track updates that could break containers
+  - **Files modified:**
+    - `backend/app/services/registry_client.py` - Added pattern matching functions and LSCR client filter
+
+- **Backup File Bloat** - Fixed backup system creating unlimited timestamped files (553 files accumulated)
+  - Changed from `{compose}.backup.{timestamp}` to single `{compose}.backup` file per compose
+  - New backups overwrite previous backup, keeping only the most recent for rollback
+  - **Files modified:**
+    - `backend/app/services/update_engine.py` - Removed timestamp from backup filename
+
 ### Added
 - **Major Update Visibility** - Always show major version updates even when scope blocks them
   - New `latest_major_tag` field stores major version updates outside configured scope

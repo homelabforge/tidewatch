@@ -1318,10 +1318,9 @@ class UpdateEngine:
         backup_dir = "/data/backups"
         os.makedirs(backup_dir, exist_ok=True)
 
-        # Create backup filename from original path
+        # Create backup filename from original path (single backup per file, overwrites previous)
         compose_basename = os.path.basename(compose_file)
-        timestamp = int(datetime.now(timezone.utc).timestamp())
-        backup_filename = f"{compose_basename}.backup.{timestamp}"
+        backup_filename = f"{compose_basename}.backup"
         backup_path = os.path.join(backup_dir, backup_filename)
 
         try:
