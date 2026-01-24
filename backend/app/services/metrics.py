@@ -17,7 +17,7 @@ from app.models.history import UpdateHistory
 
 # Application info
 app_info = Info("tidewatch_app", "TideWatch application information")
-app_info.info({"version": "2.2.1", "name": "TideWatch"})
+app_info.info({"version": "3.6.0", "name": "TideWatch"})
 
 # Container metrics
 containers_total = Gauge(
@@ -70,6 +70,41 @@ registry_cache_hits = Counter(
 )
 registry_cache_misses = Counter(
     "tidewatch_registry_cache_misses_total", "Registry cache misses", ["registry"]
+)
+
+# Check job performance metrics
+check_job_duration = Histogram(
+    "tidewatch_check_job_duration_seconds",
+    "Check job total duration",
+    buckets=[10, 30, 60, 120, 300, 600, 1200],
+)
+check_job_containers_total = Histogram(
+    "tidewatch_check_job_containers_total",
+    "Containers checked per job",
+    buckets=[10, 25, 50, 100, 200, 500],
+)
+check_job_deduplication_savings = Gauge(
+    "tidewatch_check_job_deduplication_savings",
+    "Containers saved by deduplication in last job",
+)
+check_job_cache_hit_rate = Gauge(
+    "tidewatch_check_job_cache_hit_rate",
+    "Run-cache hit rate percentage in last job",
+)
+container_check_latency = Histogram(
+    "tidewatch_container_check_latency_seconds",
+    "Per-container check latency",
+    ["registry"],
+    buckets=[0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+)
+rate_limit_waits_total = Counter(
+    "tidewatch_rate_limit_waits_total",
+    "Rate limit wait events",
+    ["registry"],
+)
+check_concurrency_active = Gauge(
+    "tidewatch_check_concurrency_active",
+    "Current number of concurrent container checks",
 )
 
 # Health check metrics

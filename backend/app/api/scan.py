@@ -118,7 +118,10 @@ async def get_scan_results(
         return result
     except ValueError as e:
         logger.warning(f"Scan results validation failed: {e}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No scan results available for this container")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No scan results available for this container",
+        )
     except Exception as e:
         safe_error_response(logger, e, "Failed to get scan results")
 

@@ -7,6 +7,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2025-01-23
+
+### Added
+- **Performance & Scalability Improvements** - Concurrent update checking with per-registry rate limiting and container deduplication
+  - **Bounded Concurrency** - Configurable parallel execution (default 5 concurrent checks)
+  - **Per-Registry Rate Limiting** - Sliding window rate limiting per registry (Docker Hub: 30 req/min, GHCR/LSCR/GCR/Quay: 60 req/min) to avoid throttling
+  - **Container Deduplication** - Containers sharing the same image+tag+scope+prerelease config are grouped and checked once
+  - **Run-Scoped Caching** - Tag lists cached per check run to avoid redundant registry calls within a single job
+  - **Fetch/Decision Separation** - Clean separation between tag fetching and update decision logic for better testability
+  - **New Prometheus Metrics**:
+    - `tidewatch_check_job_duration_seconds` - Check job total duration histogram
+    - `tidewatch_check_job_containers_total` - Containers checked per job histogram
+    - `tidewatch_check_job_deduplication_savings` - Containers saved by deduplication
+    - `tidewatch_check_job_cache_hit_rate` - Run-cache hit rate percentage
+    - `tidewatch_container_check_latency_seconds` - Per-container check latency by registry
+    - `tidewatch_rate_limit_waits_total` - Rate limit wait events by registry
+    - `tidewatch_check_concurrency_active` - Current concurrent container checks
+  - **Configurable Settings** - `check_concurrency_limit` (1-20) and `check_deduplication_enabled` (true/false)
+  - Check job completion events now include metrics: `deduplicated_containers`, `unique_images`, `cache_hit_rate`, `avg_container_latency`
+  - **Files added:**
+    - `backend/app/services/registry_rate_limiter.py` - Per-registry rate limiting with asyncio semaphores and sliding window
+    - `backend/app/services/check_run_context.py` - Run-scoped caching, container deduplication, and job metrics
+    - `backend/app/services/tag_fetcher.py` - Tag fetching service with rate limiting and caching integration
+    - `backend/app/services/update_decision_maker.py` - Pure logic class for update decisions (no I/O)
+  - **Files modified:**
+    - `backend/app/services/check_job_service.py` - Refactored for concurrent execution with independent worker sessions
+    - `backend/app/services/update_checker.py` - Added `apply_decision()` method for deduplicated groups
+    - `backend/app/services/metrics.py` - Added 7 new check job performance metrics
+    - `backend/app/services/settings_service.py` - Added concurrency and deduplication settings
+
+- **Update Decision Traceability** - Comprehensive tracking of "why" behind update detection decisions
+  - New `decision_trace` JSON field captures structured trace of all decision points during update checks
+  - New `update_kind` field distinguishes between "tag" (semver) and "digest" (rolling tag) updates
+  - New `change_type` field classifies semver changes as "major", "minor", or "patch"
+  - `UpdateDecisionTrace` builder class captures: current/latest tags, scope settings, prerelease inclusion, suffix matching, digest info, scope blocking reasons, registry anomalies
+  - Enables debugging, UI explanations for scope-blocked updates, and future analytics
+  - **Frontend Badges** - Visual indicators for update type on update cards:
+    - 🟢 **Patch** - Green badge for patch-level updates
+    - 🟡 **Minor** - Yellow badge for minor version updates
+    - 🔴 **Major** - Red badge for major version updates
+    - 🔵 **Dev** - Blue badge for digest-based updates (rolling tags like "latest")
+  - **Files added:**
+    - `backend/app/migrations/035_add_decision_traceability.py` - Database migration
+  - **Files modified:**
+    - `backend/app/models/update.py` - Added `decision_trace`, `update_kind`, `change_type` columns
+    - `backend/app/services/update_checker.py` - Added `UpdateDecisionTrace` class, integrated trace collection
+    - `backend/app/schemas/update.py` - Added traceability fields with JSON validator
+    - `frontend/src/types/index.ts` - Added `update_kind` and `change_type` to Update interface
+    - `frontend/src/components/UpdateCard.tsx` - Added change type badge display
+
+- **Background Update Checks with Live Progress** - Non-blocking update checks with real-time progress tracking
+  - Clicking "Check Updates" now returns immediately and runs checks in the background
+  - Live progress bar on both Dashboard and Updates pages shows: current container being checked, X/Y progress, updates found count
+  - SSE (Server-Sent Events) stream progress updates to the frontend in real-time
+  - Cancel button allows stopping mid-check (cooperative cancellation after current container)
+  - Job history preserved in database for visibility into scheduled and manual checks
+  - Single job at a time prevents overlapping checks
+  - New CheckJob database model tracks: status, progress, results, errors, timing
+  - New API endpoints:
+    - `POST /api/v1/updates/check` - Start background check, returns job_id immediately
+    - `GET /api/v1/updates/check/{job_id}` - Get job status/progress
+    - `POST /api/v1/updates/check/{job_id}/cancel` - Request cancellation
+    - `GET /api/v1/updates/check/history` - List recent check jobs
+  - SSE event types: `check-job-created`, `check-job-started`, `check-job-progress`, `check-job-completed`, `check-job-failed`, `check-job-canceled`
+  - Scheduler integration: scheduled checks now create CheckJob records for consistent visibility
+  - **Files added:**
+    - `backend/app/models/check_job.py` - CheckJob SQLAlchemy model
+    - `backend/app/migrations/034_add_check_jobs.py` - Database migration
+    - `backend/app/services/check_job_service.py` - Job management service
+    - `backend/app/schemas/check_job.py` - Pydantic schemas
+    - `frontend/src/components/CheckProgressBar.tsx` - Progress UI component
+  - **Files modified:**
+    - `backend/app/models/__init__.py` - Export CheckJob
+    - `backend/app/api/updates.py` - New endpoints, modified check endpoint
+    - `backend/app/services/scheduler.py` - CheckJob integration for scheduled runs
+    - `frontend/src/services/api.ts` - Job API methods
+    - `frontend/src/hooks/useEventStream.ts` - Check job event handlers
+    - `frontend/src/pages/Updates.tsx` - Progress bar integration
+    - `frontend/src/pages/Dashboard.tsx` - Progress bar integration with SSE events
+    - `frontend/src/types/index.ts` - New TypeScript interfaces
+
+### Fixed
+- **SSE Event Parsing** - Fixed frontend not receiving SSE events due to flat event structure
+  - Backend sends flat events `{type, job_id, ...}` but frontend expected `{type, data: {...}}`
+  - Updated `useEventStream.ts` to extract data from remaining event fields
+- **CRITICAL: Multi-Project Compose Support** - Fixed updates/restarts failing for containers in separate compose files
+  - Root cause: TideWatch assumed all containers were in `docker-compose.yml`, but some (e.g., socket-proxy) use separate compose files with different project names
+  - Error was: `no such service: socket-proxy-rw` when applying updates to containers in `proxies.yml`
+  - Solution: Added `compose_project` column to store Docker Compose project name per container
+  - TideWatch now syncs project name from Docker's `com.docker.compose.project` label
+  - Commands now built with explicit `-p` and `-f` flags: `docker compose -p proxies -f /compose/proxies.yml pull socket-proxy-ro`
+  - Setting `docker_compose_command` simplified to just base command (`docker compose`) - TideWatch adds project/file flags automatically
+  - **Files added:**
+    - `backend/app/migrations/036_add_compose_project.py` - Database migration
+  - **Files modified:**
+    - `backend/app/models/container.py` - Added `compose_project` column
+    - `backend/app/services/compose_parser.py` - Added `_sync_compose_projects()` to sync from Docker labels
+    - `backend/app/services/update_engine.py` - Removed broken logic, added explicit `-p`/`-f` flags, added lazy backfill
+    - `backend/app/services/restart_service.py` - Uses explicit project/file flags for restarts
+    - `backend/app/services/settings_service.py` - Updated setting description
+
 ## [3.5.7] - 2025-12-27
 
 ### Fixed

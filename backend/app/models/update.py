@@ -76,6 +76,11 @@ class Update(Base):
     # Optimistic locking for concurrent update safety
     version = Column(Integer, default=1, nullable=False)
 
+    # Decision traceability (Migration 035)
+    decision_trace = Column(Text, nullable=True)  # JSON string with trace data
+    update_kind = Column(String, nullable=True, index=True)  # "tag" or "digest"
+    change_type = Column(String, nullable=True, index=True)  # "major", "minor", "patch"
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

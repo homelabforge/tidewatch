@@ -35,8 +35,8 @@ class VulnForgeClient:
 
         # Configure authentication based on type
         if auth_type == "api_key" and api_key:
-            # VulnForge uses standard Bearer token authentication
-            headers["Authorization"] = f"Bearer {api_key}"
+            # VulnForge uses X-API-Key header for API key authentication
+            headers["X-API-Key"] = api_key
         elif auth_type == "basic_auth" and username and password:
             # HTTP Basic authentication
             credentials = f"{username}:{password}"

@@ -664,6 +664,10 @@ class ComposeParser:
 
         # Sync Docker restart policies from runtime (after all other commits)
         await ComposeParser._sync_restart_policies(db, discovered)
+
+        # Sync Docker Compose project names from container labels
+        await ComposeParser._sync_compose_projects(db)
+
         await db.commit()
 
         return stats
@@ -694,6 +698,52 @@ class ComposeParser:
                 logger.debug(
                     f"Updated restart policy for {container.name}: {restart_policy}"
                 )
+
+    @staticmethod
+    async def _sync_compose_projects(db: AsyncSession) -> None:
+        """Sync Docker Compose project names from container labels to database.
+
+        Docker Compose automatically adds a 'com.docker.compose.project' label
+        to each container. This method extracts that label and stores it in the
+        database so TideWatch can use the correct -p flag when running commands.
+
+        Args:
+            db: Database session
+        """
+        try:
+            import docker
+
+            client = docker.from_env()
+        except Exception as e:
+            logger.warning(f"Could not connect to Docker for compose project sync: {e}")
+            return
+
+        # Get all containers from database
+        result = await db.execute(select(Container))
+        all_containers = result.scalars().all()
+
+        for container in all_containers:
+            # Skip if already has compose_project set
+            if container.compose_project:
+                continue
+
+            try:
+                docker_container = client.containers.get(container.name)
+                compose_project = docker_container.labels.get(
+                    "com.docker.compose.project"
+                )
+
+                if compose_project and container.compose_project != compose_project:
+                    container.compose_project = compose_project
+                    logger.info(
+                        f"Set compose_project={compose_project} for {container.name}"
+                    )
+            except docker.errors.NotFound:
+                logger.debug(
+                    f"Container {container.name} not running, skipping project sync"
+                )
+            except Exception as e:
+                logger.debug(f"Could not get compose project for {container.name}: {e}")
 
     @staticmethod
     async def _cleanup_stale_updates(

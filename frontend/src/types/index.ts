@@ -74,6 +74,9 @@ export interface Update {
   snoozed_until: string | null;
   created_at: string;
   updated_at: string;
+  // Decision traceability
+  update_kind: 'tag' | 'digest' | null;
+  change_type: 'major' | 'minor' | 'patch' | null;
 }
 
 // History types
@@ -477,4 +480,69 @@ export interface HttpServersResponse {
   with_updates: number;
   last_scan: string | null;
   scan_status: 'idle' | 'scanning' | 'error';
+}
+
+// Check Job types (background update check tracking)
+export interface CheckJobProgress {
+  job_id: number;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  total_count: number;
+  checked_count: number;
+  updates_found: number;
+  errors_count: number;
+  progress_percent: number;
+  current_container: string | null;
+}
+
+export interface CheckJobResult {
+  id: number;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  total_count: number;
+  checked_count: number;
+  updates_found: number;
+  errors_count: number;
+  progress_percent: number;
+  current_container: string | null;
+  triggered_by: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  error_message: string | null;
+  results: CheckJobContainerResult[] | null;
+  errors: CheckJobError[] | null;
+}
+
+export interface CheckJobContainerResult {
+  container_id: number;
+  container_name: string;
+  update_found: boolean;
+  from_tag?: string;
+  to_tag?: string;
+}
+
+export interface CheckJobError {
+  container_id: number;
+  container_name: string;
+  error: string;
+}
+
+export interface CheckJobSummary {
+  id: number;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  total_count: number;
+  checked_count: number;
+  updates_found: number;
+  errors_count: number;
+  triggered_by: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface CheckJobStartResponse {
+  success: boolean;
+  job_id: number;
+  status: string;
+  message: string;
+  already_running: boolean;
 }

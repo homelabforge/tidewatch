@@ -19,6 +19,9 @@ import type {
   AppDependenciesResponse,
   DockerfileDependenciesResponse,
   HttpServersResponse,
+  CheckJobStartResponse,
+  CheckJobResult,
+  CheckJobSummary,
 } from '../types';
 import type { PreviewData } from '../components/DependencyUpdatePreviewModal';
 import type {
@@ -263,10 +266,22 @@ export const updateApi = {
       method: 'POST',
     }),
 
+  // Background check job methods
   checkAll: () =>
-    apiCall<{ success: boolean; stats: Record<string, unknown>; message: string }>('/updates/check', {
+    apiCall<CheckJobStartResponse>('/updates/check', {
       method: 'POST',
     }),
+
+  getCheckJob: (jobId: number) =>
+    apiCall<CheckJobResult>(`/updates/check/${jobId}`),
+
+  cancelCheckJob: (jobId: number) =>
+    apiCall<{ success: boolean; message: string }>(`/updates/check/${jobId}/cancel`, {
+      method: 'POST',
+    }),
+
+  getCheckHistory: (limit: number = 20) =>
+    apiCall<CheckJobSummary[]>(`/updates/check/history?limit=${limit}`),
 
   snooze: (id: number) =>
     apiCall<{ success: boolean; message: string; snoozed_until: string }>(`/updates/${id}/snooze`, {

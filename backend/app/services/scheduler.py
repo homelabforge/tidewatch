@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, IntegrityError
 
 from app.db import AsyncSessionLocal
-from app.services.update_checker import UpdateChecker
 from app.services.settings_service import SettingsService
+from app.services.check_job_service import CheckJobService
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ class SchedulerService:
         """Run the update check job.
 
         This is the actual job that runs on schedule.
-        Creates a new database session and calls UpdateChecker.
+        Creates a CheckJob record for tracking and runs via CheckJobService.
         """
         logger.info("Starting scheduled update check")
         start_time = datetime.now()
@@ -232,17 +232,32 @@ class SchedulerService:
         try:
             # Create a new database session for this job
             async with AsyncSessionLocal() as db:
-                # Run the update checker
-                stats = await UpdateChecker.check_all_containers(db)
+                # Check for existing running job (prevent overlapping checks)
+                existing = await CheckJobService.get_active_job(db)
+                if existing:
+                    logger.info(
+                        f"Skipping scheduled check - job {existing.id} already running"
+                    )
+                    return
+
+                # Create job for scheduled check
+                job = await CheckJobService.create_job(db, triggered_by="scheduler")
+
+                # Run the job synchronously since we're already in a background task
+                await CheckJobService.run_job(job.id)
+
+                # Refresh job to get final stats
+                job = await CheckJobService.get_job(db, job.id)
 
                 # Log results
                 duration = (datetime.now() - start_time).total_seconds()
-                logger.info(
-                    f"Scheduled update check completed in {duration:.2f}s: "
-                    f"{stats['checked']}/{stats['total']} containers checked, "
-                    f"{stats['updates_found']} updates found, "
-                    f"{stats['errors']} errors"
-                )
+                if job:
+                    logger.info(
+                        f"Scheduled update check completed in {duration:.2f}s: "
+                        f"{job.checked_count}/{job.total_count} containers checked, "
+                        f"{job.updates_found} updates found, "
+                        f"{job.errors_count} errors"
+                    )
 
                 # Update last check timestamp
                 self._last_check = datetime.now(timezone.utc)
@@ -650,13 +665,37 @@ class SchedulerService:
                 f"Invalid data during Docker cleanup after {duration:.2f}s: {e}"
             )
 
-    async def trigger_update_check(self):
+    async def trigger_update_check(self) -> dict:
         """Manually trigger an update check outside the schedule.
 
         This allows the API to trigger immediate checks.
+        Creates a CheckJob and runs it synchronously.
+
+        Returns:
+            dict with job_id and status
         """
         logger.info("Manually triggered update check")
-        await self._run_update_check()
+
+        async with AsyncSessionLocal() as db:
+            # Check for existing running job
+            existing = await CheckJobService.get_active_job(db)
+            if existing:
+                logger.info(f"Check already in progress (job {existing.id})")
+                return {
+                    "job_id": existing.id,
+                    "status": existing.status,
+                    "already_running": True,
+                }
+
+            # Create and run job
+            job = await CheckJobService.create_job(db, triggered_by="user")
+            await CheckJobService.run_job(job.id)
+
+            return {
+                "job_id": job.id,
+                "status": "done",
+                "already_running": False,
+            }
 
     def get_next_run_time(self) -> Optional[datetime]:
         """Get the next scheduled run time.

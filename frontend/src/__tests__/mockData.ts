@@ -47,6 +47,8 @@ export const mockUpdate = {
   status: 'pending' as const,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
+  update_kind: 'tag' as const,
+  change_type: 'minor' as const,
 }
 
 export const mockUpdates = [
@@ -60,6 +62,8 @@ export const mockUpdates = [
     status: 'approved' as const,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
+    update_kind: 'tag' as const,
+    change_type: 'patch' as const,
   },
   {
     id: 3,
@@ -70,6 +74,8 @@ export const mockUpdates = [
     status: 'applied' as const,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
+    update_kind: 'tag' as const,
+    change_type: 'minor' as const,
   },
 ]
 

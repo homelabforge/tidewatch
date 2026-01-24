@@ -257,7 +257,8 @@ async def test_vulnforge_connection(
         # Build auth headers based on configured type
         headers = {}
         if auth_type == "api_key" and api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+            # VulnForge uses X-API-Key header for API key authentication
+            headers["X-API-Key"] = api_key
         elif auth_type == "basic_auth" and username and password:
             import base64
 

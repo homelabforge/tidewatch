@@ -938,9 +938,7 @@ async def recheck_updates(
         logger.error(
             f"Failed to re-check updates for {container.name}: {e}", exc_info=True
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to re-check updates"
-        )
+        raise HTTPException(status_code=500, detail="Failed to re-check updates")
 
 
 @router.get("/{container_id}/logs")

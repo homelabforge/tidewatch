@@ -13,9 +13,16 @@ from app.services.auth import require_auth
 from app.models.update import Update
 from app.models.container import Container
 from app.schemas.update import UpdateSchema, UpdateApproval, UpdateApply
+from app.schemas.check_job import (
+    CheckJobResult,
+    CheckJobSummary,
+    CheckJobStartResponse,
+    CheckJobCancelResponse,
+)
 from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
 from app.services.scheduler import scheduler_service
+from app.services.check_job_service import CheckJobService
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -93,21 +100,150 @@ async def get_security_updates(
     return updates
 
 
-@router.post("/check")
+@router.post("/check", response_model=CheckJobStartResponse)
 async def check_updates(
     admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
-    """Check all containers for updates.
+) -> CheckJobStartResponse:
+    """Start a background check for all containers.
+
+    Returns immediately with a job ID. Use GET /updates/check/{job_id}
+    to poll for progress, or subscribe to SSE for real-time updates.
 
     Returns:
-        Stats about the check
+        Job information including ID for tracking
     """
-    stats = await UpdateChecker.check_all_containers(db)
-    return {
-        "success": True,
-        "stats": stats,
-        "message": f"Checked {stats['checked']} containers, found {stats['updates_found']} updates",
-    }
+    # Check for existing running/queued job
+    existing = await CheckJobService.get_active_job(db)
+    if existing:
+        return CheckJobStartResponse(
+            success=True,
+            job_id=existing.id,
+            status=existing.status,
+            message=f"Check already in progress (job {existing.id})",
+            already_running=True,
+        )
+
+    # Create new check job
+    job = await CheckJobService.create_job(db, triggered_by="user")
+
+    # Start background task
+    CheckJobService.start_job_background(job.id)
+
+    return CheckJobStartResponse(
+        success=True,
+        job_id=job.id,
+        status="queued",
+        message="Update check started",
+        already_running=False,
+    )
+
+
+@router.get("/check/history", response_model=List[CheckJobSummary])
+async def get_check_history(
+    admin: Optional[dict] = Depends(require_auth),
+    limit: int = Query(
+        20, ge=1, le=100, description="Maximum number of jobs to return"
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> List[CheckJobSummary]:
+    """Get history of update check jobs.
+
+    Args:
+        limit: Maximum number of jobs to return (default: 20)
+
+    Returns:
+        List of recent check jobs with summary info
+    """
+    jobs = await CheckJobService.get_recent_jobs(db, limit=limit)
+    return [
+        CheckJobSummary(
+            id=job.id,
+            status=job.status,
+            total_count=job.total_count,
+            checked_count=job.checked_count,
+            updates_found=job.updates_found,
+            errors_count=job.errors_count,
+            triggered_by=job.triggered_by,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            duration_seconds=job.duration_seconds,
+        )
+        for job in jobs
+    ]
+
+
+@router.get("/check/{job_id}", response_model=CheckJobResult)
+async def get_check_job(
+    job_id: int,
+    admin: Optional[dict] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> CheckJobResult:
+    """Get status and progress of an update check job.
+
+    Args:
+        job_id: Check job ID
+
+    Returns:
+        Job status, progress, and results
+    """
+    job = await CheckJobService.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Only include detailed results when job is complete
+    include_results = job.status in ("done", "failed", "canceled")
+
+    return CheckJobResult(
+        id=job.id,
+        status=job.status,
+        total_count=job.total_count,
+        checked_count=job.checked_count,
+        updates_found=job.updates_found,
+        errors_count=job.errors_count,
+        progress_percent=job.progress_percent,
+        current_container=job.current_container_name,
+        triggered_by=job.triggered_by,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        duration_seconds=job.duration_seconds,
+        error_message=job.error_message,
+        results=job.results if include_results else None,
+        errors=job.errors if include_results else None,
+    )
+
+
+@router.post("/check/{job_id}/cancel", response_model=CheckJobCancelResponse)
+async def cancel_check_job(
+    job_id: int,
+    admin: Optional[dict] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> CheckJobCancelResponse:
+    """Request cancellation of a running check job.
+
+    The job will stop after completing the current container check.
+
+    Args:
+        job_id: Check job ID
+
+    Returns:
+        Confirmation message
+    """
+    job = await CheckJobService.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("queued", "running"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status: {job.status}",
+        )
+
+    await CheckJobService.request_cancellation(db, job_id)
+
+    return CheckJobCancelResponse(
+        success=True,
+        message="Cancellation requested. Job will stop after current container.",
+    )
 
 
 @router.post("/check/{container_id}")

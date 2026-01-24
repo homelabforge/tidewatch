@@ -15,6 +15,7 @@ from app.models.oidc_state import OIDCState
 from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.vulnerability_scan import VulnerabilityScan
 from app.models.webhook import Webhook
+from app.models.check_job import CheckJob
 
 __all__ = [
     "Setting",
@@ -32,4 +33,5 @@ __all__ = [
     "OIDCPendingLink",
     "VulnerabilityScan",
     "Webhook",
+    "CheckJob",
 ]

@@ -149,6 +149,8 @@ describe('Dashboard', () => {
       snoozed_until: null,
       created_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z',
+      update_kind: 'tag',
+      change_type: 'patch',
     },
   ]
 
@@ -489,8 +491,10 @@ describe('Dashboard', () => {
       const { toast } = await import('sonner')
       vi.mocked(api.updates.checkAll).mockResolvedValue({
         success: true,
-        message: 'Check completed',
-        stats: { checked: 10, updates_found: 3 },
+        job_id: 1,
+        status: 'queued',
+        message: 'Update check started',
+        already_running: false,
       })
 
       render(<Dashboard />)
@@ -504,7 +508,7 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         expect(api.updates.checkAll).toHaveBeenCalledTimes(1)
-        expect(toast.success).toHaveBeenCalledWith('Checked 10 containers, found 3 updates')
+        expect(toast.success).toHaveBeenCalledWith('Update check started')
       })
     })
 

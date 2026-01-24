@@ -9,12 +9,33 @@ interface EventStreamEvent {
   timestamp?: string;
 }
 
+// Check job progress event data
+export interface CheckJobProgressEvent {
+  job_id: number;
+  status: string;
+  total_count: number;
+  checked_count: number;
+  updates_found: number;
+  errors_count?: number;
+  current_container?: string;
+  progress_percent?: number;
+  duration_seconds?: number;
+  error?: string;
+}
+
 interface UseEventStreamOptions {
   onUpdateAvailable?: (data: Record<string, unknown> | undefined) => void;
   onUpdateApplied?: (data: Record<string, unknown> | undefined) => void;
   onUpdateFailed?: (data: Record<string, unknown> | undefined) => void;
   onContainerRestarted?: (data: Record<string, unknown> | undefined) => void;
   onHealthCheckFailed?: (data: Record<string, unknown> | undefined) => void;
+  // Check job callbacks
+  onCheckJobCreated?: (data: CheckJobProgressEvent) => void;
+  onCheckJobStarted?: (data: CheckJobProgressEvent) => void;
+  onCheckJobProgress?: (data: CheckJobProgressEvent) => void;
+  onCheckJobCompleted?: (data: CheckJobProgressEvent) => void;
+  onCheckJobFailed?: (data: CheckJobProgressEvent) => void;
+  onCheckJobCanceled?: (data: CheckJobProgressEvent) => void;
   enableToasts?: boolean;
 }
 
@@ -30,6 +51,12 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onUpdateFailed,
     onContainerRestarted,
     onHealthCheckFailed,
+    onCheckJobCreated,
+    onCheckJobStarted,
+    onCheckJobProgress,
+    onCheckJobCompleted,
+    onCheckJobFailed,
+    onCheckJobCanceled,
     enableToasts = true,
   } = options;
 
@@ -40,8 +67,12 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
   const isMountedRef = useRef(true);
   const connectRef = useRef<(() => void) | undefined>(undefined);
 
-  const handleEvent = useCallback((event: EventStreamEvent) => {
-    const { type, data } = event;
+  const handleEvent = useCallback((event: EventStreamEvent & Record<string, unknown>) => {
+    // Backend sends flat events: {type, job_id, status, ...} not {type, data: {...}}
+    // Extract type, treat everything else as data (timestamp is harmless extra field)
+    const { type, data: explicitData, ...restData } = event;
+    const data = (explicitData as Record<string, unknown> | undefined) ??
+      (Object.keys(restData).length > 0 ? restData : undefined);
 
     switch (type) {
       case 'connected':
@@ -97,6 +128,46 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
         // Heartbeat, no action needed
         break;
 
+      // Check job events
+      case 'check-job-created':
+        if (data) onCheckJobCreated?.(data as unknown as CheckJobProgressEvent);
+        break;
+
+      case 'check-job-started':
+        if (data) onCheckJobStarted?.(data as unknown as CheckJobProgressEvent);
+        break;
+
+      case 'check-job-progress':
+        if (data) onCheckJobProgress?.(data as unknown as CheckJobProgressEvent);
+        break;
+
+      case 'check-job-completed':
+        if (data) onCheckJobCompleted?.(data as unknown as CheckJobProgressEvent);
+        if (enableToasts) {
+          toast.success('Update check complete', {
+            description: `Found ${data?.updates_found || 0} updates (${data?.checked_count}/${data?.total_count} containers)`,
+          });
+        }
+        break;
+
+      case 'check-job-failed':
+        if (data) onCheckJobFailed?.(data as unknown as CheckJobProgressEvent);
+        if (enableToasts) {
+          toast.error('Update check failed', {
+            description: String(data?.error ?? 'Unknown error occurred'),
+          });
+        }
+        break;
+
+      case 'check-job-canceled':
+        if (data) onCheckJobCanceled?.(data as unknown as CheckJobProgressEvent);
+        if (enableToasts) {
+          toast.info('Update check canceled', {
+            description: `Checked ${data?.checked_count || 0} of ${data?.total_count || 0} containers`,
+          });
+        }
+        break;
+
       default:
         console.debug('[EventStream] Unknown event type:', type, data);
     }
@@ -106,6 +177,12 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onUpdateFailed,
     onContainerRestarted,
     onHealthCheckFailed,
+    onCheckJobCreated,
+    onCheckJobStarted,
+    onCheckJobProgress,
+    onCheckJobCompleted,
+    onCheckJobFailed,
+    onCheckJobCanceled,
     enableToasts,
   ]);
 

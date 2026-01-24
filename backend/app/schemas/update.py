@@ -1,9 +1,9 @@
 """Pydantic schemas for updates."""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UpdateSchema(BaseModel):
@@ -42,7 +42,25 @@ class UpdateSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Decision traceability
+    decision_trace: Optional[Dict[str, Any]] = None
+    update_kind: Optional[str] = None
+    change_type: Optional[str] = None
+
     model_config = {"from_attributes": True}
+
+    @field_validator("decision_trace", mode="before")
+    @classmethod
+    def parse_decision_trace(cls, v: Any) -> Optional[Dict[str, Any]]:
+        """Parse JSON string to dict for decision_trace field."""
+        if isinstance(v, str):
+            import json
+
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
 
 
 class UpdateApproval(BaseModel):

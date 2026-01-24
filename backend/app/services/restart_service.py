@@ -477,11 +477,13 @@ class RestartService:
                 db, "docker_compose_command", default="docker compose"
             )
 
-            # Build command
-            cmd_template = docker_compose_cmd
-            cmd = cmd_template.replace("{compose_file}", container.compose_file)
-            cmd = cmd.replace("{service}", container.service_name)
-            cmd_parts = cmd.split() + ["restart", container.service_name]
+            # Build command with explicit project and file flags
+            cmd_parts = docker_compose_cmd.split()
+            if container.compose_project:
+                cmd_parts.extend(["-p", container.compose_project])
+            cmd_parts.extend(
+                ["-f", container.compose_file, "restart", container.service_name]
+            )
 
             # Format docker socket to DOCKER_HOST environment variable
             docker_host = (

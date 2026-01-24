@@ -75,6 +75,27 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
     return 'text-tide-text-muted';
   };
 
+  // Get badge config for change type (Patch/Minor/Major) or Dev (digest updates)
+  const getChangeTypeBadge = () => {
+    // Dev badge for digest-based updates (rolling tags like "latest")
+    if (update.update_kind === 'digest') {
+      return { label: 'Dev', color: 'bg-blue-500/20 text-blue-400 border-blue-500/50' };
+    }
+    // Semver badges for tag-based updates
+    switch (update.change_type) {
+      case 'patch':
+        return { label: 'Patch', color: 'bg-green-500/20 text-green-400 border-green-500/50' };
+      case 'minor':
+        return { label: 'Minor', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50' };
+      case 'major':
+        return { label: 'Major', color: 'bg-red-500/20 text-red-400 border-red-500/50' };
+      default:
+        return null;
+    }
+  };
+
+  const changeTypeBadge = getChangeTypeBadge();
+
   const getReasonIcon = (type: string) => {
     if (type === 'security') return <Shield size={16} className="text-red-400" />;
     if (type === 'stale') return <Archive size={16} className="text-orange-400" />;
@@ -111,7 +132,14 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
             </div>
           )}
         </div>
-        <StatusBadge status={update.status} />
+        <div className="flex items-center gap-2">
+          {changeTypeBadge && (
+            <span className={`px-2 py-0.5 text-xs font-medium rounded border ${changeTypeBadge.color}`}>
+              {changeTypeBadge.label}
+            </span>
+          )}
+          <StatusBadge status={update.status} />
+        </div>
       </div>
 
       {/* Scope Violation Banner - for scope-violation updates */}

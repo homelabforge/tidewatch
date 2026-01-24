@@ -80,6 +80,37 @@ class UpdateEngine:
         return str(host_path)
 
     @staticmethod
+    async def _ensure_compose_project(db: AsyncSession, container: "Container") -> None:
+        """Populate compose_project from Docker if not already set.
+
+        Docker Compose containers have a 'com.docker.compose.project' label
+        that indicates which project they belong to (e.g., 'homelab', 'proxies').
+        This method queries Docker for that label and stores it in the database.
+
+        Args:
+            db: Database session
+            container: Container to check/update
+        """
+        if container.compose_project:
+            return
+
+        try:
+            import docker
+
+            client = docker.from_env()
+            docker_container = client.containers.get(container.name)
+            project = docker_container.labels.get("com.docker.compose.project")
+
+            if project:
+                container.compose_project = project
+                await db.commit()
+                logger.info(
+                    f"Auto-populated compose_project={project} for {container.name}"
+                )
+        except Exception as e:
+            logger.debug(f"Could not get compose_project for {container.name}: {e}")
+
+    @staticmethod
     async def apply_update(
         db: AsyncSession, update_id: int, triggered_by: str = "user"
     ) -> Dict:
@@ -111,6 +142,9 @@ class UpdateEngine:
 
         if not container:
             raise ValueError(f"Container {update.container_id} not found")
+
+        # Ensure compose_project is populated from Docker labels
+        await UpdateEngine._ensure_compose_project(db, container)
 
         logger.info(
             f"Applying update for {container.name}: "
@@ -249,6 +283,7 @@ class UpdateEngine:
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
+                container.compose_project,
             )
 
             if not pull_result["success"]:
@@ -273,6 +308,7 @@ class UpdateEngine:
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
+                container.compose_project,
             )
 
             if not result["success"]:
@@ -673,6 +709,7 @@ class UpdateEngine:
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
+                container.compose_project,
             )
             if not result["success"]:
                 raise Exception(f"Docker compose failed: {result['error']}")
@@ -1360,6 +1397,7 @@ class UpdateEngine:
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
+        compose_project: Optional[str] = None,
     ) -> Dict:
         """Execute docker compose up for a service.
 
@@ -1368,6 +1406,7 @@ class UpdateEngine:
             service_name: Service name to update
             docker_socket: Docker socket path
             compose_command: Docker compose command template with placeholders
+            compose_project: Docker Compose project name (e.g., 'homelab', 'proxies')
 
         Returns:
             Result dict with success status
@@ -1418,10 +1457,10 @@ class UpdateEngine:
             # First, stop the existing container to avoid name conflicts
             stop_cmd = base_cmd.copy()
 
-            # Only add service compose file if not using docker-compose.yml with includes
-            # (docker-compose.yml already includes all service files)
-            if "docker-compose.yml" not in str(base_cmd):
-                stop_cmd.extend(["-f", str(validated_compose_path)])
+            # Add project and compose file flags
+            if compose_project:
+                stop_cmd.extend(["-p", compose_project])
+            stop_cmd.extend(["-f", str(validated_compose_path)])
 
             if env_file and env_file.exists():
                 stop_cmd.extend(["--env-file", str(env_file)])
@@ -1462,10 +1501,10 @@ class UpdateEngine:
             # Build command using list-based construction (safe)
             cmd = base_cmd.copy()
 
-            # Only add service compose file if not using docker-compose.yml with includes
-            # (docker-compose.yml already includes all service files)
-            if "docker-compose.yml" not in str(base_cmd):
-                cmd.extend(["-f", str(validated_compose_path)])
+            # Add project and compose file flags
+            if compose_project:
+                cmd.extend(["-p", compose_project])
+            cmd.extend(["-f", str(validated_compose_path)])
 
             # Add env file if it exists
             if env_file and env_file.exists():
@@ -1542,6 +1581,7 @@ class UpdateEngine:
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
+        compose_project: Optional[str] = None,
     ) -> Dict:
         """Pull the Docker image for a service before deploying.
 
@@ -1555,6 +1595,7 @@ class UpdateEngine:
             service_name: Service name to pull
             docker_socket: Docker socket path
             compose_command: Docker compose command template
+            compose_project: Docker Compose project name (e.g., 'homelab', 'proxies')
 
         Returns:
             Result dict with success status
@@ -1602,9 +1643,10 @@ class UpdateEngine:
             # Build pull command
             cmd = base_cmd.copy()
 
-            # Only add service compose file if not using docker-compose.yml with includes
-            if "docker-compose.yml" not in str(base_cmd):
-                cmd.extend(["-f", str(validated_compose_path)])
+            # Add project and compose file flags
+            if compose_project:
+                cmd.extend(["-p", compose_project])
+            cmd.extend(["-f", str(validated_compose_path)])
 
             if env_file and env_file.exists():
                 cmd.extend(["--env-file", str(env_file)])

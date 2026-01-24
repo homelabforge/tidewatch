@@ -22,6 +22,7 @@ class Container(Base):
     # Compose file information
     compose_file = Column(String, nullable=False)  # Path to compose file
     service_name = Column(String, nullable=False)  # Service name in compose
+    compose_project = Column(String, nullable=True)  # Docker Compose project name
 
     # Update policy (from labels or UI)
     policy = Column(

@@ -57,7 +57,7 @@ class SettingsService:
         "docker_compose_command": {
             "value": "docker compose",
             "category": "paths",
-            "description": "Docker compose command template. Use {compose_file}, {env_file}, {service} placeholders. Example: 'docker compose -p homelab -f {compose_file} --env-file {env_file}'",
+            "description": "Base Docker Compose command. TideWatch automatically adds -p (project) and -f (file) flags per container.",
         },
         # Update scheduling
         "check_enabled": {
@@ -79,6 +79,16 @@ class SettingsService:
             "value": "3",
             "category": "scheduling",
             "description": "Maximum number of updates to auto-apply per run (rate limiting)",
+        },
+        "check_concurrency_limit": {
+            "value": "5",
+            "category": "scheduling",
+            "description": "Maximum concurrent container checks during update scan (1-20)",
+        },
+        "check_deduplication_enabled": {
+            "value": "true",
+            "category": "scheduling",
+            "description": "Enable container deduplication (check shared images once)",
         },
         # Update reliability
         "update_retry_max_attempts": {
