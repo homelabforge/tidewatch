@@ -68,12 +68,26 @@ def mock_settings():
 
 
 @pytest.fixture
-def mock_update_checker():
-    """Mock UpdateChecker for update check jobs."""
-    with patch("app.services.scheduler.UpdateChecker") as mock:
-        mock.check_all_containers = AsyncMock(
-            return_value={"total": 10, "checked": 10, "updates_found": 2, "errors": 0}
-        )
+def mock_check_job_service():
+    """Mock CheckJobService for update check jobs."""
+    with patch("app.services.scheduler.CheckJobService") as mock:
+        # Mock job object returned by create_job and get_job
+        mock_job = MagicMock()
+        mock_job.id = 1
+        mock_job.status = "completed"
+        mock_job.total_count = 10
+        mock_job.checked_count = 10
+        mock_job.updates_found = 2
+        mock_job.errors_count = 0
+
+        mock.get_active_job = AsyncMock(return_value=None)
+        mock.create_job = AsyncMock(return_value=mock_job)
+        mock.run_job = AsyncMock()
+        mock.get_job = AsyncMock(return_value=mock_job)
+
+        # Expose mock_job for test assertions
+        mock._mock_job = mock_job
+
         yield mock
 
 
@@ -363,31 +377,31 @@ class TestUpdateCheckJob:
     """Test update check job execution."""
 
     async def test_runs_update_check_successfully(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test runs update check job successfully."""
         await scheduler_instance._run_update_check()
 
-        mock_update_checker.check_all_containers.assert_awaited_once()
+        mock_check_job_service.create_job.assert_awaited_once()
+        mock_check_job_service.run_job.assert_awaited_once()
 
     async def test_logs_update_check_stats(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test logs statistics after update check."""
-        mock_update_checker.check_all_containers.return_value = {
-            "total": 15,
-            "checked": 15,
-            "updates_found": 5,
-            "errors": 1,
-        }
+        mock_check_job_service._mock_job.checked_count = 15
+        mock_check_job_service._mock_job.total_count = 15
+        mock_check_job_service._mock_job.updates_found = 5
+        mock_check_job_service._mock_job.errors_count = 1
 
         await scheduler_instance._run_update_check()
 
-        # Should have been called with expected stats
-        mock_update_checker.check_all_containers.assert_awaited_once()
+        # Should have created and run the job
+        mock_check_job_service.create_job.assert_awaited_once()
+        mock_check_job_service.run_job.assert_awaited_once()
 
     async def test_updates_last_check_timestamp(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test updates _last_check timestamp after successful run."""
         before = datetime.now(timezone.utc)
@@ -398,7 +412,7 @@ class TestUpdateCheckJob:
         assert scheduler_instance._last_check >= before
 
     async def test_persists_last_check_to_settings(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test persists last check timestamp to settings."""
         await scheduler_instance._run_update_check()
@@ -410,34 +424,35 @@ class TestUpdateCheckJob:
         assert isinstance(call_args[0][2], str)  # ISO format string
 
     async def test_handles_database_error_during_check(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test handles database error during update check."""
         from sqlalchemy.exc import OperationalError
 
-        mock_update_checker.check_all_containers.side_effect = OperationalError(
-            "DB error", None, None
+        mock_check_job_service.create_job.side_effect = OperationalError(
+            "DB error", None, Exception("test")
         )
 
         # Should not raise, just log error
         await scheduler_instance._run_update_check()
 
     async def test_handles_invalid_data_during_check(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test handles KeyError during update check."""
-        mock_update_checker.check_all_containers.side_effect = KeyError("missing key")
+        mock_check_job_service.run_job.side_effect = KeyError("missing key")
 
         # Should not raise, just log error
         await scheduler_instance._run_update_check()
 
     async def test_manual_trigger_calls_update_check(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test manual trigger runs update check."""
         await scheduler_instance.trigger_update_check()
 
-        mock_update_checker.check_all_containers.assert_awaited_once()
+        mock_check_job_service.create_job.assert_awaited_once()
+        mock_check_job_service.run_job.assert_awaited_once()
 
 
 class TestAutoApplyJob:
@@ -1088,7 +1103,7 @@ class TestStatusReporting:
         assert status["next_run"] is None
 
     async def test_includes_last_check_in_status(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test get_status includes last_check timestamp."""
         await scheduler_instance.start()
@@ -1218,14 +1233,14 @@ class TestSchedulerEdgeCases:
             await scheduler_instance.start()
 
     async def test_handles_database_integrity_error(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test handles IntegrityError during job execution."""
         from sqlalchemy.exc import IntegrityError
 
         with patch(
             "app.services.scheduler.SettingsService.set",
-            side_effect=IntegrityError("Duplicate key", None, None),
+            side_effect=IntegrityError("Duplicate key", None, Exception("test")),
         ):
             # Should not crash even if persisting last_check fails
             await scheduler_instance._run_update_check()
@@ -1235,7 +1250,7 @@ class TestSchedulerIntegration:
     """Integration tests for scheduler service."""
 
     async def test_full_lifecycle(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test complete scheduler lifecycle."""
         # Start
@@ -1248,7 +1263,8 @@ class TestSchedulerIntegration:
 
         # Manually trigger job
         await scheduler_instance.trigger_update_check()
-        mock_update_checker.check_all_containers.assert_awaited_once()
+        mock_check_job_service.create_job.assert_awaited_once()
+        mock_check_job_service.run_job.assert_awaited_once()
 
         # Stop
         await scheduler_instance.stop()
@@ -1300,7 +1316,7 @@ class TestSchedulerIntegration:
             assert job is not None, f"Job {job_id} should be registered"
 
     async def test_handles_concurrent_manual_triggers(
-        self, scheduler_instance, mock_settings, mock_update_checker
+        self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test handles multiple manual triggers."""
         await scheduler_instance.start()
@@ -1311,4 +1327,4 @@ class TestSchedulerIntegration:
         await scheduler_instance.trigger_update_check()
 
         # Should have been called 3 times
-        assert mock_update_checker.check_all_containers.await_count == 3
+        assert mock_check_job_service.run_job.await_count == 3

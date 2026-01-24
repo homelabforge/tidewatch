@@ -29,6 +29,7 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }))
 
@@ -508,7 +509,7 @@ describe('Dashboard', () => {
 
       await waitFor(() => {
         expect(api.updates.checkAll).toHaveBeenCalledTimes(1)
-        expect(toast.success).toHaveBeenCalledWith('Update check started')
+        expect(toast.info).toHaveBeenCalledWith('Update check started')
       })
     })
 
