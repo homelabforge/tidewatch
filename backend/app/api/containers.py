@@ -1394,22 +1394,27 @@ async def scan_my_projects(
         scanner = ProjectScanner(db)
         results = await scanner.scan_projects_directory()
 
-        # Extract only expected fields to prevent information exposure
-        safe_results = {
-            "added": results.get("added", 0),
-            "updated": results.get("updated", 0),
-            "skipped": results.get("skipped", 0),
-        }
-        # Map error messages to predefined safe strings to prevent info exposure
-        error_msg = results.get("error", "")
-        safe_messages = {
-            "Feature disabled": "My Projects feature is disabled",
-            "Auto-scan disabled": "Auto-scan is disabled in settings",
-        }
-        if error_msg and error_msg in safe_messages:
-            safe_results["message"] = safe_messages[error_msg]
+        # Extract only safe integer counts to prevent information exposure
+        # Using explicit int() casts to ensure type safety
+        added_count = int(results.get("added", 0))
+        updated_count = int(results.get("updated", 0))
+        skipped_count = int(results.get("skipped", 0))
 
-        return {"success": True, "results": safe_results}
+        # Build response with only verified-safe data
+        response_results = {
+            "added": added_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+        }
+
+        # Map error messages to predefined safe strings (whitelist approach)
+        error_msg = results.get("error")
+        if error_msg == "Feature disabled":
+            response_results["message"] = "My Projects feature is disabled"
+        elif error_msg == "Auto-scan disabled":
+            response_results["message"] = "Auto-scan is disabled in settings"
+
+        return {"success": True, "results": response_results}
     except (OSError, PermissionError) as e:
         import logging
 
