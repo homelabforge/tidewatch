@@ -1400,9 +1400,14 @@ async def scan_my_projects(
             "updated": results.get("updated", 0),
             "skipped": results.get("skipped", 0),
         }
-        # Include user-friendly error message if present
-        if "error" in results:
-            safe_results["message"] = results["error"]
+        # Map error messages to predefined safe strings to prevent info exposure
+        error_msg = results.get("error", "")
+        safe_messages = {
+            "Feature disabled": "My Projects feature is disabled",
+            "Auto-scan disabled": "Auto-scan is disabled in settings",
+        }
+        if error_msg and error_msg in safe_messages:
+            safe_results["message"] = safe_messages[error_msg]
 
         return {"success": True, "results": safe_results}
     except (OSError, PermissionError) as e:

@@ -27,7 +27,6 @@ from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
 from app.services.tag_fetcher import TagFetcher
 from app.services.update_decision_maker import UpdateDecisionMaker
-from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +157,8 @@ class CheckJobService:
             }
         )
 
-        logger.info(
-            f"Cancellation requested for check job {sanitize_log_message(job_id)}"
-        )
+        # Use explicit int() cast to prevent log injection (job_id is already int-typed)
+        logger.info("Cancellation requested for check job %d", int(job_id))
 
     @staticmethod
     async def run_job(job_id: int) -> None:
