@@ -298,15 +298,15 @@ class TestCheckUpdatesEndpoint:
         db.add(container2)
         await db.commit()
 
-        # Check all containers
+        # Check all containers - now returns job info, not stats directly
         response = await authenticated_client.post("/api/v1/updates/check")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
-        assert "stats" in data
-        assert "checked" in data["stats"]
-        assert data["stats"]["checked"] >= 0
+        assert "job_id" in data
+        assert "status" in data
+        assert data["status"] in ("queued", "running", "completed")
         assert "message" in data
 
     @pytest.mark.skip(reason="Concurrent check handling not yet implemented")

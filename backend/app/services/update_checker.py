@@ -116,9 +116,13 @@ class UpdateDecisionTrace:
         self.trace["registry_anomalies"].append(anomaly)
 
     def to_json(self) -> str:
-        """Serialize trace to JSON string for storage."""
+        """Serialize trace to JSON string for storage.
+
+        Uses a fallback encoder to handle any non-serializable values
+        (e.g., mock objects during testing) by converting them to strings.
+        """
         self.trace["decision_timestamp"] = datetime.now(timezone.utc).isoformat()
-        return json.dumps(self.trace)
+        return json.dumps(self.trace, default=str)
 
     @property
     def update_kind(self) -> Optional[str]:
