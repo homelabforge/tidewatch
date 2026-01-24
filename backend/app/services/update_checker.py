@@ -4,7 +4,7 @@ import json
 import logging
 import httpx
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,9 @@ from app.services.changelog import ChangelogFetcher, ChangelogClassifier
 from app.services.compose_parser import ComposeParser
 from app.utils.version import get_version_change_type
 
+# Import UpdateDecisionTrace from update_decision_maker to avoid circular import
+from app.services.update_decision_maker import UpdateDecisionTrace
+
 # TYPE_CHECKING import for UpdateDecision to avoid circular import
 from typing import TYPE_CHECKING
 
@@ -28,111 +31,6 @@ if TYPE_CHECKING:
     from app.services.tag_fetcher import FetchTagsResponse
 
 logger = logging.getLogger(__name__)
-
-
-class UpdateDecisionTrace:
-    """Builder for structured update decision trace.
-
-    Captures the reasoning behind update detection decisions for debugging,
-    UI explanations, and analytics.
-    """
-
-    def __init__(self) -> None:
-        self.trace: Dict[str, Any] = {
-            "update_kind": None,
-            "current_tag": None,
-            "latest_tag": None,
-            "scope": None,
-            "change_type": None,
-            "include_prereleases": None,
-            "suffix_match": None,
-            "digest_info": {"previous": None, "current": None, "changed": False},
-            "registry": None,
-            "scope_blocking": {
-                "blocked": False,
-                "latest_major_tag": None,
-                "reason": None,
-            },
-            "registry_anomalies": [],
-            "decision_timestamp": None,
-        }
-
-    def set_basics(
-        self,
-        current_tag: str,
-        scope: str,
-        include_prereleases: bool,
-        registry: str,
-    ) -> None:
-        """Set basic context for the update check."""
-        self.trace["current_tag"] = current_tag
-        self.trace["scope"] = scope
-        self.trace["include_prereleases"] = include_prereleases
-        self.trace["registry"] = registry
-
-    def set_digest_update(
-        self,
-        previous: Optional[str],
-        current: Optional[str],
-        changed: bool,
-    ) -> None:
-        """Record digest-based update detection."""
-        self.trace["update_kind"] = "digest"
-        self.trace["digest_info"] = {
-            "previous": previous[:12] if previous else None,
-            "current": current[:12] if current else None,
-            "changed": changed,
-        }
-
-    def set_tag_update(
-        self,
-        latest_tag: Optional[str],
-        change_type: Optional[str],
-    ) -> None:
-        """Record tag-based update detection."""
-        self.trace["update_kind"] = "tag"
-        self.trace["latest_tag"] = latest_tag
-        self.trace["change_type"] = change_type
-
-    def set_suffix_match(self, suffix: Optional[str]) -> None:
-        """Record tag suffix matching (e.g., '-alpine', '-slim')."""
-        self.trace["suffix_match"] = suffix
-
-    def set_scope_blocking(
-        self,
-        blocked: bool,
-        latest_major_tag: Optional[str],
-        reason: Optional[str],
-    ) -> None:
-        """Record scope blocking decision."""
-        self.trace["scope_blocking"] = {
-            "blocked": blocked,
-            "latest_major_tag": latest_major_tag,
-            "reason": reason,
-        }
-
-    def add_anomaly(self, anomaly: str) -> None:
-        """Record registry anomalies encountered during check."""
-        self.trace["registry_anomalies"].append(anomaly)
-
-    def to_json(self) -> str:
-        """Serialize trace to JSON string for storage.
-
-        Uses a fallback encoder to handle any non-serializable values
-        (e.g., mock objects during testing) by converting them to strings.
-        """
-        self.trace["decision_timestamp"] = datetime.now(timezone.utc).isoformat()
-        return json.dumps(self.trace, default=str)
-
-    @property
-    def update_kind(self) -> Optional[str]:
-        """Get the determined update kind."""
-        return self.trace["update_kind"]
-
-    @property
-    def change_type(self) -> Optional[str]:
-        """Get the determined change type."""
-        return self.trace["change_type"]
 
 
 class UpdateChecker:

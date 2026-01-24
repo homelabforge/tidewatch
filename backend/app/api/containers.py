@@ -1394,7 +1394,17 @@ async def scan_my_projects(
         scanner = ProjectScanner(db)
         results = await scanner.scan_projects_directory()
 
-        return {"success": True, "results": results}
+        # Extract only expected fields to prevent information exposure
+        safe_results = {
+            "added": results.get("added", 0),
+            "updated": results.get("updated", 0),
+            "skipped": results.get("skipped", 0),
+        }
+        # Include user-friendly error message if present
+        if "error" in results:
+            safe_results["message"] = results["error"]
+
+        return {"success": True, "results": safe_results}
     except (OSError, PermissionError) as e:
         import logging
 

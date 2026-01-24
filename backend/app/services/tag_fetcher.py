@@ -257,17 +257,6 @@ class TagFetcher:
                 error=str(e),
             )
 
-        # Fallback for type checker (should never reach here)
-        return FetchTagsResponse(
-            latest_tag=None,
-            latest_major_tag=None,
-            all_tags=[],
-            metadata=None,
-            cache_hit=False,
-            fetch_duration_ms=(time.monotonic() - start_time) * 1000,
-            error="Unexpected control flow",
-        )
-
     async def fetch_tags_for_container(
         self, container: "Container"
     ) -> FetchTagsResponse:

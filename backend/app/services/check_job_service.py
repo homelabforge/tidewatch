@@ -27,6 +27,7 @@ from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
 from app.services.tag_fetcher import TagFetcher
 from app.services.update_decision_maker import UpdateDecisionMaker
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,9 @@ class CheckJobService:
             }
         )
 
-        logger.info(f"Cancellation requested for check job {job_id}")
+        logger.info(
+            f"Cancellation requested for check job {sanitize_log_message(job_id)}"
+        )
 
     @staticmethod
     async def run_job(job_id: int) -> None:
@@ -478,7 +481,7 @@ class CheckJobService:
                     try:
                         await cancel_task
                     except asyncio.CancelledError:
-                        pass
+                        logger.debug("Cancellation monitor task stopped")
 
                 # Finalize metrics
                 metrics = run_context.finalize()
