@@ -92,3 +92,7 @@ coverage/
 *.temp
 .tmp/
 tmp/
+
+# Root-level npm artifacts (frontend uses Bun)
+/package.json
+/package-lock.json
