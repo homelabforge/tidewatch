@@ -81,7 +81,8 @@ class TestCleanupImagesEndpoint:
         """Test preview mode returns list without deleting."""
         # Mock preview method
         with patch(
-            "app.routes.cleanup.CleanupService.get_cleanup_preview", new_callable=AsyncMock
+            "app.routes.cleanup.CleanupService.get_cleanup_preview",
+            new_callable=AsyncMock,
         ) as mock_preview:
             mock_preview.return_value = {
                 "images_to_remove": 3,

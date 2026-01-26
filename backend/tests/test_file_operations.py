@@ -422,8 +422,8 @@ class TestAtomicFileWrite:
         # Mock temp file stat to return wrong size
         original_stat = Path.stat
 
-        def mock_stat(self):
-            result = original_stat(self)
+        def mock_stat(self, **kwargs):
+            result = original_stat(self, **kwargs)
             if ".tmp." in str(self):
                 mock_result = MagicMock()
                 mock_result.st_size = 9999

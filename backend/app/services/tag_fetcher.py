@@ -4,6 +4,8 @@ This module extracts the registry tag fetching logic from the update checker,
 enabling clean caching boundaries and rate limiting integration.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 from dataclasses import dataclass

@@ -7,6 +7,8 @@ Also contains UpdateDecisionTrace which is used by both this module and
 update_checker.py for building structured decision traces.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from dataclasses import dataclass

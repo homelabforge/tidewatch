@@ -5,6 +5,8 @@ container deduplication to minimize redundant registry API calls during
 a single update check job.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
