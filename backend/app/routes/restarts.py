@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
 from datetime import datetime, timedelta, timezone
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.models.container import Container
 from app.models.restart_state import ContainerRestartState

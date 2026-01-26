@@ -1766,7 +1766,7 @@ class UpdateEngine:
             container_name: Name of the container to rescan
             update_id: ID of the Update record to store CVE results in
         """
-        from app.db import AsyncSessionLocal
+        from app.database import AsyncSessionLocal
         from app.models.update import Update
 
         try:

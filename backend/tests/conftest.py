@@ -20,7 +20,7 @@ if "TIDEWATCH_ENCRYPTION_KEY" not in os.environ:
 # Disable rate limiting during tests
 os.environ["TIDEWATCH_TESTING"] = "true"
 
-from app.db import Base
+from app.database import Base
 from app.models import *  # noqa: F403 - Import all models to ensure they're registered
 from app.services.auth import hash_password, create_access_token
 from app.services.settings_service import SettingsService
@@ -231,7 +231,7 @@ async def app():
 async def client(app, db):
     """Create async test client with auth disabled by default (auth_mode='none')."""
     from httpx import AsyncClient, ASGITransport
-    from app.db import get_db
+    from app.database import get_db
 
     # Override get_db dependency to use test database
     async def override_get_db():

@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
 
-from app.db import init_db, AsyncSessionLocal
+from app.database import init_db, AsyncSessionLocal
 from app.services.settings_service import SettingsService
 from app.services.scheduler import scheduler_service
 
@@ -374,7 +374,7 @@ async def health_check():
 async def metrics():
     """Prometheus metrics endpoint."""
     from app.services.metrics import collect_metrics, get_metrics, get_content_type
-    from app.db import AsyncSessionLocal
+    from app.database import AsyncSessionLocal
 
     # Collect current metrics from database
     async with AsyncSessionLocal() as db:
@@ -385,7 +385,7 @@ async def metrics():
 
 
 # API routes
-from app.api import api_router  # noqa: E402
+from app.routes import api_router  # noqa: E402
 
 app.include_router(api_router)
 

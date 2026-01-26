@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import text
-from app.db import engine
+from app.database import engine
 
 
 # List of sensitive setting keys that should be encrypted

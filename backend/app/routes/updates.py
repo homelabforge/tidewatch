@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, IntegrityError
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.models.update import Update
 from app.models.container import Container

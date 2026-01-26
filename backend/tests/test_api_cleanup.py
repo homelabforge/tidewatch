@@ -19,7 +19,7 @@ class TestCleanupImagesEndpoint:
         """Test removes dangling Docker images."""
         # Mock CleanupService
         with patch(
-            "app.api.cleanup.CleanupService.prune_dangling_images",
+            "app.routes.cleanup.CleanupService.prune_dangling_images",
             new_callable=AsyncMock,
         ) as mock_prune:
             mock_prune.return_value = {
@@ -46,11 +46,11 @@ class TestCleanupImagesEndpoint:
         # Mock CleanupService methods
         with (
             patch(
-                "app.api.cleanup.CleanupService.prune_dangling_images",
+                "app.routes.cleanup.CleanupService.prune_dangling_images",
                 new_callable=AsyncMock,
             ) as mock_prune_dangling,
             patch(
-                "app.api.cleanup.CleanupService.cleanup_old_images",
+                "app.routes.cleanup.CleanupService.cleanup_old_images",
                 new_callable=AsyncMock,
             ) as mock_cleanup_old,
         ):
@@ -81,7 +81,7 @@ class TestCleanupImagesEndpoint:
         """Test preview mode returns list without deleting."""
         # Mock preview method
         with patch(
-            "app.api.cleanup.CleanupService.get_cleanup_preview", new_callable=AsyncMock
+            "app.routes.cleanup.CleanupService.get_cleanup_preview", new_callable=AsyncMock
         ) as mock_preview:
             mock_preview.return_value = {
                 "images_to_remove": 3,
@@ -122,7 +122,7 @@ class TestCleanupContainersEndpoint:
         """Test removes exited containers."""
         # Mock CleanupService
         with patch(
-            "app.api.cleanup.CleanupService.prune_exited_containers",
+            "app.routes.cleanup.CleanupService.prune_exited_containers",
             new_callable=AsyncMock,
         ) as mock_prune:
             mock_prune.return_value = {
@@ -151,7 +151,7 @@ class TestCleanupContainersEndpoint:
 
         # Mock CleanupService
         with patch(
-            "app.api.cleanup.CleanupService.prune_exited_containers",
+            "app.routes.cleanup.CleanupService.prune_exited_containers",
             new_callable=AsyncMock,
         ) as mock_prune:
             mock_prune.return_value = {
@@ -192,7 +192,7 @@ class TestCleanupStatsEndpoint:
         """Test returns Docker disk usage statistics."""
         # Mock disk usage stats
         with patch(
-            "app.api.cleanup.CleanupService.get_disk_usage", new_callable=AsyncMock
+            "app.routes.cleanup.CleanupService.get_disk_usage", new_callable=AsyncMock
         ) as mock_stats:
             mock_stats.return_value = {
                 "images": {"active": 10, "size": 1024 * 1024 * 1024},

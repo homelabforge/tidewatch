@@ -5,7 +5,7 @@ from datetime import timezone
 from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, Index
 from sqlalchemy.sql import func
 
-from app.db import Base
+from app.database import Base
 
 
 class CheckJob(Base):

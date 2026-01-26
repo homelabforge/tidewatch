@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.models.container import Container
 from app.models.history import UpdateHistory

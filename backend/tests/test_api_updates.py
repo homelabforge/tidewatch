@@ -728,7 +728,7 @@ class TestApplyUpdateEndpoint:
         }
 
         with patch(
-            "app.api.updates.UpdateEngine.apply_update", new_callable=AsyncMock
+            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
             mock_apply.return_value = mock_result
 
@@ -776,7 +776,7 @@ class TestApplyUpdateEndpoint:
 
         # Mock UpdateEngine to raise ValueError for non-approved updates
         with patch(
-            "app.api.updates.UpdateEngine.apply_update", new_callable=AsyncMock
+            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
             mock_apply.side_effect = ValueError(
                 "Update must be approved before applying"
@@ -827,7 +827,7 @@ class TestApplyUpdateEndpoint:
         }
 
         with patch(
-            "app.api.updates.UpdateEngine.apply_update", new_callable=AsyncMock
+            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
             mock_apply.return_value = mock_result
 
@@ -879,7 +879,7 @@ class TestApplyUpdateEndpoint:
         }
 
         with patch(
-            "app.api.updates.UpdateEngine.apply_update", new_callable=AsyncMock
+            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
             mock_apply.return_value = mock_result
 
@@ -977,7 +977,7 @@ class TestApplyUpdateEndpoint:
 
         # Mock UpdateEngine to raise error for missing container
         with patch(
-            "app.api.updates.UpdateEngine.apply_update", new_callable=AsyncMock
+            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
             mock_apply.side_effect = ValueError("Container not found")
 

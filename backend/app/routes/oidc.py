@@ -22,7 +22,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from authlib.jose import JoseError
 
-from app.db import get_db
+from app.database import get_db
 from app.schemas.auth import OIDCConfig, OIDCTestResult
 from app.services import oidc as oidc_service
 from app.utils.security import sanitize_log_message

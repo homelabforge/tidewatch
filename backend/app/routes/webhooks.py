@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.services.webhook_service import WebhookService
 from app.schemas.webhook import (

@@ -3,7 +3,7 @@
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func
-from app.db import Base
+from app.database import Base
 
 
 class UpdateHistory(Base):

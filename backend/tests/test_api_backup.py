@@ -29,7 +29,7 @@ class TestCreateBackupEndpoint:
         # Mock file operations
         with (
             patch("builtins.open", mock_open()),
-            patch("app.api.backup.BACKUP_DIR") as mock_dir,
+            patch("app.routes.backup.BACKUP_DIR") as mock_dir,
         ):
             mock_dir.__truediv__ = MagicMock(
                 return_value=Path("/data/backups/test.json")
@@ -69,7 +69,7 @@ class TestCreateBackupEndpoint:
         with (
             patch("builtins.open", mock_open()),
             patch("json.dump", side_effect=capture_json_dump),
-            patch("app.api.backup.BACKUP_DIR") as mock_dir,
+            patch("app.routes.backup.BACKUP_DIR") as mock_dir,
         ):
             mock_path = MagicMock()
             mock_path.stat.return_value = MagicMock(st_size=1024)
@@ -105,8 +105,8 @@ class TestListBackupsEndpoint:
         """Test returns empty list when no backups exist."""
         # Mock empty backup directory
         with (
-            patch("app.api.backup.get_backup_files", return_value=[]),
-            patch("app.api.backup.Path") as mock_path,
+            patch("app.routes.backup.get_backup_files", return_value=[]),
+            patch("app.routes.backup.Path") as mock_path,
         ):
             mock_path.return_value.exists.return_value = True
             mock_path.return_value.stat.return_value = MagicMock(
@@ -143,8 +143,8 @@ class TestListBackupsEndpoint:
         ]
 
         with (
-            patch("app.api.backup.get_backup_files", return_value=mock_backups),
-            patch("app.api.backup.Path") as mock_path,
+            patch("app.routes.backup.get_backup_files", return_value=mock_backups),
+            patch("app.routes.backup.Path") as mock_path,
         ):
             mock_path.return_value.exists.return_value = True
             mock_path.return_value.stat.return_value = MagicMock(
@@ -209,9 +209,9 @@ class TestRestoreBackupEndpoint:
         mock_file_content = json.dumps(backup_data)
 
         with (
-            patch("app.api.backup.validate_filename") as mock_validate,
+            patch("app.routes.backup.validate_filename") as mock_validate,
             patch("builtins.open", mock_open(read_data=mock_file_content)),
-            patch("app.api.backup.BACKUP_DIR") as mock_dir,
+            patch("app.routes.backup.BACKUP_DIR") as mock_dir,
         ):
             mock_path = MagicMock()
             mock_path.exists.return_value = True
@@ -263,11 +263,11 @@ class TestRestoreBackupEndpoint:
             return mock_open(read_data=json.dumps(backup_data))()
 
         with (
-            patch("app.api.backup.validate_filename") as mock_validate,
+            patch("app.routes.backup.validate_filename") as mock_validate,
             patch("builtins.open", side_effect=mock_open_handler),
             patch("json.dump"),
             patch("json.load", return_value=backup_data),
-            patch("app.api.backup.BACKUP_DIR") as mock_dir,
+            patch("app.routes.backup.BACKUP_DIR") as mock_dir,
         ):
             mock_path = MagicMock()
             mock_path.exists.return_value = True
@@ -289,7 +289,7 @@ class TestRestoreBackupEndpoint:
         invalid_backup = {"version": "1.0", "exported_at": "2025-01-01T12:00:00"}
 
         with (
-            patch("app.api.backup.validate_filename") as mock_validate,
+            patch("app.routes.backup.validate_filename") as mock_validate,
             patch("builtins.open", mock_open(read_data=json.dumps(invalid_backup))),
             patch("json.dump"),
         ):
@@ -308,7 +308,7 @@ class TestRestoreBackupEndpoint:
     async def test_restore_nonexistent_file(self, authenticated_client):
         """Test returns 404 for nonexistent backup file."""
         # Mock file not existing
-        with patch("app.api.backup.validate_filename") as mock_validate:
+        with patch("app.routes.backup.validate_filename") as mock_validate:
             mock_path = MagicMock()
             mock_path.exists.return_value = False
             mock_validate.return_value = mock_path
@@ -342,8 +342,8 @@ class TestBackupStatsEndpoint:
         """Test returns database statistics."""
         # Mock database and backup stats
         with (
-            patch("app.api.backup.get_database_stats") as mock_db_stats,
-            patch("app.api.backup.get_backup_files", return_value=[]),
+            patch("app.routes.backup.get_database_stats") as mock_db_stats,
+            patch("app.routes.backup.get_backup_files", return_value=[]),
         ):
             mock_db_stats.return_value = {
                 "path": "/data/tidewatch.db",
@@ -381,8 +381,8 @@ class TestBackupStatsEndpoint:
         ]
 
         with (
-            patch("app.api.backup.get_database_stats") as mock_db_stats,
-            patch("app.api.backup.get_backup_files", return_value=mock_backups),
+            patch("app.routes.backup.get_database_stats") as mock_db_stats,
+            patch("app.routes.backup.get_backup_files", return_value=mock_backups),
         ):
             mock_db_stats.return_value = {
                 "path": "/data/tidewatch.db",

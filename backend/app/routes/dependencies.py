@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.database import get_db
 from app.models.container import Container
 from app.models.dockerfile_dependency import DockerfileDependency
 from app.models.http_server import HttpServer

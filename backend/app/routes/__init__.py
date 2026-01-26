@@ -1,7 +1,7 @@
 """API routers for TideWatch."""
 
 from fastapi import APIRouter
-from app.api import (
+from app.routes import (
     settings,
     containers,
     updates,

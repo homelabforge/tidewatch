@@ -161,7 +161,7 @@ class TestOIDCTestEndpoint:
 
         # Mock the test_oidc_connection to return success
         with patch(
-            "app.api.oidc.oidc_service.test_oidc_connection", new_callable=AsyncMock
+            "app.routes.oidc.oidc_service.test_oidc_connection", new_callable=AsyncMock
         ) as mock_test:
             mock_test.return_value = {
                 "success": True,
@@ -244,10 +244,10 @@ class TestOIDCLoginEndpoint:
 
         # Mock provider metadata and authorization URL creation
         with patch(
-            "app.api.oidc.oidc_service.get_provider_metadata", new_callable=AsyncMock
+            "app.routes.oidc.oidc_service.get_provider_metadata", new_callable=AsyncMock
         ) as mock_metadata:
             with patch(
-                "app.api.oidc.oidc_service.create_authorization_url",
+                "app.routes.oidc.oidc_service.create_authorization_url",
                 new_callable=AsyncMock,
             ) as mock_auth_url:
                 mock_metadata.return_value = {

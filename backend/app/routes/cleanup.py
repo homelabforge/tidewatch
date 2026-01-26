@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.services.cleanup_service import CleanupService
 from app.services.settings_service import SettingsService

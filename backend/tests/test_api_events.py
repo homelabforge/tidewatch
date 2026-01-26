@@ -32,13 +32,13 @@ class TestEventStreamEndpoint:
 
         with (
             patch(
-                "app.api.events.event_bus.subscribe", new_callable=AsyncMock
+                "app.routes.events.event_bus.subscribe", new_callable=AsyncMock
             ) as mock_subscribe,
             patch(
-                "app.api.events.event_bus.unsubscribe", new_callable=AsyncMock
+                "app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock
             ) as mock_unsub,
             patch(
-                "app.api.events.Request.is_disconnected",
+                "app.routes.events.Request.is_disconnected",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
@@ -73,13 +73,13 @@ class TestEventStreamEndpoint:
 
         with (
             patch(
-                "app.api.events.event_bus.subscribe", new_callable=AsyncMock
+                "app.routes.events.event_bus.subscribe", new_callable=AsyncMock
             ) as mock_subscribe,
             patch(
-                "app.api.events.event_bus.unsubscribe", new_callable=AsyncMock
+                "app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock
             ) as mock_unsub,
             patch(
-                "app.api.events.Request.is_disconnected",
+                "app.routes.events.Request.is_disconnected",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
@@ -112,7 +112,7 @@ class TestEventStreamEndpoint:
 
         test_bus = EventBus()
 
-        with patch("app.api.events.event_bus", test_bus):
+        with patch("app.routes.events.event_bus", test_bus):
             # Subscribe to the bus
             queue = await test_bus.subscribe()
 

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import DATABASE_URL
+from app.database import DATABASE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

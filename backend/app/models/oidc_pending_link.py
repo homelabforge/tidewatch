@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import Column, String, DateTime, Integer, Index, Text
-from app.db import Base
+from app.database import Base
 
 
 class OIDCPendingLink(Base):

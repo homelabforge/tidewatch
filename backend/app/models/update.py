@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index
 from sqlalchemy.sql import func
-from app.db import Base
+from app.database import Base
 
 
 class Update(Base):

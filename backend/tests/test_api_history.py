@@ -500,7 +500,7 @@ class TestRollbackEndpoint:
         }
 
         with patch(
-            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+            "app.routes.history.UpdateEngine.rollback_update", new_callable=AsyncMock
         ) as mock_rollback:
             mock_rollback.return_value = mock_result
 
@@ -544,7 +544,7 @@ class TestRollbackEndpoint:
 
         # Mock rollback to raise ValueError for failed update
         with patch(
-            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+            "app.routes.history.UpdateEngine.rollback_update", new_callable=AsyncMock
         ) as mock_rollback:
             mock_rollback.side_effect = ValueError("Cannot rollback failed update")
 
@@ -586,7 +586,7 @@ class TestRollbackEndpoint:
 
         # Mock rollback to raise ValueError for already rolled back
         with patch(
-            "app.api.history.UpdateEngine.rollback_update", new_callable=AsyncMock
+            "app.routes.history.UpdateEngine.rollback_update", new_callable=AsyncMock
         ) as mock_rollback:
             mock_rollback.side_effect = ValueError("Update already rolled back")
 

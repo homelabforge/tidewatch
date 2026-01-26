@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # Ensure backend package is importable when running script directly
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import DATABASE_URL  # noqa: E402
+from app.database import DATABASE_URL  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

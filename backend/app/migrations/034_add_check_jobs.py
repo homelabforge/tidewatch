@@ -14,7 +14,7 @@ from sqlalchemy import text
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import engine
+from app.database import engine
 
 
 async def upgrade() -> None:

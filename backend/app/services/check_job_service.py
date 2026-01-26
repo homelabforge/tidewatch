@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import AsyncSessionLocal
+from app.database import AsyncSessionLocal
 from app.models.check_job import CheckJob
 from app.models.container import Container
 from app.services.update_checker import UpdateChecker

@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Index
 from sqlalchemy.sql import func
-from app.db import Base
+from app.database import Base
 
 
 class MetricsHistory(Base):

@@ -10,7 +10,7 @@ from apscheduler.jobstores.base import JobLookupError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, IntegrityError
 
-from app.db import AsyncSessionLocal
+from app.database import AsyncSessionLocal
 from app.services.settings_service import SettingsService
 from app.services.check_job_service import CheckJobService
 

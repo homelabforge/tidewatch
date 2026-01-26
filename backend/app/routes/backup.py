@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db, DATABASE_URL
+from app.database import get_db, DATABASE_URL
 from app.services import SettingsService
 from app.services.auth import require_auth
 from app.utils.security import sanitize_log_message, sanitize_path

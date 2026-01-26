@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
 
-from app.db import AsyncSessionLocal
+from app.database import AsyncSessionLocal
 from app.models import Container
 from app.models.restart_state import ContainerRestartState
 from app.services.container_monitor import container_monitor

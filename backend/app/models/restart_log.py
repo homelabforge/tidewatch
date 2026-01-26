@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, ForeignKey
 from sqlalchemy.sql import func
 
-from app.db import Base
+from app.database import Base
 
 
 class ContainerRestartLog(Base):

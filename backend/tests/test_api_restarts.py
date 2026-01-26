@@ -79,7 +79,7 @@ class TestManualRestartEndpoint:
 
         # Mock RestartService
         with patch(
-            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+            "app.routes.restarts.RestartService.execute_restart", new_callable=AsyncMock
         ) as mock_restart:
             mock_restart.return_value = {
                 "success": True,
@@ -113,7 +113,7 @@ class TestManualRestartEndpoint:
 
         # Mock RestartService
         with patch(
-            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+            "app.routes.restarts.RestartService.execute_restart", new_callable=AsyncMock
         ) as mock_restart:
             mock_restart.return_value = {
                 "success": True,
@@ -145,7 +145,7 @@ class TestManualRestartEndpoint:
 
         # Mock RestartService failure
         with patch(
-            "app.api.restarts.RestartService.execute_restart", new_callable=AsyncMock
+            "app.routes.restarts.RestartService.execute_restart", new_callable=AsyncMock
         ) as mock_restart:
             mock_restart.return_value = {
                 "success": False,

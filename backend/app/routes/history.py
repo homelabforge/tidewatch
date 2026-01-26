@@ -8,7 +8,7 @@ from sqlalchemy.orm import undefer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
 
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.models.history import UpdateHistory
 from app.models.restart_log import ContainerRestartLog

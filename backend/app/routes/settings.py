@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 from app.services import SettingsService
 from app.schemas import SettingSchema, SettingUpdate, SettingCategory

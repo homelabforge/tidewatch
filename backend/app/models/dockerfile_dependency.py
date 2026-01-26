@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text
 from sqlalchemy.sql import func
-from app.db import Base
+from app.database import Base
 
 
 class DockerfileDependency(Base):

@@ -10,7 +10,7 @@ import tomllib
 import asyncio
 import shutil
 import logging
-from app.db import get_db
+from app.database import get_db
 from app.services.auth import require_auth
 
 logger = logging.getLogger(__name__)
