@@ -162,3 +162,39 @@ class BatchDependencyUpdateResponse(BaseModel):
     updated: list[BatchDependencyUpdateItem]
     failed: list[BatchDependencyUpdateItem]
     summary: BatchDependencyUpdateSummary
+
+
+# Rollback schemas
+class RollbackHistoryItem(BaseModel):
+    """A single historical version available for rollback."""
+
+    history_id: int
+    from_version: str  # Version BEFORE change (rollback target)
+    to_version: str  # Version AFTER change
+    updated_at: datetime
+    triggered_by: str
+
+
+class RollbackHistoryResponse(BaseModel):
+    """Available rollback versions for a dependency."""
+
+    dependency_id: int
+    dependency_type: str  # 'dockerfile', 'http_server', 'app_dependency'
+    dependency_name: str
+    current_version: str
+    rollback_options: list[RollbackHistoryItem]
+
+
+class RollbackRequest(BaseModel):
+    """Request to rollback to a specific version."""
+
+    target_version: str
+
+
+class RollbackResponse(BaseModel):
+    """Rollback operation result."""
+
+    success: bool
+    history_id: int | None = None
+    changes_made: str | None = None
+    error: str | None = None

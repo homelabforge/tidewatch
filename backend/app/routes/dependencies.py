@@ -2,11 +2,9 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,6 +20,9 @@ from app.schemas.dependency import (
     BatchDependencyUpdateSummary,
     IgnoreRequest,
     PreviewResponse,
+    RollbackHistoryResponse,
+    RollbackRequest,
+    RollbackResponse,
     UpdateRequest,
     UpdateResponse,
 )
@@ -244,6 +245,57 @@ async def update_dockerfile_dependency(
         raise HTTPException(status_code=500, detail=f"Failed to update dependency: {str(e)}")
 
 
+@router.get("/dockerfile/{dependency_id}/rollback-history", response_model=RollbackHistoryResponse)
+async def get_dockerfile_rollback_history(
+    dependency_id: int,
+    limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available rollback versions for a Dockerfile dependency.
+
+    Returns list of previous versions this dependency can be rolled back to.
+    """
+    result = await DependencyUpdateService.get_rollback_history(
+        db=db,
+        dependency_type="dockerfile",
+        dependency_id=dependency_id,
+        limit=limit,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    return RollbackHistoryResponse(**result)
+
+
+@router.post("/dockerfile/{dependency_id}/rollback", response_model=RollbackResponse)
+async def rollback_dockerfile_dependency(
+    dependency_id: int,
+    request: RollbackRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Rollback a Dockerfile dependency to a previous version.
+
+    Creates a new update that sets the version back to target_version.
+    """
+    result = await DependencyUpdateService.rollback_dependency(
+        db=db,
+        dependency_type="dockerfile",
+        dependency_id=dependency_id,
+        target_version=request.target_version,
+        triggered_by="user",
+    )
+
+    return RollbackResponse(
+        success=result["success"],
+        history_id=result.get("history_id"),
+        changes_made=result.get("changes_made"),
+        error=result.get("error"),
+    )
+
+
 # ===================================================================
 # HTTP Server Endpoints
 # ===================================================================
@@ -446,6 +498,57 @@ async def update_http_server(
             f"Error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail=f"Failed to update HTTP server: {str(e)}")
+
+
+@router.get("/http-servers/{server_id}/rollback-history", response_model=RollbackHistoryResponse)
+async def get_http_server_rollback_history(
+    server_id: int,
+    limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available rollback versions for an HTTP server.
+
+    Returns list of previous versions this server can be rolled back to.
+    """
+    result = await DependencyUpdateService.get_rollback_history(
+        db=db,
+        dependency_type="http_server",
+        dependency_id=server_id,
+        limit=limit,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    return RollbackHistoryResponse(**result)
+
+
+@router.post("/http-servers/{server_id}/rollback", response_model=RollbackResponse)
+async def rollback_http_server(
+    server_id: int,
+    request: RollbackRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Rollback an HTTP server to a previous version.
+
+    Creates a new update that sets the version back to target_version.
+    """
+    result = await DependencyUpdateService.rollback_dependency(
+        db=db,
+        dependency_type="http_server",
+        dependency_id=server_id,
+        target_version=request.target_version,
+        triggered_by="user",
+    )
+
+    return RollbackResponse(
+        success=result["success"],
+        history_id=result.get("history_id"),
+        changes_made=result.get("changes_made"),
+        error=result.get("error"),
+    )
 
 
 # ===================================================================
@@ -788,3 +891,54 @@ async def update_app_dependency(
             f"Error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail=f"Failed to update app dependency: {str(e)}")
+
+
+@router.get("/app-dependencies/{dependency_id}/rollback-history", response_model=RollbackHistoryResponse)
+async def get_app_dependency_rollback_history(
+    dependency_id: int,
+    limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available rollback versions for an app dependency.
+
+    Returns list of previous versions this dependency can be rolled back to.
+    """
+    result = await DependencyUpdateService.get_rollback_history(
+        db=db,
+        dependency_type="app_dependency",
+        dependency_id=dependency_id,
+        limit=limit,
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    return RollbackHistoryResponse(**result)
+
+
+@router.post("/app-dependencies/{dependency_id}/rollback", response_model=RollbackResponse)
+async def rollback_app_dependency(
+    dependency_id: int,
+    request: RollbackRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Rollback an app dependency to a previous version.
+
+    Creates a new update that sets the version back to target_version.
+    """
+    result = await DependencyUpdateService.rollback_dependency(
+        db=db,
+        dependency_type="app_dependency",
+        dependency_id=dependency_id,
+        target_version=request.target_version,
+        triggered_by="user",
+    )
+
+    return RollbackResponse(
+        success=result["success"],
+        history_id=result.get("history_id"),
+        changes_made=result.get("changes_made"),
+        error=result.get("error"),
+    )

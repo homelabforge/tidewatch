@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Info, Activity, FileText, Clock, Settings, CircleCheckBig, RefreshCw, AlertCircle, CheckCircle2, XCircle, History, ArrowRight, RotateCw, TrendingUp, Power, Shield, Ban, Wand2, Undo2, Pause, Play, Network, Calendar, Copy, Download, ChevronDown, ChevronUp, Search, FileDown, Package, Star, ShieldAlert, Container as ContainerIcon, Server, Eye, EyeOff } from 'lucide-react';
+import { X, Info, Activity, FileText, Clock, Settings, CircleCheckBig, RefreshCw, AlertCircle, CheckCircle2, XCircle, History, ArrowRight, RotateCw, RotateCcw, TrendingUp, Power, Shield, Ban, Wand2, Undo2, Pause, Play, Network, Calendar, Copy, Download, ChevronDown, ChevronUp, Search, FileDown, Package, Star, ShieldAlert, Container as ContainerIcon, Server, Eye, EyeOff } from 'lucide-react';
 import { Container, ContainerMetrics, UpdateHistory, RestartState, EnableRestartConfig, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse, AppDependency, DockerfileDependency, HttpServer, BatchDependencyUpdateResponse } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { api } from '../services/api';
@@ -10,6 +10,7 @@ import DependencyIgnoreModal from './DependencyIgnoreModal';
 import DependencyUpdatePreviewModal, { type PreviewData } from './DependencyUpdatePreviewModal';
 import BatchUpdateConfirmModal from './BatchUpdateConfirmModal';
 import BatchUpdateResultsModal from './BatchUpdateResultsModal';
+import DependencyRollbackModal from './DependencyRollbackModal';
 
 interface ContainerModalProps {
   container: Container;
@@ -116,6 +117,13 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   // Preview modal state
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [dependencyToPreview, setDependencyToPreview] = useState<{
+    dependency: AppDependency | DockerfileDependency | HttpServer;
+    type: 'app' | 'dockerfile' | 'http_server';
+  } | null>(null);
+
+  // Rollback modal state
+  const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
+  const [dependencyToRollback, setDependencyToRollback] = useState<{
     dependency: AppDependency | DockerfileDependency | HttpServer;
     type: 'app' | 'dockerfile' | 'http_server';
   } | null>(null);
@@ -641,6 +649,21 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
   ) => {
     setDependencyToPreview({ dependency, type });
     setPreviewModalOpen(true);
+  };
+
+  // Rollback handlers
+  const handleOpenRollback = (
+    dependency: AppDependency | DockerfileDependency | HttpServer,
+    type: 'app' | 'dockerfile' | 'http_server'
+  ) => {
+    setDependencyToRollback({ dependency, type });
+    setRollbackModalOpen(true);
+  };
+
+  const handleRollbackComplete = () => {
+    // Refresh all dependency data after rollback
+    loadDependencies();
+    toast.success('Dependency rolled back successfully');
   };
 
   const handlePreviewLoad = async (): Promise<PreviewData> => {
@@ -1321,6 +1344,15 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                         Unignore
                       </button>
                     )}
+                    {/* Rollback button - always visible for dependencies with history */}
+                    <button
+                      onClick={() => handleOpenRollback(dep, 'app')}
+                      className="px-2.5 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-orange-500/30"
+                      title="Rollback to a previous version"
+                    >
+                      <RotateCcw size={14} />
+                      Rollback
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2409,6 +2441,15 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                                         Unignore
                                       </button>
                                     )}
+                                    {/* Rollback button - always visible for servers with history */}
+                                    <button
+                                      onClick={() => handleOpenRollback(server, 'http_server')}
+                                      className="px-2.5 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-orange-500/30"
+                                      title="Rollback to a previous version"
+                                    >
+                                      <RotateCcw size={14} />
+                                      Rollback
+                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -2580,6 +2621,15 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                                   Unignore
                                 </button>
                               )}
+                              {/* Rollback button - always visible for dependencies with history */}
+                              <button
+                                onClick={() => handleOpenRollback(dep, 'dockerfile')}
+                                className="px-2.5 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs border border-orange-500/30"
+                                title="Rollback to a previous version"
+                              >
+                                <RotateCcw size={14} />
+                                Rollback
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -3376,6 +3426,19 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
         <BatchUpdateResultsModal
           results={batchResults}
           onClose={handleBatchResultsClose}
+        />
+      )}
+
+      {/* Dependency Rollback Modal */}
+      {rollbackModalOpen && dependencyToRollback && (
+        <DependencyRollbackModal
+          dependency={dependencyToRollback.dependency}
+          dependencyType={dependencyToRollback.type}
+          onClose={() => {
+            setRollbackModalOpen(false);
+            setDependencyToRollback(null);
+          }}
+          onRollbackComplete={handleRollbackComplete}
         />
       )}
     </div>

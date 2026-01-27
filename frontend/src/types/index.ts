@@ -570,3 +570,27 @@ export interface CheckJobStartResponse {
   message: string;
   already_running: boolean;
 }
+
+// Rollback types
+export interface RollbackHistoryItem {
+  history_id: number;
+  from_version: string;
+  to_version: string;
+  updated_at: string;
+  triggered_by: string;
+}
+
+export interface RollbackHistoryResponse {
+  dependency_id: number;
+  dependency_type: 'dockerfile' | 'http_server' | 'app_dependency';
+  dependency_name: string;
+  current_version: string;
+  rollback_options: RollbackHistoryItem[];
+}
+
+export interface RollbackResponse {
+  success: boolean;
+  history_id: number | null;
+  changes_made: string | null;
+  error: string | null;
+}

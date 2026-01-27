@@ -25,7 +25,6 @@ from app.utils.file_operations import (
     create_timestamped_backup,
     atomic_file_write,
     restore_from_backup,
-    cleanup_old_backups,
     FileOperationError,
     PathValidationError,
     VersionValidationError,
@@ -326,8 +325,13 @@ class DependencyUpdateService:
             await db.commit()
             await db.refresh(history)
 
-            # Cleanup old backups (keep only the most recent for rollback)
-            cleanup_old_backups(validated_path, keep_count=1)
+            # Delete backup after successful update - we use UpdateHistory for rollback now
+            if backup_path and Path(backup_path).exists():
+                try:
+                    Path(backup_path).unlink()
+                    logger.debug(f"Deleted backup file after successful update: {backup_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete backup file {backup_path}: {e}")
 
             # Update CHANGELOG.md (non-blocking)
             try:
@@ -522,7 +526,13 @@ class DependencyUpdateService:
             await db.commit()
             await db.refresh(history)
 
-            cleanup_old_backups(validated_path, keep_count=5)
+            # Delete backup after successful update - we use UpdateHistory for rollback now
+            if backup_path and Path(backup_path).exists():
+                try:
+                    Path(backup_path).unlink()
+                    logger.debug(f"Deleted backup file after successful update: {backup_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete backup file {backup_path}: {e}")
 
             # Update CHANGELOG.md (non-blocking)
             try:
@@ -757,7 +767,13 @@ class DependencyUpdateService:
             await db.commit()
             await db.refresh(history)
 
-            cleanup_old_backups(validated_path, keep_count=5)
+            # Delete backup after successful update - we use UpdateHistory for rollback now
+            if backup_path and Path(backup_path).exists():
+                try:
+                    Path(backup_path).unlink()
+                    logger.debug(f"Deleted backup file after successful update: {backup_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete backup file {backup_path}: {e}")
 
             # Update CHANGELOG.md (non-blocking)
             try:
@@ -957,3 +973,170 @@ class DependencyUpdateService:
         except Exception as e:
             logger.error(f"Error generating preview: {sanitize_log_message(str(e))}")
             return {"error": f"Preview failed: {str(e)}"}
+
+    @staticmethod
+    async def get_rollback_history(
+        db: AsyncSession,
+        dependency_type: str,
+        dependency_id: int,
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Get rollback history for a dependency.
+
+        Returns past successful updates that can be rolled back to.
+        Only shows versions that differ from current version.
+
+        Args:
+            db: Database session
+            dependency_type: Type of dependency ('dockerfile', 'http_server', 'app_dependency')
+            dependency_id: ID of the dependency
+            limit: Maximum number of history items to return
+
+        Returns:
+            Dict with dependency info and rollback options
+        """
+        # Get current version based on dependency type
+        if dependency_type == "dockerfile":
+            result = await db.execute(
+                select(DockerfileDependency).where(
+                    DockerfileDependency.id == dependency_id
+                )
+            )
+            dep = result.scalar_one_or_none()
+            if not dep:
+                return {"error": "Dependency not found"}
+            current_version = dep.current_tag
+            dep_name = dep.image_name
+
+        elif dependency_type == "http_server":
+            result = await db.execute(
+                select(HttpServer).where(HttpServer.id == dependency_id)
+            )
+            dep = result.scalar_one_or_none()
+            if not dep:
+                return {"error": "HTTP server not found"}
+            current_version = dep.current_version or "unknown"
+            dep_name = dep.name
+
+        elif dependency_type == "app_dependency":
+            result = await db.execute(
+                select(AppDependency).where(AppDependency.id == dependency_id)
+            )
+            dep = result.scalar_one_or_none()
+            if not dep:
+                return {"error": "App dependency not found"}
+            current_version = dep.current_version
+            dep_name = dep.name
+
+        else:
+            return {"error": f"Unknown dependency type: {dependency_type}"}
+
+        # Query successful dependency_update events for this dependency
+        history_result = await db.execute(
+            select(UpdateHistory)
+            .where(
+                UpdateHistory.dependency_type == dependency_type,
+                UpdateHistory.dependency_id == dependency_id,
+                UpdateHistory.event_type == "dependency_update",
+                UpdateHistory.status == "success",
+            )
+            .order_by(UpdateHistory.created_at.desc())
+            .limit(limit)
+        )
+        history_records = history_result.scalars().all()
+
+        # Build rollback options - we can roll back to any previous from_tag
+        seen_versions: set[str] = set()
+        rollback_options = []
+
+        for record in history_records:
+            # We can roll back to the from_tag (the version before this update)
+            if (
+                record.from_tag
+                and record.from_tag != current_version
+                and record.from_tag not in seen_versions
+            ):
+                seen_versions.add(record.from_tag)
+                rollback_options.append(
+                    {
+                        "history_id": record.id,
+                        "from_version": record.from_tag,
+                        "to_version": record.to_tag,
+                        "updated_at": record.completed_at or record.created_at,
+                        "triggered_by": record.triggered_by or "system",
+                    }
+                )
+
+        return {
+            "dependency_id": dependency_id,
+            "dependency_type": dependency_type,
+            "dependency_name": dep_name,
+            "current_version": current_version,
+            "rollback_options": rollback_options,
+        }
+
+    @staticmethod
+    async def rollback_dependency(
+        db: AsyncSession,
+        dependency_type: str,
+        dependency_id: int,
+        target_version: str,
+        triggered_by: str = "user",
+    ) -> Dict[str, Any]:
+        """
+        Rollback a dependency to a previous version.
+
+        This is essentially a new update operation that sets the version
+        to the target_version. Uses the existing update methods.
+
+        Args:
+            db: Database session
+            dependency_type: Type of dependency ('dockerfile', 'http_server', 'app_dependency')
+            dependency_id: ID of the dependency
+            target_version: Version to roll back to
+            triggered_by: Who triggered the rollback
+
+        Returns:
+            Dict with success status and details
+        """
+        # Delegate to the appropriate update method
+        if dependency_type == "dockerfile":
+            result = await DependencyUpdateService.update_dockerfile_base_image(
+                db=db,
+                dependency_id=dependency_id,
+                new_version=target_version,
+                triggered_by=triggered_by,
+            )
+        elif dependency_type == "http_server":
+            result = await DependencyUpdateService.update_http_server_label(
+                db=db,
+                server_id=dependency_id,
+                new_version=target_version,
+                triggered_by=triggered_by,
+            )
+        elif dependency_type == "app_dependency":
+            result = await DependencyUpdateService.update_app_dependency(
+                db=db,
+                dependency_id=dependency_id,
+                new_version=target_version,
+                triggered_by=triggered_by,
+            )
+        else:
+            return {
+                "success": False,
+                "error": f"Unknown dependency type: {dependency_type}",
+            }
+
+        # If successful, update the history record to mark it as a rollback
+        if result.get("success") and result.get("history_id"):
+            history_result = await db.execute(
+                select(UpdateHistory).where(UpdateHistory.id == result["history_id"])
+            )
+            history = history_result.scalar_one_or_none()
+            if history:
+                history.update_type = "rollback"
+                history.reason = f"Rolled back to version {target_version}"
+                await db.commit()
+
+        return result

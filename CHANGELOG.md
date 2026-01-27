@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Works for HTTP servers, Dockerfile dependencies, and app dependencies
   - Non-blocking: CHANGELOG update failures don't prevent dependency updates
   - New service: `ChangelogUpdater` in `backend/app/services/changelog_updater.py`
+- **Dependency Rollback** - Roll back dependencies to any previously recorded version using database history
+  - Rollback button (orange) on all dependency types: Dockerfile, HTTP servers, app dependencies
+  - Modal shows available rollback versions with timestamps and who triggered the original update
+  - Uses `UpdateHistory` database records instead of file-based backups (unlimited rollback depth)
+  - Backup files now deleted after successful updates (ephemeral safety net only)
+  - New API endpoints: `GET/POST /api/dependencies/{type}/{id}/rollback-history` and `/rollback`
+  - New component: `DependencyRollbackModal.tsx`
 
 ## [3.6.0] - 2025-01-23
 

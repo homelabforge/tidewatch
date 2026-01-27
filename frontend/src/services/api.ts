@@ -23,6 +23,8 @@ import type {
   CheckJobStartResponse,
   CheckJobResult,
   CheckJobSummary,
+  RollbackHistoryResponse,
+  RollbackResponse,
 } from '../types';
 import type { PreviewData } from '../components/DependencyUpdatePreviewModal';
 import type {
@@ -661,6 +663,36 @@ const dependenciesApi = {
     apiCall<BatchDependencyUpdateResponse>('/dependencies/app-dependencies/batch/update', {
       method: 'POST',
       body: JSON.stringify({ dependency_ids: dependencyIds }),
+    }),
+
+  // Rollback - Dockerfile Dependencies
+  getDockerfileRollbackHistory: (id: number, limit: number = 10) =>
+    apiCall<RollbackHistoryResponse>(`/dependencies/dockerfile/${id}/rollback-history?limit=${limit}`),
+
+  rollbackDockerfile: (id: number, targetVersion: string) =>
+    apiCall<RollbackResponse>(`/dependencies/dockerfile/${id}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ target_version: targetVersion }),
+    }),
+
+  // Rollback - HTTP Servers
+  getHttpServerRollbackHistory: (id: number, limit: number = 10) =>
+    apiCall<RollbackHistoryResponse>(`/dependencies/http-servers/${id}/rollback-history?limit=${limit}`),
+
+  rollbackHttpServer: (id: number, targetVersion: string) =>
+    apiCall<RollbackResponse>(`/dependencies/http-servers/${id}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ target_version: targetVersion }),
+    }),
+
+  // Rollback - App Dependencies
+  getAppDependencyRollbackHistory: (id: number, limit: number = 10) =>
+    apiCall<RollbackHistoryResponse>(`/dependencies/app-dependencies/${id}/rollback-history?limit=${limit}`),
+
+  rollbackAppDependency: (id: number, targetVersion: string) =>
+    apiCall<RollbackResponse>(`/dependencies/app-dependencies/${id}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ target_version: targetVersion }),
     }),
 };
 
