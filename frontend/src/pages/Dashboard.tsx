@@ -334,9 +334,9 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-3xl font-bold text-primary">{analytics.total_updates}</span>
-                  <span className="text-xs text-tide-text-muted">total updates</span>
+                <div>
+                  <div className="text-xs text-tide-text-muted">Total Updates</div>
+                  <div className="text-3xl font-bold text-primary">{analytics.total_updates}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>

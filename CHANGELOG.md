@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Update Frequency card styling** - "Total Updates" label now displays above the number with consistent styling matching the Successful/Failed labels
+
 ## [3.6.1] - 2025-01-27
 
 ### Added
