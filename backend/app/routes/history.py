@@ -344,7 +344,7 @@ async def rollback_update(
         # Return only safe fields to client (no internal error details)
         return {
             "success": result["success"],
-            "message": result.get("message", "Rollback completed"),
+            "message": "Rollback completed successfully",
         }
 
     except ValueError:

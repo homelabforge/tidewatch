@@ -723,7 +723,7 @@ class TestApplyUpdateEndpoint:
         # Mock UpdateEngine.apply_update to return success
         mock_result = {
             "success": True,
-            "message": "Update applied successfully",
+            "message": "Update completed successfully",
             "container_id": container.id,
             "old_tag": "1.20",
             "new_tag": "1.21",
@@ -742,7 +742,7 @@ class TestApplyUpdateEndpoint:
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert data["success"] is True
-            assert "Update applied successfully" in data["message"]
+            assert "Update completed successfully" in data["message"]
 
             # Verify UpdateEngine.apply_update was called
             mock_apply.assert_called_once()
@@ -824,7 +824,7 @@ class TestApplyUpdateEndpoint:
         # Mock successful retry
         mock_result = {
             "success": True,
-            "message": "Update applied successfully on retry",
+            "message": "Update completed successfully on retry",
             "container_id": container.id,
         }
 
@@ -875,7 +875,7 @@ class TestApplyUpdateEndpoint:
         # Mock UpdateEngine to simulate successful apply
         mock_result = {
             "success": True,
-            "message": "Update applied successfully",
+            "message": "Update completed successfully",
             "container_id": container.id,
             "history_id": 1,  # Simulated history entry
         }

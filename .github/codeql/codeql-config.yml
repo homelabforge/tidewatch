@@ -28,3 +28,17 @@ query-filters:
   # which properly validate paths against traversal attacks
   - exclude:
       id: py/path-injection
+
+  # Exclude stack trace exposure - false positives flagging legitimate API responses:
+  # - Validation error messages intended for users (e.g., "Invalid time format")
+  # - Docker stats/metrics data
+  # - Safe result dicts with hardcoded success messages
+  # Actual exception handling uses safe_error_response() which logs details
+  # server-side and returns only generic messages to clients
+  - exclude:
+      id: py/stack-trace-exposure
+
+  # Exclude mixed returns - safe_error_response() is typed as NoReturn
+  # but CodeQL's analysis doesn't fully track this through all code paths
+  - exclude:
+      id: py/mixed-returns

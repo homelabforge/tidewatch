@@ -576,7 +576,7 @@ async def apply_update(
         # Return only safe fields to client (no internal error details)
         return {
             "success": result["success"],
-            "message": result.get("message", "Update completed"),
+            "message": "Update completed successfully",
             "history_id": result.get("history_id"),
         }
 

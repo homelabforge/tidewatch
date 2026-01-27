@@ -96,7 +96,7 @@ def mock_update_engine():
     """Mock UpdateEngine for auto-apply jobs."""
     with patch("app.services.update_engine.UpdateEngine") as mock:
         mock.apply_update = AsyncMock(
-            return_value={"success": True, "message": "Update applied successfully"}
+            return_value={"success": True, "message": "Update completed successfully"}
         )
         yield mock
 
