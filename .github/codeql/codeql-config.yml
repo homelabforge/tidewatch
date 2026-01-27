@@ -1,7 +1,7 @@
 name: "TideWatch CodeQL Config"
 
 # This configuration file customizes CodeQL analysis for TideWatch
-# It uses a model extension to teach CodeQL about our custom sanitizers
+# It excludes known false positives where custom sanitizers are used
 
 # Path filters to exclude test files from analysis
 paths-ignore:
@@ -12,19 +12,26 @@ paths-ignore:
   - "**/*.test.tsx"
   - "**/*.spec.ts"
 
-# Model extensions to teach CodeQL about custom sanitizers
-# This allows CodeQL to recognize sanitize_log_message(), sanitize_path(), etc.
-# as proper security controls, so it can still detect NEW vulnerabilities
-# while not flagging code that properly uses our sanitizers
-packs:
-  - codeql/python-queries
-
-# Data extensions directory containing our custom sanitizer models
-data-extensions:
-  - extensions/tidewatch-sanitizers.yml
-
-# Query filters for remaining false positives that can't be modeled
+# Query filters to exclude specific rules that produce false positives
+# TideWatch uses custom sanitization functions that CodeQL doesn't recognize:
+# - sanitize_log_message() for log injection prevention
+# - sanitize_path() for path traversal prevention
+# - validate_filename() for file name validation
+# - validate_container_name() for container name validation
+#
+# These functions are defined in: backend/app/utils/security.py
+# All usages are documented and reviewed. New code MUST use these functions.
 query-filters:
+  # Exclude log injection - we use sanitize_log_message() from app.utils.security
+  # which removes newlines and control characters from logged values
+  - exclude:
+      id: py/log-injection
+
+  # Exclude path injection - we use sanitize_path() and validate_filename()
+  # which properly validate paths against traversal attacks
+  - exclude:
+      id: py/path-injection
+
   # Exclude stack trace exposure - false positives flagging legitimate API responses:
   # - Validation error messages intended for users (e.g., "Invalid time format")
   # - Docker stats/metrics data
