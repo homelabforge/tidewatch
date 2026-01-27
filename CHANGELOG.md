@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Policy display mismatch on container cards** - Container cards now correctly display all 6 policy types (Patch Only, Minor + Patch, Auto, Security, Manual, Disabled) instead of showing "Manual" for non-auto policies
+
 ### Changed
 - **Update Frequency card styling** - "Total Updates" label now displays above the number with consistent styling matching the Successful/Failed labels
+- **Backend policy validation** - Added `patch-only` and `minor-and-patch` as valid policy values with proper Pydantic validation
 
 ## [3.6.1] - 2025-01-27
 

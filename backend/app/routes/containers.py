@@ -16,6 +16,7 @@ from app.models.container import Container
 from app.models.history import UpdateHistory
 from app.models.update import Update
 from app.schemas.container import (
+    VALID_POLICIES,
     AppDependenciesResponse,
     ContainerDetailsSchema,
     ContainerSchema,
@@ -53,7 +54,8 @@ async def list_containers(
         100, ge=1, le=1000, description="Maximum number of records to return"
     ),
     policy: str | None = Query(
-        None, description="Filter by update policy (auto, manual, disabled, security)"
+        None,
+        description="Filter by update policy (patch-only, minor-and-patch, auto, security, manual, disabled)",
     ),
     name: str | None = Query(
         None, description="Search by container name (partial match)"
@@ -329,10 +331,10 @@ async def update_container_policy(
     Returns:
         Updated container
     """
-    if policy_update.policy not in ["auto", "manual", "disabled", "security"]:
+    if policy_update.policy not in VALID_POLICIES:
         raise HTTPException(
             status_code=400,
-            detail="Invalid policy. Must be one of: auto, manual, disabled, security",
+            detail=f"Invalid policy. Must be one of: {', '.join(sorted(VALID_POLICIES))}",
         )
 
     result = await db.execute(select(Container).where(Container.id == container_id))

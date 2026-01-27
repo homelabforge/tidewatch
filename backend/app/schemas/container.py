@@ -5,6 +5,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+# Valid update policy values
+VALID_POLICIES = {
+    "patch-only",
+    "minor-and-patch",
+    "auto",
+    "security",
+    "manual",
+    "disabled",
+}
+
 from app.schemas.dependency import (
     AppDependencySchema,
     DockerfileDependencySchema,
@@ -149,7 +159,7 @@ class ContainerDetailsSchema(BaseModel):
 class ContainerUpdate(BaseModel):
     """Container update request."""
 
-    policy: str | None = None  # auto, manual, disabled, security
+    policy: str | None = None  # patch-only, minor-and-patch, auto, security, manual, disabled
     scope: str | None = None  # patch, minor, major
     include_prereleases: bool | None = (
         None  # Include nightly, dev, alpha, beta, rc tags
@@ -161,11 +171,31 @@ class ContainerUpdate(BaseModel):
     release_source: str | None = None
     is_my_project: bool | None = None
 
+    @field_validator("policy")
+    @classmethod
+    def validate_policy(cls, v: str | None) -> str | None:
+        """Validate policy is a known value."""
+        if v is not None and v not in VALID_POLICIES:
+            raise ValueError(
+                f"Invalid policy '{v}'. Must be one of: {', '.join(sorted(VALID_POLICIES))}"
+            )
+        return v
+
 
 class PolicyUpdate(BaseModel):
     """Policy update request."""
 
-    policy: str  # auto, manual, disabled, security
+    policy: str  # patch-only, minor-and-patch, auto, security, manual, disabled
+
+    @field_validator("policy")
+    @classmethod
+    def validate_policy(cls, v: str) -> str:
+        """Validate policy is a known value."""
+        if v not in VALID_POLICIES:
+            raise ValueError(
+                f"Invalid policy '{v}'. Must be one of: {', '.join(sorted(VALID_POLICIES))}"
+            )
+        return v
 
 
 class UpdateWindowUpdate(BaseModel):
