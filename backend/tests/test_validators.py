@@ -1,12 +1,13 @@
 """Tests for validation utilities."""
 
 import pytest
+
 from app.utils.validators import (
-    validate_container_name,
-    validate_service_name,
-    validate_compose_file_path,
-    validate_docker_compose_command,
     ValidationError,
+    validate_compose_file_path,
+    validate_container_name,
+    validate_docker_compose_command,
+    validate_service_name,
 )
 
 

@@ -12,6 +12,8 @@ Tests update management endpoints:
 - POST /api/v1/updates/batch/reject - Batch reject
 """
 
+from datetime import UTC
+
 import pytest
 from fastapi import status
 
@@ -190,7 +192,7 @@ class TestGetUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test getting update by valid ID returns update object."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and update
         container = make_container(
@@ -208,7 +210,7 @@ class TestGetUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -360,7 +362,7 @@ class TestApproveUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test approving pending update changes status to approved."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and pending update
         container = make_container(
@@ -378,7 +380,7 @@ class TestApproveUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -404,7 +406,7 @@ class TestApproveUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test approving already approved update is idempotent (returns 200)."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and already-approved update
         container = make_container(
@@ -422,8 +424,8 @@ class TestApproveUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="approved",  # Already approved
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -444,7 +446,7 @@ class TestApproveUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test approving already applied update returns 400."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and already-applied update
         container = make_container(
@@ -462,8 +464,8 @@ class TestApproveUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="applied",  # Already applied
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -483,7 +485,7 @@ class TestApproveUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test approve adds approval timestamp and user."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and pending update
         container = make_container(
@@ -501,7 +503,7 @@ class TestApproveUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -546,7 +548,7 @@ class TestRejectUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test rejecting pending update changes status to rejected."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and pending update
         container = make_container(
@@ -566,7 +568,7 @@ class TestRejectUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -594,7 +596,7 @@ class TestRejectUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test rejecting already rejected update returns 400."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and already-rejected update
         container = make_container(
@@ -612,7 +614,7 @@ class TestRejectUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="rejected",  # Already rejected
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -692,8 +694,8 @@ class TestApplyUpdateEndpoint:
         self, authenticated_client, db, mock_docker_client, make_update, make_container
     ):
         """Test applying approved update triggers update engine."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch, AsyncMock
+        from datetime import datetime
+        from unittest.mock import AsyncMock, patch
 
         # Create test container and approved update
         container = make_container(
@@ -711,8 +713,8 @@ class TestApplyUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="approved",
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -749,8 +751,8 @@ class TestApplyUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test applying pending update returns 400 (must approve first)."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch, AsyncMock
+        from datetime import datetime
+        from unittest.mock import AsyncMock, patch
 
         # Create test container and pending update
         container = make_container(
@@ -768,7 +770,7 @@ class TestApplyUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",  # Not approved yet
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -793,8 +795,8 @@ class TestApplyUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test applying failed update allows retry."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch, AsyncMock
+        from datetime import datetime
+        from unittest.mock import AsyncMock, patch
 
         # Create test container and failed update
         container = make_container(
@@ -812,8 +814,8 @@ class TestApplyUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="failed",  # Previous attempt failed
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -844,8 +846,8 @@ class TestApplyUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test apply creates history entry."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch, AsyncMock
+        from datetime import datetime
+        from unittest.mock import AsyncMock, patch
 
         # Create test container and approved update
         container = make_container(
@@ -863,8 +865,8 @@ class TestApplyUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="approved",
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -945,8 +947,8 @@ class TestApplyUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test apply when container was deleted returns 400."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch, AsyncMock
+        from datetime import datetime
+        from unittest.mock import AsyncMock, patch
 
         # Create test container and approved update
         container = make_container(
@@ -964,8 +966,8 @@ class TestApplyUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="approved",
-            approved_at=datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -996,8 +998,9 @@ class TestDeleteUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test deleting pending update returns 200."""
+        from datetime import datetime
+
         from app.models.update import Update
-        from datetime import datetime, timezone
 
         # Create test container and pending update
         container = make_container(
@@ -1015,7 +1018,7 @@ class TestDeleteUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="pending",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()
@@ -1039,7 +1042,7 @@ class TestDeleteUpdateEndpoint:
         self, authenticated_client, db, make_update, make_container
     ):
         """Test deleting applied/rejected updates is allowed."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Create test container and rejected update
         container = make_container(
@@ -1057,7 +1060,7 @@ class TestDeleteUpdateEndpoint:
             current_tag="1.20",
             new_tag="1.21",
             status="rejected",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(update)
         await db.commit()

@@ -9,8 +9,9 @@ Tests time-based update restrictions:
 - Format validation
 """
 
-import pytest
 from datetime import datetime, time
+
+import pytest
 
 from app.services.update_window import UpdateWindow
 

@@ -1,7 +1,6 @@
 """Telegram notification service for TideWatch."""
 
 import logging
-from typing import Optional
 
 import httpx
 
@@ -37,8 +36,8 @@ class TelegramNotificationService(NotificationService):
         title: str,
         message: str,
         priority: str = "default",
-        tags: Optional[list[str]] = None,
-        url: Optional[str] = None,
+        tags: list[str] | None = None,
+        url: str | None = None,
     ) -> bool:
         """Send a notification via Telegram bot.
 

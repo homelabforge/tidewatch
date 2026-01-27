@@ -1,19 +1,19 @@
 """API endpoints for webhook management."""
 
 import logging
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.auth import require_auth
-from app.services.webhook_service import WebhookService
 from app.schemas.webhook import (
     WebhookCreate,
-    WebhookUpdate,
     WebhookSchema,
     WebhookTestResponse,
+    WebhookUpdate,
 )
+from app.services.auth import require_auth
+from app.services.webhook_service import WebhookService
 from app.utils.error_handling import safe_error_response
 
 logger = logging.getLogger(__name__)
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/", response_model=List[WebhookSchema], status_code=status.HTTP_200_OK)
+@router.get("/", response_model=list[WebhookSchema], status_code=status.HTTP_200_OK)
 async def list_webhooks(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> List[WebhookSchema]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> list[WebhookSchema]:
     """List all webhooks.
 
     Args:
@@ -44,7 +44,7 @@ async def list_webhooks(
 @router.post("/", response_model=WebhookSchema, status_code=status.HTTP_201_CREATED)
 async def create_webhook(
     webhook: WebhookCreate,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Create a new webhook.
@@ -84,7 +84,7 @@ async def create_webhook(
 )
 async def get_webhook(
     webhook_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Get webhook by ID.
@@ -115,7 +115,7 @@ async def get_webhook(
 async def update_webhook(
     webhook_id: int,
     webhook: WebhookUpdate,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Update an existing webhook.
@@ -153,7 +153,7 @@ async def update_webhook(
 @router.delete("/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_webhook(
     webhook_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a webhook.
@@ -181,7 +181,7 @@ async def delete_webhook(
 )
 async def test_webhook(
     webhook_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookTestResponse:
     """Send a test payload to a webhook.

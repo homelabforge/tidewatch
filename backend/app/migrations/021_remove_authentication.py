@@ -6,7 +6,9 @@ security (Traefik, firewall, etc.).
 """
 
 import logging
+
 from sqlalchemy import text
+
 from app.database import engine
 
 logger = logging.getLogger(__name__)

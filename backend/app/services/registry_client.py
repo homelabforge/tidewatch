@@ -4,8 +4,7 @@ import logging
 import platform
 import re
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from packaging.version import InvalidVersion, Version
@@ -151,10 +150,10 @@ class TagCache:
         Args:
             ttl_minutes: Time-to-live in minutes (default: 15)
         """
-        self._cache: Dict[str, Dict] = {}
+        self._cache: dict[str, dict] = {}
         self._ttl = timedelta(minutes=ttl_minutes)
 
-    def get(self, key: str) -> Optional[List[str]]:
+    def get(self, key: str) -> list[str] | None:
         """Get cached tags if not expired.
 
         Args:
@@ -167,14 +166,14 @@ class TagCache:
             return None
 
         entry = self._cache[key]
-        if datetime.now(timezone.utc) > entry["expires_at"]:
+        if datetime.now(UTC) > entry["expires_at"]:
             # Expired, remove it
             del self._cache[key]
             return None
 
         return entry["tags"]
 
-    def set(self, key: str, tags: List[str]) -> None:
+    def set(self, key: str, tags: list[str]) -> None:
         """Store tags in cache with TTL.
 
         Args:
@@ -183,7 +182,7 @@ class TagCache:
         """
         self._cache[key] = {
             "tags": tags,
-            "expires_at": datetime.now(timezone.utc) + self._ttl,
+            "expires_at": datetime.now(UTC) + self._ttl,
         }
 
     def clear(self) -> None:
@@ -196,7 +195,7 @@ class TagCache:
         Returns:
             Number of entries removed
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired_keys = [
             key for key, entry in self._cache.items() if now > entry["expires_at"]
         ]
@@ -237,7 +236,7 @@ ARCH_SUFFIX_PATTERNS = tuple(
 )
 
 
-def canonical_arch_suffix(suffix: Optional[str]) -> Optional[str]:
+def canonical_arch_suffix(suffix: str | None) -> str | None:
     """Normalize architecture suffix aliases to a canonical form."""
     if suffix is None:
         return None
@@ -264,7 +263,7 @@ class RegistryClient(ABC):
     """Base class for registry clients."""
 
     def __init__(
-        self, username: Optional[str] = None, token: Optional[str] = None
+        self, username: str | None = None, token: str | None = None
     ) -> None:
         """Initialize registry client.
 
@@ -339,9 +338,9 @@ class RegistryClient(ABC):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag for an image.
 
         Args:
@@ -357,7 +356,7 @@ class RegistryClient(ABC):
         pass
 
     @abstractmethod
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all available tags for an image.
 
         Args:
@@ -369,7 +368,7 @@ class RegistryClient(ABC):
         pass
 
     @abstractmethod
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get metadata for a specific tag.
 
         Args:
@@ -438,7 +437,7 @@ class RegistryClient(ABC):
             # Allow any newer version
             return True
 
-    def _normalize_version(self, version: str) -> Optional[tuple[int, int, int, tuple]]:
+    def _normalize_version(self, version: str) -> tuple[int, int, int, tuple] | None:
         """Normalize version strings for comparison."""
         version = version.lstrip("v")
         if version == "latest":
@@ -467,7 +466,7 @@ class RegistryClient(ABC):
             tuple(parsed.pre or ()),
         )
 
-    def _parse_semver(self, version: str) -> Optional[tuple[int, int, int, tuple]]:
+    def _parse_semver(self, version: str) -> tuple[int, int, int, tuple] | None:
         """Backward-compatible helper for existing version-parsing calls."""
         return self._normalize_version(version)
 
@@ -485,7 +484,7 @@ class RegistryClient(ABC):
         """
         return self._parse_semver(tag) is None
 
-    def _extract_arch_suffix(self, tag: str) -> Optional[str]:
+    def _extract_arch_suffix(self, tag: str) -> str | None:
         """Extract canonical architecture suffix from a tag if present."""
         lower_tag = tag.lower()
         for suffix in ARCH_SUFFIX_PATTERNS:
@@ -527,7 +526,7 @@ class RegistryClient(ABC):
 
     async def get_latest_major_tag(
         self, image: str, current_tag: str, include_prereleases: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest major version regardless of container scope.
 
         This method ALWAYS checks with scope='major' to find the absolute
@@ -561,7 +560,7 @@ class DockerHubClient(RegistryClient):
 
     BASE_URL = "https://hub.docker.com/v2"
 
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from Docker Hub with caching.
 
         Args:
@@ -624,9 +623,9 @@ class DockerHubClient(RegistryClient):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag from Docker Hub.
 
         Optimized approach:
@@ -656,8 +655,8 @@ class DockerHubClient(RegistryClient):
         )
 
     async def _check_digest_change(
-        self, image: str, current_tag: str, current_digest: Optional[str] = None
-    ) -> Optional[Dict]:
+        self, image: str, current_tag: str, current_digest: str | None = None
+    ) -> dict | None:
         """Check if non-semver tag has new digest.
 
         Works for any non-semver tag including 'latest', 'lts', 'stable', 'alpine', etc.
@@ -730,7 +729,7 @@ class DockerHubClient(RegistryClient):
         current_tag: str,
         scope: str,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get semantic version update with optimized API calls.
 
         Fetches tags in larger pages and stops early when possible.
@@ -828,7 +827,7 @@ class DockerHubClient(RegistryClient):
 
         return best_tag
 
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from Docker Hub."""
         if "/" not in image:
             image = f"library/{image}"
@@ -873,7 +872,7 @@ class GHCRClient(RegistryClient):
     TOKEN_URL = "https://ghcr.io/token"
 
     def __init__(
-        self, username: Optional[str] = None, token: Optional[str] = None
+        self, username: str | None = None, token: str | None = None
     ) -> None:
         """Initialize GHCR client.
 
@@ -885,7 +884,7 @@ class GHCRClient(RegistryClient):
         # Initialize parent WITHOUT auth to prevent httpx client from adding Basic Auth headers
         super().__init__(username=None, token=None)
 
-    async def _get_bearer_token(self, image: str, scope: str = "pull") -> Optional[str]:
+    async def _get_bearer_token(self, image: str, scope: str = "pull") -> str | None:
         """Get OAuth2 bearer token for GHCR.
 
         Args:
@@ -942,7 +941,7 @@ class GHCRClient(RegistryClient):
             logger.error(f"Invalid response fetching GHCR token for {image}: {e}")
             return None
 
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from GHCR with caching.
 
         GHCR uses Docker Registry V2 API with OAuth2 Bearer tokens.
@@ -965,7 +964,7 @@ class GHCRClient(RegistryClient):
         if not token:
             return []
 
-        tags: List[str] = []
+        tags: list[str] = []
         url = f"{self.BASE_URL}/v2/{image}/tags/list?n=1000"
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -1012,9 +1011,9 @@ class GHCRClient(RegistryClient):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag from GHCR.
 
         Args:
@@ -1088,7 +1087,7 @@ class GHCRClient(RegistryClient):
 
         return best_tag
 
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from GHCR."""
         # Get bearer token
         token = await self._get_bearer_token(image, "pull")
@@ -1134,7 +1133,7 @@ class LSCRClient(RegistryClient):
     BASE_URL = "https://lscr.io"
     TOKEN_URL = "https://ghcr.io/token"  # LSCR uses GHCR for authentication
 
-    async def _get_bearer_token(self, image: str, scope: str = "pull") -> Optional[str]:
+    async def _get_bearer_token(self, image: str, scope: str = "pull") -> str | None:
         """Get OAuth2 bearer token for LSCR.
 
         Args:
@@ -1169,7 +1168,7 @@ class LSCRClient(RegistryClient):
             logger.error(f"Invalid response fetching LSCR token for {image}: {e}")
             return None
 
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from LSCR with caching.
 
         LSCR uses Docker Registry V2 API with OAuth2 Bearer tokens.
@@ -1192,7 +1191,7 @@ class LSCRClient(RegistryClient):
         if not token:
             return []
 
-        tags: List[str] = []
+        tags: list[str] = []
         url = f"{self.BASE_URL}/v2/{image}/tags/list?n=1000"
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -1238,9 +1237,9 @@ class LSCRClient(RegistryClient):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag from LSCR.
 
         Args:
@@ -1293,7 +1292,7 @@ class LSCRClient(RegistryClient):
 
         return best_tag
 
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from LSCR."""
         # Get bearer token
         token = await self._get_bearer_token(image, "pull")
@@ -1336,7 +1335,7 @@ class GCRClient(RegistryClient):
 
     BASE_URL = "https://gcr.io"
 
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from GCR with caching.
 
         GCR uses Docker Registry V2 API.
@@ -1387,9 +1386,9 @@ class GCRClient(RegistryClient):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag from GCR.
 
         Args:
@@ -1463,7 +1462,7 @@ class GCRClient(RegistryClient):
 
         return best_tag
 
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from GCR."""
         url = f"{self.BASE_URL}/v2/{image}/manifests/{tag}"
 
@@ -1498,7 +1497,7 @@ class QuayClient(RegistryClient):
 
     BASE_URL = "https://quay.io"
 
-    async def get_all_tags(self, image: str) -> List[str]:
+    async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from Quay.io with caching.
 
         Quay uses Docker Registry V2 API.
@@ -1549,9 +1548,9 @@ class QuayClient(RegistryClient):
         image: str,
         current_tag: str,
         scope: str = "patch",
-        current_digest: Optional[str] = None,
+        current_digest: str | None = None,
         include_prereleases: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get latest tag from Quay.io.
 
         Args:
@@ -1625,7 +1624,7 @@ class QuayClient(RegistryClient):
 
         return best_tag
 
-    async def get_tag_metadata(self, image: str, tag: str) -> Optional[Dict]:
+    async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from Quay.io."""
         url = f"{self.BASE_URL}/v2/{image}/manifests/{tag}"
 

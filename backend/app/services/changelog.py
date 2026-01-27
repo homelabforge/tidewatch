@@ -3,7 +3,6 @@
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import httpx
 from html2text import HTML2Text
@@ -17,15 +16,15 @@ logger = logging.getLogger(__name__)
 class ChangelogResult:
     raw_text: str
     source: str
-    tag: Optional[str] = None
-    title: Optional[str] = None
-    url: Optional[str] = None
+    tag: str | None = None
+    title: str | None = None
+    url: str | None = None
 
 
 class ChangelogFetcher:
     """Fetch release notes from a configured source."""
 
-    def __init__(self, github_token: Optional[str] = None) -> None:
+    def __init__(self, github_token: str | None = None) -> None:
         self.github_token = github_token
 
     def _is_html_content(self, text: str) -> bool:
@@ -110,8 +109,8 @@ class ChangelogFetcher:
             return stripped.strip()
 
     async def fetch(
-        self, source: Optional[str], image: str, tag: str
-    ) -> Optional[ChangelogResult]:
+        self, source: str | None, image: str, tag: str
+    ) -> ChangelogResult | None:
         if not source:
             return None
 
@@ -147,7 +146,7 @@ class ChangelogFetcher:
 
         return result
 
-    async def _fetch_url(self, url: str) -> Optional[ChangelogResult]:
+    async def _fetch_url(self, url: str) -> ChangelogResult | None:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(url)
@@ -171,7 +170,7 @@ class ChangelogFetcher:
 
     async def _fetch_github_release(
         self, owner_repo: str, tag: str
-    ) -> Optional[ChangelogResult]:
+    ) -> ChangelogResult | None:
         # Validate owner_repo format to prevent path traversal in URL construction
         # Valid format: owner/repo (alphanumeric, hyphens, underscores, dots)
         import re
@@ -264,7 +263,7 @@ class ChangelogClassifier:
     SECURITY_PATTERNS = re.compile(r"\b(cve|security|vuln)\b", re.IGNORECASE)
 
     @classmethod
-    def classify(cls, text: str) -> Tuple[str, str]:
+    def classify(cls, text: str) -> tuple[str, str]:
         reason_type = "unknown"
         summary = cls._extract_summary(text)
 

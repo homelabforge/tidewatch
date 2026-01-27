@@ -10,10 +10,10 @@ Supports multiple package managers and manifest formats:
 """
 
 import json
+import logging
 import re
 from pathlib import Path
-from typing import Tuple
-import logging
+
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def update_package_json(
     package_name: str,
     new_version: str,
     dependency_type: str = "dependencies",
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update package version in package.json.
 
@@ -44,7 +44,7 @@ def update_package_json(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check if dependency exists in specified section
@@ -102,7 +102,7 @@ def update_package_json(
 
 def update_requirements_txt(
     file_path: Path, package_name: str, new_version: str
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update package version in requirements.txt.
 
@@ -121,7 +121,7 @@ def update_requirements_txt(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
@@ -177,7 +177,7 @@ def update_requirements_txt(
 
 def update_pyproject_toml(
     file_path: Path, package_name: str, new_version: str, section: str = "dependencies"
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update package version in pyproject.toml.
 
@@ -196,7 +196,7 @@ def update_pyproject_toml(
     """
     try:
         # Read file as text (not using tomllib since we need to preserve formatting)
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
@@ -311,7 +311,7 @@ def update_composer_json(
     package_name: str,
     new_version: str,
     dependency_type: str = "require",
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update package version in composer.json (PHP).
 
@@ -325,7 +325,7 @@ def update_composer_json(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         if dependency_type not in data:
@@ -366,7 +366,7 @@ def update_composer_json(
 
 def update_cargo_toml(
     file_path: Path, package_name: str, new_version: str, section: str = "dependencies"
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update package version in Cargo.toml (Rust).
 
@@ -380,7 +380,7 @@ def update_cargo_toml(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         updated = False
@@ -462,7 +462,7 @@ def update_cargo_toml(
 
 def update_go_mod(
     file_path: Path, module_name: str, new_version: str
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Update module version in go.mod.
 
@@ -475,7 +475,7 @@ def update_go_mod(
         Tuple of (success: bool, updated_content: str)
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         # Ensure version starts with 'v'

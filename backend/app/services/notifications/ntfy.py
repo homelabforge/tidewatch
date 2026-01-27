@@ -1,13 +1,12 @@
 """ntfy notification service for TideWatch."""
 
 import logging
-from typing import Optional
 
 import httpx
 
+from app.exceptions import SSRFProtectionError
 from app.services.notifications.base import NotificationService
 from app.utils.url_validation import validate_url_for_ssrf
-from app.exceptions import SSRFProtectionError
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ class NtfyNotificationService(NotificationService):
         self,
         server_url: str,
         topic: str,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ) -> None:
         """Initialize ntfy service.
 
@@ -63,8 +62,8 @@ class NtfyNotificationService(NotificationService):
         title: str,
         message: str,
         priority: str = "default",
-        tags: Optional[list[str]] = None,
-        url: Optional[str] = None,
+        tags: list[str] | None = None,
+        url: str | None = None,
     ) -> bool:
         """Send a notification via ntfy.
 

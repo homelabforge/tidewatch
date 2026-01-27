@@ -1,7 +1,9 @@
 """OIDC state model for secure OAuth2/OIDC flow tracking."""
 
-from datetime import datetime, timezone, timedelta
-from sqlalchemy import Column, String, DateTime, Index
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import Column, DateTime, Index, String
+
 from app.database import Base
 
 
@@ -29,14 +31,14 @@ class OIDCState(Base):
 
     def is_expired(self) -> bool:
         """Check if the OIDC state has expired."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = self.expires_at
         # Handle timezone-naive datetimes from SQLite
         if expires.tzinfo is None:
-            expires = expires.replace(tzinfo=timezone.utc)
+            expires = expires.replace(tzinfo=UTC)
         return now > expires
 
     @classmethod
     def get_expiry_time(cls, minutes: int = 10) -> datetime:
         """Get expiry timestamp for a new state (default 10 minutes for OIDC flow)."""
-        return datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        return datetime.now(UTC) + timedelta(minutes=minutes)

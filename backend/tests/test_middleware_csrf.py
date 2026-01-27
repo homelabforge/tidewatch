@@ -198,10 +198,10 @@ class TestCSRFTokenValidation:
     def test_csrf_validation_uses_constant_time_comparison(self):
         """Test CSRF uses constant-time comparison (secrets.compare_digest)."""
         # This is a security test to prevent timing attacks
-        from app.middleware.csrf import CSRFProtectionMiddleware
-
         # Verify secrets.compare_digest is used in the source code
         import inspect
+
+        from app.middleware.csrf import CSRFProtectionMiddleware
 
         source = inspect.getsource(CSRFProtectionMiddleware.dispatch)
 
@@ -415,8 +415,9 @@ class TestCSRFIntegration:
     def test_session_isolation_different_clients(self):
         """Test different clients get different CSRF tokens."""
         from fastapi.testclient import TestClient
-        from app.middleware.csrf import CSRFProtectionMiddleware
         from starlette.middleware.sessions import SessionMiddleware
+
+        from app.middleware.csrf import CSRFProtectionMiddleware
 
         app = FastAPI()
         app.add_middleware(SessionMiddleware, secret_key="test-secret")

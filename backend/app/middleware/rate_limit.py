@@ -1,9 +1,9 @@
 """Rate limiting middleware for API endpoints."""
 
-import time
 import logging
-from typing import Dict
-from fastapi import Request, HTTPException
+import time
+
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             requests_per_minute: Maximum requests per minute per IP
         """
         super().__init__(app)
-        self.buckets: Dict[str, TokenBucket] = {}
+        self.buckets: dict[str, TokenBucket] = {}
         self.capacity = requests_per_minute
         self.refill_rate = requests_per_minute / 60.0  # tokens per second
         self.cleanup_interval = 300  # Clean up old buckets every 5 minutes

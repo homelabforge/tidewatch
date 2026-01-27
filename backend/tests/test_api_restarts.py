@@ -8,9 +8,10 @@ Tests container restart management endpoints:
 - POST /api/v1/restarts/{container_id}/resume - Resume restart
 """
 
-from unittest.mock import patch, AsyncMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
 from fastapi import status
-from datetime import datetime, timezone
 
 
 class TestGetRestartStateEndpoint:
@@ -321,8 +322,9 @@ class TestResumeRestartEndpoint:
     async def test_resume_restart(self, authenticated_client, db, make_container):
         """Test resumes auto-restart after pause."""
         # Arrange - Create container and paused restart state
-        from app.models.restart_state import ContainerRestartState
         from datetime import timedelta
+
+        from app.models.restart_state import ContainerRestartState
 
         container = make_container(
             name="test-container",
@@ -339,7 +341,7 @@ class TestResumeRestartEndpoint:
             container_id=container.id,
             container_name=container.name,
             enabled=True,
-            paused_until=datetime.now(timezone.utc) + timedelta(hours=1),
+            paused_until=datetime.now(UTC) + timedelta(hours=1),
             pause_reason="Maintenance",
         )
         db.add(restart_state)

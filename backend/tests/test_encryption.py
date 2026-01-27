@@ -14,9 +14,9 @@ from cryptography.fernet import Fernet
 
 from app.utils.encryption import (
     EncryptionService,
-    get_encryption_service,
-    encrypt_value,
     decrypt_value,
+    encrypt_value,
+    get_encryption_service,
     is_encryption_configured,
 )
 

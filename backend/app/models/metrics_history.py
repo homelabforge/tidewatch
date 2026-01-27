@@ -1,7 +1,8 @@
 """Metrics history model for storing container resource metrics over time."""
 
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Index
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 

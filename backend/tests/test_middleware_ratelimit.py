@@ -9,13 +9,14 @@ Tests token bucket algorithm rate limiting:
 - Exempt path handling
 """
 
-import pytest
 import time
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.middleware.rate_limit import TokenBucket, RateLimitMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware, TokenBucket
 
 
 class TestTokenBucket:

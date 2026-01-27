@@ -400,6 +400,7 @@ class TestLogoutEndpoint:
     async def test_logout_expired_token(self, client, db, admin_user):
         """Test logout with expired token fails (403 CSRF or 401 expired token)."""
         from datetime import timedelta
+
         from app.services.auth import create_access_token
         from app.services.settings_service import SettingsService
 
@@ -468,6 +469,7 @@ class TestMeEndpoint:
     async def test_get_me_expired_token(self, client, db, admin_user):
         """Test /me returns 401 with expired token."""
         from datetime import timedelta
+
         from app.services.auth import create_access_token
         from app.services.settings_service import SettingsService
 
@@ -697,6 +699,7 @@ class TestPasswordChangeEndpoint:
     async def test_change_password_expired_token(self, client, db, admin_user):
         """Test password change fails with expired token (403 CSRF or 401 expired token)."""
         from datetime import timedelta
+
         from app.services.auth import create_access_token
 
         # Create a token that expired 1 second ago

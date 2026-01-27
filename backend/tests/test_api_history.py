@@ -7,9 +7,10 @@ Tests update history endpoints:
 - GET /api/v1/history/stats - History statistics
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi import status
-from datetime import datetime, timezone, timedelta
 
 
 class TestGetHistoryEndpoint:
@@ -35,7 +36,7 @@ class TestGetHistoryEndpoint:
                 from_tag=f"1.{19 + i}",
                 to_tag=f"1.{20 + i}",
                 status="success",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             db.add(history)
         await db.commit()
@@ -69,7 +70,7 @@ class TestGetHistoryEndpoint:
                 from_tag=f"1.{i}",
                 to_tag=f"1.{i + 1}",
                 status="success",
-                created_at=datetime.now(timezone.utc) - timedelta(minutes=10 - i),
+                created_at=datetime.now(UTC) - timedelta(minutes=10 - i),
             )
             db.add(history)
         await db.commit()
@@ -111,7 +112,7 @@ class TestGetHistoryEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         history2 = UpdateHistory(
             container_id=container2.id,
@@ -119,7 +120,7 @@ class TestGetHistoryEndpoint:
             from_tag="5.9",
             to_tag="6.0",
             status="success",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add_all([history1, history2])
         await db.commit()
@@ -155,7 +156,7 @@ class TestGetHistoryEndpoint:
         await db.refresh(container)
 
         # Create history entries with different statuses
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         history1 = UpdateHistory(
             container_id=container.id,
             container_name=container.name,
@@ -217,7 +218,7 @@ class TestGetHistoryEndpoint:
         await db.refresh(container)
 
         # Create history entries at different times
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         history1 = UpdateHistory(
             container_id=container.id,
             container_name=container.name,
@@ -281,7 +282,7 @@ class TestGetHistoryEndpoint:
         await db.refresh(container)
 
         # Create history entries with different timestamps
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         history1 = UpdateHistory(
             container_id=container.id,
             container_name=container.name,
@@ -370,7 +371,7 @@ class TestGetHistoryEventEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -410,7 +411,7 @@ class TestGetHistoryEventEndpoint:
             to_tag="1.20",
             status="failed",
             error_message="Failed to pull image: connection timeout",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -437,7 +438,7 @@ class TestGetHistoryEventEndpoint:
         await db.refresh(container)
 
         # Create rolled back history
-        rolled_back_time = datetime.now(timezone.utc)
+        rolled_back_time = datetime.now(UTC)
         history = UpdateHistory(
             container_id=container.id,
             container_name=container.name,
@@ -446,7 +447,7 @@ class TestGetHistoryEventEndpoint:
             status="rolled_back",
             rolled_back_at=rolled_back_time,
             can_rollback=False,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -467,8 +468,9 @@ class TestRollbackEndpoint:
         self, authenticated_client, db, mock_docker_client, make_container
     ):
         """Test rollback of successful update initiates rollback."""
+        from unittest.mock import AsyncMock, patch
+
         from app.models.history import UpdateHistory
-        from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
@@ -486,7 +488,7 @@ class TestRollbackEndpoint:
             to_tag="1.20",
             status="success",
             can_rollback=True,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -517,8 +519,9 @@ class TestRollbackEndpoint:
         self, authenticated_client, db, make_container
     ):
         """Test rollback of failed update returns 400."""
+        from unittest.mock import AsyncMock, patch
+
         from app.models.history import UpdateHistory
-        from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
@@ -536,7 +539,7 @@ class TestRollbackEndpoint:
             to_tag="1.20",
             status="failed",
             can_rollback=False,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -558,8 +561,9 @@ class TestRollbackEndpoint:
         self, authenticated_client, db, make_container
     ):
         """Test rollback of already rolled back update returns 400."""
+        from unittest.mock import AsyncMock, patch
+
         from app.models.history import UpdateHistory
-        from unittest.mock import patch, AsyncMock
 
         # Create test container
         container = make_container(
@@ -576,9 +580,9 @@ class TestRollbackEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="rolled_back",
-            rolled_back_at=datetime.now(timezone.utc),
+            rolled_back_at=datetime.now(UTC),
             can_rollback=False,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -657,7 +661,7 @@ class TestHistoryStatsEndpoint:
         await db.refresh(container)
 
         # Create 7 successful and 3 failed updates (70% success rate)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(7):
             history = UpdateHistory(
                 container_id=container.id,
@@ -706,7 +710,7 @@ class TestHistoryStatsEndpoint:
         await db.refresh(container)
 
         # Create 5 updates
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(5):
             history = UpdateHistory(
                 container_id=container.id,
@@ -746,7 +750,7 @@ class TestHistoryStatsEndpoint:
         await db.refresh(container)
 
         # Create updates with duration_seconds: 60, 120, 180 (avg = 120)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i, duration in enumerate([60, 120, 180]):
             history = UpdateHistory(
                 container_id=container.id,
@@ -785,7 +789,7 @@ class TestHistoryStatsEndpoint:
         await db.refresh(container)
 
         # Create 3 failed updates
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(3):
             history = UpdateHistory(
                 container_id=container.id,
@@ -834,7 +838,7 @@ class TestHistoryStatsEndpoint:
         await db.refresh(container2)
 
         # Container 1 gets 5 updates, Container 2 gets 2 updates
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(5):
             history = UpdateHistory(
                 container_id=container1.id,

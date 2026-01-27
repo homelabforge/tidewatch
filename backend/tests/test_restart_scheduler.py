@@ -11,15 +11,15 @@ Tests intelligent container restart scheduling with APScheduler:
 - Event publishing and notifications
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.exc import OperationalError
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-from app.services.restart_scheduler import RestartSchedulerService
 from app.models.restart_state import ContainerRestartState
+from app.services.restart_scheduler import RestartSchedulerService
 
 
 @pytest.fixture
@@ -232,7 +232,7 @@ class TestCheckAndScheduleRestart:
             enabled=True,
             max_attempts=5,
             consecutive_failures=1,
-            next_retry_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+            next_retry_at=datetime.now(UTC) + timedelta(minutes=5),
         )
         mock_restart_service.get_or_create_restart_state.return_value = state
 
@@ -293,7 +293,7 @@ class TestCheckAndScheduleRestart:
 
         # Set last_successful_start far enough in past to make should_reset_backoff=True
         # Default success_window_seconds is 300, so use 400 seconds ago
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         state = ContainerRestartState(
             container_id=container.id,
@@ -302,7 +302,7 @@ class TestCheckAndScheduleRestart:
             enabled=True,
             max_attempts=5,
             consecutive_failures=2,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=400),
         )
         mock_restart_service.get_or_create_restart_state.return_value = state
         mock_container_monitor.get_container_state.return_value = {"running": True}
@@ -736,7 +736,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=400),
         )
         db.add(state)
         await db.commit()
@@ -771,7 +771,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=400),
         )
         db.add(state)
         await db.commit()
@@ -806,7 +806,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=0,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=100),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=100),
         )
         db.add(state)
         await db.commit()
@@ -830,7 +830,7 @@ class TestCleanupSuccessfulContainers:
             enabled=True,
             max_attempts=5,
             consecutive_failures=3,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=400),
         )
         db.add(state)
         await db.commit()

@@ -10,15 +10,15 @@ Tests update orchestration workflow including:
 - Event bus progress notifications
 """
 
-import pytest
-import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.update_engine import UpdateEngine
+import pytest
+
 from app.models.container import Container
 from app.models.history import UpdateHistory
+from app.services.update_engine import UpdateEngine
 from app.utils.validators import ValidationError
 
 
@@ -303,7 +303,7 @@ class TestDockerComposeExecution:
 
         with (
             patch("asyncio.create_subprocess_exec", return_value=mock_process),
-            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+            patch("asyncio.wait_for", side_effect=TimeoutError()),
         ):
             result = await UpdateEngine._execute_docker_compose(
                 compose_file, service_name, "/var/run/docker.sock", "docker compose"
@@ -382,7 +382,7 @@ class TestImagePulling:
 
         with (
             patch("asyncio.create_subprocess_exec", return_value=mock_process),
-            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+            patch("asyncio.wait_for", side_effect=TimeoutError()),
         ):
             result = await UpdateEngine._pull_docker_image(
                 compose_file, service_name, "/var/run/docker.sock", "docker compose"
@@ -944,7 +944,7 @@ class TestRollbackUpdate:
             to_tag="4.0.0",
             status="rolled_back",
             can_rollback=True,
-            rolled_back_at=datetime.now(timezone.utc),  # Already rolled back
+            rolled_back_at=datetime.now(UTC),  # Already rolled back
         )
 
         mock_result = MagicMock()

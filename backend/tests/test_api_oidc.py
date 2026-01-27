@@ -9,9 +9,10 @@ Tests OIDC/OAuth2 authentication endpoints:
 - POST /api/v1/auth/oidc/link-account - Link OIDC account
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi import status
-from unittest.mock import patch, AsyncMock
 
 
 class TestOIDCConfigEndpoint:
@@ -204,8 +205,8 @@ class TestOIDCLoginEndpoint:
 
     async def test_login_disabled_oidc_returns_400(self, client, db):
         """Test OIDC disabled returns 400."""
-        from app.services.settings_service import SettingsService
         from app.models.setting import Setting
+        from app.services.settings_service import SettingsService
 
         # Ensure setup is complete
         setting = Setting(key="setup_complete", value="true")
@@ -229,8 +230,8 @@ class TestOIDCLoginEndpoint:
 
     async def test_login_valid_config_redirects(self, client, db):
         """Test valid configuration returns redirect."""
-        from app.services.settings_service import SettingsService
         from app.models.setting import Setting
+        from app.services.settings_service import SettingsService
 
         # Mark setup complete
         setting = Setting(key="setup_complete", value="true")

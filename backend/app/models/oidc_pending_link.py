@@ -1,7 +1,9 @@
 """OIDC pending link model for username-based account linking with password verification."""
 
-from datetime import datetime, timezone, timedelta
-from sqlalchemy import Column, String, DateTime, Integer, Index, Text
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import Column, DateTime, Index, Integer, String, Text
+
 from app.database import Base
 
 
@@ -45,14 +47,14 @@ class OIDCPendingLink(Base):
 
     def is_expired(self) -> bool:
         """Check if the pending link token has expired."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = self.expires_at
         # Handle timezone-naive datetimes from SQLite
         if expires.tzinfo is None:
-            expires = expires.replace(tzinfo=timezone.utc)
+            expires = expires.replace(tzinfo=UTC)
         return now > expires
 
     @classmethod
     def get_expiry_time(cls, minutes: int = 5) -> datetime:
         """Get expiry timestamp for a new pending link token (default 5 minutes)."""
-        return datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        return datetime.now(UTC) + timedelta(minutes=minutes)

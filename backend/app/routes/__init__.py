@@ -1,23 +1,24 @@
 """API routers for TideWatch."""
 
 from fastapi import APIRouter
+
 from app.routes import (
-    settings,
-    containers,
-    updates,
-    history,
-    backup,
-    widget,
-    events,
     analytics,
-    restarts,
-    system,
-    cleanup,
     auth,
-    oidc,
-    scan,
-    webhooks,
+    backup,
+    cleanup,
+    containers,
     dependencies,
+    events,
+    history,
+    oidc,
+    restarts,
+    scan,
+    settings,
+    system,
+    updates,
+    webhooks,
+    widget,
 )
 
 api_router = APIRouter(prefix="/api/v1")

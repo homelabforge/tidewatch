@@ -1,8 +1,8 @@
 """CheckJob model for tracking update check background jobs."""
 
-from datetime import timezone
+from datetime import UTC
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, Index
+from sqlalchemy import JSON, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -82,8 +82,8 @@ class CheckJob(Base):
             # Normalize timezone-naive datetimes to UTC for comparison
             # SQLite returns naive datetimes even when stored with timezone
             if started.tzinfo is None:
-                started = started.replace(tzinfo=timezone.utc)
+                started = started.replace(tzinfo=UTC)
             if completed.tzinfo is None:
-                completed = completed.replace(tzinfo=timezone.utc)
+                completed = completed.replace(tzinfo=UTC)
             return (completed - started).total_seconds()
         return None

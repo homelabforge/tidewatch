@@ -13,16 +13,17 @@ Tests YAML parsing, service extraction, and label handling:
 - Tag format validation
 """
 
-import pytest
-import tempfile
 import os
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.services.compose_parser import (
     ComposeParser,
-    validate_container_name,
     validate_compose_file_path,
+    validate_container_name,
     validate_tag_format,
 )
 

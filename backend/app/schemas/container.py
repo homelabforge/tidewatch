@@ -1,13 +1,15 @@
 """Pydantic schemas for containers."""
 
-from datetime import datetime
-from typing import Optional, List, Dict
 import json
+from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
+
 from app.schemas.dependency import (
-    DockerfileDependencySchema,
     AppDependencySchema,
+    DockerfileDependencySchema,
+)
+from app.schemas.dependency import (
     HttpServerSchema as HttpServerSchemaFromDependency,
 )
 
@@ -19,7 +21,7 @@ class ContainerSchema(BaseModel):
     name: str
     image: str
     current_tag: str
-    current_digest: Optional[str] = None
+    current_digest: str | None = None
     registry: str
     compose_file: str
     service_name: str
@@ -30,23 +32,23 @@ class ContainerSchema(BaseModel):
     current_vuln_count: int
     is_my_project: bool = False
     update_available: bool
-    latest_tag: Optional[str] = None
-    latest_major_tag: Optional[str] = None
-    last_checked: Optional[datetime] = None
-    last_updated: Optional[datetime] = None
-    labels: Dict[str, str] = Field(default_factory=dict)
-    health_check_url: Optional[str] = None
+    latest_tag: str | None = None
+    latest_major_tag: str | None = None
+    last_checked: datetime | None = None
+    last_updated: datetime | None = None
+    labels: dict[str, str] = Field(default_factory=dict)
+    health_check_url: str | None = None
     health_check_method: str = "auto"
     health_check_has_auth: bool = False
-    release_source: Optional[str] = None
+    release_source: str | None = None
     auto_restart_enabled: bool = False
     restart_policy: str = "manual"
     restart_max_attempts: int = 10
     restart_backoff_strategy: str = "exponential"
     restart_success_window: int = 300
-    update_window: Optional[str] = None
-    dependencies: List[str] = Field(default_factory=list)
-    dependents: List[str] = Field(default_factory=list)
+    update_window: str | None = None
+    dependencies: list[str] = Field(default_factory=list)
+    dependents: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -83,29 +85,29 @@ class HistoryItemSchema(BaseModel):
     from_tag: str
     to_tag: str
     status: str
-    event_type: Optional[str] = (
+    event_type: str | None = (
         None  # 'update', 'dependency_ignore', 'dependency_unignore'
     )
-    update_type: Optional[str] = None
-    reason: Optional[str] = None
-    reason_type: Optional[str] = None
-    reason_summary: Optional[str] = None
+    update_type: str | None = None
+    reason: str | None = None
+    reason_type: str | None = None
+    reason_summary: str | None = None
     triggered_by: str
     can_rollback: bool
-    backup_path: Optional[str] = None
-    error_message: Optional[str] = None
-    cves_fixed: List[str] = Field(default_factory=list)
-    duration_seconds: Optional[int] = None
+    backup_path: str | None = None
+    error_message: str | None = None
+    cves_fixed: list[str] = Field(default_factory=list)
+    duration_seconds: int | None = None
     started_at: datetime
-    completed_at: Optional[datetime] = None
-    rolled_back_at: Optional[datetime] = None
+    completed_at: datetime | None = None
+    rolled_back_at: datetime | None = None
 
     # Dependency-specific fields (present for dependency ignore/unignore events)
-    dependency_type: Optional[str] = (
+    dependency_type: str | None = (
         None  # 'dockerfile', 'http_server', 'app_dependency'
     )
-    dependency_id: Optional[int] = None
-    dependency_name: Optional[str] = None
+    dependency_id: int | None = None
+    dependency_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -118,14 +120,14 @@ class UpdateInfoSchema(BaseModel):
     to_tag: str
     status: str
     reason_type: str
-    reason_summary: Optional[str] = None
-    recommendation: Optional[str] = None
-    changelog_url: Optional[str] = None
-    cves_fixed: List[str] = Field(default_factory=list)
+    reason_summary: str | None = None
+    recommendation: str | None = None
+    changelog_url: str | None = None
+    cves_fixed: list[str] = Field(default_factory=list)
     current_vulns: int
     new_vulns: int
     vuln_delta: int
-    published_date: Optional[datetime] = None
+    published_date: datetime | None = None
     image_size_delta: int
     created_at: datetime
 
@@ -136,10 +138,10 @@ class ContainerDetailsSchema(BaseModel):
     """Comprehensive container details with history and updates."""
 
     container: ContainerSchema
-    current_update: Optional[UpdateInfoSchema] = None
-    history: List[HistoryItemSchema] = Field(default_factory=list)
-    health_status: Optional[str] = None
-    last_health_check: Optional[datetime] = None
+    current_update: UpdateInfoSchema | None = None
+    history: list[HistoryItemSchema] = Field(default_factory=list)
+    health_status: str | None = None
+    last_health_check: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -147,17 +149,17 @@ class ContainerDetailsSchema(BaseModel):
 class ContainerUpdate(BaseModel):
     """Container update request."""
 
-    policy: Optional[str] = None  # auto, manual, disabled, security
-    scope: Optional[str] = None  # patch, minor, major
-    include_prereleases: Optional[bool] = (
+    policy: str | None = None  # auto, manual, disabled, security
+    scope: str | None = None  # patch, minor, major
+    include_prereleases: bool | None = (
         None  # Include nightly, dev, alpha, beta, rc tags
     )
-    vulnforge_enabled: Optional[bool] = None
-    health_check_url: Optional[str] = None
-    health_check_method: Optional[str] = None
-    health_check_auth: Optional[str] = Field(default=None, repr=False)
-    release_source: Optional[str] = None
-    is_my_project: Optional[bool] = None
+    vulnforge_enabled: bool | None = None
+    health_check_url: str | None = None
+    health_check_method: str | None = None
+    health_check_auth: str | None = Field(default=None, repr=False)
+    release_source: str | None = None
+    is_my_project: bool | None = None
 
 
 class PolicyUpdate(BaseModel):
@@ -169,7 +171,7 @@ class PolicyUpdate(BaseModel):
 class UpdateWindowUpdate(BaseModel):
     """Update window update request."""
 
-    update_window: Optional[str] = None
+    update_window: str | None = None
 
 
 class ContainerSummary(BaseModel):
@@ -186,29 +188,29 @@ class ContainerSummary(BaseModel):
 class AppDependenciesResponse(BaseModel):
     """Response containing all application dependencies for a container."""
 
-    dependencies: List[AppDependencySchema] = Field(default_factory=list)
+    dependencies: list[AppDependencySchema] = Field(default_factory=list)
     total: int = 0
     with_updates: int = 0
     with_security_issues: int = 0
-    last_scan: Optional[datetime] = None
+    last_scan: datetime | None = None
     scan_status: str = "idle"  # idle, scanning, error
 
 
 class DockerfileDependenciesResponse(BaseModel):
     """Response containing all Dockerfile dependencies for a container."""
 
-    dependencies: List[DockerfileDependencySchema] = Field(default_factory=list)
+    dependencies: list[DockerfileDependencySchema] = Field(default_factory=list)
     total: int = 0
     with_updates: int = 0
-    last_scan: Optional[datetime] = None
+    last_scan: datetime | None = None
     scan_status: str = "idle"  # idle, scanning, error
 
 
 class HttpServersResponse(BaseModel):
     """Response containing all HTTP servers detected in a container."""
 
-    servers: List[HttpServerSchemaFromDependency] = Field(default_factory=list)
+    servers: list[HttpServerSchemaFromDependency] = Field(default_factory=list)
     total: int = 0
     with_updates: int = 0
-    last_scan: Optional[datetime] = None
+    last_scan: datetime | None = None
     scan_status: str = "idle"  # idle, scanning, error

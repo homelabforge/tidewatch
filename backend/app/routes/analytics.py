@@ -1,15 +1,13 @@
 """Analytics endpoints for TideWatch dashboard insights."""
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.auth import require_auth
 from app.models.container import Container
 from app.models.history import UpdateHistory
 from app.schemas.analytics import (
@@ -18,16 +16,17 @@ from app.schemas.analytics import (
     FrequencyPoint,
     VulnerabilityPoint,
 )
+from app.services.auth import require_auth
 
 router = APIRouter()
 
 
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_analytics_summary(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> AnalyticsSummary:
     """Return aggregated analytics for the dashboard."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start_window = now - timedelta(days=30)
     start_window_str = start_window.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -53,7 +52,7 @@ async def get_analytics_summary(
 
     frequency_rows = frequency_result.all()
 
-    update_frequency: List[FrequencyPoint] = [
+    update_frequency: list[FrequencyPoint] = [
         FrequencyPoint(date=row.day, count=row.count) for row in frequency_rows
     ]
 
@@ -63,19 +62,19 @@ async def get_analytics_summary(
     )
     histories = history_rows.scalars().all()
 
-    cve_counts: Dict[str, int] = defaultdict(int)
+    cve_counts: dict[str, int] = defaultdict(int)
     for record in histories:
         reference_time = (
             record.completed_at or record.started_at or record.created_at or now
         )
         if reference_time.tzinfo is None:
-            reference_time = reference_time.replace(tzinfo=timezone.utc)
+            reference_time = reference_time.replace(tzinfo=UTC)
         else:
-            reference_time = reference_time.astimezone(timezone.utc)
+            reference_time = reference_time.astimezone(UTC)
         day_key = reference_time.date().isoformat()
         cve_counts[day_key] += len(record.cves_fixed or [])
 
-    vulnerability_trends: List[VulnerabilityPoint] = [
+    vulnerability_trends: list[VulnerabilityPoint] = [
         VulnerabilityPoint(date=key, cves_fixed=value)
         for key, value in sorted(cve_counts.items())
     ]
@@ -86,7 +85,7 @@ async def get_analytics_summary(
     )
 
     policy_rows = policy_result.all()
-    policy_distribution: List[DistributionItem] = [
+    policy_distribution: list[DistributionItem] = [
         DistributionItem(label=row.policy, value=row.count) for row in policy_rows
     ]
 

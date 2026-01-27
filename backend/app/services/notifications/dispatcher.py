@@ -1,19 +1,18 @@
 """Notification dispatcher for routing events to enabled services."""
 
 import logging
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.settings_service import SettingsService
 from app.services.notifications.base import NotificationService
-from app.services.notifications.ntfy import NtfyNotificationService
+from app.services.notifications.discord import DiscordNotificationService
+from app.services.notifications.email import EmailNotificationService
 from app.services.notifications.gotify import GotifyNotificationService
+from app.services.notifications.ntfy import NtfyNotificationService
 from app.services.notifications.pushover import PushoverNotificationService
 from app.services.notifications.slack import SlackNotificationService
-from app.services.notifications.discord import DiscordNotificationService
 from app.services.notifications.telegram import TelegramNotificationService
-from app.services.notifications.email import EmailNotificationService
+from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -210,9 +209,9 @@ class NotificationDispatcher:
         event_type: str,
         title: str,
         message: str,
-        priority: Optional[str] = None,
-        tags: Optional[list[str]] = None,
-        url: Optional[str] = None,
+        priority: str | None = None,
+        tags: list[str] | None = None,
+        url: str | None = None,
     ) -> dict[str, bool]:
         """Send notification to all enabled services for this event type.
 
@@ -337,8 +336,8 @@ class NotificationDispatcher:
         container_name: str,
         to_tag: str,
         success: bool,
-        reason_type: Optional[str] = None,
-        reason_summary: Optional[str] = None,
+        reason_type: str | None = None,
+        reason_summary: str | None = None,
     ) -> dict[str, bool]:
         """Send notification about applied update."""
         event_type = "update_applied_success" if success else "update_applied_failed"

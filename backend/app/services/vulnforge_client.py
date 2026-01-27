@@ -1,8 +1,7 @@
 """VulnForge API client for vulnerability data."""
 
-import logging
-from typing import Optional, Dict, List
 import base64
+import logging
 
 import httpx
 
@@ -16,9 +15,9 @@ class VulnForgeClient:
         self,
         base_url: str,
         auth_type: str = "none",
-        api_key: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        api_key: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
     ):
         """Initialize VulnForge client.
 
@@ -56,7 +55,7 @@ class VulnForgeClient:
         return False
 
     @staticmethod
-    def _normalize_registry(registry: Optional[str]) -> str:
+    def _normalize_registry(registry: str | None) -> str:
         """Normalize registry identifiers to a canonical form."""
         if not registry:
             return "dockerhub"
@@ -105,14 +104,14 @@ class VulnForgeClient:
     @classmethod
     def _container_matches(
         cls,
-        container: Dict,
+        container: dict,
         target_registry: str,
         target_name: str,
         target_tag: str,
         target_registry_explicit: bool,
     ) -> bool:
         """Determine if a VulnForge container matches the target image."""
-        candidates: List[str] = []
+        candidates: list[str] = []
 
         image_id = container.get("image_id")
         if image_id:
@@ -158,7 +157,7 @@ class VulnForgeClient:
 
     async def get_image_vulnerabilities(
         self, image: str, tag: str, registry: str = "dockerhub"
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Get vulnerability data for a specific image tag.
 
         Args:
@@ -272,7 +271,7 @@ class VulnForgeClient:
         current_tag: str,
         new_tag: str,
         registry: str = "dockerhub",
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Compare vulnerabilities between two image tags.
 
         Args:
@@ -357,7 +356,7 @@ class VulnForgeClient:
         total_delta: int,
         critical_delta: int,
         high_delta: int,
-        cves_fixed: List[str],
+        cves_fixed: list[str],
     ) -> str:
         """Generate update recommendation based on vulnerability deltas.
 
@@ -430,7 +429,7 @@ class VulnForgeClient:
             logger.error(f"Invalid data triggering scan: {e}")
             return False
 
-    async def get_container_id_by_name(self, container_name: str) -> Optional[int]:
+    async def get_container_id_by_name(self, container_name: str) -> int | None:
         """Find VulnForge container ID by container name.
 
         Args:
@@ -483,8 +482,8 @@ class VulnForgeClient:
         return await self.trigger_scan(container_id)
 
     async def get_cve_delta(
-        self, container_name: Optional[str] = None, since_hours: int = 24
-    ) -> Optional[Dict]:
+        self, container_name: str | None = None, since_hours: int = 24
+    ) -> dict | None:
         """Get CVE delta from VulnForge's cve-delta endpoint.
 
         This queries VulnForge for CVEs fixed and introduced in recent scans.
@@ -499,7 +498,7 @@ class VulnForgeClient:
         """
         try:
             url = f"{self.base_url}/api/v1/scans/cve-delta"
-            params: Dict[str, any] = {"since_hours": since_hours}
+            params: dict[str, any] = {"since_hours": since_hours}
             if container_name:
                 params["container_name"] = container_name
 

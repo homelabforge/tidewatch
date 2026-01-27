@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Dict, Optional, Tuple
 
 import docker
 from docker.errors import DockerException, NotFound
@@ -21,7 +20,7 @@ class ContainerMonitorService:
         docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
         self.client = docker.DockerClient(base_url=docker_host)
 
-    async def get_container_state(self, container_name: str) -> Optional[Dict]:
+    async def get_container_state(self, container_name: str) -> dict | None:
         """Get full container state including exit codes using Docker SDK.
 
         Args:
@@ -68,8 +67,8 @@ class ContainerMonitorService:
 
     @staticmethod
     async def should_retry_restart(
-        exit_code: Optional[int], oom_killed: bool
-    ) -> Tuple[bool, str]:
+        exit_code: int | None, oom_killed: bool
+    ) -> tuple[bool, str]:
         """Determine if container should be restarted based on exit code.
 
         Exit code semantics:
@@ -132,7 +131,7 @@ class ContainerMonitorService:
         # Default: retry for any non-zero exit code
         return True, f"exit_code_{exit_code}"
 
-    async def get_container_exit_info(self, container_name: str) -> Optional[Dict]:
+    async def get_container_exit_info(self, container_name: str) -> dict | None:
         """Get detailed exit information for a stopped container.
 
         Args:
@@ -155,7 +154,7 @@ class ContainerMonitorService:
             "status": state.get("status"),
         }
 
-    async def check_health_status(self, container_name: str) -> Dict:
+    async def check_health_status(self, container_name: str) -> dict:
         """Check container health status using Docker SDK.
 
         Args:
@@ -194,7 +193,7 @@ class ContainerMonitorService:
 
     @staticmethod
     def categorize_failure(
-        exit_code: Optional[int], oom_killed: bool, error: str
+        exit_code: int | None, oom_killed: bool, error: str
     ) -> str:
         """Categorize the type of container failure.
 

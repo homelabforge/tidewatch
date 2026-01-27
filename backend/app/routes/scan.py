@@ -1,14 +1,14 @@
 """API endpoints for vulnerability scanning."""
 
 import logging
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.schemas.scan import ScanResultSchema, ScanSummarySchema
 from app.services.auth import require_auth
 from app.services.scan_service import ScanService
-from app.schemas.scan import ScanResultSchema, ScanSummarySchema
 from app.utils.error_handling import safe_error_response
 from app.utils.security import sanitize_log_message
 
@@ -24,7 +24,7 @@ router = APIRouter()
 )
 async def scan_container(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> ScanResultSchema:
     """Scan a single container for vulnerabilities.
@@ -66,11 +66,11 @@ async def scan_container(
 
 
 @router.post(
-    "/all", response_model=List[ScanResultSchema], status_code=status.HTTP_200_OK
+    "/all", response_model=list[ScanResultSchema], status_code=status.HTTP_200_OK
 )
 async def scan_all_containers(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> List[ScanResultSchema]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> list[ScanResultSchema]:
     """Scan all VulnForge-enabled containers.
 
     Args:
@@ -97,7 +97,7 @@ async def scan_all_containers(
 )
 async def get_scan_results(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> ScanResultSchema:
     """Get cached vulnerability scan results for a container.
@@ -130,7 +130,7 @@ async def get_scan_results(
     "/summary", response_model=ScanSummarySchema, status_code=status.HTTP_200_OK
 )
 async def get_scan_summary(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> ScanSummarySchema:
     """Get vulnerability scan summary statistics.
 

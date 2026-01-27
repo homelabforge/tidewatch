@@ -1,22 +1,23 @@
 """Homepage widget API endpoints."""
 
-from typing import Dict, Any, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.auth import require_auth
 from app.models.container import Container
 from app.models.history import UpdateHistory
+from app.services.auth import require_auth
 
 router = APIRouter()
 
 
 @router.get("/widget", response_class=HTMLResponse)
 async def get_widget(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> HTMLResponse:
     """Get Homepage widget HTML.
 
@@ -213,8 +214,8 @@ async def get_widget(
 
 @router.get("/widget/data")
 async def get_widget_data(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     """Get widget data as JSON for custom integrations."""
     # Get container stats
     containers_result = await db.execute(select(func.count(Container.id)))

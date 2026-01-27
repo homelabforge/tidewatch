@@ -11,11 +11,11 @@ Tests semantic versioning (semver) parsing and comparison:
 import pytest
 
 from app.utils.version import (
-    parse_version,
     get_version_change_type,
     is_major_update,
     is_minor_or_patch_update,
     is_patch_update,
+    parse_version,
 )
 
 

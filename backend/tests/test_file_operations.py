@@ -10,24 +10,24 @@ Tests file operation utilities with security focus:
 
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.utils.file_operations import (
-    MAX_VERSION_LENGTH,
     MAX_FILE_SIZE,
+    MAX_VERSION_LENGTH,
+    AtomicWriteError,
+    BackupError,
     FileOperationError,
     PathValidationError,
     VersionValidationError,
-    BackupError,
-    AtomicWriteError,
+    atomic_file_write,
+    cleanup_old_backups,
+    create_timestamped_backup,
+    restore_from_backup,
     validate_file_path_for_update,
     validate_version_string,
-    create_timestamped_backup,
-    atomic_file_write,
-    restore_from_backup,
-    cleanup_old_backups,
 )
 
 
@@ -309,7 +309,7 @@ class TestCreateTimestampedBackup:
         test_file.write_text("content")
 
         # Mock shutil.copy2 to fail
-        with patch("shutil.copy2", side_effect=IOError("Mock failure")):
+        with patch("shutil.copy2", side_effect=OSError("Mock failure")):
             with pytest.raises(BackupError, match="Failed to create backup"):
                 create_timestamped_backup(test_file)
 
@@ -394,7 +394,7 @@ class TestAtomicFileWrite:
 
         def mock_replace(self, target):
             if ".tmp." in str(self):
-                raise IOError("Mock failure")
+                raise OSError("Mock failure")
             return original_replace(self, target)
 
         with patch.object(Path, "replace", mock_replace):
@@ -410,7 +410,7 @@ class TestAtomicFileWrite:
         test_file = tmp_path / "test.txt"
 
         # Mock open to fail
-        with patch("builtins.open", side_effect=IOError("Mock failure")):
+        with patch("builtins.open", side_effect=OSError("Mock failure")):
             with pytest.raises(AtomicWriteError, match="Atomic write failed"):
                 atomic_file_write(test_file, "content")
 
@@ -480,7 +480,7 @@ class TestRestoreFromBackup:
         target = tmp_path / "test.txt"
 
         # Mock shutil.copy2 to fail
-        with patch("shutil.copy2", side_effect=IOError("Mock failure")):
+        with patch("shutil.copy2", side_effect=OSError("Mock failure")):
             with pytest.raises(FileOperationError, match="Failed to restore"):
                 restore_from_backup(backup, target)
 
@@ -650,7 +650,7 @@ class TestFileOperationSecurity:
 
         def mock_replace(self, target):
             if ".tmp." in str(self):
-                raise IOError("Disk full")
+                raise OSError("Disk full")
             return original_replace(self, target)
 
         with patch.object(Path, "replace", mock_replace):

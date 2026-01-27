@@ -1,11 +1,13 @@
 """Settings service for database-first configuration."""
 
-import os
 import logging
+import os
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models import Setting
-from typing import Optional, Dict, Any
 from app.utils.encryption import get_encryption_service, is_encryption_configured
 from app.utils.security import sanitize_log_message
 
@@ -16,7 +18,7 @@ class SettingsService:
     """Manage application settings in database."""
 
     # Default settings with descriptions
-    DEFAULTS: Dict[str, Dict[str, Any]] = {
+    DEFAULTS: dict[str, dict[str, Any]] = {
         # System
         "timezone": {
             "value": os.getenv("TZ", "UTC"),
@@ -606,8 +608,8 @@ class SettingsService:
 
     @classmethod
     async def get(
-        cls, db: AsyncSession, key: str, default: Optional[str] = None
-    ) -> Optional[str]:
+        cls, db: AsyncSession, key: str, default: str | None = None
+    ) -> str | None:
         """Get setting value by key.
 
         Automatically decrypts encrypted settings if encryption is configured.
@@ -731,7 +733,7 @@ class SettingsService:
 
     @staticmethod
     async def get_all(
-        db: AsyncSession, category: Optional[str] = None
+        db: AsyncSession, category: str | None = None
     ) -> list[Setting]:
         """Get all settings, optionally filtered by category."""
         query = select(Setting)
@@ -741,10 +743,10 @@ class SettingsService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_by_category(db: AsyncSession) -> Dict[str, list[Setting]]:
+    async def get_by_category(db: AsyncSession) -> dict[str, list[Setting]]:
         """Get all settings grouped by category."""
         all_settings = await SettingsService.get_all(db)
-        grouped: Dict[str, list[Setting]] = {}
+        grouped: dict[str, list[Setting]] = {}
         for setting in all_settings:
             if setting.category not in grouped:
                 grouped[setting.category] = []

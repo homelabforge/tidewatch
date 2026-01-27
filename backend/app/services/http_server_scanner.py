@@ -2,10 +2,10 @@
 
 import logging
 import re
-from typing import Dict, List, Optional
-import httpx
-import docker
 from datetime import datetime
+
+import docker
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class HttpServerScanner:
 
     async def scan_container_http_servers(
         self, container_name: str
-    ) -> List[Dict[str, any]]:
+    ) -> list[dict[str, any]]:
         """
         Scan a container for running HTTP servers.
 
@@ -168,7 +168,7 @@ class HttpServerScanner:
 
         return servers
 
-    async def _detect_from_processes(self, container) -> List[Dict[str, any]]:
+    async def _detect_from_processes(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers from running processes."""
         servers = []
 
@@ -239,7 +239,7 @@ class HttpServerScanner:
 
         return servers
 
-    async def _detect_from_version_commands(self, container) -> List[Dict[str, any]]:
+    async def _detect_from_version_commands(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers by running version commands."""
         servers = []
 
@@ -290,8 +290,8 @@ class HttpServerScanner:
         return servers
 
     async def _get_latest_version(
-        self, server_name: str, current_version: Optional[str]
-    ) -> Optional[str]:
+        self, server_name: str, current_version: str | None
+    ) -> str | None:
         """Get the latest version for a specific HTTP server."""
         config = self.server_patterns.get(server_name)
         if not config or not config.get("latest_api"):
@@ -329,7 +329,7 @@ class HttpServerScanner:
         return None
 
     def _check_update_available(
-        self, current: Optional[str], latest: Optional[str]
+        self, current: str | None, latest: str | None
     ) -> bool:
         """Check if an update is available based on version comparison."""
         if not current or not latest:
@@ -354,7 +354,7 @@ class HttpServerScanner:
             return False
 
     def _calculate_severity(
-        self, current: Optional[str], latest: Optional[str], has_update: bool
+        self, current: str | None, latest: str | None, has_update: bool
     ) -> str:
         """Calculate severity of update based on semver difference."""
         if not has_update or not current or not latest:
@@ -383,7 +383,7 @@ class HttpServerScanner:
             # If version parsing fails, default to info severity
             return "info"
 
-    async def _detect_from_labels(self, container) -> List[Dict[str, any]]:
+    async def _detect_from_labels(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers from container labels."""
         servers = []
 
@@ -407,7 +407,7 @@ class HttpServerScanner:
 
         return servers
 
-    async def _detect_from_container_config(self, container) -> List[Dict[str, any]]:
+    async def _detect_from_container_config(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers from container config without exec."""
         servers = []
 

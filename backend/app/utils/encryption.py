@@ -13,9 +13,9 @@ Uses Fernet (symmetric encryption) from the cryptography library:
 - Built-in key rotation support
 """
 
-import os
 import logging
-from typing import Optional
+import os
+
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class EncryptionService:
         >>> assert decrypted == "secret_api_key"
     """
 
-    def __init__(self, encryption_key: Optional[str] = None):
+    def __init__(self, encryption_key: str | None = None):
         """Initialize encryption service.
 
         Args:
@@ -196,7 +196,7 @@ class EncryptionService:
 
 
 # Global encryption service instance (lazy initialization)
-_encryption_service: Optional[EncryptionService] = None
+_encryption_service: EncryptionService | None = None
 
 
 def get_encryption_service() -> EncryptionService:

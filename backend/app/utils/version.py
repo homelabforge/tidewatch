@@ -1,12 +1,11 @@
 """Version comparison utilities for semver."""
 
 import logging
-from typing import Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def parse_version(version: str) -> Tuple[int, int, int]:
+def parse_version(version: str) -> tuple[int, int, int]:
     """Parse a version string into (major, minor, patch) tuple.
 
     Args:
@@ -38,7 +37,7 @@ def parse_version(version: str) -> Tuple[int, int, int]:
     return (major, minor, patch)
 
 
-def get_version_change_type(from_version: str, to_version: str) -> Optional[str]:
+def get_version_change_type(from_version: str, to_version: str) -> str | None:
     """Determine the type of version change (major, minor, or patch).
 
     Args:

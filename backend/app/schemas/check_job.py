@@ -1,7 +1,7 @@
 """Pydantic schemas for check jobs."""
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ class CheckJobProgress(BaseModel):
     updates_found: int
     errors_count: int
     progress_percent: float
-    current_container: Optional[str] = None
+    current_container: str | None = None
 
 
 class CheckJobResult(BaseModel):
@@ -35,14 +35,14 @@ class CheckJobResult(BaseModel):
     updates_found: int
     errors_count: int
     progress_percent: float
-    current_container: Optional[str] = None
+    current_container: str | None = None
     triggered_by: str
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-    error_message: Optional[str] = None
-    results: Optional[list[dict[str, Any]]] = Field(default=None)
-    errors: Optional[list[dict[str, Any]]] = Field(default=None)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
+    error_message: str | None = None
+    results: list[dict[str, Any]] | None = Field(default=None)
+    errors: list[dict[str, Any]] | None = Field(default=None)
 
     model_config = {"from_attributes": True}
 
@@ -57,9 +57,9 @@ class CheckJobSummary(BaseModel):
     updates_found: int
     errors_count: int
     triggered_by: str
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
 
     model_config = {"from_attributes": True}
 

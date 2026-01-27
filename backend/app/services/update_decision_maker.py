@@ -12,8 +12,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from app.services.tag_fetcher import FetchTagsResponse
 from app.utils.version import get_version_change_type
@@ -32,7 +32,7 @@ class UpdateDecisionTrace:
     """
 
     def __init__(self) -> None:
-        self.trace: Dict[str, Any] = {
+        self.trace: dict[str, Any] = {
             "update_kind": None,
             "current_tag": None,
             "latest_tag": None,
@@ -66,8 +66,8 @@ class UpdateDecisionTrace:
 
     def set_digest_update(
         self,
-        previous: Optional[str],
-        current: Optional[str],
+        previous: str | None,
+        current: str | None,
         changed: bool,
     ) -> None:
         """Record digest-based update detection."""
@@ -80,23 +80,23 @@ class UpdateDecisionTrace:
 
     def set_tag_update(
         self,
-        latest_tag: Optional[str],
-        change_type: Optional[str],
+        latest_tag: str | None,
+        change_type: str | None,
     ) -> None:
         """Record tag-based update detection."""
         self.trace["update_kind"] = "tag"
         self.trace["latest_tag"] = latest_tag
         self.trace["change_type"] = change_type
 
-    def set_suffix_match(self, suffix: Optional[str]) -> None:
+    def set_suffix_match(self, suffix: str | None) -> None:
         """Record tag suffix matching (e.g., '-alpine', '-slim')."""
         self.trace["suffix_match"] = suffix
 
     def set_scope_blocking(
         self,
         blocked: bool,
-        latest_major_tag: Optional[str],
-        reason: Optional[str],
+        latest_major_tag: str | None,
+        reason: str | None,
     ) -> None:
         """Record scope blocking decision."""
         self.trace["scope_blocking"] = {
@@ -115,16 +115,16 @@ class UpdateDecisionTrace:
         Uses a fallback encoder to handle any non-serializable values
         (e.g., mock objects during testing) by converting them to strings.
         """
-        self.trace["decision_timestamp"] = datetime.now(timezone.utc).isoformat()
+        self.trace["decision_timestamp"] = datetime.now(UTC).isoformat()
         return json.dumps(self.trace, default=str)
 
     @property
-    def update_kind(self) -> Optional[str]:
+    def update_kind(self) -> str | None:
         """Get the determined update kind."""
         return self.trace["update_kind"]
 
     @property
-    def change_type(self) -> Optional[str]:
+    def change_type(self) -> str | None:
         """Get the determined change type."""
         return self.trace["change_type"]
 
@@ -146,14 +146,14 @@ class UpdateDecision:
     """
 
     has_update: bool
-    update_kind: Optional[str]  # "tag" or "digest"
-    latest_tag: Optional[str]
-    latest_major_tag: Optional[str]
-    change_type: Optional[str]  # "major", "minor", "patch"
+    update_kind: str | None  # "tag" or "digest"
+    latest_tag: str | None
+    latest_major_tag: str | None
+    change_type: str | None  # "major", "minor", "patch"
     is_scope_violation: bool
     trace: UpdateDecisionTrace
     digest_changed: bool = False
-    new_digest: Optional[str] = None
+    new_digest: str | None = None
 
 
 class UpdateDecisionMaker:
@@ -193,7 +193,7 @@ class UpdateDecisionMaker:
 
     def make_decision(
         self,
-        container: "Container",
+        container: Container,
         fetch_response: FetchTagsResponse,
         include_prereleases: bool,
     ) -> UpdateDecision:
@@ -211,7 +211,7 @@ class UpdateDecisionMaker:
         current_tag: str = str(container.current_tag)  # type: ignore[attr-defined]
         scope: str = str(container.scope)  # type: ignore[attr-defined]
         registry: str = str(container.registry)  # type: ignore[attr-defined]
-        current_digest: Optional[str] = container.current_digest  # type: ignore[attr-defined]
+        current_digest: str | None = container.current_digest  # type: ignore[attr-defined]
 
         # Initialize decision trace
         trace = UpdateDecisionTrace()
@@ -244,7 +244,7 @@ class UpdateDecisionMaker:
 
         # Check for digest-based update (for 'latest' tag)
         digest_changed = False
-        new_digest: Optional[str] = None
+        new_digest: str | None = None
         if current_tag == "latest" and fetch_response.metadata:
             new_digest = fetch_response.metadata.get("digest")
             if new_digest and current_digest:
@@ -257,8 +257,8 @@ class UpdateDecisionMaker:
 
         # Determine if there's an in-scope update
         has_update = False
-        update_kind: Optional[str] = None
-        change_type: Optional[str] = None
+        update_kind: str | None = None
+        change_type: str | None = None
 
         if latest_tag and latest_tag != current_tag:
             has_update = True
@@ -295,7 +295,7 @@ class UpdateDecisionMaker:
             new_digest=new_digest,
         )
 
-    def _extract_suffix(self, tag: str) -> Optional[str]:
+    def _extract_suffix(self, tag: str) -> str | None:
         """Extract suffix from tag (e.g., '-alpine', '-slim').
 
         Args:

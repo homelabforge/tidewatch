@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ class DockerStatsService:
     """Service for getting Docker container metrics."""
 
     @staticmethod
-    async def get_container_stats(container_name: str) -> Optional[Dict]:
+    async def get_container_stats(container_name: str) -> dict | None:
         """Get real-time stats for a container.
 
         Args:
@@ -82,7 +81,7 @@ class DockerStatsService:
                 "pids": int(stats.get("PIDs", "0") or 0),
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout getting stats for {container_name}")
             return None
         except json.JSONDecodeError as e:
@@ -210,10 +209,10 @@ class DockerStatsService:
     async def get_container_logs(
         container_name: str,
         tail: int = 100,
-        since: Optional[str] = None,
+        since: str | None = None,
         follow: bool = False,
-        docker_host: Optional[str] = None,
-    ) -> Optional[str]:
+        docker_host: str | None = None,
+    ) -> str | None:
         """Get logs from a container.
 
         Args:
@@ -269,7 +268,7 @@ class DockerStatsService:
 
             return stdout.decode("utf-8", errors="replace")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout getting logs for {container_name}")
             # Kill the process if it's still running
             if process and process.returncode is None:
@@ -324,7 +323,7 @@ class DockerStatsService:
             return False
 
     @staticmethod
-    async def get_container_exit_info(container_name: str) -> Optional[dict]:
+    async def get_container_exit_info(container_name: str) -> dict | None:
         """Get exit code and failure details for a container.
 
         Args:

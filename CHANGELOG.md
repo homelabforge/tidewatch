@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.1] - 2025-01-27
+
 ### Added
 - **Batch Dependency Updates** - Multi-select functionality to update multiple app dependencies at once
   - Checkbox selection on dependency rows in the Dependencies tab
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **History page showing "Unknown" for dependency updates** - Added handling for `dependency_update` event type so history entries now correctly display the dependency name and version change instead of "Unknown"
+- **Container updates failing with "no such service"** - Fixed compose file path translation for docker-compose commands. The `_translate_container_path_to_host()` function was defined but never called, causing commands to use container-internal paths (`/compose/...`) instead of host paths (`/srv/raid0/docker/compose/...`). Most visible for containers in the proxies compose project (socket-proxy-ro, socket-proxy-rw).
 
 ## [3.6.0] - 2025-01-23
 

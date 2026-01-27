@@ -8,10 +8,9 @@ This module provides functions to prevent security vulnerabilities:
 
 import re
 from pathlib import Path
-from typing import Union
 
 
-def sanitize_log_message(msg: Union[str, bytes, int, float, None]) -> str:
+def sanitize_log_message(msg: str | bytes | int | float | None) -> str:
     """Remove newlines and control characters from log messages.
 
     Prevents log injection attacks where attackers inject newlines or control
@@ -50,7 +49,7 @@ def sanitize_log_message(msg: Union[str, bytes, int, float, None]) -> str:
 
 
 def mask_sensitive(
-    value: Union[str, None], visible_chars: int = 4, mask_char: str = "*"
+    value: str | None, visible_chars: int = 4, mask_char: str = "*"
 ) -> str:
     """Mask sensitive values, showing only the last N characters.
 
@@ -96,8 +95,8 @@ def mask_sensitive(
 
 
 def sanitize_path(
-    user_path: Union[str, Path],
-    base_dir: Union[str, Path],
+    user_path: str | Path,
+    base_dir: str | Path,
     allow_symlinks: bool = False,
 ) -> Path:
     """Safely resolve user-provided paths within a base directory.

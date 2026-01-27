@@ -1,10 +1,11 @@
 """Metrics collector service for storing container metrics history."""
 
 import logging
-from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
 from app.models.metrics_history import MetricsHistory
@@ -61,7 +62,7 @@ class MetricsCollector:
                 # Create metrics history record
                 history = MetricsHistory(
                     container_id=container.id,
-                    collected_at=datetime.now(timezone.utc),
+                    collected_at=datetime.now(UTC),
                     cpu_percent=metrics["cpu_percent"],
                     memory_usage=metrics["memory_usage"],
                     memory_limit=metrics["memory_limit"],
@@ -113,7 +114,7 @@ class MetricsCollector:
         Returns:
             Number of records deleted
         """
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
         result = await db.execute(
             delete(MetricsHistory).where(MetricsHistory.collected_at < cutoff_date)

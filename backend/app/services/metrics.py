@@ -1,19 +1,21 @@
 """Prometheus metrics for TideWatch."""
 
+from datetime import UTC
+
 from prometheus_client import (
+    CONTENT_TYPE_LATEST,
     Counter,
     Gauge,
     Histogram,
     Info,
     generate_latest,
-    CONTENT_TYPE_LATEST,
 )
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
-from app.models.update import Update
 from app.models.history import UpdateHistory
+from app.models.update import Update
 
 # Application info
 app_info = Info("tidewatch_app", "TideWatch application information")
@@ -199,9 +201,9 @@ async def collect_metrics(db: AsyncSession) -> None:
     update_history_rolled_back.set(result.scalar() or 0)
 
     # Health check failure metrics (last 24 hours)
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    last_24h = datetime.now(UTC) - timedelta(hours=24)
 
     result = await db.execute(
         select(func.count())

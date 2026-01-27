@@ -9,6 +9,7 @@ Description: Add composite index on updates table for status and version columns
 
 import sys
 from pathlib import Path
+
 from sqlalchemy import text
 
 # Add parent directory to path for imports

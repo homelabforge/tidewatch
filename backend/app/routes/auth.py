@@ -1,34 +1,35 @@
 """Authentication API endpoints."""
 
 import logging
-from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas.auth import (
+    AuthStatusResponse,
+    ChangePasswordRequest,
+    LoginRequest,
     SetupRequest,
     SetupResponse,
-    LoginRequest,
     TokenResponse,
-    UserProfile,
     UpdateProfileRequest,
-    ChangePasswordRequest,
-    AuthStatusResponse,
+    UserProfile,
 )
 from app.services.auth import (
-    is_setup_complete,
-    get_admin_profile,
+    JWT_COOKIE_MAX_AGE,
+    JWT_COOKIE_NAME,
     authenticate_admin,
     create_access_token,
-    hash_password,
-    verify_password,
-    update_admin_profile,
-    update_admin_password,
+    get_admin_profile,
     get_auth_mode,
+    hash_password,
+    is_setup_complete,
     require_auth,
-    JWT_COOKIE_NAME,
-    JWT_COOKIE_MAX_AGE,
+    update_admin_password,
+    update_admin_profile,
+    verify_password,
 )
 from app.services.settings_service import SettingsService
 from app.utils.security import sanitize_log_message
@@ -90,7 +91,7 @@ async def setup_admin_account(
     password_hash = hash_password(setup_data.password)
 
     # Create admin account in settings
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await SettingsService.set(db, "admin_username", setup_data.username)
     await SettingsService.set(db, "admin_email", setup_data.email)
     await SettingsService.set(db, "admin_password_hash", password_hash)

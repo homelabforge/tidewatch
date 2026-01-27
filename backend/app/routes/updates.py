@@ -1,28 +1,29 @@
 """Updates API endpoints."""
 
 import logging
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import OperationalError, IntegrityError
 
 from app.database import get_db
-from app.services.auth import require_auth
-from app.models.update import Update
 from app.models.container import Container
-from app.schemas.update import UpdateSchema, UpdateApproval, UpdateApply
+from app.models.update import Update
 from app.schemas.check_job import (
-    CheckJobResult,
-    CheckJobSummary,
-    CheckJobStartResponse,
     CheckJobCancelResponse,
+    CheckJobResult,
+    CheckJobStartResponse,
+    CheckJobSummary,
 )
+from app.schemas.update import UpdateApply, UpdateApproval, UpdateSchema
+from app.services.auth import require_auth
+from app.services.check_job_service import CheckJobService
+from app.services.scheduler import scheduler_service
 from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
-from app.services.scheduler import scheduler_service
-from app.services.check_job_service import CheckJobService
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -30,17 +31,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/", response_model=List[UpdateSchema])
+@router.get("/", response_model=list[UpdateSchema])
 async def list_updates(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     status: str = None,
-    container_id: Optional[int] = Query(None, description="Filter by container ID"),
+    container_id: int | None = Query(None, description="Filter by container ID"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of records to return"
     ),
     db: AsyncSession = Depends(get_db),
-) -> List[UpdateSchema]:
+) -> list[UpdateSchema]:
     """List updates by status with pagination.
 
     Args:
@@ -52,7 +53,7 @@ async def list_updates(
     Returns:
         List of updates (excludes snoozed updates)
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     query = select(Update).order_by(Update.created_at.desc())
     if status:
@@ -61,7 +62,7 @@ async def list_updates(
         query = query.where(Update.container_id == container_id)
 
     # Filter out snoozed updates
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     query = query.where(
         (Update.snoozed_until.is_(None)) | (Update.snoozed_until <= now)
     )
@@ -73,28 +74,28 @@ async def list_updates(
     return updates
 
 
-@router.get("/pending", response_model=List[UpdateSchema])
+@router.get("/pending", response_model=list[UpdateSchema])
 async def get_pending_updates(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> List[UpdateSchema]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> list[UpdateSchema]:
     """Get all pending updates."""
     updates = await UpdateChecker.get_pending_updates(db)
     return updates
 
 
-@router.get("/auto-approvable", response_model=List[UpdateSchema])
+@router.get("/auto-approvable", response_model=list[UpdateSchema])
 async def get_auto_approvable_updates(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> List[UpdateSchema]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> list[UpdateSchema]:
     """Get updates that can be auto-approved."""
     updates = await UpdateChecker.get_auto_approvable_updates(db)
     return updates
 
 
-@router.get("/security", response_model=List[UpdateSchema])
+@router.get("/security", response_model=list[UpdateSchema])
 async def get_security_updates(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> List[UpdateSchema]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> list[UpdateSchema]:
     """Get security-related updates."""
     updates = await UpdateChecker.get_security_updates(db)
     return updates
@@ -102,7 +103,7 @@ async def get_security_updates(
 
 @router.post("/check", response_model=CheckJobStartResponse)
 async def check_updates(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> CheckJobStartResponse:
     """Start a background check for all containers.
 
@@ -138,14 +139,14 @@ async def check_updates(
     )
 
 
-@router.get("/check/history", response_model=List[CheckJobSummary])
+@router.get("/check/history", response_model=list[CheckJobSummary])
 async def get_check_history(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     limit: int = Query(
         20, ge=1, le=100, description="Maximum number of jobs to return"
     ),
     db: AsyncSession = Depends(get_db),
-) -> List[CheckJobSummary]:
+) -> list[CheckJobSummary]:
     """Get history of update check jobs.
 
     Args:
@@ -175,7 +176,7 @@ async def get_check_history(
 @router.get("/check/{job_id}", response_model=CheckJobResult)
 async def get_check_job(
     job_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> CheckJobResult:
     """Get status and progress of an update check job.
@@ -215,7 +216,7 @@ async def get_check_job(
 @router.post("/check/{job_id}/cancel", response_model=CheckJobCancelResponse)
 async def cancel_check_job(
     job_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> CheckJobCancelResponse:
     """Request cancellation of a running check job.
@@ -249,9 +250,9 @@ async def cancel_check_job(
 @router.post("/check/{container_id}")
 async def check_container_update(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Check a specific container for updates.
 
     Args:
@@ -287,10 +288,10 @@ async def check_container_update(
 
 @router.post("/batch/approve")
 async def batch_approve_updates(
-    update_ids: List[int] = Body(..., embed=True),
-    admin: Optional[dict] = Depends(require_auth),
+    update_ids: list[int] = Body(..., embed=True),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Batch approve multiple updates.
 
     Args:
@@ -333,7 +334,7 @@ async def batch_approve_updates(
 
                 # Approve the update with version increment
                 update.status = "approved"
-                update.approved_at = datetime.now(timezone.utc)
+                update.approved_at = datetime.now(UTC)
                 update.version += 1  # Increment version for optimistic locking
 
             # Commit the nested transaction
@@ -374,11 +375,11 @@ async def batch_approve_updates(
 
 @router.post("/batch/reject")
 async def batch_reject_updates(
-    update_ids: List[int] = Body(..., embed=True),
-    reason: Optional[str] = Body(None, embed=True),
-    admin: Optional[dict] = Depends(require_auth),
+    update_ids: list[int] = Body(..., embed=True),
+    reason: str | None = Body(None, embed=True),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Batch reject multiple updates.
 
     Args:
@@ -422,7 +423,7 @@ async def batch_reject_updates(
 
                 # Reject the update with version increment
                 update.status = "rejected"
-                update.rejected_at = datetime.now(timezone.utc)
+                update.rejected_at = datetime.now(UTC)
                 if reason and hasattr(update, "rejection_reason"):
                     update.rejection_reason = reason
                 update.version += 1  # Increment version for optimistic locking
@@ -466,7 +467,7 @@ async def batch_reject_updates(
 @router.get("/{update_id}", response_model=UpdateSchema)
 async def get_update(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Get update details.
@@ -490,9 +491,9 @@ async def get_update(
 async def approve_update(
     update_id: int,
     approval: UpdateApproval,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Approve an update.
 
     Args:
@@ -526,7 +527,7 @@ async def approve_update(
 
         update.status = "approved"
         update.approved_by = approval.approved_by or "user"
-        update.approved_at = datetime.now(timezone.utc)
+        update.approved_at = datetime.now(UTC)
         update.version += 1  # Increment version for optimistic locking
 
     await db.commit()
@@ -540,10 +541,10 @@ async def approve_update(
 @router.post("/{update_id}/apply")
 async def apply_update(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     request: UpdateApply = UpdateApply(),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Apply an approved update.
 
     This will:
@@ -585,10 +586,10 @@ async def apply_update(
 @router.post("/{update_id}/reject")
 async def reject_update(
     update_id: int,
-    reason: Optional[str] = Body(None, embed=True),
-    admin: Optional[dict] = Depends(require_auth),
+    reason: str | None = Body(None, embed=True),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Reject an update.
 
     Args:
@@ -598,7 +599,7 @@ async def reject_update(
     Returns:
         Success message
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
@@ -614,7 +615,7 @@ async def reject_update(
     # Wrap status updates in transaction for atomicity
     async with db.begin_nested():
         update.status = "rejected"
-        update.rejected_at = datetime.now(timezone.utc)
+        update.rejected_at = datetime.now(UTC)
         update.rejected_by = admin.get("email") if admin else "system"
         update.rejection_reason = reason
         update.version += 1  # Increment version for optimistic locking
@@ -639,7 +640,7 @@ async def reject_update(
 @router.post("/{update_id}/cancel-retry")
 async def cancel_retry(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Cancel a pending retry and reset update to pending status.
@@ -677,9 +678,9 @@ async def cancel_retry(
 @router.delete("/{update_id}")
 async def delete_update(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Delete an update record.
 
     Args:
@@ -703,9 +704,9 @@ async def delete_update(
 @router.post("/{update_id}/snooze")
 async def snooze_update(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Snooze/dismiss a stale container notification.
 
     Sets snoozed_until to current time + threshold days, preventing the
@@ -717,7 +718,8 @@ async def snooze_update(
     Returns:
         Success message with snooze details
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     from app.services.settings_service import SettingsService
 
     result = await db.execute(select(Update).where(Update.id == update_id))
@@ -732,7 +734,7 @@ async def snooze_update(
     )
 
     # Set snooze expiration
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     snooze_until = now + timedelta(days=threshold_days)
     update.snoozed_until = snooze_until
 
@@ -748,9 +750,9 @@ async def snooze_update(
 @router.post("/{update_id}/remove-container")
 async def remove_container_from_db(
     update_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Remove a stale container from the database entirely.
 
     This deletes both the update notification and the container record.
@@ -763,8 +765,8 @@ async def remove_container_from_db(
         Success message
     """
     from app.models.history import UpdateHistory
-    from app.models.restart_state import ContainerRestartState
     from app.models.restart_log import ContainerRestartLog
+    from app.models.restart_state import ContainerRestartState
 
     result = await db.execute(select(Update).where(Update.id == update_id))
     update = result.scalar_one_or_none()
@@ -857,8 +859,8 @@ async def remove_container_from_db(
 
 @router.get("/scheduler/status")
 async def get_scheduler_status(
-    admin: Optional[dict] = Depends(require_auth),
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth),
+) -> dict[str, Any]:
     """Get background scheduler status.
 
     Returns:
@@ -870,8 +872,8 @@ async def get_scheduler_status(
 
 @router.post("/scheduler/trigger")
 async def trigger_scheduler(
-    admin: Optional[dict] = Depends(require_auth),
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth),
+) -> dict[str, Any]:
     """Manually trigger an update check outside the schedule.
 
     Returns:
@@ -892,8 +894,8 @@ async def trigger_scheduler(
 
 @router.post("/scheduler/reload")
 async def reload_scheduler(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     """Reload scheduler configuration from settings.
 
     This allows updating the schedule without restarting the container.

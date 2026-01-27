@@ -1,16 +1,16 @@
 """Service layer for webhook management and delivery."""
 
 import asyncio
-import logging
-import hmac
 import hashlib
-import json
-import time
+import hmac
 import ipaddress
-from typing import List, Optional, Dict, Any
-from urllib.parse import urlparse
+import json
+import logging
 import socket
-from datetime import datetime, timezone
+import time
+from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -19,11 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.webhook import Webhook
 from app.schemas.webhook import (
     WebhookCreate,
-    WebhookUpdate,
     WebhookSchema,
     WebhookTestResponse,
+    WebhookUpdate,
 )
-from app.utils.encryption import encrypt_value, decrypt_value
+from app.utils.encryption import decrypt_value, encrypt_value
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class WebhookService:
         return WebhookSchema.model_validate(webhook)
 
     @staticmethod
-    async def list_webhooks(db: AsyncSession) -> List[WebhookSchema]:
+    async def list_webhooks(db: AsyncSession) -> list[WebhookSchema]:
         """List all webhooks.
 
         Args:
@@ -129,7 +129,7 @@ class WebhookService:
         return [WebhookSchema.model_validate(w) for w in webhooks]
 
     @staticmethod
-    async def get_webhook(db: AsyncSession, webhook_id: int) -> Optional[WebhookSchema]:
+    async def get_webhook(db: AsyncSession, webhook_id: int) -> WebhookSchema | None:
         """Get webhook by ID.
 
         Args:
@@ -149,7 +149,7 @@ class WebhookService:
     @staticmethod
     async def update_webhook(
         db: AsyncSession, webhook_id: int, webhook_data: WebhookUpdate
-    ) -> Optional[WebhookSchema]:
+    ) -> WebhookSchema | None:
         """Update an existing webhook.
 
         Args:
@@ -235,8 +235,8 @@ class WebhookService:
 
     @staticmethod
     async def trigger_webhook(
-        db: AsyncSession, webhook_id: int, event: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        db: AsyncSession, webhook_id: int, event: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         """Trigger a specific webhook with an event payload.
 
         Args:
@@ -299,7 +299,7 @@ class WebhookService:
 
                     if response.status_code >= 200 and response.status_code < 300:
                         # Success
-                        webhook.last_triggered = datetime.now(timezone.utc)
+                        webhook.last_triggered = datetime.now(UTC)
                         webhook.last_status = "success"
                         webhook.last_error = None
                         await db.commit()
@@ -326,7 +326,7 @@ class WebhookService:
                 await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # All attempts failed
-        webhook.last_triggered = datetime.now(timezone.utc)
+        webhook.last_triggered = datetime.now(UTC)
         webhook.last_status = "failed"
         webhook.last_error = last_error
         await db.commit()

@@ -1,10 +1,10 @@
 """Database migration runner with automatic discovery and tracking."""
 
-import logging
 import importlib.util
 import inspect
+import logging
 from pathlib import Path
-from typing import Set, List, Tuple
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -39,7 +39,7 @@ class MigrationRunner:
             )
             logger.debug("Migration tracking table verified")
 
-    async def _get_applied_migrations(self) -> Set[str]:
+    async def _get_applied_migrations(self) -> set[str]:
         """
         Get set of already-applied migration names.
 
@@ -68,7 +68,7 @@ class MigrationRunner:
             )
             logger.debug(f"Marked migration '{name}' as applied")
 
-    def _discover_migrations(self) -> List[Tuple[str, Path]]:
+    def _discover_migrations(self) -> list[tuple[str, Path]]:
         """
         Find all migration files and return sorted list.
 

@@ -11,7 +11,8 @@ Security:
 """
 
 import logging
-from typing import Optional, Any, Dict
+from typing import Any
+
 from fastapi import HTTPException
 
 
@@ -68,9 +69,9 @@ def safe_dict_response(
     error: Exception,
     user_message: str,
     success: bool = False,
-    additional_fields: Optional[Dict[str, Any]] = None,
+    additional_fields: dict[str, Any] | None = None,
     log_level: str = "error",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Log error server-side and return safe dict response (for non-exception returns).
 
     Use this when you want to return an error dict instead of raising an exception.

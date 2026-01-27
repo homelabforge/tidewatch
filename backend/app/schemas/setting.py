@@ -1,9 +1,8 @@
 """Pydantic schemas for settings."""
 
-from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
 
+from pydantic import BaseModel, Field
 
 # Sensitive setting keys that should be masked in API responses
 SENSITIVE_KEYS = {
@@ -30,8 +29,8 @@ class SettingSchema(BaseModel):
     key: str
     value: str
     category: str
-    description: Optional[str] = None
-    encrypted: Optional[bool] = False
+    description: str | None = None
+    encrypted: bool | None = False
     created_at: datetime
     updated_at: datetime
 

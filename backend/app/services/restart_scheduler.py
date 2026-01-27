@@ -1,20 +1,20 @@
 """Restart scheduler service for monitoring and scheduling container restarts."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models import Container
 from app.models.restart_state import ContainerRestartState
 from app.services.container_monitor import container_monitor
+from app.services.event_bus import event_bus
 from app.services.restart_service import restart_service
 from app.services.settings_service import SettingsService
-from app.services.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +114,11 @@ class RestartSchedulerService:
             if state.next_retry_at:
                 # Ensure timezone-aware comparison (SQLite returns naive datetimes)
                 next_retry = (
-                    state.next_retry_at.replace(tzinfo=timezone.utc)
+                    state.next_retry_at.replace(tzinfo=UTC)
                     if state.next_retry_at.tzinfo is None
                     else state.next_retry_at
                 )
-                if next_retry > datetime.now(timezone.utc):
+                if next_retry > datetime.now(UTC):
                     # Already scheduled, skip
                     return
 
@@ -169,7 +169,7 @@ class RestartSchedulerService:
                 # Update state but don't schedule restart
                 state.last_exit_code = exit_code
                 state.last_failure_reason = failure_reason
-                state.last_failure_at = datetime.now(timezone.utc)
+                state.last_failure_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -177,12 +177,12 @@ class RestartSchedulerService:
             delay = await restart_service.calculate_backoff_delay(state, db)
 
             # Schedule restart
-            run_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
+            run_time = datetime.now(UTC) + timedelta(seconds=delay)
             state.next_retry_at = run_time
             state.current_backoff_seconds = delay
             state.last_exit_code = exit_code
             state.last_failure_reason = failure_reason
-            state.last_failure_at = datetime.now(timezone.utc)
+            state.last_failure_at = datetime.now(UTC)
             state.consecutive_failures += 1
 
             # Check if max attempts reached
@@ -314,7 +314,7 @@ class RestartSchedulerService:
                     state.consecutive_failures = 0
                     state.next_retry_at = None
                     state.current_backoff_seconds = 0.0
-                    state.last_successful_start = datetime.now(timezone.utc)
+                    state.last_successful_start = datetime.now(UTC)
                     await db.commit()
                     return
 

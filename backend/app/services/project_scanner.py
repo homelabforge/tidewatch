@@ -2,15 +2,15 @@
 
 import logging
 from pathlib import Path
-from typing import Dict
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from ruamel.yaml import YAML, YAMLError
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from ruamel.yaml import YAML, YAMLError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Container
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_path, sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class ProjectScanner:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def scan_projects_directory(self) -> Dict[str, any]:
+    async def scan_projects_directory(self) -> dict[str, any]:
         """
         Scan projects directory for dev containers.
 
@@ -168,7 +168,7 @@ class ProjectScanner:
         try:
             # Read compose file
             yaml = YAML()
-            with open(compose_file, "r") as f:
+            with open(compose_file) as f:
                 compose_data = yaml.load(f)
 
             if not compose_data or "services" not in compose_data:
@@ -319,9 +319,10 @@ class ProjectScanner:
                 return
 
             # Scan the Dockerfile
-            from app.services.dockerfile_parser import DockerfileParser
             from sqlalchemy import select
+
             from app.models.container import Container
+            from app.services.dockerfile_parser import DockerfileParser
 
             # Get container object
             result = await self.db.execute(

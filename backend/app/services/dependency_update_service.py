@@ -7,40 +7,40 @@ Handles preview and actual updates for all dependency types:
 """
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dockerfile_dependency import DockerfileDependency
-from app.models.http_server import HttpServer
 from app.models.app_dependency import AppDependency
-from app.models.history import UpdateHistory
 from app.models.container import Container
+from app.models.dockerfile_dependency import DockerfileDependency
+from app.models.history import UpdateHistory
+from app.models.http_server import HttpServer
+from app.services.changelog import ChangelogFetcher
+from app.services.changelog_updater import ChangelogUpdater
+from app.services.dockerfile_parser import DockerfileParser
 from app.utils.file_operations import (
-    validate_file_path_for_update,
-    validate_version_string,
-    create_timestamped_backup,
-    atomic_file_write,
-    restore_from_backup,
     FileOperationError,
     PathValidationError,
     VersionValidationError,
+    atomic_file_write,
+    create_timestamped_backup,
+    restore_from_backup,
+    validate_file_path_for_update,
+    validate_version_string,
+)
+from app.utils.manifest_parsers import (
+    update_cargo_toml,
+    update_composer_json,
+    update_go_mod,
+    update_package_json,
+    update_pyproject_toml,
+    update_requirements_txt,
 )
 from app.utils.security import sanitize_log_message
-from app.services.dockerfile_parser import DockerfileParser
-from app.services.changelog import ChangelogFetcher
-from app.services.changelog_updater import ChangelogUpdater
-from app.utils.manifest_parsers import (
-    update_package_json,
-    update_requirements_txt,
-    update_pyproject_toml,
-    update_composer_json,
-    update_cargo_toml,
-    update_go_mod,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DependencyUpdateService:
     }
 
     @staticmethod
-    def _get_github_repo_for_image(image_name: str) -> Optional[str]:
+    def _get_github_repo_for_image(image_name: str) -> str | None:
         """Get GitHub repo for a Docker image name.
 
         Args:
@@ -93,7 +93,7 @@ class DependencyUpdateService:
     @staticmethod
     async def _get_github_repo_for_package(
         package_name: str, ecosystem: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get GitHub repo for a package from its registry.
 
         Args:
@@ -168,7 +168,7 @@ class DependencyUpdateService:
         dependency_id: int,
         new_version: str,
         triggered_by: str = "user",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update Dockerfile FROM instruction.
 
@@ -300,7 +300,7 @@ class DependencyUpdateService:
             dependency.current_tag = new_version
             dependency.update_available = False
             dependency.latest_tag = new_version
-            dependency.last_checked = datetime.now(timezone.utc)
+            dependency.last_checked = datetime.now(UTC)
 
             # Create history record
             history = UpdateHistory(
@@ -319,7 +319,7 @@ class DependencyUpdateService:
                 file_path=str(validated_path),
                 reason=f"Updated {dependency.image_name} from {old_tag} to {new_version}",
                 triggered_by=triggered_by,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
             db.add(history)
             await db.commit()
@@ -391,7 +391,7 @@ class DependencyUpdateService:
     @staticmethod
     async def update_http_server_label(
         db: AsyncSession, server_id: int, new_version: str, triggered_by: str = "user"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update http.server.version label in Dockerfile.
 
@@ -501,7 +501,7 @@ class DependencyUpdateService:
             server.current_version = new_version
             server.update_available = False
             server.latest_version = new_version
-            server.last_checked = datetime.now(timezone.utc)
+            server.last_checked = datetime.now(UTC)
 
             # Create history record
             history = UpdateHistory(
@@ -520,7 +520,7 @@ class DependencyUpdateService:
                 file_path=str(validated_path),
                 reason=f"Updated {server.name} from {old_version} to {new_version}",
                 triggered_by=triggered_by,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
             db.add(history)
             await db.commit()
@@ -589,7 +589,7 @@ class DependencyUpdateService:
         dependency_id: int,
         new_version: str,
         triggered_by: str = "user",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Update app dependency in manifest file.
 
@@ -742,7 +742,7 @@ class DependencyUpdateService:
             dependency.current_version = new_version
             dependency.update_available = False
             dependency.latest_version = new_version
-            dependency.last_checked = datetime.now(timezone.utc)
+            dependency.last_checked = datetime.now(UTC)
 
             # Create history record
             history = UpdateHistory(
@@ -761,7 +761,7 @@ class DependencyUpdateService:
                 file_path=str(validated_path),
                 reason=f"Updated {dependency.name} ({dependency.ecosystem}) from {old_version} to {new_version}",
                 triggered_by=triggered_by,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
             db.add(history)
             await db.commit()
@@ -827,7 +827,7 @@ class DependencyUpdateService:
     @staticmethod
     async def preview_update(
         db: AsyncSession, dependency_type: str, dependency_id: int, new_version: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate preview of update without applying.
 
@@ -980,7 +980,7 @@ class DependencyUpdateService:
         dependency_type: str,
         dependency_id: int,
         limit: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get rollback history for a dependency.
 
@@ -1083,7 +1083,7 @@ class DependencyUpdateService:
         dependency_id: int,
         target_version: str,
         triggered_by: str = "user",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Rollback a dependency to a previous version.
 

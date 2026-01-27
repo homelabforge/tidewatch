@@ -10,9 +10,10 @@ Tests container dependency management and update ordering:
 - Cache eviction and clearing
 """
 
-import pytest
 import json
 from unittest.mock import patch
+
+import pytest
 
 from app.services.dependency_manager import DependencyManager
 

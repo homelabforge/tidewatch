@@ -11,13 +11,14 @@ Tests intelligent container restart with exponential backoff:
 - Success window reset
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.restart_service import RestartService
-from app.models.restart_state import ContainerRestartState
+import pytest
+
 from app.models.container import Container
+from app.models.restart_state import ContainerRestartState
+from app.services.restart_service import RestartService
 
 
 class TestExponentialBackoff:
@@ -318,7 +319,7 @@ class TestCircuitBreaker:
         """Test paused container blocks restart."""
         mock_db = AsyncMock()
 
-        future_time = datetime.now(timezone.utc) + timedelta(hours=1)
+        future_time = datetime.now(UTC) + timedelta(hours=1)
         state = ContainerRestartState(
             id=1,
             container_id=1,
@@ -345,7 +346,7 @@ class TestCircuitBreaker:
         mock_db = AsyncMock()
         mock_db.commit = AsyncMock()
 
-        past_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        past_time = datetime.now(UTC) - timedelta(hours=1)
         state = ContainerRestartState(
             id=1,
             container_id=1,
@@ -477,7 +478,7 @@ class TestCheckAndResetBackoff:
         state = ContainerRestartState(
             id=1,
             container_id=1,
-            last_successful_start=datetime.now(timezone.utc),
+            last_successful_start=datetime.now(UTC),
             success_window_seconds=300,
         )
         # Mock uptime_seconds property
@@ -499,7 +500,7 @@ class TestCheckAndResetBackoff:
         state = ContainerRestartState(
             id=1,
             container_id=1,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=400),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=400),
             success_window_seconds=300,  # 5 minutes
             consecutive_failures=5,
             current_backoff_seconds=120.0,
@@ -532,7 +533,7 @@ class TestCheckAndResetBackoff:
         state = ContainerRestartState(
             id=1,
             container_id=1,
-            last_successful_start=datetime.now(timezone.utc) - timedelta(seconds=200),
+            last_successful_start=datetime.now(UTC) - timedelta(seconds=200),
             success_window_seconds=300,  # 5 minutes
             consecutive_failures=2,
         )

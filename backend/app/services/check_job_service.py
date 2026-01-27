@@ -11,8 +11,8 @@ Provides concurrent execution of container update checks with:
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.models.check_job import CheckJob
 from app.models.container import Container
-from app.services.update_checker import UpdateChecker
-from app.services.event_bus import event_bus
-from app.services.settings_service import SettingsService
-from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
+from app.services.event_bus import event_bus
+from app.services.registry_rate_limiter import RegistryRateLimiter
+from app.services.settings_service import SettingsService
 from app.services.tag_fetcher import TagFetcher
+from app.services.update_checker import UpdateChecker
 from app.services.update_decision_maker import UpdateDecisionMaker
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class CheckJobService:
     """
 
     @staticmethod
-    async def get_active_job(db: AsyncSession) -> Optional[CheckJob]:
+    async def get_active_job(db: AsyncSession) -> CheckJob | None:
         """Get currently active (queued or running) job if any.
 
         Args:
@@ -105,7 +105,7 @@ class CheckJobService:
         return job
 
     @staticmethod
-    async def get_job(db: AsyncSession, job_id: int) -> Optional[CheckJob]:
+    async def get_job(db: AsyncSession, job_id: int) -> CheckJob | None:
         """Get a check job by ID.
 
         Args:
@@ -174,7 +174,7 @@ class CheckJobService:
             job_id: ID of the job to run
         """
         async with AsyncSessionLocal() as db:
-            job: Optional[CheckJob] = None
+            job: CheckJob | None = None
             try:
                 # Get job and mark as running
                 job = await CheckJobService.get_job(db, job_id)
@@ -188,7 +188,7 @@ class CheckJobService:
                     return
 
                 job.status = "running"  # type: ignore[attr-defined]
-                job.started_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+                job.started_at = datetime.now(UTC)  # type: ignore[attr-defined]
                 await db.commit()
 
                 await event_bus.publish(
@@ -221,7 +221,7 @@ class CheckJobService:
                 if not containers:
                     logger.info(f"Check job {job_id}: No containers to check")
                     job.status = "done"  # type: ignore[attr-defined]
-                    job.completed_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+                    job.completed_at = datetime.now(UTC)  # type: ignore[attr-defined]
                     job.results = []  # type: ignore[attr-defined]
                     job.errors = []  # type: ignore[attr-defined]
                     await db.commit()
@@ -243,7 +243,7 @@ class CheckJobService:
                 run_context = CheckRunContext(job_id=job_id)
 
                 # Build include_prereleases lookup for each container
-                include_prereleases_lookup: Dict[int, bool] = {}
+                include_prereleases_lookup: dict[int, bool] = {}
                 for container in containers:
                     container_id: int = container.id  # type: ignore[attr-defined]
                     container_prereleases: bool = (
@@ -273,8 +273,8 @@ class CheckJobService:
 
                 # Shared state for progress tracking (with lock)
                 progress_lock = asyncio.Lock()
-                results: List[Dict[str, Any]] = []
-                errors: List[Dict[str, Any]] = []
+                results: list[dict[str, Any]] = []
+                errors: list[dict[str, Any]] = []
                 cancel_requested = False
 
                 # Shared counters for progress (protected by progress_lock)
@@ -288,7 +288,7 @@ class CheckJobService:
                 # Worker function for checking a container group
                 async def check_group(
                     key: ImageCheckKey,
-                    group_containers: List[Container],
+                    group_containers: list[Container],
                     semaphore: asyncio.Semaphore,
                 ) -> None:
                     nonlocal \
@@ -491,7 +491,7 @@ class CheckJobService:
 
                 if job_cancel_requested or cancel_requested:
                     job.status = "canceled"  # type: ignore[attr-defined]
-                    job.completed_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+                    job.completed_at = datetime.now(UTC)  # type: ignore[attr-defined]
                     job.current_container_id = None  # type: ignore[attr-defined]
                     job.current_container_name = None  # type: ignore[attr-defined]
                     job.checked_count = checked_count  # type: ignore[attr-defined]
@@ -518,7 +518,7 @@ class CheckJobService:
 
                 # Mark job as complete
                 job.status = "done"  # type: ignore[attr-defined]
-                job.completed_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+                job.completed_at = datetime.now(UTC)  # type: ignore[attr-defined]
                 job.current_container_id = None  # type: ignore[attr-defined]
                 job.current_container_name = None  # type: ignore[attr-defined]
                 job.checked_count = checked_count  # type: ignore[attr-defined]
@@ -564,7 +564,7 @@ class CheckJobService:
                     if job:
                         job.status = "failed"  # type: ignore[attr-defined]
                         job.error_message = str(e)  # type: ignore[attr-defined]
-                        job.completed_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+                        job.completed_at = datetime.now(UTC)  # type: ignore[attr-defined]
                         job.current_container_id = None  # type: ignore[attr-defined]
                         job.current_container_name = None  # type: ignore[attr-defined]
                         await db.commit()

@@ -2,18 +2,18 @@
 
 import logging
 import re
+from datetime import UTC
 from pathlib import Path
-from typing import Dict, List, Optional
 from urllib.parse import urlparse, urlunparse
 
 from ruamel.yaml import YAML, YAMLError
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_path, sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def validate_container_name(name: str) -> bool:
 
 
 def validate_compose_file_path(
-    file_path: str, allowed_base_dir: Optional[str] = None
+    file_path: str, allowed_base_dir: str | None = None
 ) -> bool:
     """Validate compose file path to prevent path traversal attacks.
 
@@ -133,7 +133,7 @@ class ComposeParser:
     """Parse docker-compose.yml files to discover containers."""
 
     @staticmethod
-    async def discover_containers(db: AsyncSession) -> List[Container]:
+    async def discover_containers(db: AsyncSession) -> list[Container]:
         """Discover all containers from compose files.
 
         Args:
@@ -202,7 +202,7 @@ class ComposeParser:
         return containers
 
     @staticmethod
-    async def _parse_compose_file(file_path: str, db: AsyncSession) -> List[Container]:
+    async def _parse_compose_file(file_path: str, db: AsyncSession) -> list[Container]:
         """Parse a single compose file.
 
         Args:
@@ -214,7 +214,7 @@ class ComposeParser:
         """
         containers = []
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             compose_data = yaml.load(f)
 
         if not compose_data or "services" not in compose_data:
@@ -330,7 +330,7 @@ class ComposeParser:
         return containers
 
     @staticmethod
-    def _parse_image_string(image: str) -> Optional[tuple[str, str, str]]:
+    def _parse_image_string(image: str) -> tuple[str, str, str] | None:
         """Parse Docker image string into registry, name, and tag.
 
         Args:
@@ -387,7 +387,7 @@ class ComposeParser:
         return (registry, image_name, tag)
 
     @staticmethod
-    def _labels_list_to_dict(labels: List[str]) -> Dict[str, str]:
+    def _labels_list_to_dict(labels: list[str]) -> dict[str, str]:
         """Convert labels from list format to dict.
 
         Args:
@@ -404,7 +404,7 @@ class ComposeParser:
         return result
 
     @staticmethod
-    def _sanitize_labels(labels: Dict[str, any]) -> Dict[str, str]:
+    def _sanitize_labels(labels: dict[str, any]) -> dict[str, str]:
         """Sanitize and validate Docker labels.
 
         - Ensure all values are strings
@@ -475,7 +475,7 @@ class ComposeParser:
         return sanitized
 
     @staticmethod
-    def _extract_healthcheck_url(health_config, service_name: str) -> Optional[str]:
+    def _extract_healthcheck_url(health_config, service_name: str) -> str | None:
         """Extract an HTTP health check URL from compose healthcheck config."""
         if not health_config:
             return None
@@ -527,7 +527,7 @@ class ComposeParser:
         return url
 
     @staticmethod
-    def _normalize_health_check_method(value: Optional[str]) -> str:
+    def _normalize_health_check_method(value: str | None) -> str:
         """Validate requested health check method."""
         if not value:
             return "auto"
@@ -542,7 +542,7 @@ class ComposeParser:
         return "auto"
 
     @staticmethod
-    async def sync_containers(db: AsyncSession) -> Dict[str, int]:
+    async def sync_containers(db: AsyncSession) -> dict[str, int]:
         """Sync discovered containers with database.
 
         This will:
@@ -674,7 +674,7 @@ class ComposeParser:
 
     @staticmethod
     async def _sync_restart_policies(
-        db: AsyncSession, discovered: List[Container]
+        db: AsyncSession, discovered: list[Container]
     ) -> None:
         """Sync Docker restart policies from runtime to database.
 
@@ -747,7 +747,7 @@ class ComposeParser:
 
     @staticmethod
     async def _cleanup_stale_updates(
-        db: AsyncSession, discovered: List[Container]
+        db: AsyncSession, discovered: list[Container]
     ) -> None:
         """Remove stale updates for containers that have been rediscovered.
 
@@ -780,7 +780,7 @@ class ComposeParser:
 
     @staticmethod
     async def _detect_stale_containers(
-        db: AsyncSession, discovered: List[Container]
+        db: AsyncSession, discovered: list[Container]
     ) -> None:
         """Detect containers in database that are no longer in compose files.
 
@@ -791,8 +791,9 @@ class ComposeParser:
             db: Database session
             discovered: List of containers discovered from compose files
         """
+        from datetime import datetime, timedelta
+
         from app.models.update import Update
-        from datetime import datetime, timedelta, timezone
 
         # Check if stale detection is enabled
         enabled = await SettingsService.get_bool(
@@ -817,7 +818,7 @@ class ComposeParser:
         discovered_names = {c.name for c in discovered}
 
         # Current time for comparisons
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         threshold = timedelta(days=threshold_days)
 
         for container in all_containers:
@@ -833,7 +834,7 @@ class ComposeParser:
             # Calculate how long it's been missing
             created_at = container.created_at
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
+                created_at = created_at.replace(tzinfo=UTC)
 
             time_since_creation = now - created_at
 
@@ -899,7 +900,7 @@ class ComposeParser:
         file_path: str,
         service_name: str,
         new_tag: str,
-        db: Optional[AsyncSession] = None,
+        db: AsyncSession | None = None,
     ) -> bool:
         """Update a compose file with a new image tag.
 
@@ -945,7 +946,7 @@ class ComposeParser:
                 return False
 
             # Load with ruamel.yaml to preserve formatting
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 compose_data = yaml.load(f)
 
             if "services" not in compose_data:
@@ -988,7 +989,7 @@ class ComposeParser:
             return False
 
     @staticmethod
-    def extract_health_check_url(compose_file: str, service_name: str) -> Optional[str]:
+    def extract_health_check_url(compose_file: str, service_name: str) -> str | None:
         """Extract health check URL from compose file by parsing healthcheck + traefik labels.
 
         Args:
@@ -1009,7 +1010,7 @@ class ComposeParser:
                 logger.error(f"Invalid compose file path: {compose_file}")
                 return None
 
-            with open(compose_file, "r") as f:
+            with open(compose_file) as f:
                 compose_data = yaml.load(f)
 
             if not compose_data or "services" not in compose_data:
@@ -1093,7 +1094,7 @@ class ComposeParser:
             return None
 
     @staticmethod
-    def extract_release_source(image: str) -> Optional[str]:
+    def extract_release_source(image: str) -> str | None:
         """Extract GitHub repository from image registry.
 
         Args:

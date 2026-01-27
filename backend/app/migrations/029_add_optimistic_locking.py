@@ -9,6 +9,7 @@ Description: Add version column to updates table to prevent race conditions duri
 
 import sys
 from pathlib import Path
+
 from sqlalchemy import text
 
 # Add parent directory to path for imports

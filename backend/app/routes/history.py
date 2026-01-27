@@ -1,18 +1,19 @@
 """History API endpoints."""
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.orm import undefer
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from app.database import get_db
-from app.services.auth import require_auth
 from app.models.history import UpdateHistory
 from app.models.restart_log import ContainerRestartLog
-from app.schemas.history import UpdateHistorySchema, UnifiedHistoryEventSchema
+from app.schemas.history import UnifiedHistoryEventSchema, UpdateHistorySchema
+from app.services.auth import require_auth
 from app.services.update_engine import UpdateEngine
 
 logger = logging.getLogger(__name__)
@@ -114,17 +115,17 @@ def transform_restart_to_event(
     )
 
 
-@router.get("/", response_model=List[UnifiedHistoryEventSchema])
+@router.get("/", response_model=list[UnifiedHistoryEventSchema])
 async def list_history(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     container_id: int = None,
-    status: Optional[str] = Query(
+    status: str | None = Query(
         None, description="Filter by status (success, failed, rolled_back)"
     ),
-    start_date: Optional[str] = Query(
+    start_date: str | None = Query(
         None, description="Filter by start date (ISO format)"
     ),
-    end_date: Optional[str] = Query(
+    end_date: str | None = Query(
         None, description="Filter by end date (ISO format)"
     ),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
@@ -132,7 +133,7 @@ async def list_history(
         50, ge=1, le=500, description="Maximum number of records to return"
     ),
     db: AsyncSession = Depends(get_db),
-) -> List[UnifiedHistoryEventSchema]:
+) -> list[UnifiedHistoryEventSchema]:
     """List unified history (updates + restarts) with pagination.
 
     Args:
@@ -194,7 +195,7 @@ async def list_history(
     restarts = restart_result.scalars().all()
 
     # Transform to unified events
-    unified_events: List[UnifiedHistoryEventSchema] = []
+    unified_events: list[UnifiedHistoryEventSchema] = []
 
     for update in updates:
         unified_events.append(transform_update_to_event(update))
@@ -211,8 +212,8 @@ async def list_history(
 
 @router.get("/stats")
 async def get_history_stats(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     """Get update history statistics.
 
     Returns:
@@ -281,7 +282,7 @@ async def get_history_stats(
 @router.get("/{history_id}", response_model=UpdateHistorySchema)
 async def get_history(
     history_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateHistorySchema:
     """Get history record details.
@@ -313,9 +314,9 @@ async def get_history(
 @router.post("/{history_id}/rollback")
 async def rollback_update(
     history_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Rollback an update.
 
     This will:

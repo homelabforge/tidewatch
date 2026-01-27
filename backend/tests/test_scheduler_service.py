@@ -11,13 +11,13 @@ Tests background job scheduling and execution:
 - Manual triggering and status reporting
 """
 
+from datetime import UTC, datetime, timedelta
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch, ANY
 from apscheduler.triggers.cron import CronTrigger
 
 from app.services.scheduler import SchedulerService
-
 
 # Mock fixtures
 
@@ -404,7 +404,7 @@ class TestUpdateCheckJob:
         self, scheduler_instance, mock_settings, mock_check_job_service
     ):
         """Test updates _last_check timestamp after successful run."""
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         await scheduler_instance._run_update_check()
 
@@ -1129,7 +1129,7 @@ class TestStatusReporting:
         self, scheduler_instance, mock_settings
     ):
         """Test loads last_check timestamp from settings on start."""
-        last_check_time = datetime.now(timezone.utc)
+        last_check_time = datetime.now(UTC)
         mock_settings.get.side_effect = lambda db, key, default=None: {
             "check_schedule": "0 */6 * * *",
             "scheduler_last_check": last_check_time.isoformat(),

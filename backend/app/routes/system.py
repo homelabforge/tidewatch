@@ -1,15 +1,16 @@
 """System information API endpoints."""
 
-from typing import Optional
-from fastapi import APIRouter, Depends, Response
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pathlib import Path
-from datetime import datetime, UTC
-import tomllib
 import asyncio
-import shutil
 import logging
+import shutil
+import tomllib
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import get_db
 from app.services.auth import require_auth
 
@@ -55,7 +56,7 @@ async def get_docker_version() -> str:
             stdout_bytes, _ = await asyncio.wait_for(process.communicate(), timeout=5)
             if process.returncode == 0:
                 return stdout_bytes.decode("utf-8").strip()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
     except Exception:
         pass
@@ -64,12 +65,13 @@ async def get_docker_version() -> str:
 
 @router.get("/info")
 async def get_system_info(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ):
     """Get system information."""
+    from sqlalchemy import func, select
+
     from app.models import Container, Update
     from app.services.settings_service import SettingsService
-    from sqlalchemy import select, func
 
     total_containers = await db.scalar(select(func.count()).select_from(Container))
     monitored = await db.scalar(
@@ -92,7 +94,7 @@ async def get_system_info(
 
 
 @router.get("/version")
-async def get_version_info(admin: Optional[dict] = Depends(require_auth)):
+async def get_version_info(admin: dict | None = Depends(require_auth)):
     """Get version information."""
     return {
         "version": get_version(),
@@ -185,8 +187,9 @@ async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
 
     Note: This endpoint is public (no authentication required) for Prometheus scraping
     """
-    from app.models import Container, Update
     from sqlalchemy import func
+
+    from app.models import Container, Update
 
     try:
         # Get container counts

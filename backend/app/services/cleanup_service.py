@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class CleanupService:
         return f"{size:.2f} {units[unit_index]}"
 
     @staticmethod
-    def _matches_exclude_pattern(name: str, patterns: List[str]) -> bool:
+    def _matches_exclude_pattern(name: str, patterns: list[str]) -> bool:
         """Check if a container/image name matches any exclude pattern."""
         if not patterns:
             return False
@@ -79,7 +80,7 @@ class CleanupService:
         return False
 
     @staticmethod
-    async def get_disk_usage() -> Dict[str, Any]:
+    async def get_disk_usage() -> dict[str, Any]:
         """Get Docker disk usage statistics.
 
         Returns:
@@ -170,7 +171,7 @@ class CleanupService:
 
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout getting disk usage")
             return {"error": "Timeout getting disk usage"}
         except (OSError, PermissionError) as e:
@@ -179,8 +180,8 @@ class CleanupService:
 
     @staticmethod
     async def get_dangling_images(
-        exclude_patterns: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        exclude_patterns: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Get list of dangling (untagged) images.
 
         Args:
@@ -232,7 +233,7 @@ class CleanupService:
 
             return images
 
-        except (asyncio.TimeoutError, OSError, PermissionError) as e:
+        except (TimeoutError, OSError, PermissionError) as e:
             logger.error(
                 f"Error getting dangling images: {sanitize_log_message(str(e))}"
             )
@@ -240,8 +241,8 @@ class CleanupService:
 
     @staticmethod
     async def get_exited_containers(
-        exclude_patterns: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        exclude_patterns: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Get list of exited/dead containers.
 
         Args:
@@ -306,7 +307,7 @@ class CleanupService:
 
             return containers
 
-        except (asyncio.TimeoutError, OSError, PermissionError) as e:
+        except (TimeoutError, OSError, PermissionError) as e:
             logger.error(
                 f"Error getting exited containers: {sanitize_log_message(str(e))}"
             )
@@ -314,8 +315,8 @@ class CleanupService:
 
     @staticmethod
     async def get_old_images(
-        days: int = 7, exclude_patterns: Optional[List[str]] = None
-    ) -> List[Dict[str, Any]]:
+        days: int = 7, exclude_patterns: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Get list of images older than specified days that aren't in use.
 
         Args:
@@ -376,7 +377,7 @@ class CleanupService:
 
             return images
 
-        except (asyncio.TimeoutError, OSError, PermissionError) as e:
+        except (TimeoutError, OSError, PermissionError) as e:
             logger.error(f"Error getting old images: {sanitize_log_message(str(e))}")
             return []
 
@@ -384,8 +385,8 @@ class CleanupService:
     async def get_cleanup_preview(
         mode: str = "dangling",
         days: int = 7,
-        exclude_patterns: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        exclude_patterns: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Preview what would be cleaned up without removing anything.
 
         Args:
@@ -436,7 +437,7 @@ class CleanupService:
         return result
 
     @staticmethod
-    async def prune_dangling_images() -> Dict[str, Any]:
+    async def prune_dangling_images() -> dict[str, Any]:
         """Remove all dangling (untagged) images.
 
         Returns:
@@ -499,7 +500,7 @@ class CleanupService:
                 ),
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout pruning dangling images")
             return {
                 "success": False,
@@ -518,8 +519,8 @@ class CleanupService:
 
     @staticmethod
     async def prune_exited_containers(
-        exclude_patterns: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        exclude_patterns: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Remove exited/dead containers.
 
         Args:
@@ -558,7 +559,7 @@ class CleanupService:
                     else:
                         errors.append(container["name"])
 
-                except (asyncio.TimeoutError, OSError, PermissionError) as e:
+                except (TimeoutError, OSError, PermissionError) as e:
                     errors.append(f"{container['name']}: {e}")
 
             logger.info(
@@ -614,7 +615,7 @@ class CleanupService:
                 "containers_removed": containers_removed,
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout pruning containers")
             return {"success": False, "error": "Timeout", "containers_removed": 0}
         except (OSError, PermissionError) as e:
@@ -623,8 +624,8 @@ class CleanupService:
 
     @staticmethod
     async def cleanup_old_images(
-        days: int = 7, exclude_patterns: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        days: int = 7, exclude_patterns: list[str] | None = None
+    ) -> dict[str, Any]:
         """Remove images older than X days that aren't in use.
 
         Args:
@@ -679,7 +680,7 @@ class CleanupService:
                         ):
                             errors.append(f"{image['id']}: {stderr_text}")
 
-                except (asyncio.TimeoutError, OSError, PermissionError) as e:
+                except (TimeoutError, OSError, PermissionError) as e:
                     errors.append(f"{image['id']}: {e}")
 
             logger.info(
@@ -753,7 +754,7 @@ class CleanupService:
                 ),
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout pruning old images")
             return {
                 "success": False,
@@ -774,9 +775,9 @@ class CleanupService:
     async def run_cleanup(
         mode: str = "dangling",
         days: int = 7,
-        exclude_patterns: Optional[List[str]] = None,
+        exclude_patterns: list[str] | None = None,
         cleanup_containers: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run cleanup based on configured mode.
 
         Args:

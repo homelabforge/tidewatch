@@ -9,18 +9,19 @@ Tests SSRF (Server-Side Request Forgery) protection:
 - IDN (Internationalized Domain Names) support
 """
 
-import pytest
-from unittest.mock import patch
 import socket
+from unittest.mock import patch
 
+import pytest
+
+from app.exceptions import SSRFProtectionError
 from app.utils.url_validation import (
+    LOCALHOST_HOSTNAMES,
     is_private_ip,
     resolve_hostname,
-    validate_url_for_ssrf,
     validate_oidc_url,
-    LOCALHOST_HOSTNAMES,
+    validate_url_for_ssrf,
 )
-from app.exceptions import SSRFProtectionError
 
 
 class TestIsPrivateIP:

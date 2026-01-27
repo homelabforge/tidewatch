@@ -1,14 +1,13 @@
 """Slack notification service for TideWatch."""
 
 import logging
-from typing import Optional
 
 import httpx
 
-from app.services.notifications.base import NotificationService
-from app.utils.url_validation import validate_url_for_ssrf
-from app.utils.security import sanitize_log_message
 from app.exceptions import SSRFProtectionError
+from app.services.notifications.base import NotificationService
+from app.utils.security import sanitize_log_message
+from app.utils.url_validation import validate_url_for_ssrf
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +58,8 @@ class SlackNotificationService(NotificationService):
         title: str,
         message: str,
         priority: str = "default",
-        tags: Optional[list[str]] = None,
-        url: Optional[str] = None,
+        tags: list[str] | None = None,
+        url: str | None = None,
     ) -> bool:
         """Send a notification via Slack webhook.
 

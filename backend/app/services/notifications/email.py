@@ -1,9 +1,8 @@
 """Email (SMTP) notification service for TideWatch."""
 
 import logging
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional
+from email.mime.text import MIMEText
 
 import aiosmtplib
 
@@ -64,8 +63,8 @@ class EmailNotificationService(NotificationService):
         title: str,
         message: str,
         priority: str = "default",
-        tags: Optional[list[str]] = None,
-        url: Optional[str] = None,
+        tags: list[str] | None = None,
+        url: str | None = None,
     ) -> bool:
         """Send a notification via email.
 

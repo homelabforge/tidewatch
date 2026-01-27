@@ -1,18 +1,17 @@
 """Service for parsing Dockerfiles and tracking base image dependencies."""
 
-import re
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+import re
 from datetime import datetime
+from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError, IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dockerfile_dependency import DockerfileDependency
 from app.models.container import Container
-from app.utils.security import sanitize_path, sanitize_log_message
+from app.models.dockerfile_dependency import DockerfileDependency
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +52,8 @@ class DockerfileParser:
         self,
         session: AsyncSession,
         container: Container,
-        manual_dockerfile_path: Optional[str] = None,
-    ) -> List[DockerfileDependency]:
+        manual_dockerfile_path: str | None = None,
+    ) -> list[DockerfileDependency]:
         """
         Scan a container's Dockerfile for base image dependencies.
 
@@ -109,8 +108,8 @@ class DockerfileParser:
             return []
 
     async def _find_dockerfile(
-        self, container: Container, manual_path: Optional[str]
-    ) -> Optional[Path]:
+        self, container: Container, manual_path: str | None
+    ) -> Path | None:
         """
         Find the Dockerfile for a container.
 
@@ -184,7 +183,7 @@ class DockerfileParser:
 
     async def _parse_dockerfile(
         self, dockerfile_path: Path, container_id: int
-    ) -> List[DockerfileDependency]:
+    ) -> list[DockerfileDependency]:
         """
         Parse Dockerfile and extract FROM statements.
 
@@ -194,7 +193,7 @@ class DockerfileParser:
         dependencies = []
 
         try:
-            with open(dockerfile_path, "r") as f:
+            with open(dockerfile_path) as f:
                 lines = f.readlines()
 
             for line_num, line in enumerate(lines, start=1):
@@ -260,7 +259,7 @@ class DockerfileParser:
 
         return dependencies
 
-    def _parse_image_reference(self, full_image: str) -> Tuple[str, str, str]:
+    def _parse_image_reference(self, full_image: str) -> tuple[str, str, str]:
         """
         Parse a Docker image reference into components.
 
@@ -353,7 +352,7 @@ class DockerfileParser:
         self,
         session: AsyncSession,
         container_id: int,
-        dependencies: List[DockerfileDependency],
+        dependencies: list[DockerfileDependency],
     ) -> None:
         """
         Save Dockerfile dependencies to the database.
@@ -455,7 +454,7 @@ class DockerfileParser:
 
     async def get_container_dockerfile_dependencies(
         self, session: AsyncSession, container_id: int
-    ) -> List[DockerfileDependency]:
+    ) -> list[DockerfileDependency]:
         """
         Get all Dockerfile dependencies for a container.
 
@@ -475,7 +474,7 @@ class DockerfileParser:
 
     async def get_all_dockerfile_dependencies(
         self, session: AsyncSession
-    ) -> Dict[int, List[DockerfileDependency]]:
+    ) -> dict[int, list[DockerfileDependency]]:
         """
         Get all Dockerfile dependencies grouped by container.
 
@@ -496,7 +495,7 @@ class DockerfileParser:
 
         return dependencies_by_container
 
-    async def check_all_for_updates(self, session: AsyncSession) -> Dict[str, int]:
+    async def check_all_for_updates(self, session: AsyncSession) -> dict[str, int]:
         """
         Check all Dockerfile dependencies for updates.
 
@@ -593,9 +592,9 @@ class DockerfileParser:
         dockerfile_path: Path,
         image_name: str,
         new_tag: str,
-        line_number: Optional[int] = None,
-        stage_name: Optional[str] = None,
-    ) -> Tuple[bool, str]:
+        line_number: int | None = None,
+        stage_name: str | None = None,
+    ) -> tuple[bool, str]:
         """
         Update FROM instruction in Dockerfile.
 
@@ -610,7 +609,7 @@ class DockerfileParser:
             Tuple of (success: bool, updated_content: str)
         """
         try:
-            with open(dockerfile_path, "r", encoding="utf-8") as f:
+            with open(dockerfile_path, encoding="utf-8") as f:
                 lines = f.readlines()
 
             updated = False
@@ -673,7 +672,7 @@ class DockerfileParser:
     @staticmethod
     def update_label_value(
         dockerfile_path: Path, label_key: str, new_value: str
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Update LABEL value in Dockerfile (e.g., for HTTP server version).
 
@@ -690,7 +689,7 @@ class DockerfileParser:
             Tuple of (success: bool, updated_content: str)
         """
         try:
-            with open(dockerfile_path, "r", encoding="utf-8") as f:
+            with open(dockerfile_path, encoding="utf-8") as f:
                 lines = f.readlines()
 
             updated = False

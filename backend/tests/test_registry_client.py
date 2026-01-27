@@ -11,15 +11,16 @@ Tests version parsing, prerelease detection, and tag filtering:
 - Multi-registry support
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.services.registry_client import (
-    is_prerelease_tag,
+    NON_PEP440_PRERELEASE_INDICATORS,
     TagCache,
     canonical_arch_suffix,
-    NON_PEP440_PRERELEASE_INDICATORS,
+    is_prerelease_tag,
 )
 
 
@@ -159,7 +160,7 @@ class TestTagCache:
 
         time.sleep(0.001)
         cache._cache["dockerhub:nginx"]["expires_at"] = datetime.now(
-            timezone.utc
+            UTC
         ) - timedelta(seconds=1)
 
         # Should return None (expired)
@@ -193,7 +194,7 @@ class TestTagCache:
         cache.set("stale2", ["3.0.0"])
 
         # Manually expire two entries
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cache._cache["stale1"]["expires_at"] = now - timedelta(minutes=1)
         cache._cache["stale2"]["expires_at"] = now - timedelta(minutes=1)
 
@@ -214,7 +215,7 @@ class TestTagCache:
         expires_at = entry["expires_at"]
 
         # Should expire approximately 30 minutes from now
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expected_expiry = now + timedelta(minutes=30)
 
         # Allow 1 second tolerance
@@ -618,8 +619,7 @@ class TestDockerHubClient:
     @pytest.mark.asyncio
     async def test_get_all_tags_uses_cache_on_second_call(self):
         """Test Docker Hub client uses cache for repeated calls."""
-        from app.services.registry_client import DockerHubClient
-        from app.services.registry_client import _tag_cache
+        from app.services.registry_client import DockerHubClient, _tag_cache
 
         _tag_cache.clear()  # Clear global cache
 
@@ -650,8 +650,9 @@ class TestDockerHubClient:
     @pytest.mark.asyncio
     async def test_get_all_tags_returns_empty_on_http_error(self):
         """Test Docker Hub client returns empty list on HTTP error."""
-        from app.services.registry_client import DockerHubClient
         import httpx
+
+        from app.services.registry_client import DockerHubClient
 
         client = DockerHubClient()
 

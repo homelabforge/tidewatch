@@ -10,10 +10,11 @@ Usage:
     python migrations/022_add_authentication.py
 """
 
-import sys
 import asyncio
 import logging
+import sys
 from pathlib import Path
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 

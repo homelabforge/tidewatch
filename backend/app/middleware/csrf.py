@@ -1,8 +1,9 @@
 """CSRF protection middleware for API endpoints."""
 
 import logging
-import secrets
 import os
+import secrets
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware

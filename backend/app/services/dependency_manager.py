@@ -1,9 +1,8 @@
 """Dependency manager for ordered container updates."""
 
+import hashlib
 import json
 import logging
-from typing import List, Dict, Set, Optional, Tuple
-import hashlib
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,14 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 # Cache for dependency graph results (keyed by hash of dependencies)
-_dependency_cache: Dict[str, List[str]] = {}
+_dependency_cache: dict[str, list[str]] = {}
 
 
 class DependencyManager:
     """Service for managing container dependencies and update ordering."""
 
     @staticmethod
-    def _generate_cache_key(dependencies: Dict[str, Set[str]]) -> str:
+    def _generate_cache_key(dependencies: dict[str, set[str]]) -> str:
         """Generate cache key from dependency graph.
 
         Args:
@@ -40,8 +39,8 @@ class DependencyManager:
 
     @staticmethod
     async def get_update_order(
-        db: AsyncSession, container_names: List[str]
-    ) -> List[str]:
+        db: AsyncSession, container_names: list[str]
+    ) -> list[str]:
         """Get containers in dependency-ordered update sequence with caching.
 
         Containers with no dependencies are updated first, followed by their
@@ -67,7 +66,7 @@ class DependencyManager:
         containers = {c.name: c for c in result.scalars().all()}
 
         # Build dependency graph
-        dependencies: Dict[str, Set[str]] = {}
+        dependencies: dict[str, set[str]] = {}
 
         for name in container_names:
             container = containers.get(name)
@@ -127,7 +126,7 @@ class DependencyManager:
             return container_names
 
     @staticmethod
-    def _topological_sort(dependencies: Dict[str, Set[str]]) -> List[str]:
+    def _topological_sort(dependencies: dict[str, set[str]]) -> list[str]:
         """Perform topological sort on dependency graph.
 
         Uses Kahn's algorithm for cycle detection.
@@ -177,7 +176,7 @@ class DependencyManager:
     @staticmethod
     async def auto_detect_dependencies(
         db: AsyncSession, container_name: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Auto-detect container dependencies from Docker compose links/depends_on.
 
         This is a placeholder for future implementation that would parse
@@ -212,7 +211,7 @@ class DependencyManager:
 
     @staticmethod
     async def update_container_dependencies(
-        db: AsyncSession, container_name: str, dependencies: List[str]
+        db: AsyncSession, container_name: str, dependencies: list[str]
     ):
         """Update container dependencies and reverse-update dependents.
 
@@ -334,8 +333,8 @@ class DependencyManager:
 
     @staticmethod
     async def validate_dependencies(
-        db: AsyncSession, container_name: str, dependencies: List[str]
-    ) -> Tuple[bool, Optional[str]]:
+        db: AsyncSession, container_name: str, dependencies: list[str]
+    ) -> tuple[bool, str | None]:
         """Validate that dependencies exist and won't create cycles.
 
         Args:
@@ -361,7 +360,7 @@ class DependencyManager:
         result = await db.execute(select(Container))
         all_containers = result.scalars().all()
 
-        dep_graph: Dict[str, Set[str]] = {}
+        dep_graph: dict[str, set[str]] = {}
         for container in all_containers:
             if container.name == container_name:
                 # Use proposed dependencies

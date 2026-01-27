@@ -2,7 +2,6 @@
 
 import re
 from pathlib import Path
-from typing import List, Optional
 
 
 class ValidationError(Exception):
@@ -156,7 +155,7 @@ def validate_compose_file_path(
     return file_path
 
 
-def validate_docker_compose_command(command: str) -> List[str]:
+def validate_docker_compose_command(command: str) -> list[str]:
     """Validate and parse Docker Compose command template.
 
     Only allows 'docker compose' or 'docker-compose' as the base command.
@@ -234,9 +233,9 @@ def validate_docker_compose_command(command: str) -> List[str]:
 def build_docker_compose_command(
     compose_file: Path,
     service_name: str,
-    env_file: Optional[Path] = None,
+    env_file: Path | None = None,
     action: str = "up",
-) -> List[str]:
+) -> list[str]:
     """Build a safe Docker Compose command using list-based construction.
 
     Args:
@@ -274,8 +273,8 @@ def build_docker_compose_command(
 
 
 def build_docker_command(
-    action: str, container_name: str, additional_args: Optional[List[str]] = None
-) -> List[str]:
+    action: str, container_name: str, additional_args: list[str] | None = None
+) -> list[str]:
     """Build a safe Docker command using list-based construction.
 
     Args:

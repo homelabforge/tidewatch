@@ -1,16 +1,16 @@
 """Service layer for vulnerability scanning operations."""
 
 import logging
-from typing import List
-from datetime import datetime, timezone
-from sqlalchemy import select, func, and_
+from datetime import UTC, datetime
+
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
 from app.models.vulnerability_scan import VulnerabilityScan
 from app.schemas.scan import ScanResultSchema, ScanSummarySchema
-from app.services.vulnforge_client import VulnForgeClient
 from app.services.settings_service import SettingsService
+from app.services.vulnforge_client import VulnForgeClient
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class ScanService:
                 # Create scan record
                 scan = VulnerabilityScan(
                     container_id=container_id,
-                    scanned_at=datetime.now(timezone.utc),
+                    scanned_at=datetime.now(UTC),
                     status="completed",
                     total_vulns=total_vulns,
                     critical_count=severity_counts.get("CRITICAL", 0),
@@ -107,7 +107,7 @@ class ScanService:
                 # Create failed scan record
                 scan = VulnerabilityScan(
                     container_id=container_id,
-                    scanned_at=datetime.now(timezone.utc),
+                    scanned_at=datetime.now(UTC),
                     status="failed",
                     error_message=str(e),
                 )
@@ -116,7 +116,7 @@ class ScanService:
                 raise
 
     @staticmethod
-    async def scan_all_containers(db: AsyncSession) -> List[ScanResultSchema]:
+    async def scan_all_containers(db: AsyncSession) -> list[ScanResultSchema]:
         """Scan all VulnForge-enabled containers.
 
         Args:

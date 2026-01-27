@@ -9,6 +9,7 @@ Description: Add latest_major_tag column to track major version updates that exi
 
 import sys
 from pathlib import Path
+
 from sqlalchemy import text
 
 # Add parent directory to path for imports

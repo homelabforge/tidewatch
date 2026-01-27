@@ -5,16 +5,18 @@ import os
 import secrets
 import tomllib
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import Response
-from starlette.middleware.sessions import SessionMiddleware
+from datetime import UTC
 from pathlib import Path
 
-from app.database import init_db, AsyncSessionLocal
-from app.services.settings_service import SettingsService
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.database import AsyncSessionLocal, init_db
 from app.services.scheduler import scheduler_service
+from app.services.settings_service import SettingsService
 
 
 def get_version() -> str:
@@ -84,8 +86,9 @@ async def lifespan(app: FastAPI):
     # Clean up stuck update history records from previous crashes
     # Using raw SQL to avoid issues with model columns that may not exist yet during migrations
     async with AsyncSessionLocal() as db:
+        from datetime import datetime
+
         from sqlalchemy import text
-        from datetime import datetime, timezone
 
         # Find all in_progress records using raw SQL
         result = await db.execute(
@@ -110,7 +113,7 @@ async def lifespan(app: FastAPI):
                 {
                     "new_status": "failed",
                     "error_msg": "Update interrupted by application restart",
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "completed_at": datetime.now(UTC).isoformat(),
                     "old_status": "in_progress",
                 },
             )
@@ -373,8 +376,8 @@ async def health_check():
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
-    from app.services.metrics import collect_metrics, get_metrics, get_content_type
     from app.database import AsyncSessionLocal
+    from app.services.metrics import collect_metrics, get_content_type, get_metrics
 
     # Collect current metrics from database
     async with AsyncSessionLocal() as db:

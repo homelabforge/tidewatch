@@ -13,10 +13,11 @@ Usage:
     python migrations/007_add_update_windows.py
 """
 
-import sys
 import asyncio
 import logging
+import sys
 from pathlib import Path
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 

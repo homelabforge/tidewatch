@@ -9,29 +9,29 @@ Tests JWT authentication, password hashing, and admin management:
 - Auth mode switching (none/local/oidc)
 """
 
-import pytest
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from authlib.jose import jwt
 from fastapi import HTTPException
 
 from app.services import auth
 from app.services.auth import (
-    hash_password,
-    verify_password,
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
+    authenticate_admin,
     create_access_token,
     decode_token,
-    get_or_create_secret_key,
-    is_setup_complete,
     get_admin_profile,
-    update_admin_profile,
-    update_admin_password,
-    authenticate_admin,
     get_auth_mode,
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
+    get_or_create_secret_key,
+    hash_password,
+    is_setup_complete,
+    update_admin_password,
+    update_admin_profile,
+    verify_password,
 )
 
 
@@ -215,8 +215,8 @@ class TestJWTOperations:
         token = create_access_token(sample_payload)
         decoded = jwt.decode(token, auth._SECRET_KEY)
 
-        exp = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
-        iat = datetime.fromtimestamp(decoded["iat"], tz=timezone.utc)
+        exp = datetime.fromtimestamp(decoded["exp"], tz=UTC)
+        iat = datetime.fromtimestamp(decoded["iat"], tz=UTC)
 
         # Should expire in approximately 24 hours
         expected_delta = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -232,8 +232,8 @@ class TestJWTOperations:
         token = create_access_token(sample_payload, expires_delta=custom_delta)
         decoded = jwt.decode(token, auth._SECRET_KEY)
 
-        exp = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
-        iat = datetime.fromtimestamp(decoded["iat"], tz=timezone.utc)
+        exp = datetime.fromtimestamp(decoded["exp"], tz=UTC)
+        iat = datetime.fromtimestamp(decoded["iat"], tz=UTC)
 
         actual_delta = exp - iat
         assert abs((actual_delta - custom_delta).total_seconds()) < 5

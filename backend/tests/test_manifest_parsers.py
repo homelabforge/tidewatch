@@ -14,16 +14,17 @@ Security focus:
 - Error handling (malformed files, permission errors)
 """
 
-import pytest
 import json
 
+import pytest
+
 from app.utils.manifest_parsers import (
-    update_package_json,
-    update_requirements_txt,
-    update_pyproject_toml,
-    update_composer_json,
     update_cargo_toml,
+    update_composer_json,
     update_go_mod,
+    update_package_json,
+    update_pyproject_toml,
+    update_requirements_txt,
 )
 
 

@@ -1,10 +1,11 @@
 """Pytest configuration and fixtures."""
 
-import os
 import asyncio
+import os
+from collections.abc import AsyncGenerator
+
 import pytest
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 # Set DATABASE_URL for tests BEFORE importing app.db
@@ -22,7 +23,7 @@ os.environ["TIDEWATCH_TESTING"] = "true"
 
 from app.database import Base
 from app.models import *  # noqa: F403 - Import all models to ensure they're registered
-from app.services.auth import hash_password, create_access_token
+from app.services.auth import create_access_token, hash_password
 from app.services.settings_service import SettingsService
 
 
@@ -55,7 +56,7 @@ async def db_engine():
 
 
 @pytest.fixture(scope="function")
-async def db(db_engine) -> AsyncGenerator[AsyncSession, None]:
+async def db(db_engine) -> AsyncGenerator[AsyncSession]:
     """Create a test database session with automatic rollback."""
     async_session_maker = async_sessionmaker(
         db_engine,
@@ -230,7 +231,8 @@ async def app():
 @pytest.fixture
 async def client(app, db):
     """Create async test client with auth disabled by default (auth_mode='none')."""
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from app.database import get_db
 
     # Override get_db dependency to use test database
@@ -579,7 +581,7 @@ def mock_docker_client():
 @pytest.fixture
 def mock_event_bus():
     """Mock event bus for testing notifications."""
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import AsyncMock, patch
 
     with patch("app.services.event_bus.event_bus") as mock:
         mock.publish = AsyncMock()
@@ -601,7 +603,7 @@ def notification_event():
 @pytest.fixture
 def mock_httpx_client():
     """Mock httpx client for notification services."""
-    from unittest.mock import patch, AsyncMock, MagicMock
+    from unittest.mock import AsyncMock, MagicMock, patch
 
     with patch("httpx.AsyncClient") as mock:
         mock_instance = AsyncMock()

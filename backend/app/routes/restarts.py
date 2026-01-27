@@ -1,31 +1,31 @@
 """Container restart management API endpoints."""
 
-from typing import Optional
+import logging
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_, desc, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.exc import OperationalError
-from datetime import datetime, timedelta, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.auth import require_auth
 from app.models.container import Container
-from app.models.restart_state import ContainerRestartState
 from app.models.restart_log import ContainerRestartLog
+from app.models.restart_state import ContainerRestartState
 from app.schemas.restart import (
-    RestartStateSchema,
-    RestartLogSchema,
-    RestartHistoryResponse,
-    EnableRestartRequest,
     DisableRestartRequest,
-    ResetRestartStateRequest,
-    PauseRestartRequest,
+    EnableRestartRequest,
     ManualRestartRequest,
-    RestartStatsResponse,
+    PauseRestartRequest,
+    ResetRestartStateRequest,
     RestartActionResponse,
+    RestartHistoryResponse,
+    RestartLogSchema,
+    RestartStateSchema,
+    RestartStatsResponse,
 )
+from app.services.auth import require_auth
 from app.services.restart_service import RestartService
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ router = APIRouter()
 @router.get("/{container_id}/state", response_model=RestartStateSchema)
 async def get_restart_state(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartStateSchema:
     """Get current restart state for a container.
@@ -88,7 +88,7 @@ async def get_restart_state(
 @router.get("/{container_id}/history", response_model=RestartHistoryResponse)
 async def get_restart_history(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -138,7 +138,7 @@ async def get_restart_history(
 async def enable_restart(
     container_id: int,
     request: EnableRestartRequest,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Enable auto-restart for a container.
@@ -204,7 +204,7 @@ async def enable_restart(
 async def disable_restart(
     container_id: int,
     request: DisableRestartRequest,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Disable auto-restart for a container.
@@ -255,7 +255,7 @@ async def disable_restart(
 async def reset_restart_state(
     container_id: int,
     request: ResetRestartStateRequest,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Reset restart state (clear failures and backoff).
@@ -314,7 +314,7 @@ async def reset_restart_state(
 async def pause_restart(
     container_id: int,
     request: PauseRestartRequest,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Temporarily pause auto-restart for a container.
@@ -349,7 +349,7 @@ async def pause_restart(
         )
 
     # Set pause
-    pause_until = datetime.now(timezone.utc) + timedelta(
+    pause_until = datetime.now(UTC) + timedelta(
         seconds=request.duration_seconds
     )
     state.paused_until = pause_until
@@ -368,7 +368,7 @@ async def pause_restart(
 @router.post("/{container_id}/resume", response_model=RestartActionResponse)
 async def resume_restart(
     container_id: int,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Resume auto-restart after pause.
@@ -419,7 +419,7 @@ async def resume_restart(
 async def manual_restart(
     container_id: int,
     request: ManualRestartRequest,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Manually trigger a restart (bypasses backoff if requested).
@@ -498,7 +498,7 @@ async def manual_restart(
 
 @router.get("/stats", response_model=RestartStatsResponse)
 async def get_restart_stats(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> RestartStatsResponse:
     """Get aggregate restart statistics across all containers.
 
@@ -520,7 +520,7 @@ async def get_restart_stats(
     with_failures = failures_result.scalar_one()
 
     # Containers paused
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     paused_result = await db.execute(
         select(func.count())
         .select_from(ContainerRestartState)
@@ -542,7 +542,7 @@ async def get_restart_stats(
     max_retries_result.scalar_one()
 
     # Restarts today
-    today_start = datetime.now(timezone.utc).replace(
+    today_start = datetime.now(UTC).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
     today_result = await db.execute(

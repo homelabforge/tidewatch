@@ -1,5 +1,7 @@
 """Tests for container API endpoints."""
 
+from datetime import UTC
+
 import pytest
 from fastapi import status
 
@@ -657,8 +659,9 @@ class TestContainerStats:
         self, authenticated_client, db, make_container
     ):
         """Test retrieving container update history."""
+        from datetime import datetime
+
         from app.models.history import UpdateHistory
-        from datetime import datetime, timezone
 
         # Create test container
         container = make_container(
@@ -681,8 +684,8 @@ class TestContainerStats:
                 from_tag="1.19",
                 to_tag="1.20",
                 status="success",
-                started_at=datetime.now(timezone.utc),
-                completed_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
             ),
             UpdateHistory(
                 container_id=container.id,
@@ -690,8 +693,8 @@ class TestContainerStats:
                 from_tag="1.18",
                 to_tag="1.19",
                 status="success",
-                started_at=datetime.now(timezone.utc),
-                completed_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
             ),
         ]
         db.add_all(history_entries)
@@ -715,8 +718,9 @@ class TestContainerStats:
         self, authenticated_client, db, make_container
     ):
         """Test history endpoint pagination."""
+        from datetime import datetime
+
         from app.models.history import UpdateHistory
-        from datetime import datetime, timezone
 
         # Create test container
         container = make_container(
@@ -739,8 +743,8 @@ class TestContainerStats:
                 from_tag=f"1.{20 + i}",
                 to_tag=f"1.{21 + i}",
                 status="success",
-                started_at=datetime.now(timezone.utc),
-                completed_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
             )
             db.add(entry)
         await db.commit()

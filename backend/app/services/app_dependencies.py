@@ -1,17 +1,17 @@
 """Service for scanning and tracking application dependencies."""
 
 import json
+import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
-import httpx
-import logging
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.app_dependency import AppDependency as AppDependencyModel
-from dataclasses import dataclass
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -24,16 +24,16 @@ class AppDependency:
     name: str
     ecosystem: str  # npm, pypi, composer, cargo, go
     current_version: str
-    latest_version: Optional[str] = None
+    latest_version: str | None = None
     update_available: bool = False
     security_advisories: int = 0
-    socket_score: Optional[float] = None  # Socket.dev security score (0-100)
+    socket_score: float | None = None  # Socket.dev security score (0-100)
     severity: str = "info"  # critical, high, medium, low, info
     dependency_type: str = "production"  # production, development, optional, peer
     manifest_file: str = (
         "unknown"  # Path to manifest file (package.json, requirements.txt, etc.)
     )
-    last_checked: Optional[datetime] = None
+    last_checked: datetime | None = None
 
 
 class DependencyScanner:
@@ -87,8 +87,8 @@ class DependencyScanner:
             return str(file_path)
 
     async def scan_container_dependencies(
-        self, compose_file: str, service_name: str, manual_path: Optional[str] = None
-    ) -> List[AppDependency]:
+        self, compose_file: str, service_name: str, manual_path: str | None = None
+    ) -> list[AppDependency]:
         """
         Scan a container for application dependencies.
 
@@ -130,7 +130,7 @@ class DependencyScanner:
 
     def _find_project_root(
         self, compose_file: str, service_name: str
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Find the project root directory from mounted projects directory.
 
@@ -184,7 +184,7 @@ class DependencyScanner:
             )
             return None
 
-    async def _scan_npm(self, project_root: Path) -> List[AppDependency]:
+    async def _scan_npm(self, project_root: Path) -> list[AppDependency]:
         """Scan for npm/Node.js dependencies."""
         dependencies = []
 
@@ -208,7 +208,7 @@ class DependencyScanner:
 
         return dependencies
 
-    async def _scan_python(self, project_root: Path) -> List[AppDependency]:
+    async def _scan_python(self, project_root: Path) -> list[AppDependency]:
         """Scan for Python dependencies."""
         dependencies = []
 
@@ -243,7 +243,7 @@ class DependencyScanner:
 
         return dependencies
 
-    async def _scan_php(self, project_root: Path) -> List[AppDependency]:
+    async def _scan_php(self, project_root: Path) -> list[AppDependency]:
         """Scan for PHP/Composer dependencies."""
         locations = [
             project_root / "composer.json",
@@ -261,7 +261,7 @@ class DependencyScanner:
 
         return []
 
-    async def _scan_go(self, project_root: Path) -> List[AppDependency]:
+    async def _scan_go(self, project_root: Path) -> list[AppDependency]:
         """Scan for Go module dependencies."""
         locations = [
             project_root / "go.mod",
@@ -277,7 +277,7 @@ class DependencyScanner:
 
         return []
 
-    async def _scan_rust(self, project_root: Path) -> List[AppDependency]:
+    async def _scan_rust(self, project_root: Path) -> list[AppDependency]:
         """Scan for Rust/Cargo dependencies."""
         locations = [
             project_root / "Cargo.toml",
@@ -297,7 +297,7 @@ class DependencyScanner:
 
     async def _parse_package_json(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse package.json content."""
         try:
             data = json.loads(content)
@@ -385,7 +385,7 @@ class DependencyScanner:
 
     async def _parse_toml_deps(
         self, section_content: str, dep_type: str, manifest_file: str
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse TOML dependency section and return list of dependencies."""
         dependencies = []
         for line in section_content.split("\n"):
@@ -429,7 +429,7 @@ class DependencyScanner:
 
     async def _parse_pyproject_content(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse pyproject.toml content."""
         try:
             dependencies = []
@@ -519,7 +519,7 @@ class DependencyScanner:
 
     async def _parse_requirements_content(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse requirements.txt content."""
         try:
             dependencies = []
@@ -564,7 +564,7 @@ class DependencyScanner:
 
     async def _parse_composer_json(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse composer.json content."""
         try:
             data = json.loads(content)
@@ -617,7 +617,7 @@ class DependencyScanner:
 
     async def _parse_go_mod_content(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse go.mod content."""
         try:
             dependencies = []
@@ -660,7 +660,7 @@ class DependencyScanner:
 
     async def _parse_cargo_toml_content(
         self, content: str, file_path: Path
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """Parse Cargo.toml content."""
         try:
             dependencies = []
@@ -724,7 +724,7 @@ class DependencyScanner:
         return version
 
     def _calculate_severity(
-        self, current: str, latest: Optional[str], has_update: bool
+        self, current: str, latest: str | None, has_update: bool
     ) -> str:
         """Calculate severity of update based on semver difference."""
         if not has_update or not latest:
@@ -753,7 +753,7 @@ class DependencyScanner:
             # If version parsing fails, default to info severity
             return "info"
 
-    async def _get_npm_latest(self, package: str) -> Optional[str]:
+    async def _get_npm_latest(self, package: str) -> str | None:
         """Fetch latest version from npm registry."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -781,7 +781,7 @@ class DependencyScanner:
             )
         return None
 
-    async def _get_pypi_latest(self, package: str) -> Optional[str]:
+    async def _get_pypi_latest(self, package: str) -> str | None:
         """Fetch latest version from PyPI."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -807,7 +807,7 @@ class DependencyScanner:
             )
         return None
 
-    async def _get_packagist_latest(self, package: str) -> Optional[str]:
+    async def _get_packagist_latest(self, package: str) -> str | None:
         """Fetch latest version from Packagist."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -844,7 +844,7 @@ class DependencyScanner:
             )
         return None
 
-    async def _get_crates_latest(self, package: str) -> Optional[str]:
+    async def _get_crates_latest(self, package: str) -> str | None:
         """Fetch latest version from crates.io."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -874,7 +874,7 @@ class DependencyScanner:
             )
         return None
 
-    async def _get_go_latest(self, module: str) -> Optional[str]:
+    async def _get_go_latest(self, module: str) -> str | None:
         """Fetch latest version from Go proxy."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -903,7 +903,7 @@ class DependencyScanner:
         return None
 
     async def persist_dependencies(
-        self, db: AsyncSession, container_id: int, dependencies: List[AppDependency]
+        self, db: AsyncSession, container_id: int, dependencies: list[AppDependency]
     ) -> int:
         """
         Persist scanned app dependencies to the database.
@@ -1043,7 +1043,7 @@ class DependencyScanner:
 
     async def get_persisted_dependencies(
         self, db: AsyncSession, container_id: int
-    ) -> List[AppDependency]:
+    ) -> list[AppDependency]:
         """
         Fetch persisted app dependencies from the database.
 

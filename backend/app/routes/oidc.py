@@ -15,26 +15,27 @@ Single-User Adaptations:
 """
 
 import logging
-import httpx
 from datetime import timedelta
+
+import httpx
+from authlib.jose import JoseError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from authlib.jose import JoseError
 
 from app.database import get_db
+from app.exceptions import PendingLinkRequiredException
 from app.schemas.auth import OIDCConfig, OIDCTestResult
 from app.services import oidc as oidc_service
-from app.utils.security import sanitize_log_message
 from app.services.auth import (
-    create_access_token,
-    require_auth,
-    JWT_COOKIE_NAME,
     JWT_COOKIE_MAX_AGE,
+    JWT_COOKIE_NAME,
+    create_access_token,
     is_setup_complete,
+    require_auth,
 )
 from app.services.settings_service import SettingsService
-from app.exceptions import PendingLinkRequiredException
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 

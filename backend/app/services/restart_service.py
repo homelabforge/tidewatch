@@ -3,18 +3,17 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Container
-from app.models.restart_state import ContainerRestartState
 from app.models.restart_log import ContainerRestartLog
-from app.services.settings_service import SettingsService
+from app.models.restart_state import ContainerRestartState
 from app.services.event_bus import event_bus
+from app.services.settings_service import SettingsService
 from app.services.update_engine import UpdateEngine
 
 logger = logging.getLogger(__name__)
@@ -124,7 +123,7 @@ class RestartService:
     @staticmethod
     async def check_circuit_breaker(
         db: AsyncSession, container_id: int
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Check if circuit breaker is open (preventing restarts).
 
         Returns:
@@ -142,7 +141,7 @@ class RestartService:
 
         # Check if manually paused
         if state.paused_until:
-            if datetime.now(timezone.utc) < state.paused_until:
+            if datetime.now(UTC) < state.paused_until:
                 return (
                     False,
                     f"Paused until {state.paused_until.isoformat()} ({state.pause_reason or 'manual'})",
@@ -166,7 +165,7 @@ class RestartService:
             select(func.count(ContainerRestartState.id)).where(
                 ContainerRestartState.next_retry_at.isnot(None),
                 ContainerRestartState.next_retry_at
-                > datetime.now(timezone.utc) - timedelta(minutes=5),
+                > datetime.now(UTC) - timedelta(minutes=5),
             )
         )
         count = concurrent_count_result.scalar() or 0
@@ -268,8 +267,8 @@ class RestartService:
         state: ContainerRestartState,
         attempt_number: int,
         trigger_reason: str,
-        exit_code: Optional[int] = None,
-    ) -> Dict:
+        exit_code: int | None = None,
+    ) -> dict:
         """Execute a container restart attempt.
 
         Args:
@@ -283,7 +282,7 @@ class RestartService:
         Returns:
             Result dictionary with success status
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create log entry
         log_entry = ContainerRestartLog(
@@ -335,7 +334,7 @@ class RestartService:
             if not restart_result["success"]:
                 log_entry.success = False
                 log_entry.error_message = restart_result.get("error", "Unknown error")
-                log_entry.completed_at = datetime.now(timezone.utc)
+                log_entry.completed_at = datetime.now(UTC)
                 await db.commit()
 
                 logger.error(
@@ -368,7 +367,7 @@ class RestartService:
                     log_entry.error_message = (
                         f"Health check failed: {health_result.get('error')}"
                     )
-                    log_entry.completed_at = datetime.now(timezone.utc)
+                    log_entry.completed_at = datetime.now(UTC)
                     await db.commit()
 
                     logger.warning(
@@ -383,7 +382,7 @@ class RestartService:
             # Success!
             log_entry.success = True
             log_entry.final_container_status = "running"
-            log_entry.completed_at = datetime.now(timezone.utc)
+            log_entry.completed_at = datetime.now(UTC)
 
             # Update state
             state.last_successful_start = now
@@ -428,7 +427,7 @@ class RestartService:
 
             log_entry.success = False
             log_entry.error_message = str(e)
-            log_entry.completed_at = datetime.now(timezone.utc)
+            log_entry.completed_at = datetime.now(UTC)
             await db.commit()
 
             return {"success": False, "error": str(e)}
@@ -439,7 +438,7 @@ class RestartService:
 
             log_entry.success = False
             log_entry.error_message = str(e)
-            log_entry.completed_at = datetime.now(timezone.utc)
+            log_entry.completed_at = datetime.now(UTC)
             await db.commit()
 
             return {"success": False, "error": str(e)}
@@ -448,7 +447,7 @@ class RestartService:
 
             log_entry.success = False
             log_entry.error_message = str(e)
-            log_entry.completed_at = datetime.now(timezone.utc)
+            log_entry.completed_at = datetime.now(UTC)
             await db.commit()
 
             return {"success": False, "error": str(e)}
@@ -456,7 +455,7 @@ class RestartService:
     @staticmethod
     async def _execute_docker_compose_restart(
         container: Container, db: AsyncSession
-    ) -> Dict:
+    ) -> dict:
         """Execute docker compose restart command.
 
         Args:
@@ -466,7 +465,7 @@ class RestartService:
         Returns:
             Result dictionary
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         try:
             # Get settings
@@ -507,7 +506,7 @@ class RestartService:
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
 
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
 
             if process.returncode != 0:
                 error = stderr.decode().strip() or stdout.decode().strip()
@@ -525,7 +524,7 @@ class RestartService:
                 "duration": duration,
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "success": False,
                 "error": "Docker compose restart timed out after 120 seconds",
@@ -535,25 +534,25 @@ class RestartService:
             return {
                 "success": False,
                 "error": f"Database error during restart: {str(e)}",
-                "duration": (datetime.now(timezone.utc) - start_time).total_seconds(),
+                "duration": (datetime.now(UTC) - start_time).total_seconds(),
             }
         except (OSError, PermissionError) as e:
             return {
                 "success": False,
                 "error": f"Process execution error: {str(e)}",
-                "duration": (datetime.now(timezone.utc) - start_time).total_seconds(),
+                "duration": (datetime.now(UTC) - start_time).total_seconds(),
             }
         except (ValueError, KeyError, AttributeError) as e:
             return {
                 "success": False,
                 "error": f"Invalid restart data: {str(e)}",
-                "duration": (datetime.now(timezone.utc) - start_time).total_seconds(),
+                "duration": (datetime.now(UTC) - start_time).total_seconds(),
             }
 
     @staticmethod
     async def _validate_health_check(
         container: Container, timeout: int, db: AsyncSession
-    ) -> Dict:
+    ) -> dict:
         """Validate container health after restart.
 
         Reuses the existing health check logic from UpdateEngine.

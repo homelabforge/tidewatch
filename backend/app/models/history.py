@@ -1,8 +1,9 @@
 """Update history model for audit trail."""
 
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text, JSON
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 

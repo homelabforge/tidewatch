@@ -9,6 +9,7 @@ Description: Add scope_violation column to track major version updates that are
 
 import sys
 from pathlib import Path
+
 from sqlalchemy import text
 
 # Add parent directory to path for imports

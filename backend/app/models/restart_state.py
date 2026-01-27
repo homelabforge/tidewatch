@@ -1,16 +1,16 @@
 """Container restart state model for tracking intelligent retry logic."""
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Column,
+    DateTime,
+    Float,
+    ForeignKey,
     Integer,
     String,
-    DateTime,
-    Boolean,
-    Float,
-    JSON,
-    ForeignKey,
 )
 from sqlalchemy.sql import func
 
@@ -103,11 +103,11 @@ class ContainerRestartState(Base):
             return False
         # Ensure both datetimes are timezone-aware for comparison
         paused_until = (
-            self.paused_until.replace(tzinfo=timezone.utc)
+            self.paused_until.replace(tzinfo=UTC)
             if self.paused_until.tzinfo is None
             else self.paused_until
         )
-        return datetime.now(timezone.utc) < paused_until
+        return datetime.now(UTC) < paused_until
 
     @property
     def is_ready_for_retry(self) -> bool:
@@ -120,25 +120,25 @@ class ContainerRestartState(Base):
 
         # Ensure both datetimes are timezone-aware for comparison
         next_retry = (
-            self.next_retry_at.replace(tzinfo=timezone.utc)
+            self.next_retry_at.replace(tzinfo=UTC)
             if self.next_retry_at.tzinfo is None
             else self.next_retry_at
         )
-        return datetime.now(timezone.utc) >= next_retry
+        return datetime.now(UTC) >= next_retry
 
     @property
-    def uptime_seconds(self) -> Optional[float]:
+    def uptime_seconds(self) -> float | None:
         """Calculate how long container has been running since last successful start."""
         if not self.last_successful_start:
             return None
 
         # Ensure both datetimes are timezone-aware for comparison
         last_start = (
-            self.last_successful_start.replace(tzinfo=timezone.utc)
+            self.last_successful_start.replace(tzinfo=UTC)
             if self.last_successful_start.tzinfo is None
             else self.last_successful_start
         )
-        return (datetime.now(timezone.utc) - last_start).total_seconds()
+        return (datetime.now(UTC) - last_start).total_seconds()
 
     @property
     def should_reset_backoff(self) -> bool:
@@ -149,10 +149,10 @@ class ContainerRestartState(Base):
 
         return uptime >= self.success_window_seconds
 
-    def add_restart_to_history(self, timestamp: Optional[datetime] = None) -> None:
+    def add_restart_to_history(self, timestamp: datetime | None = None) -> None:
         """Add a restart timestamp to history (maintains last 100)."""
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
         history = self.restart_history or []
         history.append(timestamp.isoformat())

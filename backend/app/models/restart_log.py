@@ -1,7 +1,7 @@
 """Container restart log model for audit trail of restart attempts."""
 
-from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, ForeignKey
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -84,7 +84,7 @@ class ContainerRestartLog(Base):
         )
 
     @property
-    def execution_duration(self) -> Optional[float]:
+    def execution_duration(self) -> float | None:
         """Calculate total execution duration including health checks."""
         if not self.completed_at:
             return None
@@ -92,7 +92,7 @@ class ContainerRestartLog(Base):
         return (self.completed_at - self.executed_at).total_seconds()
 
     @property
-    def scheduling_delay(self) -> Optional[float]:
+    def scheduling_delay(self) -> float | None:
         """Calculate how long the job was delayed from scheduled time."""
         if not self.executed_at or not self.scheduled_at:
             return None

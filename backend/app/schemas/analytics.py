@@ -1,6 +1,5 @@
 """Analytics schemas for TideWatch dashboards."""
 
-from typing import List
 
 from pydantic import BaseModel
 
@@ -25,8 +24,8 @@ class AnalyticsSummary(BaseModel):
     total_updates: int
     successful_updates: int
     failed_updates: int
-    update_frequency: List[FrequencyPoint]
-    vulnerability_trends: List[VulnerabilityPoint]
-    policy_distribution: List[DistributionItem]
+    update_frequency: list[FrequencyPoint]
+    vulnerability_trends: list[VulnerabilityPoint]
+    policy_distribution: list[DistributionItem]
     avg_update_duration_seconds: float
     total_cves_fixed: int

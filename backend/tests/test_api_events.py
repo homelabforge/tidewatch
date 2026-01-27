@@ -6,7 +6,8 @@ Tests Server-Sent Events (SSE) endpoint:
 
 import asyncio
 import json
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
+
 from fastapi import status
 
 

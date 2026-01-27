@@ -1,7 +1,7 @@
 """Schemas for vulnerability scanning endpoints."""
 
 from datetime import datetime
-from typing import List, Dict, Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -19,8 +19,8 @@ class ScanResultSchema(BaseModel):
     high: int
     medium: int
     low: int
-    cves: List[str]
-    risk_score: Optional[float] = None
+    cves: list[str]
+    risk_score: float | None = None
     status: str
 
 
@@ -31,8 +31,8 @@ class ScanSummarySchema(BaseModel):
 
     total_containers_scanned: int
     total_vulnerabilities: int
-    severity_breakdown: Dict[
+    severity_breakdown: dict[
         str, int
     ]  # {"critical": X, "high": Y, "medium": Z, "low": W}
-    last_scan: Optional[datetime] = None
+    last_scan: datetime | None = None
     containers_at_risk: int  # Containers with critical or high vulnerabilities

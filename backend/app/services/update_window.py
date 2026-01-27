@@ -3,7 +3,6 @@
 import logging
 import re
 from datetime import datetime, time
-from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ class UpdateWindow:
 
     @staticmethod
     def is_in_window(
-        update_window: Optional[str], check_time: Optional[datetime] = None
+        update_window: str | None, check_time: datetime | None = None
     ) -> bool:
         """Check if current time is within the update window.
 
@@ -97,7 +96,7 @@ class UpdateWindow:
             return True  # On error, allow updates (fail open)
 
     @staticmethod
-    def _parse_window(window_str: str) -> Tuple[Optional[set], time, time]:
+    def _parse_window(window_str: str) -> tuple[set | None, time, time]:
         """Parse update window string into components.
 
         Args:
@@ -216,7 +215,7 @@ class UpdateWindow:
         return time(hour=hour, minute=minute)
 
     @staticmethod
-    def validate_format(window_str: Optional[str]) -> Tuple[bool, Optional[str]]:
+    def validate_format(window_str: str | None) -> tuple[bool, str | None]:
         """Validate update window format.
 
         Args:

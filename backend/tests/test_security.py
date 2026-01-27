@@ -8,14 +8,15 @@ Tests security and input validation utilities:
 - Container/image name validation
 """
 
-import pytest
 from pathlib import Path
 
+import pytest
+
 from app.utils.security import (
-    sanitize_log_message,
-    mask_sensitive,
-    sanitize_path,
     is_safe_filename,
+    mask_sensitive,
+    sanitize_log_message,
+    sanitize_path,
     validate_container_name,
     validate_image_name,
 )

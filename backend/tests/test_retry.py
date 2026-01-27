@@ -1,6 +1,7 @@
 """Tests for retry utility."""
 
 import pytest
+
 from app.utils.retry import async_retry
 
 

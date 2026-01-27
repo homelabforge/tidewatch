@@ -1,9 +1,8 @@
 """Schemas for webhook configuration and management."""
 
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, HttpUrl, Field, field_validator, ConfigDict
 
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 # Valid event types that can trigger webhooks
 VALID_WEBHOOK_EVENTS = [
@@ -29,7 +28,7 @@ class WebhookCreate(BaseModel):
     secret: str = Field(
         ..., min_length=8, max_length=256, description="HMAC secret for signature"
     )
-    events: List[str] = Field(
+    events: list[str] = Field(
         ..., min_length=1, description="List of event types to trigger on"
     )
     enabled: bool = Field(default=True, description="Whether webhook is enabled")
@@ -61,12 +60,12 @@ class WebhookCreate(BaseModel):
 class WebhookUpdate(BaseModel):
     """Schema for updating an existing webhook."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    url: Optional[HttpUrl] = None
-    secret: Optional[str] = Field(None, min_length=8, max_length=256)
-    events: Optional[List[str]] = Field(None, min_length=1)
-    enabled: Optional[bool] = None
-    retry_count: Optional[int] = Field(None, ge=0, le=10)
+    name: str | None = Field(None, min_length=1, max_length=100)
+    url: HttpUrl | None = None
+    secret: str | None = Field(None, min_length=8, max_length=256)
+    events: list[str] | None = Field(None, min_length=1)
+    enabled: bool | None = None
+    retry_count: int | None = Field(None, ge=0, le=10)
 
     @field_validator("events")
     @classmethod
@@ -98,12 +97,12 @@ class WebhookSchema(BaseModel):
     id: int
     name: str
     url: str
-    events: List[str]
+    events: list[str]
     enabled: bool
     retry_count: int
-    last_triggered: Optional[datetime] = None
-    last_status: Optional[str] = None
-    last_error: Optional[str] = None
+    last_triggered: datetime | None = None
+    last_status: str | None = None
+    last_error: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -112,7 +111,7 @@ class WebhookTestResponse(BaseModel):
     """Response from testing a webhook."""
 
     success: bool
-    status_code: Optional[int] = None
-    response_time_ms: Optional[float] = None
-    error: Optional[str] = None
+    status_code: int | None = None
+    response_time_ms: float | None = None
+    error: str | None = None
     message: str

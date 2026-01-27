@@ -4,33 +4,32 @@ from __future__ import annotations
 
 import json
 import logging
-import httpx
-from datetime import datetime, timezone
-from typing import List, Optional
-
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError, OperationalError
-
-from app.models.container import Container
-from app.models.update import Update
-from app.services.registry_client import RegistryClientFactory
-from app.services.vulnforge_client import VulnForgeClient
-from app.services.settings_service import SettingsService
-from app.services.event_bus import event_bus
-from app.services.changelog import ChangelogFetcher, ChangelogClassifier
-from app.services.compose_parser import ComposeParser
-from app.utils.version import get_version_change_type
-
-# Import UpdateDecisionTrace from update_decision_maker to avoid circular import
-from app.services.update_decision_maker import UpdateDecisionTrace
+from datetime import UTC, datetime
 
 # TYPE_CHECKING import for UpdateDecision to avoid circular import
 from typing import TYPE_CHECKING
 
+import httpx
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.container import Container
+from app.models.update import Update
+from app.services.changelog import ChangelogClassifier, ChangelogFetcher
+from app.services.compose_parser import ComposeParser
+from app.services.event_bus import event_bus
+from app.services.registry_client import RegistryClientFactory
+from app.services.settings_service import SettingsService
+
+# Import UpdateDecisionTrace from update_decision_maker to avoid circular import
+from app.services.update_decision_maker import UpdateDecisionTrace
+from app.services.vulnforge_client import VulnForgeClient
+from app.utils.version import get_version_change_type
+
 if TYPE_CHECKING:
-    from app.services.update_decision_maker import UpdateDecision
     from app.services.tag_fetcher import FetchTagsResponse
+    from app.services.update_decision_maker import UpdateDecision
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +152,7 @@ class UpdateChecker:
     @staticmethod
     async def check_container(
         db: AsyncSession, container: Container
-    ) -> Optional[Update]:
+    ) -> Update | None:
         """Check a single container for updates.
 
         Args:
@@ -185,7 +184,7 @@ class UpdateChecker:
 
         previous_digest = container.current_digest
         digest_changed = False
-        new_digest: Optional[str] = None
+        new_digest: str | None = None
 
         try:
             # Get latest tag based on policy scope
@@ -268,7 +267,7 @@ class UpdateChecker:
                 )
 
             # Update last_checked
-            container.last_checked = datetime.now(timezone.utc)
+            container.last_checked = datetime.now(UTC)
 
             # For 'latest' tag, also fetch and store the digest
             if container.current_tag == "latest":
@@ -368,8 +367,8 @@ class UpdateChecker:
                                 decision_trace=trace.to_json(),
                                 update_kind="tag",
                                 change_type=scope_change_type,
-                                created_at=datetime.now(timezone.utc),
-                                updated_at=datetime.now(timezone.utc),
+                                created_at=datetime.now(UTC),
+                                updated_at=datetime.now(UTC),
                             )
 
                             db.add(scope_update)
@@ -470,8 +469,8 @@ class UpdateChecker:
 
             reason_summary = "New version available"
             reason_type = "unknown"
-            recommendation: Optional[str] = None
-            changelog_payload: Optional[str] = None
+            recommendation: str | None = None
+            changelog_payload: str | None = None
 
             if digest_update and new_digest:
                 reason_type = "maintenance"
@@ -513,8 +512,8 @@ class UpdateChecker:
                 decision_trace=trace.to_json(),
                 update_kind=trace.update_kind,
                 change_type=trace.change_type,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
 
             db.add(update)
@@ -609,7 +608,7 @@ class UpdateChecker:
                 )
                 update.status = "approved"
                 update.approved_by = "system"
-                update.approved_at = datetime.now(timezone.utc)
+                update.approved_at = datetime.now(UTC)
                 # Note: No flush needed here - changes are committed at end of check_all_containers()
 
             # Send notifications via dispatcher (handles all enabled services)
@@ -708,9 +707,9 @@ class UpdateChecker:
     async def apply_decision(
         db: AsyncSession,
         container: Container,
-        decision: "UpdateDecision",
-        fetch_response: "FetchTagsResponse",
-    ) -> Optional[Update]:
+        decision: UpdateDecision,
+        fetch_response: FetchTagsResponse,
+    ) -> Update | None:
         """Apply a pre-computed update decision to a container.
 
         This method is called after tag fetching and decision making have already
@@ -733,7 +732,7 @@ class UpdateChecker:
         )
 
         # Update last_checked timestamp
-        container.last_checked = datetime.now(timezone.utc)
+        container.last_checked = datetime.now(UTC)
 
         # Update latest_major_tag for scope visibility
         if (
@@ -839,8 +838,8 @@ class UpdateChecker:
         # Prepare update record fields
         reason_summary = "New version available"
         reason_type = "unknown"
-        recommendation: Optional[str] = None
-        changelog_payload: Optional[str] = None
+        recommendation: str | None = None
+        changelog_payload: str | None = None
 
         if is_digest_update and decision.new_digest:
             previous_digest = container.current_digest
@@ -883,8 +882,8 @@ class UpdateChecker:
             decision_trace=decision.trace.to_json(),
             update_kind=decision.trace.update_kind,
             change_type=decision.trace.change_type,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db.add(update)
@@ -971,7 +970,7 @@ class UpdateChecker:
             )
             update.status = "approved"
             update.approved_by = "system"
-            update.approved_at = datetime.now(timezone.utc)
+            update.approved_at = datetime.now(UTC)
 
         # Send notifications
         from app.services.notifications.dispatcher import NotificationDispatcher
@@ -1013,7 +1012,7 @@ class UpdateChecker:
     async def _create_scope_violation_update(
         db: AsyncSession,
         container: Container,
-        decision: "UpdateDecision",
+        decision: UpdateDecision,
     ) -> None:
         """Create an Update record for scope-violated major version.
 
@@ -1065,8 +1064,8 @@ class UpdateChecker:
             decision_trace=decision.trace.to_json(),
             update_kind="tag",
             change_type=scope_change_type,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         db.add(scope_update)
@@ -1083,7 +1082,7 @@ class UpdateChecker:
             await db.rollback()
 
     @staticmethod
-    async def get_pending_updates(db: AsyncSession) -> List[Update]:
+    async def get_pending_updates(db: AsyncSession) -> list[Update]:
         """Get all pending updates.
 
         Args:
@@ -1100,7 +1099,7 @@ class UpdateChecker:
         return result.scalars().all()
 
     @staticmethod
-    async def get_auto_approvable_updates(db: AsyncSession) -> List[Update]:
+    async def get_auto_approvable_updates(db: AsyncSession) -> list[Update]:
         """Get updates that can be auto-approved.
 
         Returns updates for containers with policy="auto".
@@ -1123,7 +1122,7 @@ class UpdateChecker:
         return result.scalars().all()
 
     @staticmethod
-    async def get_security_updates(db: AsyncSession) -> List[Update]:
+    async def get_security_updates(db: AsyncSession) -> list[Update]:
         """Get security-related updates.
 
         Returns updates with CVE fixes or vulnerability deltas.

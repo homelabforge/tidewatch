@@ -12,10 +12,11 @@ Usage:
     python migrations/006_add_retry_logic.py
 """
 
-import sys
 import asyncio
 import logging
+import sys
 from pathlib import Path
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 

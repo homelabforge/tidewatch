@@ -1,7 +1,7 @@
 """Cleanup API endpoints for Docker resource cleanup."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _parse_exclude_patterns(patterns_str: str) -> List[str]:
+def _parse_exclude_patterns(patterns_str: str) -> list[str]:
     """Parse comma-separated exclude patterns string."""
     if not patterns_str:
         return []
@@ -25,8 +25,8 @@ def _parse_exclude_patterns(patterns_str: str) -> List[str]:
 
 @router.get("/stats")
 async def get_disk_usage(
-    admin: Optional[dict] = Depends(require_auth),
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth),
+) -> dict[str, Any]:
     """Get Docker disk usage statistics.
 
     Returns disk usage for images, containers, volumes, and build cache.
@@ -43,11 +43,11 @@ async def get_disk_usage(
 
 @router.get("/preview")
 async def preview_cleanup(
-    admin: Optional[dict] = Depends(require_auth),
-    mode: Optional[str] = Query(None, description="Override cleanup mode"),
-    days: Optional[int] = Query(None, description="Override days threshold"),
+    admin: dict | None = Depends(require_auth),
+    mode: str | None = Query(None, description="Override cleanup mode"),
+    days: int | None = Query(None, description="Override days threshold"),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Preview what would be cleaned up without removing anything.
 
     Uses current settings unless overridden by query parameters.
@@ -79,15 +79,15 @@ async def preview_cleanup(
 
 @router.post("/images")
 async def cleanup_images(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     dangling_only: bool = Query(
         True, description="Only remove dangling (untagged) images"
     ),
-    older_than_days: Optional[int] = Query(
+    older_than_days: int | None = Query(
         None, description="Remove images older than X days"
     ),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Clean up Docker images.
 
     Args:
@@ -127,9 +127,9 @@ async def cleanup_images(
 
 @router.post("/containers")
 async def cleanup_containers(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Clean up exited/dead containers.
 
     Removes containers that are in exited, dead, or created state.
@@ -155,11 +155,11 @@ async def cleanup_containers(
 
 @router.post("/all")
 async def cleanup_all(
-    admin: Optional[dict] = Depends(require_auth),
-    mode: Optional[str] = Query(None, description="Override cleanup mode"),
-    days: Optional[int] = Query(None, description="Override days threshold"),
+    admin: dict | None = Depends(require_auth),
+    mode: str | None = Query(None, description="Override cleanup mode"),
+    days: int | None = Query(None, description="Override days threshold"),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Full cleanup: containers + images based on mode.
 
     Uses current settings unless overridden by query parameters.
@@ -190,9 +190,9 @@ async def cleanup_all(
 
 @router.post("/run-now")
 async def run_cleanup_now(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Trigger immediate cleanup using current settings.
 
     This runs the same cleanup that would run on schedule.
@@ -227,9 +227,9 @@ async def run_cleanup_now(
 
 @router.get("/settings")
 async def get_cleanup_settings(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get current cleanup settings.
 
     Returns all cleanup-related settings for display/editing.

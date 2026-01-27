@@ -22,11 +22,9 @@ References:
 
 import ipaddress
 import socket
-from typing import Optional, List
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import ParseResult, urlparse
 
 from app.exceptions import SSRFProtectionError
-
 
 # Private IP ranges (RFC 1918, RFC 4193, and other reserved ranges)
 PRIVATE_IP_RANGES = [
@@ -88,7 +86,7 @@ def is_private_ip(ip_address: str) -> bool:
         raise ValueError(f"Invalid IP address: {ip_address}")
 
 
-def resolve_hostname(hostname: str) -> Optional[str]:
+def resolve_hostname(hostname: str) -> str | None:
     """Resolve a hostname to its IP address.
 
     This is used for DNS rebinding protection - we resolve the hostname
@@ -118,7 +116,7 @@ def resolve_hostname(hostname: str) -> Optional[str]:
 
 def validate_url_for_ssrf(
     url: str,
-    allowed_schemes: Optional[List[str]] = None,
+    allowed_schemes: list[str] | None = None,
     block_private_ips: bool = True,
     resolve_dns: bool = True,
 ) -> ParseResult:

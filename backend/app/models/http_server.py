@@ -1,7 +1,8 @@
 """HTTP server model for tracking web servers running in containers."""
 
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 

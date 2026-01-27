@@ -4,8 +4,10 @@ Tests analytics and dashboard statistics endpoints:
 - GET /api/v1/analytics/summary - Analytics summary with trends and distributions
 """
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import status
-from datetime import datetime, timezone, timedelta
+
 from app.models.container import Container
 from app.models.history import UpdateHistory
 
@@ -105,8 +107,8 @@ class TestAnalyticsSummaryEndpoint:
             from_tag="1.19",
             to_tag="1.20",
             status="success",
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         db.add(history)
         await db.commit()
@@ -140,7 +142,7 @@ class TestAnalyticsSummaryEndpoint:
             from_tag="1.20",
             to_tag="1.21",
             status="failed",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             error_message="Test failure",
         )
         db.add(history)
@@ -175,8 +177,8 @@ class TestAnalyticsSummaryEndpoint:
             from_tag="1.20",
             to_tag="1.21",
             status="success",
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
             cves_fixed=["CVE-2023-1234", "CVE-2023-5678"],
         )
         db.add(history)
@@ -212,8 +214,8 @@ class TestAnalyticsSummaryEndpoint:
         await db.refresh(container)
 
         # Create update with duration
-        started = datetime.now(timezone.utc) - timedelta(seconds=120)
-        completed = datetime.now(timezone.utc)
+        started = datetime.now(UTC) - timedelta(seconds=120)
+        completed = datetime.now(UTC)
 
         history = UpdateHistory(
             container_id=container.id,

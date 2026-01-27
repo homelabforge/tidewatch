@@ -3,8 +3,8 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Set
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class EventBus:
     """Lightweight async pub/sub for server-sent events."""
 
     def __init__(self) -> None:
-        self._listeners: Set[asyncio.Queue[str]] = set()
+        self._listeners: set[asyncio.Queue[str]] = set()
         self._lock = asyncio.Lock()
 
     async def subscribe(self) -> asyncio.Queue[str]:
@@ -28,7 +28,7 @@ class EventBus:
         async with self._lock:
             self._listeners.discard(queue)
 
-    async def publish(self, event: Dict[str, Any]) -> None:
+    async def publish(self, event: dict[str, Any]) -> None:
         """Broadcast an event to all listeners."""
         if not self._listeners:
             return
@@ -37,7 +37,7 @@ class EventBus:
             {
                 **event,
                 "timestamp": event.get("timestamp")
-                or datetime.now(timezone.utc).isoformat(),
+                or datetime.now(UTC).isoformat(),
             }
         )
 

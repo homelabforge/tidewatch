@@ -1,16 +1,17 @@
 """Application dependency model for tracking npm, pypi, and other package dependencies."""
 
 from sqlalchemy import (
-    Column,
-    String,
     Boolean,
+    Column,
     DateTime,
-    Integer,
-    ForeignKey,
-    Text,
     Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 

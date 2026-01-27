@@ -1,16 +1,15 @@
 """Authentication service for TideWatch - single-user, settings-based JWT auth."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-from pathlib import Path
-import secrets
 import logging
+import secrets
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from authlib.jose import jwt, JoseError
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
+from authlib.jose import JoseError, jwt
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -148,17 +147,17 @@ def hash_password(password: str) -> str:
 # ============================================================================
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.now(UTC) + timedelta(
             minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
-    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
+    to_encode.update({"exp": expire, "iat": datetime.now(UTC)})
     header = {"alg": JWT_ALGORITHM}
     encoded_jwt = jwt.encode(header, to_encode, _SECRET_KEY)
     return (
@@ -168,8 +167,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def get_token_from_request(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-) -> Optional[str]:
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> str | None:
     """Extract JWT token from cookie or Authorization header.
 
     Priority:
@@ -241,7 +240,7 @@ async def is_setup_complete(db: AsyncSession) -> bool:
     return bool(admin_username and admin_username.strip())
 
 
-async def get_admin_profile(db: AsyncSession) -> Optional[dict]:
+async def get_admin_profile(db: AsyncSession) -> dict | None:
     """Get admin profile from settings.
 
     Returns:
@@ -266,7 +265,7 @@ async def get_admin_profile(db: AsyncSession) -> Optional[dict]:
 
 
 async def update_admin_profile(
-    db: AsyncSession, email: Optional[str] = None, full_name: Optional[str] = None
+    db: AsyncSession, email: str | None = None, full_name: str | None = None
 ) -> None:
     """Update admin profile in settings."""
     if email is not None:
@@ -291,7 +290,7 @@ async def update_admin_oidc_link(
 
 async def update_admin_last_login(db: AsyncSession) -> None:
     """Update admin last login timestamp."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await SettingsService.set(db, "admin_last_login", now)
 
 
@@ -302,7 +301,7 @@ async def update_admin_last_login(db: AsyncSession) -> None:
 
 async def authenticate_admin(
     db: AsyncSession, username: str, password: str
-) -> Optional[dict]:
+) -> dict | None:
     """Authenticate admin user by username and password.
 
     Returns:
@@ -341,7 +340,7 @@ async def authenticate_admin(
 async def get_current_admin(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    token: Optional[str] = Depends(get_token_from_request),
+    token: str | None = Depends(get_token_from_request),
 ) -> dict:
     """Get the current authenticated admin from JWT token.
 
@@ -399,8 +398,8 @@ async def get_current_admin(
 async def require_auth(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    token: Optional[str] = Depends(get_token_from_request),
-) -> Optional[dict]:
+    token: str | None = Depends(get_token_from_request),
+) -> dict | None:
     """Require authentication - checks auth_mode setting.
 
     Returns:
@@ -423,8 +422,8 @@ async def require_auth(
 async def optional_auth(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    token: Optional[str] = Depends(get_token_from_request),
-) -> Optional[dict]:
+    token: str | None = Depends(get_token_from_request),
+) -> dict | None:
     """Optional authentication based on auth_mode setting.
 
     Returns:

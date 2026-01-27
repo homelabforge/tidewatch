@@ -1,21 +1,21 @@
 """Backup API endpoints for settings backup/restore."""
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db, DATABASE_URL
+from app.database import DATABASE_URL, get_db
 from app.services import SettingsService
 from app.services.auth import require_auth
-from app.utils.security import sanitize_log_message, sanitize_path
 from app.utils.error_handling import safe_error_response
+from app.utils.security import sanitize_log_message, sanitize_path
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def ensure_backup_dir() -> None:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_database_stats() -> Dict[str, Any]:
+def get_database_stats() -> dict[str, Any]:
     """Get database file statistics."""
     try:
         db_path = Path(DATABASE_PATH)
@@ -72,7 +72,7 @@ def get_database_stats() -> Dict[str, Any]:
         }
 
 
-def get_backup_files() -> List[Dict[str, Any]]:
+def get_backup_files() -> list[dict[str, Any]]:
     """Get list of backup files with metadata."""
     ensure_backup_dir()
     backups = []
@@ -130,7 +130,7 @@ def validate_filename(filename: str) -> Path:
 
 
 @router.get("/stats")
-async def get_stats(admin: Optional[dict] = Depends(require_auth)) -> Dict[str, Any]:
+async def get_stats(admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
     """Get database and backup statistics.
 
     Returns:
@@ -163,7 +163,7 @@ async def get_stats(admin: Optional[dict] = Depends(require_auth)) -> Dict[str, 
 
 
 @router.get("/list")
-async def list_backups(admin: Optional[dict] = Depends(require_auth)) -> Dict[str, Any]:
+async def list_backups(admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
     """List all available backup files with database stats.
 
     Returns:
@@ -206,8 +206,8 @@ async def list_backups(admin: Optional[dict] = Depends(require_auth)) -> Dict[st
 
 @router.post("/create")
 async def create_backup(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> Dict[str, Any]:
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     """Create a new backup of all settings.
 
     Args:
@@ -274,7 +274,7 @@ async def create_backup(
 
 
 @router.get("/download/{filename}")
-async def download_backup(filename: str, admin: Optional[dict] = Depends(require_auth)):
+async def download_backup(filename: str, admin: dict | None = Depends(require_auth)):
     """Download a specific backup file.
 
     Args:
@@ -312,9 +312,9 @@ async def download_backup(filename: str, admin: Optional[dict] = Depends(require
 @router.post("/restore/{filename}")
 async def restore_backup(
     filename: str,
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Restore settings from a backup file.
 
     This creates a safety backup before restoring.
@@ -363,7 +363,7 @@ async def restore_backup(
         )
 
         # Read and validate backup file
-        with open(backup_path, "r") as f:
+        with open(backup_path) as f:
             backup_data = json.load(f)
 
         # Validate backup structure
@@ -434,10 +434,10 @@ async def restore_backup(
 
 @router.post("/upload")
 async def upload_backup(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Upload and save a backup file.
 
     Args:
@@ -516,8 +516,8 @@ async def upload_backup(
 
 @router.delete("/{filename}")
 async def delete_backup(
-    filename: str, admin: Optional[dict] = Depends(require_auth)
-) -> Dict[str, Any]:
+    filename: str, admin: dict | None = Depends(require_auth)
+) -> dict[str, Any]:
     """Delete a backup file.
 
     Safety backups cannot be deleted to prevent accidental data loss.
@@ -563,7 +563,7 @@ async def delete_backup(
 
 @router.get("/download")
 async def download_backup_legacy(
-    admin: Optional[dict] = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ):
     """Legacy endpoint: Download current settings as backup file.
 
@@ -610,10 +610,10 @@ async def download_backup_legacy(
 
 @router.post("/restore")
 async def restore_backup_legacy(
-    admin: Optional[dict] = Depends(require_auth),
+    admin: dict | None = Depends(require_auth),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Legacy endpoint: Restore settings from uploaded file.
 
     Kept for backwards compatibility with old frontend code.

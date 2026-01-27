@@ -4,28 +4,27 @@ import asyncio
 import json
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Dict
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
-from app.models.update import Update
 from app.models.history import UpdateHistory
+from app.models.update import Update
 from app.services.compose_parser import ComposeParser
+from app.services.event_bus import event_bus
 from app.services.registry_client import RegistryClientFactory
 from app.services.settings_service import SettingsService
-from app.services.event_bus import event_bus
 from app.utils.validators import (
-    validate_service_name,
+    ValidationError,
     validate_compose_file_path,
     validate_docker_compose_command,
-    ValidationError,
+    validate_service_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,7 +112,7 @@ class UpdateEngine:
     @staticmethod
     async def apply_update(
         db: AsyncSession, update_id: int, triggered_by: str = "user"
-    ) -> Dict:
+    ) -> dict:
         """Apply an approved update.
 
         Args:
@@ -369,7 +368,7 @@ class UpdateEngine:
                 container.current_tag = update.to_tag
 
                 if container.current_tag == "latest":
-                    new_digest_value: Optional[str] = None
+                    new_digest_value: str | None = None
                     if update.changelog:
                         try:
                             changelog_data = json.loads(update.changelog)
@@ -388,10 +387,10 @@ class UpdateEngine:
 
                 container.update_available = False
                 container.latest_tag = None
-                container.last_updated = datetime.now(timezone.utc)
+                container.last_updated = datetime.now(UTC)
 
                 history.status = "success"
-                history.completed_at = datetime.now(timezone.utc)
+                history.completed_at = datetime.now(UTC)
                 history.can_rollback = True
 
             await db.commit()
@@ -458,7 +457,7 @@ class UpdateEngine:
             # Re-raise to hit catch-all handler for database state update
             raise
 
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             logger.error(f"Health check timeout during update: {e}")
 
             # Rollback compose file if backup exists
@@ -523,7 +522,7 @@ class UpdateEngine:
 
                     from datetime import timedelta
 
-                    update.next_retry_at = datetime.now(timezone.utc) + timedelta(
+                    update.next_retry_at = datetime.now(UTC) + timedelta(
                         minutes=delay_minutes
                     )
                     update.status = "pending_retry"  # New status for automatic retry
@@ -589,7 +588,7 @@ class UpdateEngine:
                 # Update history record
                 history.status = "failed"
                 history.error_message = str(e)
-                history.completed_at = datetime.now(timezone.utc)
+                history.completed_at = datetime.now(UTC)
                 # Allow rollback for failed updates if backup exists
                 history.can_rollback = bool(history.backup_path)
 
@@ -628,7 +627,7 @@ class UpdateEngine:
             }
 
     @staticmethod
-    async def rollback_update(db: AsyncSession, history_id: int) -> Dict:
+    async def rollback_update(db: AsyncSession, history_id: int) -> dict:
         """Rollback a previous update.
 
         Args:
@@ -717,9 +716,9 @@ class UpdateEngine:
             # Success! Wrap status updates in transaction for atomicity
             async with db.begin_nested():
                 container.current_tag = history.from_tag
-                container.last_updated = datetime.now(timezone.utc)
+                container.last_updated = datetime.now(UTC)
 
-                history.rolled_back_at = datetime.now(timezone.utc)
+                history.rolled_back_at = datetime.now(UTC)
                 history.status = "rolled_back"
 
             await db.commit()
@@ -824,10 +823,12 @@ class UpdateEngine:
     @staticmethod
     async def _validate_health_check(
         container: Container, timeout: int = 60, db: AsyncSession = None
-    ) -> Dict:
+    ) -> dict:
         """Validate container health after update."""
         import time
+
         import httpx
+
         from app.services.settings_service import SettingsService
 
         service_name = container.name
@@ -1135,7 +1136,7 @@ class UpdateEngine:
         }
 
     @staticmethod
-    async def _check_container_runtime(container: Container) -> Dict:
+    async def _check_container_runtime(container: Container) -> dict:
         """Check container status via docker inspect instead of HTTP."""
         inspect_targets: list[str] = []
         resolved_name = await UpdateEngine._resolve_container_runtime_name(container)
@@ -1200,7 +1201,7 @@ class UpdateEngine:
                     last_error = stderr or "Failed to inspect container"
                     logger.error(f"Failed to inspect container {target}: {stderr}")
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     last_error = "Container inspection timed out"
                     logger.error(f"Timeout inspecting container {target}")
 
@@ -1218,7 +1219,7 @@ class UpdateEngine:
         }
 
     @staticmethod
-    async def _resolve_container_runtime_name(container: Container) -> Optional[str]:
+    async def _resolve_container_runtime_name(container: Container) -> str | None:
         """Attempt to resolve the actual Docker container name for a compose service."""
         try:
             base_filters = [
@@ -1265,7 +1266,7 @@ class UpdateEngine:
                     if names:
                         return names[0]
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.debug(
                         f"Timeout resolving container name for {container.service_name}"
                     )
@@ -1285,7 +1286,7 @@ class UpdateEngine:
     @staticmethod
     async def _fetch_latest_digest(
         container: Container, db: AsyncSession
-    ) -> Optional[str]:
+    ) -> str | None:
         """Fetch the current digest for a 'latest' tag from the registry.
 
         Args:
@@ -1397,8 +1398,8 @@ class UpdateEngine:
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
-        compose_project: Optional[str] = None,
-    ) -> Dict:
+        compose_project: str | None = None,
+    ) -> dict:
         """Execute docker compose up for a service.
 
         Args:
@@ -1427,6 +1428,10 @@ class UpdateEngine:
             validated_compose_path = validate_compose_file_path(
                 compose_file, allowed_base="/compose"
             )
+            # Translate container path to host path for docker daemon
+            host_compose_path = UpdateEngine._translate_container_path_to_host(
+                str(validated_compose_path)
+            )
         except ValidationError as e:
             logger.error(f"Invalid compose file path '{compose_file}': {str(e)}")
             return {
@@ -1436,11 +1441,11 @@ class UpdateEngine:
             }
 
         try:
-            # Check for .env file in the same directory as compose file
+            # Check for .env file in the same directory as compose file (use host path)
             import os
 
-            compose_dir = os.path.dirname(str(validated_compose_path))
-            env_file_path = os.path.join(compose_dir, ".env")
+            host_compose_dir = os.path.dirname(host_compose_path)
+            env_file_path = os.path.join(host_compose_dir, ".env")
             env_file = Path(env_file_path) if os.path.lexists(env_file_path) else None
 
             # Validate docker compose command template
@@ -1457,10 +1462,10 @@ class UpdateEngine:
             # First, stop the existing container to avoid name conflicts
             stop_cmd = base_cmd.copy()
 
-            # Add project and compose file flags
+            # Add project and compose file flags (use host path)
             if compose_project:
                 stop_cmd.extend(["-p", compose_project])
-            stop_cmd.extend(["-f", str(validated_compose_path)])
+            stop_cmd.extend(["-f", host_compose_path])
 
             if env_file and env_file.exists():
                 stop_cmd.extend(["--env-file", str(env_file)])
@@ -1501,10 +1506,10 @@ class UpdateEngine:
             # Build command using list-based construction (safe)
             cmd = base_cmd.copy()
 
-            # Add project and compose file flags
+            # Add project and compose file flags (use host path)
             if compose_project:
                 cmd.extend(["-p", compose_project])
-            cmd.extend(["-f", str(validated_compose_path)])
+            cmd.extend(["-f", host_compose_path])
 
             # Add env file if it exists
             if env_file and env_file.exists():
@@ -1548,7 +1553,7 @@ class UpdateEngine:
                     "stdout": stdout,
                     "stderr": stderr,
                 }
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("Docker compose command timed out after 300 seconds")
                 return {
                     "success": False,
@@ -1581,8 +1586,8 @@ class UpdateEngine:
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
-        compose_project: Optional[str] = None,
-    ) -> Dict:
+        compose_project: str | None = None,
+    ) -> dict:
         """Pull the Docker image for a service before deploying.
 
         This separates the image pull from the deploy, allowing for:
@@ -1615,6 +1620,10 @@ class UpdateEngine:
             validated_compose_path = validate_compose_file_path(
                 compose_file, allowed_base="/compose"
             )
+            # Translate container path to host path for docker daemon
+            host_compose_path = UpdateEngine._translate_container_path_to_host(
+                str(validated_compose_path)
+            )
         except ValidationError as e:
             logger.error(f"Invalid compose file path '{compose_file}': {str(e)}")
             return {
@@ -1623,11 +1632,11 @@ class UpdateEngine:
             }
 
         try:
-            # Check for .env file
+            # Check for .env file (use host path for docker daemon)
             import os
 
-            compose_dir = os.path.dirname(str(validated_compose_path))
-            env_file_path = os.path.join(compose_dir, ".env")
+            host_compose_dir = os.path.dirname(host_compose_path)
+            env_file_path = os.path.join(host_compose_dir, ".env")
             env_file = Path(env_file_path) if os.path.lexists(env_file_path) else None
 
             # Validate docker compose command
@@ -1643,10 +1652,10 @@ class UpdateEngine:
             # Build pull command
             cmd = base_cmd.copy()
 
-            # Add project and compose file flags
+            # Add project and compose file flags (use host path)
             if compose_project:
                 cmd.extend(["-p", compose_project])
-            cmd.extend(["-f", str(validated_compose_path)])
+            cmd.extend(["-f", host_compose_path])
 
             if env_file and env_file.exists():
                 cmd.extend(["--env-file", str(env_file)])
@@ -1696,7 +1705,7 @@ class UpdateEngine:
                 "stderr": stderr,
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Docker pull timed out after 20 minutes")
             return {
                 "success": False,

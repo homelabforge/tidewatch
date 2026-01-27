@@ -11,11 +11,12 @@ Tests update discovery, auto-approval logic, and changelog classification:
 - Error handling (registry errors, database errors)
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.update_checker import UpdateChecker
+import pytest
+
 from app.models.container import Container
+from app.services.update_checker import UpdateChecker
 
 
 class TestAutoApprovalLogic:

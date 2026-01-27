@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
-from typing import TypeVar, Callable, Any, Optional, Tuple, Type
+from collections.abc import Callable
 from functools import wraps
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,8 @@ def async_retry(
     max_attempts: int = 3,
     backoff_base: float = 2.0,
     backoff_max: float = 60.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    on_retry: Callable[[Exception, int], None] | None = None,
 ):
     """Decorator for retrying async functions with exponential backoff.
 
@@ -40,7 +41,7 @@ def async_retry(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -83,8 +84,8 @@ def sync_retry(
     max_attempts: int = 3,
     backoff_base: float = 2.0,
     backoff_max: float = 60.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    on_retry: Callable[[Exception, int], None] | None = None,
 ):
     """Decorator for retrying sync functions with exponential backoff.
 
@@ -104,7 +105,7 @@ def sync_retry(
         def wrapper(*args, **kwargs) -> Any:
             import time
 
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(1, max_attempts + 1):
                 try:

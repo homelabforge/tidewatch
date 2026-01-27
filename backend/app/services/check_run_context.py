@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.models.container import Container
@@ -44,7 +44,7 @@ class ImageCheckKey:
     @classmethod
     def from_container(
         cls, container: Container, include_prereleases: bool
-    ) -> "ImageCheckKey":
+    ) -> ImageCheckKey:
         """Create ImageCheckKey from a Container.
 
         Args:
@@ -79,12 +79,12 @@ class TagFetchResult:
         error: Error message if fetch failed
     """
 
-    tags: List[str]
-    latest_tag: Optional[str]
-    latest_major_tag: Optional[str]
-    metadata: Optional[Dict[str, Any]] = None
-    fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    error: Optional[str] = None
+    tags: list[str]
+    latest_tag: str | None
+    latest_major_tag: str | None
+    metadata: dict[str, Any] | None = None
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    error: str | None = None
 
 
 @dataclass
@@ -108,8 +108,8 @@ class CheckRunMetrics:
         registry_cache_misses: Run-cache misses per registry
     """
 
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
 
     # Counts
     total_containers: int = 0
@@ -120,12 +120,12 @@ class CheckRunMetrics:
     errors: int = 0
 
     # Timing
-    container_latencies: List[float] = field(default_factory=list)
+    container_latencies: list[float] = field(default_factory=list)
 
     # Registry stats
-    registry_calls: Dict[str, int] = field(default_factory=dict)
-    registry_cache_hits: Dict[str, int] = field(default_factory=dict)
-    registry_cache_misses: Dict[str, int] = field(default_factory=dict)
+    registry_calls: dict[str, int] = field(default_factory=dict)
+    registry_cache_hits: dict[str, int] = field(default_factory=dict)
+    registry_cache_misses: dict[str, int] = field(default_factory=dict)
 
     def record_container_check(
         self, registry: str, latency: float, cache_hit: bool
@@ -158,21 +158,21 @@ class CheckRunMetrics:
         self.errors += 1
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         """Get total run duration in seconds."""
         if self.completed_at and self.started_at:
             return (self.completed_at - self.started_at).total_seconds()
         return None
 
     @property
-    def avg_container_latency(self) -> Optional[float]:
+    def avg_container_latency(self) -> float | None:
         """Get average per-container check latency."""
         if self.container_latencies:
             return sum(self.container_latencies) / len(self.container_latencies)
         return None
 
     @property
-    def max_container_latency(self) -> Optional[float]:
+    def max_container_latency(self) -> float | None:
         """Get maximum per-container check latency."""
         if self.container_latencies:
             return max(self.container_latencies)
@@ -186,7 +186,7 @@ class CheckRunMetrics:
         total = total_hits + total_misses
         return (total_hits / total * 100) if total > 0 else 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize metrics to dictionary for storage/logging.
 
         Returns:
@@ -253,15 +253,15 @@ class CheckRunContext:
             job_id: ID of the check job this context belongs to
         """
         self.job_id = job_id
-        self._tag_cache: Dict[ImageCheckKey, TagFetchResult] = {}
+        self._tag_cache: dict[ImageCheckKey, TagFetchResult] = {}
         self._lock = asyncio.Lock()
         self.metrics = CheckRunMetrics()
 
         # Container groups for deduplication
-        self._container_groups: Dict[ImageCheckKey, List[Container]] = {}
-        self._checked_keys: Set[ImageCheckKey] = set()
+        self._container_groups: dict[ImageCheckKey, list[Container]] = {}
+        self._checked_keys: set[ImageCheckKey] = set()
 
-    async def get_cached_result(self, key: ImageCheckKey) -> Optional[TagFetchResult]:
+    async def get_cached_result(self, key: ImageCheckKey) -> TagFetchResult | None:
         """Get cached tag fetch result for this run.
 
         Args:
@@ -286,8 +286,8 @@ class CheckRunContext:
             self._tag_cache[key] = result
 
     def group_containers(
-        self, containers: List[Container], include_prereleases_lookup: Dict[int, bool]
-    ) -> Dict[ImageCheckKey, List[Container]]:
+        self, containers: list[Container], include_prereleases_lookup: dict[int, bool]
+    ) -> dict[ImageCheckKey, list[Container]]:
         """Group containers by image signature for deduplication.
 
         Containers sharing the same image+tag+scope+prerelease config can
@@ -303,7 +303,7 @@ class CheckRunContext:
             Dict mapping ImageCheckKey to list of containers that share
             the same image signature
         """
-        groups: Dict[ImageCheckKey, List[Container]] = {}
+        groups: dict[ImageCheckKey, list[Container]] = {}
 
         for container in containers:
             # Access SQLAlchemy attributes (type: ignore for pyright)
@@ -352,7 +352,7 @@ class CheckRunContext:
         """
         return key in self._checked_keys
 
-    def get_container_group(self, key: ImageCheckKey) -> List[Container]:
+    def get_container_group(self, key: ImageCheckKey) -> list[Container]:
         """Get containers in a group by key.
 
         Args:
@@ -381,7 +381,7 @@ class CheckRunContext:
         Returns:
             CheckRunMetrics with final statistics
         """
-        self.metrics.completed_at = datetime.now(timezone.utc)
+        self.metrics.completed_at = datetime.now(UTC)
 
         logger.info(
             f"Job {self.job_id} metrics: "

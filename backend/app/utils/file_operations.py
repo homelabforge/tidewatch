@@ -4,13 +4,13 @@ This module provides security-first utilities for updating files in the build di
 All operations include path validation, backup creation, and atomic writes.
 """
 
+import logging
 import os
 import re
 import shutil
-from pathlib import Path
 from datetime import datetime
-from typing import Optional
-import logging
+from pathlib import Path
+
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -123,7 +123,7 @@ def validate_file_path_for_update(file_path: str) -> Path:
         raise PathValidationError(f"Path validation failed: {e}")
 
 
-def validate_version_string(version: str, ecosystem: Optional[str] = None) -> bool:
+def validate_version_string(version: str, ecosystem: str | None = None) -> bool:
     """
     Validate version string to prevent injection attacks.
 

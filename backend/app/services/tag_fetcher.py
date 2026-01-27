@@ -9,17 +9,17 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.registry_client import RegistryClientFactory
-from app.services.registry_rate_limiter import RegistryRateLimiter, RateLimitedRequest
 from app.services.check_run_context import (
     CheckRunContext,
     ImageCheckKey,
     TagFetchResult,
 )
+from app.services.registry_client import RegistryClientFactory
+from app.services.registry_rate_limiter import RateLimitedRequest, RegistryRateLimiter
 from app.services.settings_service import SettingsService
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ class FetchTagsRequest:
     current_tag: str
     scope: str
     include_prereleases: bool
-    current_digest: Optional[str] = None
+    current_digest: str | None = None
 
 
 @dataclass
@@ -63,13 +63,13 @@ class FetchTagsResponse:
         error: Error message if fetch failed
     """
 
-    latest_tag: Optional[str]
-    latest_major_tag: Optional[str]
-    all_tags: List[str]
-    metadata: Optional[Dict[str, Any]]
+    latest_tag: str | None
+    latest_major_tag: str | None
+    all_tags: list[str]
+    metadata: dict[str, Any] | None
     cache_hit: bool
     fetch_duration_ms: float
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class TagFetcher:
@@ -111,7 +111,7 @@ class TagFetcher:
         self,
         db: AsyncSession,
         rate_limiter: RegistryRateLimiter,
-        run_context: Optional[CheckRunContext] = None,
+        run_context: CheckRunContext | None = None,
     ):
         """Initialize tag fetcher.
 
@@ -260,7 +260,7 @@ class TagFetcher:
             )
 
     async def fetch_tags_for_container(
-        self, container: "Container"
+        self, container: Container
     ) -> FetchTagsResponse:
         """Convenience method to fetch tags for a container.
 
@@ -287,7 +287,7 @@ class TagFetcher:
         image: str = str(container.image)  # type: ignore[attr-defined]
         current_tag: str = str(container.current_tag)  # type: ignore[attr-defined]
         scope: str = str(container.scope)  # type: ignore[attr-defined]
-        current_digest: Optional[str] = (
+        current_digest: str | None = (
             container.current_digest if current_tag == "latest" else None
         )  # type: ignore[attr-defined]
 
@@ -303,7 +303,7 @@ class TagFetcher:
         )
 
     async def fetch_tags_for_key(
-        self, key: ImageCheckKey, current_digest: Optional[str] = None
+        self, key: ImageCheckKey, current_digest: str | None = None
     ) -> FetchTagsResponse:
         """Fetch tags for an ImageCheckKey.
 

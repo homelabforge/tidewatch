@@ -1,18 +1,17 @@
 """Background scheduler service for automatic update checks."""
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.jobstores.base import JobLookupError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import OperationalError, IntegrityError
 
 from app.database import AsyncSessionLocal
-from app.services.settings_service import SettingsService
 from app.services.check_job_service import CheckJobService
+from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +21,10 @@ class SchedulerService:
 
     def __init__(self) -> None:
         """Initialize the scheduler service."""
-        self.scheduler: Optional[AsyncIOScheduler] = None
+        self.scheduler: AsyncIOScheduler | None = None
         self._check_schedule: str = "0 */6 * * *"  # Default: every 6 hours
         self._enabled: bool = True
-        self._last_check: Optional[datetime] = None  # Track last successful check
+        self._last_check: datetime | None = None  # Track last successful check
         self.restart_scheduler = None  # Will be initialized when scheduler starts
 
     async def start(self) -> None:
@@ -260,7 +259,7 @@ class SchedulerService:
                     )
 
                 # Update last check timestamp
-                self._last_check = datetime.now(timezone.utc)
+                self._last_check = datetime.now(UTC)
 
                 # Persist to settings for recovery after restarts
                 await SettingsService.set(
@@ -300,12 +299,13 @@ class SchedulerService:
                     return
 
                 # Get all approved updates and retries
-                from sqlalchemy import select, or_, and_
-                from app.models.update import Update
+                from sqlalchemy import and_, or_, select
+
                 from app.models.container import Container
+                from app.models.update import Update
+                from app.services.dependency_manager import DependencyManager
                 from app.services.update_engine import UpdateEngine
                 from app.services.update_window import UpdateWindow
-                from app.services.dependency_manager import DependencyManager
 
                 now = datetime.now()
 
@@ -525,9 +525,10 @@ class SchedulerService:
 
         try:
             async with AsyncSessionLocal() as db:
-                from app.services.dockerfile_parser import DockerfileParser
                 from sqlalchemy import select
+
                 from app.models.dockerfile_dependency import DockerfileDependency
+                from app.services.dockerfile_parser import DockerfileParser
 
                 # Check all dependencies for updates
                 parser = DockerfileParser()
@@ -697,7 +698,7 @@ class SchedulerService:
                 "already_running": False,
             }
 
-    def get_next_run_time(self) -> Optional[datetime]:
+    def get_next_run_time(self) -> datetime | None:
         """Get the next scheduled run time.
 
         Returns:

@@ -1,8 +1,8 @@
 """Authentication and OIDC schemas."""
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional
 import re
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class SetupRequest(BaseModel):
@@ -11,7 +11,7 @@ class SetupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=100)
     email: EmailStr = Field(..., max_length=255)
     password: str = Field(..., min_length=8, max_length=100)
-    full_name: Optional[str] = Field(None, max_length=255)
+    full_name: str | None = Field(None, max_length=255)
 
     @field_validator("username")
     @classmethod
@@ -45,7 +45,7 @@ class SetupResponse(BaseModel):
 
     username: str
     email: str
-    full_name: Optional[str]
+    full_name: str | None
     message: str = "Admin account created successfully"
 
 
@@ -62,7 +62,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
-    csrf_token: Optional[str] = None
+    csrf_token: str | None = None
 
 
 class UserProfile(BaseModel):
@@ -70,18 +70,18 @@ class UserProfile(BaseModel):
 
     username: str
     email: str
-    full_name: Optional[str]
+    full_name: str | None
     auth_method: str  # "local" or "oidc"
-    oidc_provider: Optional[str] = None
-    created_at: Optional[str] = None  # ISO timestamp string
-    last_login: Optional[str] = None  # ISO timestamp string
+    oidc_provider: str | None = None
+    created_at: str | None = None  # ISO timestamp string
+    last_login: str | None = None  # ISO timestamp string
 
 
 class UpdateProfileRequest(BaseModel):
     """Schema for updating admin profile."""
 
-    email: Optional[EmailStr] = Field(None, max_length=255)
-    full_name: Optional[str] = Field(None, max_length=255)
+    email: EmailStr | None = Field(None, max_length=255)
+    full_name: str | None = Field(None, max_length=255)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -139,17 +139,17 @@ class OIDCConfig(BaseModel):
 class OIDCConfigUpdate(BaseModel):
     """Schema for updating OIDC configuration."""
 
-    enabled: Optional[bool] = None
-    issuer_url: Optional[str] = Field(None, max_length=512)
-    client_id: Optional[str] = Field(None, max_length=255)
-    client_secret: Optional[str] = Field(None, max_length=255)
-    provider_name: Optional[str] = Field(None, max_length=100)
-    scopes: Optional[str] = Field(None, max_length=255)
-    redirect_uri: Optional[str] = Field(None, max_length=512)
-    username_claim: Optional[str] = Field(None, max_length=100)
-    email_claim: Optional[str] = Field(None, max_length=100)
-    link_token_expire_minutes: Optional[int] = Field(None, ge=1, le=60)
-    link_max_password_attempts: Optional[int] = Field(None, ge=1, le=10)
+    enabled: bool | None = None
+    issuer_url: str | None = Field(None, max_length=512)
+    client_id: str | None = Field(None, max_length=255)
+    client_secret: str | None = Field(None, max_length=255)
+    provider_name: str | None = Field(None, max_length=100)
+    scopes: str | None = Field(None, max_length=255)
+    redirect_uri: str | None = Field(None, max_length=512)
+    username_claim: str | None = Field(None, max_length=100)
+    email_claim: str | None = Field(None, max_length=100)
+    link_token_expire_minutes: int | None = Field(None, ge=1, le=60)
+    link_max_password_attempts: int | None = Field(None, ge=1, le=10)
 
 
 class OIDCLinkRequest(BaseModel):
@@ -167,7 +167,7 @@ class OIDCTestResult(BaseModel):
     metadata_valid: bool = False
     endpoints_found: bool = False
     errors: list[str] = Field(default_factory=list)
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
 
 class OIDCProviderMetadata(BaseModel):
@@ -176,12 +176,12 @@ class OIDCProviderMetadata(BaseModel):
     issuer: str
     authorization_endpoint: str
     token_endpoint: str
-    userinfo_endpoint: Optional[str] = None
+    userinfo_endpoint: str | None = None
     jwks_uri: str
-    scopes_supported: Optional[list[str]] = None
-    response_types_supported: Optional[list[str]] = None
-    subject_types_supported: Optional[list[str]] = None
-    id_token_signing_alg_values_supported: Optional[list[str]] = None
+    scopes_supported: list[str] | None = None
+    response_types_supported: list[str] | None = None
+    subject_types_supported: list[str] | None = None
+    id_token_signing_alg_values_supported: list[str] | None = None
 
 
 class OIDCPendingLinkResponse(BaseModel):

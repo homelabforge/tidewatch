@@ -9,7 +9,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class RegistryRateLimits:
 
 
 # Documented rate limits per registry (conservative estimates)
-REGISTRY_RATE_LIMITS: Dict[RegistryType, RegistryRateLimits] = {
+REGISTRY_RATE_LIMITS: dict[RegistryType, RegistryRateLimits] = {
     # Docker Hub: 100 pulls/6 hours unauthenticated, 200/6 hours authenticated
     # Being conservative: ~30 req/min max to avoid throttling
     RegistryType.DOCKERHUB: RegistryRateLimits(
@@ -120,12 +119,12 @@ class RegistryRateLimiter:
             global_concurrency: Maximum concurrent requests across all registries
         """
         self._global_semaphore = asyncio.Semaphore(global_concurrency)
-        self._registry_states: Dict[str, RateLimitState] = {}
+        self._registry_states: dict[str, RateLimitState] = {}
         self._lock = asyncio.Lock()
 
         # Metrics tracking
-        self._wait_count: Dict[str, int] = {}
-        self._total_requests: Dict[str, int] = {}
+        self._wait_count: dict[str, int] = {}
+        self._total_requests: dict[str, int] = {}
 
     async def _get_registry_state(self, registry: str) -> RateLimitState:
         """Get or create rate limit state for a registry.
@@ -274,7 +273,7 @@ class RegistryRateLimiter:
         state.semaphore.release()
         self._global_semaphore.release()
 
-    def get_metrics(self) -> Dict[str, Dict[str, int]]:
+    def get_metrics(self) -> dict[str, dict[str, int]]:
         """Get rate limiter metrics.
 
         Returns:
@@ -326,9 +325,9 @@ class RateLimitedRequest:
 
     async def __aexit__(
         self,
-        _exc_type: Optional[type],
-        _exc_val: Optional[BaseException],
-        _exc_tb: Optional[object],
+        _exc_type: type | None,
+        _exc_val: BaseException | None,
+        _exc_tb: object | None,
     ) -> bool:
         """Release rate limit slot."""
         await self._limiter.release(self._registry)
