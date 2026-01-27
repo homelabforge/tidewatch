@@ -1,22 +1,28 @@
 """API endpoints for dependency ignore/unignore operations."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.app_dependency import AppDependency
 from app.models.container import Container
 from app.models.dockerfile_dependency import DockerfileDependency
-from app.models.http_server import HttpServer
-from app.models.app_dependency import AppDependency
 from app.models.history import UpdateHistory
+from app.models.http_server import HttpServer
 from app.schemas.dependency import (
+    BatchDependencyUpdateItem,
+    BatchDependencyUpdateRequest,
+    BatchDependencyUpdateResponse,
+    BatchDependencyUpdateSummary,
     IgnoreRequest,
-    UpdateRequest,
     PreviewResponse,
+    UpdateRequest,
     UpdateResponse,
 )
 from app.services.dependency_update_service import DependencyUpdateService
@@ -57,11 +63,9 @@ async def ignore_dockerfile_dependency(
 
         # Update dependency
         dependency.ignored = True
-        dependency.ignored_version = (
-            dependency.latest_tag
-        )  # Track which version we're ignoring
+        dependency.ignored_version = dependency.latest_tag  # Track which version we're ignoring
         dependency.ignored_by = "user"  # TODO: Get from auth context when available
-        dependency.ignored_at = datetime.now(timezone.utc)
+        dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
 
         # Create history entry
@@ -99,15 +103,11 @@ async def ignore_dockerfile_dependency(
         logger.error(
             f"Error ignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to ignore dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to ignore dependency: {str(e)}")
 
 
 @router.post("/dockerfile/{dependency_id}/unignore")
-async def unignore_dockerfile_dependency(
-    dependency_id: int, db: AsyncSession = Depends(get_db)
-):
+async def unignore_dockerfile_dependency(dependency_id: int, db: AsyncSession = Depends(get_db)):
     """
     Unignore a Dockerfile dependency update.
 
@@ -152,8 +152,8 @@ async def unignore_dockerfile_dependency(
             dependency_type="dockerfile",
             dependency_id=dependency.id,
             dependency_name=dependency.image_name,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         db.add(history_event)
 
@@ -172,9 +172,7 @@ async def unignore_dockerfile_dependency(
         logger.error(
             f"Error unignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to unignore dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to unignore dependency: {str(e)}")
 
 
 @router.get("/dockerfile/{dependency_id}/preview", response_model=PreviewResponse)
@@ -211,9 +209,7 @@ async def preview_dockerfile_update(
         logger.error(
             f"Error previewing Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to preview update: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
 @router.post("/dockerfile/{dependency_id}/update", response_model=UpdateResponse)
@@ -245,9 +241,7 @@ async def update_dockerfile_dependency(
         logger.error(
             f"Error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update dependency: {str(e)}")
 
 
 # ===================================================================
@@ -273,15 +267,13 @@ async def ignore_http_server(
             raise HTTPException(status_code=404, detail="HTTP server not found")
 
         if server.ignored:
-            raise HTTPException(
-                status_code=400, detail="HTTP server is already ignored"
-            )
+            raise HTTPException(status_code=400, detail="HTTP server is already ignored")
 
         # Update server
         server.ignored = True
         server.ignored_version = server.latest_version
         server.ignored_by = "user"
-        server.ignored_at = datetime.now(timezone.utc)
+        server.ignored_at = datetime.now(UTC)
         server.ignored_reason = request.reason
 
         # Create history entry
@@ -319,9 +311,7 @@ async def ignore_http_server(
         logger.error(
             f"Error ignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to ignore HTTP server: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to ignore HTTP server: {str(e)}")
 
 
 @router.post("/http-servers/{server_id}/unignore")
@@ -366,8 +356,8 @@ async def unignore_http_server(server_id: int, db: AsyncSession = Depends(get_db
             dependency_type="http_server",
             dependency_id=server.id,
             dependency_name=server.name,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         db.add(history_event)
 
@@ -386,9 +376,7 @@ async def unignore_http_server(server_id: int, db: AsyncSession = Depends(get_db
         logger.error(
             f"Error unignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to unignore HTTP server: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to unignore HTTP server: {str(e)}")
 
 
 @router.get("/http-servers/{server_id}/preview", response_model=PreviewResponse)
@@ -425,9 +413,7 @@ async def preview_http_server_update(
         logger.error(
             f"Error previewing HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to preview update: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
 @router.post("/http-servers/{server_id}/update", response_model=UpdateResponse)
@@ -459,14 +445,149 @@ async def update_http_server(
         logger.error(
             f"Error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update HTTP server: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update HTTP server: {str(e)}")
 
 
 # ===================================================================
 # App Dependency Endpoints
 # ===================================================================
+
+
+@router.post("/app-dependencies/batch/update", response_model=BatchDependencyUpdateResponse)
+async def batch_update_app_dependencies(
+    request: BatchDependencyUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Batch update multiple application dependencies.
+
+    Updates each dependency to its latest version. Returns granular
+    success/failure status for each item.
+    """
+    updated: list[BatchDependencyUpdateItem] = []
+    failed: list[BatchDependencyUpdateItem] = []
+
+    for dep_id in request.dependency_ids:
+        try:
+            # Get dependency
+            result = await db.execute(
+                select(AppDependency).where(AppDependency.id == dep_id)
+            )
+            dependency = result.scalar_one_or_none()
+
+            if not dependency:
+                failed.append(
+                    BatchDependencyUpdateItem(
+                        id=dep_id,
+                        name=f"Unknown (id={dep_id})",
+                        from_version="unknown",
+                        to_version="unknown",
+                        success=False,
+                        error="Dependency not found",
+                    )
+                )
+                continue
+
+            # Skip ignored dependencies
+            if dependency.ignored:
+                failed.append(
+                    BatchDependencyUpdateItem(
+                        id=dep_id,
+                        name=dependency.name,
+                        from_version=dependency.current_version,
+                        to_version=dependency.latest_version or dependency.current_version,
+                        success=False,
+                        error="Dependency is ignored",
+                    )
+                )
+                continue
+
+            # Skip if no update available
+            if not dependency.update_available or not dependency.latest_version:
+                failed.append(
+                    BatchDependencyUpdateItem(
+                        id=dep_id,
+                        name=dependency.name,
+                        from_version=dependency.current_version,
+                        to_version=dependency.latest_version or dependency.current_version,
+                        success=False,
+                        error="No update available",
+                    )
+                )
+                continue
+
+            # Perform update using the static service method
+            try:
+                update_result = await DependencyUpdateService.update_app_dependency(
+                    db=db,
+                    dependency_id=dep_id,
+                    new_version=dependency.latest_version,
+                    triggered_by="user",
+                )
+
+                if update_result.get("success"):
+                    updated.append(
+                        BatchDependencyUpdateItem(
+                            id=dep_id,
+                            name=dependency.name,
+                            from_version=dependency.current_version,
+                            to_version=dependency.latest_version,
+                            success=True,
+                            backup_path=update_result.get("backup_path"),
+                            history_id=update_result.get("history_id"),
+                        )
+                    )
+                else:
+                    failed.append(
+                        BatchDependencyUpdateItem(
+                            id=dep_id,
+                            name=dependency.name,
+                            from_version=dependency.current_version,
+                            to_version=dependency.latest_version,
+                            success=False,
+                            error=update_result.get("error", "Update failed"),
+                        )
+                    )
+            except Exception as e:
+                failed.append(
+                    BatchDependencyUpdateItem(
+                        id=dep_id,
+                        name=dependency.name,
+                        from_version=dependency.current_version,
+                        to_version=dependency.latest_version,
+                        success=False,
+                        error=str(e),
+                    )
+                )
+
+        except Exception as e:
+            failed.append(
+                BatchDependencyUpdateItem(
+                    id=dep_id,
+                    name=f"Unknown (id={dep_id})",
+                    from_version="unknown",
+                    to_version="unknown",
+                    success=False,
+                    error=str(e),
+                )
+            )
+
+    # Commit all successful updates
+    await db.commit()
+
+    logger.info(
+        f"Batch update completed: {len(updated)} updated, {len(failed)} failed"
+    )
+
+    return BatchDependencyUpdateResponse(
+        updated=updated,
+        failed=failed,
+        summary=BatchDependencyUpdateSummary(
+            total=len(request.dependency_ids),
+            updated_count=len(updated),
+            failed_count=len(failed),
+        ),
+    )
 
 
 @router.post("/app-dependencies/{dependency_id}/ignore")
@@ -478,24 +599,20 @@ async def ignore_app_dependency(
     """
     try:
         # Get dependency
-        result = await db.execute(
-            select(AppDependency).where(AppDependency.id == dependency_id)
-        )
+        result = await db.execute(select(AppDependency).where(AppDependency.id == dependency_id))
         dependency = result.scalar_one_or_none()
 
         if not dependency:
             raise HTTPException(status_code=404, detail="App dependency not found")
 
         if dependency.ignored:
-            raise HTTPException(
-                status_code=400, detail="App dependency is already ignored"
-            )
+            raise HTTPException(status_code=400, detail="App dependency is already ignored")
 
         # Update dependency
         dependency.ignored = True
         dependency.ignored_version = dependency.latest_version
         dependency.ignored_by = "user"
-        dependency.ignored_at = datetime.now(timezone.utc)
+        dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
 
         # Create history entry
@@ -533,23 +650,17 @@ async def ignore_app_dependency(
         logger.error(
             f"Error ignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to ignore app dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to ignore app dependency: {str(e)}")
 
 
 @router.post("/app-dependencies/{dependency_id}/unignore")
-async def unignore_app_dependency(
-    dependency_id: int, db: AsyncSession = Depends(get_db)
-):
+async def unignore_app_dependency(dependency_id: int, db: AsyncSession = Depends(get_db)):
     """
     Unignore an application dependency update.
     """
     try:
         # Get dependency
-        result = await db.execute(
-            select(AppDependency).where(AppDependency.id == dependency_id)
-        )
+        result = await db.execute(select(AppDependency).where(AppDependency.id == dependency_id))
         dependency = result.scalar_one_or_none()
 
         if not dependency:
@@ -584,8 +695,8 @@ async def unignore_app_dependency(
             dependency_type="app_dependency",
             dependency_id=dependency.id,
             dependency_name=dependency.name,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
         db.add(history_event)
 
@@ -604,9 +715,7 @@ async def unignore_app_dependency(
         logger.error(
             f"Error unignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to unignore app dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to unignore app dependency: {str(e)}")
 
 
 @router.get("/app-dependencies/{dependency_id}/preview", response_model=PreviewResponse)
@@ -643,9 +752,7 @@ async def preview_app_dependency_update(
         logger.error(
             f"Error previewing app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to preview update: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
 
 
 @router.post("/app-dependencies/{dependency_id}/update", response_model=UpdateResponse)
@@ -680,6 +787,4 @@ async def update_app_dependency(
         logger.error(
             f"Error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update app dependency: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update app dependency: {str(e)}")

@@ -17,6 +17,7 @@ import type {
   UpdateWindowInfo,
   AnalyticsSummary,
   AppDependenciesResponse,
+  BatchDependencyUpdateResponse,
   DockerfileDependenciesResponse,
   HttpServersResponse,
   CheckJobStartResponse,
@@ -654,6 +655,13 @@ const dependenciesApi = {
     }
     return response;
   },
+
+  // Batch update multiple app dependencies
+  batchUpdateAppDependencies: (dependencyIds: number[]) =>
+    apiCall<BatchDependencyUpdateResponse>('/dependencies/app-dependencies/batch/update', {
+      method: 'POST',
+      body: JSON.stringify({ dependency_ids: dependencyIds }),
+    }),
 };
 
 // Export combined API

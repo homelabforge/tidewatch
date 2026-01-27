@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Info, Activity, FileText, Clock, Settings, CircleCheckBig, RefreshCw, AlertCircle, CheckCircle2, XCircle, History, ArrowRight, RotateCw, TrendingUp, Power, Shield, Ban, Wand2, Undo2, Pause, Play, Network, Calendar, Copy, Download, ChevronDown, ChevronUp, Search, FileDown, Package, Star, ShieldAlert, Container as ContainerIcon, Server, Eye, EyeOff } from 'lucide-react';
-import { Container, ContainerMetrics, UpdateHistory, RestartState, EnableRestartConfig, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse, AppDependency, DockerfileDependency, HttpServer } from '../types';
+import { Container, ContainerMetrics, UpdateHistory, RestartState, EnableRestartConfig, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse, AppDependency, DockerfileDependency, HttpServer, BatchDependencyUpdateResponse } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { api } from '../services/api';
 import { toast } from 'sonner';
@@ -8,6 +8,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import StatusBadge from './StatusBadge';
 import DependencyIgnoreModal from './DependencyIgnoreModal';
 import DependencyUpdatePreviewModal, { type PreviewData } from './DependencyUpdatePreviewModal';
+import BatchUpdateConfirmModal from './BatchUpdateConfirmModal';
+import BatchUpdateResultsModal from './BatchUpdateResultsModal';
 
 interface ContainerModalProps {
   container: Container;
@@ -117,6 +119,16 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     dependency: AppDependency | DockerfileDependency | HttpServer;
     type: 'app' | 'dockerfile' | 'http_server';
   } | null>(null);
+
+  // Batch update selection state - separate per dependency type
+  const [selectedProductionDeps, setSelectedProductionDeps] = useState<Set<number>>(new Set());
+  const [selectedDevDeps, setSelectedDevDeps] = useState<Set<number>>(new Set());
+
+  // Batch update operation state
+  const [batchUpdating, setBatchUpdating] = useState(false);
+  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
+  const [batchResultsOpen, setBatchResultsOpen] = useState(false);
+  const [batchResults, setBatchResults] = useState<BatchDependencyUpdateResponse | null>(null);
 
   // Settings state
   const [myProjectsEnabled, setMyProjectsEnabled] = useState(true);
@@ -727,6 +739,85 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
     }
   };
 
+  // Batch selection helpers
+  const getCurrentSelection = useCallback(() => {
+    if (dependenciesSubTab === 'dependencies') return selectedProductionDeps;
+    if (dependenciesSubTab === 'dev-dependencies') return selectedDevDeps;
+    return new Set<number>();
+  }, [dependenciesSubTab, selectedProductionDeps, selectedDevDeps]);
+
+  const setCurrentSelection = useCallback((newSelection: Set<number>) => {
+    if (dependenciesSubTab === 'dependencies') setSelectedProductionDeps(newSelection);
+    if (dependenciesSubTab === 'dev-dependencies') setSelectedDevDeps(newSelection);
+  }, [dependenciesSubTab]);
+
+  const getDepsWithUpdates = useCallback((type: 'production' | 'development') => {
+    return (appDependencies?.dependencies || [])
+      .filter(dep => dep.dependency_type === type && dep.update_available && !dep.ignored);
+  }, [appDependencies]);
+
+  const handleSelectDependency = useCallback((depId: number) => {
+    const current = getCurrentSelection();
+    const newSelection = new Set(current);
+    if (newSelection.has(depId)) {
+      newSelection.delete(depId);
+    } else {
+      newSelection.add(depId);
+    }
+    setCurrentSelection(newSelection);
+  }, [getCurrentSelection, setCurrentSelection]);
+
+  const handleSelectAllWithUpdates = useCallback(() => {
+    const type = dependenciesSubTab === 'dependencies' ? 'production' : 'development';
+    const depsWithUpdates = getDepsWithUpdates(type);
+    const newSelection = new Set(depsWithUpdates.map(d => d.id));
+    setCurrentSelection(newSelection);
+  }, [dependenciesSubTab, getDepsWithUpdates, setCurrentSelection]);
+
+  const handleDeselectAll = useCallback(() => {
+    setCurrentSelection(new Set());
+  }, [setCurrentSelection]);
+
+  const handleBatchUpdateClick = () => {
+    setBatchConfirmOpen(true);
+  };
+
+  const handleBatchUpdateConfirm = async () => {
+    setBatchConfirmOpen(false);
+    setBatchUpdating(true);
+
+    try {
+      const selection = Array.from(getCurrentSelection());
+      const results = await api.dependencies.batchUpdateAppDependencies(selection);
+      setBatchResults(results);
+      setBatchResultsOpen(true);
+
+      if (results.summary.updated_count > 0) {
+        toast.success(`Updated ${results.summary.updated_count} dependencies`);
+      }
+      if (results.summary.failed_count > 0) {
+        toast.error(`${results.summary.failed_count} updates failed`);
+      }
+    } catch (error) {
+      console.error('Batch update failed:', error);
+      toast.error('Batch update failed');
+    } finally {
+      setBatchUpdating(false);
+    }
+  };
+
+  const handleBatchResultsClose = () => {
+    setBatchResultsOpen(false);
+    setBatchResults(null);
+    setCurrentSelection(new Set()); // Clear selection
+    loadAppDependencies(); // Refresh list
+  };
+
+  const getSelectedDependencies = useCallback(() => {
+    const selection = getCurrentSelection();
+    return (appDependencies?.dependencies || []).filter(d => selection.has(d.id));
+  }, [getCurrentSelection, appDependencies]);
+
   // useEffect hooks that depend on load functions
   useEffect(() => {
     if (activeTab === 'metrics') {
@@ -1055,6 +1146,57 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
           </div>
         )}
 
+        {/* Batch Actions Bar */}
+        {(dependenciesSubTab === 'dependencies' || dependenciesSubTab === 'dev-dependencies') && updatesCount > 0 && (
+          <div className="flex items-center justify-between bg-tide-surface-light rounded-lg p-3 mb-3 border border-tide-border">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={getCurrentSelection().size === updatesCount && updatesCount > 0}
+                ref={(el) => {
+                  if (el) {
+                    el.indeterminate = getCurrentSelection().size > 0 && getCurrentSelection().size < updatesCount;
+                  }
+                }}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    handleSelectAllWithUpdates();
+                  } else {
+                    handleDeselectAll();
+                  }
+                }}
+                className="w-4 h-4 rounded border-tide-border accent-primary"
+              />
+              <span className="text-sm text-tide-text">
+                {getCurrentSelection().size > 0
+                  ? `${getCurrentSelection().size} selected`
+                  : `Select all with updates (${updatesCount})`
+                }
+              </span>
+            </div>
+
+            {getCurrentSelection().size > 0 && (
+              <button
+                onClick={handleBatchUpdateClick}
+                disabled={batchUpdating}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {batchUpdating ? (
+                  <>
+                    <RefreshCw className="animate-spin" size={16} />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Update Selected ({getCurrentSelection().size})
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Dependencies List */}
         {loadingAppDependencies ? (
           <div className="text-center py-12">
@@ -1075,6 +1217,17 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
                   key={`${dep.ecosystem}-${dep.name}`}
                   className="bg-tide-surface rounded-lg p-4 border border-tide-border flex items-center justify-between"
                 >
+                  {/* Checkbox for items with updates */}
+                  {!dep.ignored && dep.update_available && (dependenciesSubTab === 'dependencies' || dependenciesSubTab === 'dev-dependencies') && (
+                    <div className="pr-3">
+                      <input
+                        type="checkbox"
+                        checked={getCurrentSelection().has(dep.id)}
+                        onChange={() => handleSelectDependency(dep.id)}
+                        className="w-4 h-4 rounded border-tide-border accent-primary"
+                      />
+                    </div>
+                  )}
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">{ecosystemIcons[dep.ecosystem] || '📦'}</span>
@@ -3205,6 +3358,24 @@ export default function ContainerModal({ container, onClose, onUpdate }: Contain
           }}
           onConfirmUpdate={handleConfirmUpdate}
           onPreview={handlePreviewLoad}
+        />
+      )}
+
+      {/* Batch Update Confirmation Modal */}
+      {batchConfirmOpen && (
+        <BatchUpdateConfirmModal
+          dependencies={getSelectedDependencies()}
+          onClose={() => setBatchConfirmOpen(false)}
+          onConfirm={handleBatchUpdateConfirm}
+          isUpdating={batchUpdating}
+        />
+      )}
+
+      {/* Batch Update Results Modal */}
+      {batchResultsOpen && batchResults && (
+        <BatchUpdateResultsModal
+          results={batchResults}
+          onClose={handleBatchResultsClose}
         />
       )}
     </div>

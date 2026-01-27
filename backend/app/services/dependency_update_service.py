@@ -33,6 +33,7 @@ from app.utils.file_operations import (
 from app.utils.security import sanitize_log_message
 from app.services.dockerfile_parser import DockerfileParser
 from app.services.changelog import ChangelogFetcher
+from app.services.changelog_updater import ChangelogUpdater
 from app.utils.manifest_parsers import (
     update_package_json,
     update_requirements_txt,
@@ -325,8 +326,25 @@ class DependencyUpdateService:
             await db.commit()
             await db.refresh(history)
 
-            # Cleanup old backups (keep 5 most recent)
-            cleanup_old_backups(validated_path, keep_count=5)
+            # Cleanup old backups (keep only the most recent for rollback)
+            cleanup_old_backups(validated_path, keep_count=1)
+
+            # Update CHANGELOG.md (non-blocking)
+            try:
+                project_root = ChangelogUpdater.extract_project_root(
+                    dependency.dockerfile_path,
+                    base_path=Path("/projects"),
+                )
+                if project_root:
+                    ChangelogUpdater.update_changelog(
+                        project_root=project_root,
+                        dependency_name=dependency.image_name,
+                        old_version=old_tag,
+                        new_version=new_version,
+                        dependency_type="dockerfile",
+                    )
+            except Exception as changelog_err:
+                logger.warning(f"Failed to update CHANGELOG: {changelog_err}")
 
             logger.info(
                 f"Successfully updated Dockerfile dependency {dependency.image_name} "
@@ -505,6 +523,23 @@ class DependencyUpdateService:
             await db.refresh(history)
 
             cleanup_old_backups(validated_path, keep_count=5)
+
+            # Update CHANGELOG.md (non-blocking)
+            try:
+                project_root = ChangelogUpdater.extract_project_root(
+                    server.dockerfile_path,
+                    base_path=Path("/projects"),
+                )
+                if project_root:
+                    ChangelogUpdater.update_changelog(
+                        project_root=project_root,
+                        dependency_name=server.name,
+                        old_version=old_version,
+                        new_version=new_version,
+                        dependency_type="http_server",
+                    )
+            except Exception as changelog_err:
+                logger.warning(f"Failed to update CHANGELOG: {changelog_err}")
 
             logger.info(
                 f"Successfully updated HTTP server {server.name} "
@@ -723,6 +758,23 @@ class DependencyUpdateService:
             await db.refresh(history)
 
             cleanup_old_backups(validated_path, keep_count=5)
+
+            # Update CHANGELOG.md (non-blocking)
+            try:
+                project_root = ChangelogUpdater.extract_project_root(
+                    dependency.manifest_file,
+                    base_path=Path("/projects"),
+                )
+                if project_root:
+                    ChangelogUpdater.update_changelog(
+                        project_root=project_root,
+                        dependency_name=dependency.name,
+                        old_version=old_version,
+                        new_version=new_version,
+                        dependency_type="app_dependency",
+                    )
+            except Exception as changelog_err:
+                logger.warning(f"Failed to update CHANGELOG: {changelog_err}")
 
             logger.info(
                 f"Successfully updated app dependency {dependency.name} "

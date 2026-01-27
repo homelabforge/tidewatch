@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Batch Dependency Updates** - Multi-select functionality to update multiple app dependencies at once
+  - Checkbox selection on dependency rows in the Dependencies tab
+  - "Update Selected" button appears when dependencies are selected
+  - Batch results modal shows success/failure status for each update
+  - New API endpoint: `POST /api/dependencies/app-dependencies/batch/update`
+- **Automatic CHANGELOG Updates** - When dependencies are updated through TideWatch, entries are automatically added to the project's CHANGELOG.md
+  - Adds entries under `## [Unreleased]` → `### Changed` section
+  - Entry format: `- **{name}**: {old_version} → {new_version}`
+  - Works for HTTP servers, Dockerfile dependencies, and app dependencies
+  - Non-blocking: CHANGELOG update failures don't prevent dependency updates
+  - New service: `ChangelogUpdater` in `backend/app/services/changelog_updater.py`
+
 ## [3.6.0] - 2025-01-23
 
 ### Added

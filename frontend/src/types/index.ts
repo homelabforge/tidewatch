@@ -422,6 +422,30 @@ export interface AppDependenciesResponse {
   scan_status: string; // idle, scanning, error
 }
 
+// Batch dependency update types
+export interface BatchDependencyUpdateItem {
+  id: number;
+  name: string;
+  from_version: string;
+  to_version: string;
+  success: boolean;
+  error?: string;
+  backup_path?: string;
+  history_id?: number;
+}
+
+export interface BatchDependencyUpdateSummary {
+  total: number;
+  updated_count: number;
+  failed_count: number;
+}
+
+export interface BatchDependencyUpdateResponse {
+  updated: BatchDependencyUpdateItem[];
+  failed: BatchDependencyUpdateItem[];
+  summary: BatchDependencyUpdateSummary;
+}
+
 // Dockerfile Dependencies types
 export interface DockerfileDependency {
   id: number;
