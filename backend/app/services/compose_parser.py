@@ -522,8 +522,8 @@ class ComposeParser:
                     netloc = f"{service_name}:{parsed.port}"
                 rebuilt = parsed._replace(netloc=netloc)
                 return urlunparse(rebuilt)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to normalize healthcheck URL %s: %s", url, str(e))
         return url
 
     @staticmethod

@@ -57,9 +57,9 @@ async def get_docker_version() -> str:
             if process.returncode == 0:
                 return stdout_bytes.decode("utf-8").strip()
         except TimeoutError:
-            pass
-    except Exception:
-        pass
+            logger.debug("Docker version check timed out")
+    except Exception as e:
+        logger.debug("Failed to get Docker version: %s", str(e))
     return "unknown"
 
 

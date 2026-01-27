@@ -11,7 +11,7 @@ Security:
 """
 
 import logging
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import HTTPException
 
@@ -22,7 +22,7 @@ def safe_error_response(
     user_message: str,
     status_code: int = 500,
     log_level: str = "error",
-) -> None:
+) -> NoReturn:
     """Log full error details server-side and raise generic HTTPException for user.
 
     This function ensures that:

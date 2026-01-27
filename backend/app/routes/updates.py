@@ -567,11 +567,18 @@ async def apply_update(
         )
 
         if not result["success"]:
-            raise HTTPException(
-                status_code=500, detail=result.get("message", "Update failed")
+            # Log internal details but don't expose to client
+            logger.error(
+                "Update failed: %s", sanitize_log_message(result.get("message", ""))
             )
+            raise HTTPException(status_code=500, detail="Update failed")
 
-        return result
+        # Return only safe fields to client (no internal error details)
+        return {
+            "success": result["success"],
+            "message": result.get("message", "Update completed"),
+            "history_id": result.get("history_id"),
+        }
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")

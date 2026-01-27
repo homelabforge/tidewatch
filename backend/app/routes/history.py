@@ -15,6 +15,7 @@ from app.models.restart_log import ContainerRestartLog
 from app.schemas.history import UnifiedHistoryEventSchema, UpdateHistorySchema
 from app.services.auth import require_auth
 from app.services.update_engine import UpdateEngine
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -334,17 +335,25 @@ async def rollback_update(
         result = await UpdateEngine.rollback_update(db, history_id)
 
         if not result["success"]:
-            raise HTTPException(
-                status_code=500, detail=result.get("message", "Rollback failed")
+            # Log internal details but don't expose to client
+            logger.error(
+                "Rollback failed: %s", sanitize_log_message(result.get("message", ""))
             )
+            raise HTTPException(status_code=500, detail="Rollback failed")
 
-        return result
+        # Return only safe fields to client (no internal error details)
+        return {
+            "success": result["success"],
+            "message": result.get("message", "Rollback completed"),
+        }
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:
-        logger.error(f"Database error during rollback: {e}")
+        logger.error(
+            "Database error during rollback: %s", sanitize_log_message(str(e))
+        )
         raise HTTPException(status_code=500, detail="Database error during rollback")
     except (KeyError, AttributeError) as e:
-        logger.error(f"Invalid data during rollback: {e}")
+        logger.error("Invalid data during rollback: %s", sanitize_log_message(str(e)))
         raise HTTPException(status_code=500, detail="Invalid rollback data")
