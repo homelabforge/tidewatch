@@ -6,7 +6,7 @@
 # ==============================================================================
 
 # Stage 1: Build frontend with Bun
-FROM oven/bun:1.3.6-alpine AS frontend-builder
+FROM oven/bun:1.3.7-alpine AS frontend-builder
 
 # Set working directory
 WORKDIR /app/frontend
