@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New API endpoints: `GET/POST /api/dependencies/{type}/{id}/rollback-history` and `/rollback`
   - New component: `DependencyRollbackModal.tsx`
 
+### Fixed
+- **History page showing "Unknown" for dependency updates** - Added handling for `dependency_update` event type so history entries now correctly display the dependency name and version change instead of "Unknown"
+
 ## [3.6.0] - 2025-01-23
 
 ### Added

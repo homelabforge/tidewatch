@@ -181,6 +181,15 @@ export default function History() {
                               <ArrowRight size={14} className="text-tide-text-muted" />
                               <span className="font-mono text-primary">{item.to_tag}</span>
                             </div>
+                          ) : item.event_type === 'dependency_update' ? (
+                            // Dependency Update Event: Show dependency name and version change
+                            <div className="flex items-center gap-2 text-sm text-tide-text">
+                              <ArrowRight size={14} className="text-primary" />
+                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
+                              <span className="font-mono text-xs">{item.from_tag}</span>
+                              <ArrowRight size={12} className="text-tide-text-muted" />
+                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                            </div>
                           ) : item.event_type === 'dependency_ignore' ? (
                             // Dependency Ignore Event: Show dependency name and version change
                             <div className="flex items-center gap-2 text-sm text-tide-text">

@@ -87,7 +87,7 @@ export interface UpdateHistory {
   from_tag: string;
   to_tag: string;
   status: string;
-  event_type?: string | null; // 'update', 'dependency_ignore', 'dependency_unignore'
+  event_type?: string | null; // 'update', 'dependency_update', 'dependency_ignore', 'dependency_unignore'
   update_type: string | null;
   reason: string | null;
   reason_type: string | null;
@@ -113,7 +113,7 @@ export interface UpdateHistory {
 export interface UnifiedHistoryEvent {
   // Common fields
   id: number;
-  event_type: 'update' | 'restart' | 'dependency_ignore' | 'dependency_unignore';
+  event_type: 'update' | 'restart' | 'dependency_ignore' | 'dependency_unignore' | 'dependency_update';
   container_id: number;
   container_name: string;
   status: string;
