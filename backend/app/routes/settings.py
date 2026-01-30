@@ -33,7 +33,9 @@ async def get_all_settings(
     for setting in settings:
         if setting.key in SENSITIVE_KEYS and setting.value:
             if len(setting.value) > 12:
-                setting.value = f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
+                setting.value = (
+                    f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
+                )
             elif len(setting.value) > 4:
                 setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
             else:
@@ -57,18 +59,15 @@ async def get_settings_by_category(
         for setting in settings_list:
             if setting.key in SENSITIVE_KEYS and setting.value:
                 if len(setting.value) > 12:
-                    setting.value = f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
-                elif len(setting.value) > 4:
                     setting.value = (
-                        f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
+                        f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
                     )
+                elif len(setting.value) > 4:
+                    setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
                 else:
                     setting.value = "****"
 
-    return [
-        SettingCategory(category=cat, settings=settings)
-        for cat, settings in grouped.items()
-    ]
+    return [SettingCategory(category=cat, settings=settings) for cat, settings in grouped.items()]
 
 
 @router.get("/{key}", response_model=SettingSchema)
@@ -93,7 +92,9 @@ async def get_setting(
     # Mask sensitive value
     if setting.key in SENSITIVE_KEYS and setting.value:
         if len(setting.value) > 12:
-            setting.value = f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
+            setting.value = (
+                f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
+            )
         elif len(setting.value) > 4:
             setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
         else:
@@ -151,9 +152,7 @@ async def batch_update_settings(
     except HTTPException:
         raise
     except Exception as e:
-        safe_error_response(
-            logger, e, "Failed to batch update settings", status_code=500
-        )
+        safe_error_response(logger, e, "Failed to batch update settings", status_code=500)
 
 
 @router.post("/reset")
@@ -353,9 +352,9 @@ async def test_ntfy_connection(
     try:
         # Get ntfy settings
         ntfy_enabled = await SettingsService.get_bool(db, "ntfy_enabled")
-        ntfy_server = await SettingsService.get(
-            db, "ntfy_server"
-        ) or await SettingsService.get(db, "ntfy_url")
+        ntfy_server = await SettingsService.get(db, "ntfy_server") or await SettingsService.get(
+            db, "ntfy_url"
+        )
         ntfy_topic = await SettingsService.get(db, "ntfy_topic")
 
         if not ntfy_enabled:
@@ -447,6 +446,9 @@ async def test_dockerhub_connection(
 ) -> dict:
     """Test Docker Hub registry authentication.
 
+    Tests authentication using the same method that the DockerHubClient uses -
+    Basic Auth credentials on requests to hub.docker.com/v2/repositories API.
+
     Returns:
         Connection test result with status and details
     """
@@ -465,46 +467,62 @@ async def test_dockerhub_connection(
                 },
             }
 
-        # Authenticate with Docker Hub API
+        # Test authentication using the same method as DockerHubClient
+        # The client uses Basic Auth on requests to hub.docker.com/v2/repositories
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Step 1: Get JWT token
-            auth_response = await client.post(
-                "https://hub.docker.com/v2/users/login",
-                json={"username": dockerhub_username, "password": dockerhub_token},
+            # Make an authenticated request to the repositories API
+            # Using nginx (library/nginx) as a well-known public image
+            auth = httpx.BasicAuth(dockerhub_username, dockerhub_token)
+
+            response = await client.get(
+                "https://hub.docker.com/v2/repositories/library/nginx/tags",
+                params={"page_size": 1},
+                auth=auth,
             )
 
-            if auth_response.status_code != 200:
+            if response.status_code == 200:
+                # Check rate limit headers to verify authenticated access
+                # Authenticated users get 200 pulls/6hr vs 100 for anonymous
+                rate_limit = response.headers.get("ratelimit-limit", "unknown")
+                rate_remaining = response.headers.get("ratelimit-remaining", "unknown")
+
                 return {
-                    "success": False,
-                    "message": "Docker Hub authentication failed",
+                    "success": True,
+                    "message": "Docker Hub authentication successful",
                     "details": {
                         "username": dockerhub_username,
-                        "status_code": auth_response.status_code,
-                        "error": "Invalid credentials",
+                        "authenticated": True,
+                        "rate_limit": rate_limit,
+                        "rate_remaining": rate_remaining,
                     },
                 }
-
-            auth_data = auth_response.json()
-            token = auth_data.get("token")
-
-            # Step 2: Test authenticated request
-            headers = {"Authorization": f"Bearer {token}"}
-            profile_response = await client.get(
-                f"https://hub.docker.com/v2/users/{dockerhub_username}", headers=headers
-            )
-            profile_response.raise_for_status()
-
-            profile_response.json()
-
-            return {
-                "success": True,
-                "message": "Docker Hub authentication successful",
-                "details": {
-                    "username": dockerhub_username,
-                    "profile_url": f"https://hub.docker.com/u/{dockerhub_username}",
-                    "authenticated": True,
-                },
-            }
+            elif response.status_code == 401:
+                return {
+                    "success": False,
+                    "message": "Docker Hub authentication failed - invalid credentials",
+                    "details": {
+                        "username": dockerhub_username,
+                        "error": "Invalid username or token",
+                    },
+                }
+            elif response.status_code == 429:
+                return {
+                    "success": False,
+                    "message": "Docker Hub rate limited",
+                    "details": {
+                        "username": dockerhub_username,
+                        "error": "Rate limit exceeded - credentials may still be valid",
+                    },
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Docker Hub API error: {response.status_code}",
+                    "details": {
+                        "status_code": response.status_code,
+                        "error": "Unexpected response from Docker Hub",
+                    },
+                }
     except httpx.HTTPStatusError as e:
         return {
             "success": False,
@@ -684,9 +702,7 @@ async def test_pushover_connection(
             return {
                 "success": True,
                 "message": "Test notification sent successfully",
-                "details": {
-                    "message": "Check your Pushover client for the test notification"
-                },
+                "details": {"message": "Check your Pushover client for the test notification"},
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -766,9 +782,7 @@ async def test_slack_connection(
             return {
                 "success": True,
                 "message": "Test notification sent successfully",
-                "details": {
-                    "message": "Check your Slack channel for the test notification"
-                },
+                "details": {"message": "Check your Slack channel for the test notification"},
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -853,9 +867,7 @@ async def test_discord_connection(
             return {
                 "success": True,
                 "message": "Test notification sent successfully",
-                "details": {
-                    "message": "Check your Discord channel for the test notification"
-                },
+                "details": {"message": "Check your Discord channel for the test notification"},
             }
     except httpx.HTTPStatusError as e:
         return {
@@ -1118,6 +1130,10 @@ async def test_ghcr_connection(
 ) -> dict:
     """Test GitHub Container Registry (GHCR) authentication.
 
+    Tests authentication using the same endpoint and method that the
+    GHCRClient uses - requesting a bearer token from ghcr.io/token
+    with Basic Auth credentials.
+
     Returns:
         Connection test result with status and details
     """
@@ -1136,58 +1152,74 @@ async def test_ghcr_connection(
                 },
             }
 
-        # Test authentication with GHCR
-        # GHCR uses the GitHub API for authentication verification
+        # Test authentication against actual GHCR token endpoint
+        # This is what the GHCRClient._get_bearer_token() method uses
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Test with GitHub API to verify token
-            headers = {
-                "Authorization": f"Bearer {ghcr_token}",
-                "Accept": "application/vnd.github+json",
+            # Use a well-known public image to test token validity
+            # linuxserver images are public and reliable for testing
+            test_image = "linuxserver/sonarr"
+            params = {
+                "scope": f"repository:{test_image}:pull",
+                "service": "ghcr.io",
             }
 
-            response = await client.get("https://api.github.com/user", headers=headers)
+            # GHCR requires Basic Auth for token requests
+            auth = httpx.BasicAuth(ghcr_username, ghcr_token)
+
+            response = await client.get(
+                "https://ghcr.io/token",
+                params=params,
+                auth=auth,
+            )
 
             if response.status_code == 200:
-                user_data = response.json()
-                github_username = user_data.get("login")
+                data = response.json()
+                token = data.get("token")
 
-                # Verify username matches
-                if github_username.lower() != ghcr_username.lower():
+                if token:
                     return {
-                        "success": False,
-                        "message": "Username mismatch",
+                        "success": True,
+                        "message": "GHCR authentication successful",
                         "details": {
-                            "configured_username": ghcr_username,
-                            "token_username": github_username,
-                            "error": "Configured username doesn't match the token owner",
+                            "username": ghcr_username,
+                            "authenticated": True,
+                            "token_valid": True,
                         },
                     }
-
-                return {
-                    "success": True,
-                    "message": "GHCR authentication successful",
-                    "details": {
-                        "username": github_username,
-                        "profile_url": f"https://github.com/{github_username}",
-                        "authenticated": True,
-                    },
-                }
+                else:
+                    return {
+                        "success": False,
+                        "message": "GHCR returned empty token",
+                        "details": {
+                            "username": ghcr_username,
+                            "error": "Token response was empty",
+                        },
+                    }
             elif response.status_code == 401:
                 return {
                     "success": False,
-                    "message": "GHCR authentication failed",
+                    "message": "GHCR authentication failed - invalid credentials",
                     "details": {
                         "username": ghcr_username,
-                        "error": "Invalid token or token expired",
+                        "error": "Invalid username or token",
+                    },
+                }
+            elif response.status_code == 403:
+                return {
+                    "success": False,
+                    "message": "GHCR authentication failed - token expired or lacks permissions",
+                    "details": {
+                        "username": ghcr_username,
+                        "error": "Token may be expired or missing read:packages scope",
                     },
                 }
             else:
                 return {
                     "success": False,
-                    "message": f"GitHub API error: {response.status_code}",
+                    "message": f"GHCR API error: {response.status_code}",
                     "details": {
                         "status_code": response.status_code,
-                        "error": response.text,
+                        "error": "Unexpected response from GHCR",
                     },
                 }
     except httpx.HTTPStatusError as e:

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Policy display mismatch on container cards** - Container cards now correctly display all 6 policy types (Patch Only, Minor + Patch, Auto, Security, Manual, Disabled) instead of showing "Manual" for non-auto policies
 - **Pending updates deleted on registry rate limit (429)** - When registry checks fail due to rate limiting, timeouts, or connection errors, existing pending update records are now preserved instead of being deleted. Previously, a failed re-check would clear valid pending updates, causing notifications to be sent but updates not appearing in the UI.
+- **GHCR connection test false positive** - Fixed GHCR connection test to validate against the actual ghcr.io/token endpoint instead of GitHub API. Previously, expired or scope-limited tokens could pass the test but fail during actual registry checks.
+- **Docker Hub connection test uses correct auth method** - Fixed Docker Hub connection test to use Basic Auth on the repositories API (same method as DockerHubClient) instead of the /v2/users/login endpoint
 
 ### Changed
 - **Update Frequency card styling** - "Total Updates" label now displays above the number with consistent styling matching the Successful/Failed labels
