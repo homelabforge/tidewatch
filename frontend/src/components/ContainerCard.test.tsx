@@ -102,9 +102,9 @@ describe('ContainerCard', () => {
       const container = { ...defaultContainer, policy: 'auto' }
       const { container: elem } = render(<ContainerCard container={container} onClick={defaultOnClick} />)
 
-      expect(screen.getByText('Auto-update')).toBeInTheDocument()
-      // ToggleRight icon has text-primary class
-      const icon = elem.querySelector('.text-primary')
+      expect(screen.getByText('Auto (All)')).toBeInTheDocument()
+      // AlertTriangle icon has text-orange-400 class
+      const icon = elem.querySelector('.text-orange-400')
       expect(icon).toBeInTheDocument()
     })
 
