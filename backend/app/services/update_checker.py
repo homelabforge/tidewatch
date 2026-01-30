@@ -19,7 +19,7 @@ from app.models.update import Update
 from app.services.changelog import ChangelogClassifier, ChangelogFetcher
 from app.services.compose_parser import ComposeParser
 from app.services.event_bus import event_bus
-from app.services.registry_client import RegistryClientFactory
+from app.services.registry_client import RegistryCheckError, RegistryClientFactory
 from app.services.settings_service import SettingsService
 
 # Import UpdateDecisionTrace from update_decision_maker to avoid circular import
@@ -115,9 +115,7 @@ class UpdateChecker:
         Returns:
             Stats dict with counts
         """
-        result = await db.execute(
-            select(Container).where(Container.policy != "disabled")
-        )
+        result = await db.execute(select(Container).where(Container.policy != "disabled"))
         containers = result.scalars().all()
 
         stats = {
@@ -150,9 +148,7 @@ class UpdateChecker:
         return stats
 
     @staticmethod
-    async def check_container(
-        db: AsyncSession, container: Container
-    ) -> Update | None:
+    async def check_container(db: AsyncSession, container: Container) -> Update | None:
         """Check a single container for updates.
 
         Args:
@@ -239,9 +235,7 @@ class UpdateChecker:
                         container.latest_major_tag = None
                 except Exception as e:
                     # Don't fail entire check if major tag check fails
-                    logger.warning(
-                        f"Failed to check major updates for {container.name}: {e}"
-                    )
+                    logger.warning(f"Failed to check major updates for {container.name}: {e}")
                     container.latest_major_tag = None
             else:
                 container.latest_major_tag = None
@@ -277,9 +271,7 @@ class UpdateChecker:
                         new_digest = metadata["digest"]
                         if previous_digest is None:
                             container.current_digest = new_digest
-                            logger.info(
-                                f"Stored initial digest for {container.name}: {new_digest}"
-                            )
+                            logger.info(f"Stored initial digest for {container.name}: {new_digest}")
                         elif previous_digest != new_digest:
                             digest_changed = True
                             logger.info(
@@ -287,9 +279,7 @@ class UpdateChecker:
                                 f"{previous_digest} -> {new_digest}"
                             )
                 except httpx.HTTPStatusError as e:
-                    logger.warning(
-                        f"Registry HTTP error fetching digest for {container.name}: {e}"
-                    )
+                    logger.warning(f"Registry HTTP error fetching digest for {container.name}: {e}")
                 except (httpx.ConnectError, httpx.TimeoutException) as e:
                     logger.warning(
                         f"Registry connection error fetching digest for {container.name}: {e}"
@@ -298,9 +288,7 @@ class UpdateChecker:
                     logger.warning(f"Invalid digest metadata for {container.name}: {e}")
 
             digest_update = (
-                container.current_tag == "latest"
-                and digest_changed
-                and new_digest is not None
+                container.current_tag == "latest" and digest_changed and new_digest is not None
             )
 
             # Capture digest info for trace
@@ -309,9 +297,7 @@ class UpdateChecker:
 
             # Capture tag update info for trace
             if latest_tag and latest_tag != container.current_tag:
-                detected_change_type = get_version_change_type(
-                    container.current_tag, latest_tag
-                )
+                detected_change_type = get_version_change_type(container.current_tag, latest_tag)
                 trace.set_tag_update(latest_tag, detected_change_type)
 
             if not latest_tag or latest_tag == container.current_tag:
@@ -417,8 +403,7 @@ class UpdateChecker:
                 container.latest_tag = latest_tag
 
             logger.info(
-                f"Update available for {container.name}: "
-                f"{container.current_tag} -> {latest_tag}"
+                f"Update available for {container.name}: {container.current_tag} -> {latest_tag}"
             )
 
             # Check if update already exists (in any active state)
@@ -441,9 +426,7 @@ class UpdateChecker:
                         else "Image digest updated for latest tag"
                     )
                     existing_update.reason_summary = summary
-                    existing_update.recommendation = (
-                        "Recommended - refreshed image available"
-                    )
+                    existing_update.recommendation = "Recommended - refreshed image available"
                     existing_update.changelog = json.dumps(
                         {
                             "type": "digest_update",
@@ -475,7 +458,9 @@ class UpdateChecker:
             if digest_update and new_digest:
                 reason_type = "maintenance"
                 if previous_digest:
-                    reason_summary = f"Image digest updated: {previous_digest[:12]} → {new_digest[:12]}"
+                    reason_summary = (
+                        f"Image digest updated: {previous_digest[:12]} → {new_digest[:12]}"
+                    )
                 else:
                     reason_summary = "Image digest updated for latest tag"
                 recommendation = "Recommended - refreshed image available"
@@ -488,9 +473,7 @@ class UpdateChecker:
                 )
 
             # Get retry settings from configuration
-            max_retries = await SettingsService.get_int(
-                db, "update_retry_max_attempts", default=3
-            )
+            max_retries = await SettingsService.get_int(db, "update_retry_max_attempts", default=3)
             backoff_multiplier = await SettingsService.get_int(
                 db, "update_retry_backoff_multiplier", default=3
             )
@@ -563,13 +546,9 @@ class UpdateChecker:
                     db, "ghcr_token"
                 ) or await SettingsService.get(db, "github_token")
                 fetcher = ChangelogFetcher(github_token=github_token)
-                changelog = await fetcher.fetch(
-                    release_source, container.image, latest_tag
-                )
+                changelog = await fetcher.fetch(release_source, container.image, latest_tag)
                 if changelog:
-                    classified_type, summary = ChangelogClassifier.classify(
-                        changelog.raw_text
-                    )
+                    classified_type, summary = ChangelogClassifier.classify(changelog.raw_text)
                     if classified_type != "unknown":
                         update.reason_type = classified_type
                     if summary:
@@ -603,9 +582,7 @@ class UpdateChecker:
             )
 
             if should_approve:
-                logger.info(
-                    f"Auto-approving update for {container.name}: {approval_reason}"
-                )
+                logger.info(f"Auto-approving update for {container.name}: {approval_reason}")
                 update.status = "approved"
                 update.approved_by = "system"
                 update.approved_at = datetime.now(UTC)
@@ -647,10 +624,26 @@ class UpdateChecker:
 
             return update
 
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Registry HTTP error checking updates for {container.name}: {e}"
+        except RegistryCheckError as e:
+            # Registry check failed (rate limit, timeout, connection error)
+            # IMPORTANT: Do NOT clear pending updates - we couldn't verify their status
+            rate_limit_msg = " (rate limited)" if e.is_rate_limit else ""
+            logger.warning(
+                f"Registry check failed for {container.name}{rate_limit_msg}: {e} - "
+                "preserving existing pending updates"
             )
+            await event_bus.publish(
+                {
+                    "type": "update-check-error",
+                    "container_id": container.id,
+                    "container_name": container.name,
+                    "message": f"Registry check failed{rate_limit_msg}: {str(e)}",
+                    "preserving_updates": True,
+                }
+            )
+            return None
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Registry HTTP error checking updates for {container.name}: {e}")
             await event_bus.publish(
                 {
                     "type": "update-check-error",
@@ -661,9 +654,7 @@ class UpdateChecker:
             )
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error(
-                f"Registry connection error checking updates for {container.name}: {e}"
-            )
+            logger.error(f"Registry connection error checking updates for {container.name}: {e}")
             await event_bus.publish(
                 {
                     "type": "update-check-error",
@@ -727,18 +718,13 @@ class UpdateChecker:
         Returns:
             Update object if update available, None otherwise
         """
-        logger.debug(
-            f"Applying decision for {container.name}: has_update={decision.has_update}"
-        )
+        logger.debug(f"Applying decision for {container.name}: has_update={decision.has_update}")
 
         # Update last_checked timestamp
         container.last_checked = datetime.now(UTC)
 
         # Update latest_major_tag for scope visibility
-        if (
-            decision.latest_major_tag
-            and decision.latest_major_tag != container.current_tag
-        ):
+        if decision.latest_major_tag and decision.latest_major_tag != container.current_tag:
             container.latest_major_tag = decision.latest_major_tag
         else:
             container.latest_major_tag = None
@@ -757,13 +743,19 @@ class UpdateChecker:
 
             # Handle scope violation (major update blocked by scope)
             if decision.is_scope_violation and decision.latest_major_tag:
-                await UpdateChecker._create_scope_violation_update(
-                    db, container, decision
-                )
+                await UpdateChecker._create_scope_violation_update(db, container, decision)
 
             logger.info(f"No in-scope updates for {container.name}")
 
-            await UpdateChecker._clear_pending_updates(db, container.id)
+            # Only clear pending updates if the check was successful (no fetch errors)
+            # If there was a fetch error, preserve existing pending updates
+            if fetch_response.error:
+                logger.warning(
+                    f"Fetch error for {container.name}: {fetch_response.error} - "
+                    "preserving existing pending updates"
+                )
+            else:
+                await UpdateChecker._clear_pending_updates(db, container.id)
 
             # Refresh VulnForge baseline even without updates
             if container.vulnforge_enabled:
@@ -790,8 +782,7 @@ class UpdateChecker:
             container.latest_tag = latest_tag
 
         logger.info(
-            f"Update available for {container.name}: "
-            f"{container.current_tag} -> {latest_tag}"
+            f"Update available for {container.name}: {container.current_tag} -> {latest_tag}"
         )
 
         # Check if update already exists
@@ -811,9 +802,7 @@ class UpdateChecker:
                 existing_update.reason_type = "maintenance"
                 summary = f"Image digest updated: {previous_digest[:12] if previous_digest else 'unknown'} -> {decision.new_digest[:12]}"
                 existing_update.reason_summary = summary
-                existing_update.recommendation = (
-                    "Recommended - refreshed image available"
-                )
+                existing_update.recommendation = "Recommended - refreshed image available"
                 existing_update.changelog = json.dumps(
                     {
                         "type": "digest_update",
@@ -845,7 +834,9 @@ class UpdateChecker:
             previous_digest = container.current_digest
             reason_type = "maintenance"
             if previous_digest:
-                reason_summary = f"Image digest updated: {previous_digest[:12]} -> {decision.new_digest[:12]}"
+                reason_summary = (
+                    f"Image digest updated: {previous_digest[:12]} -> {decision.new_digest[:12]}"
+                )
             else:
                 reason_summary = "Image digest updated for latest tag"
             recommendation = "Recommended - refreshed image available"
@@ -858,9 +849,7 @@ class UpdateChecker:
             )
 
         # Get retry settings
-        max_retries = await SettingsService.get_int(
-            db, "update_retry_max_attempts", default=3
-        )
+        max_retries = await SettingsService.get_int(db, "update_retry_max_attempts", default=3)
         backoff_multiplier = await SettingsService.get_int(
             db, "update_retry_backoff_multiplier", default=3
         )
@@ -927,13 +916,9 @@ class UpdateChecker:
                     db, "ghcr_token"
                 ) or await SettingsService.get(db, "github_token")
                 fetcher = ChangelogFetcher(github_token=github_token)
-                changelog = await fetcher.fetch(
-                    release_source, container.image, latest_tag
-                )
+                changelog = await fetcher.fetch(release_source, container.image, latest_tag)
                 if changelog:
-                    classified_type, summary = ChangelogClassifier.classify(
-                        changelog.raw_text
-                    )
+                    classified_type, summary = ChangelogClassifier.classify(changelog.raw_text)
                     if classified_type != "unknown":
                         update.reason_type = classified_type
                     if summary:
@@ -965,9 +950,7 @@ class UpdateChecker:
         )
 
         if should_approve:
-            logger.info(
-                f"Auto-approving update for {container.name}: {approval_reason}"
-            )
+            logger.info(f"Auto-approving update for {container.name}: {approval_reason}")
             update.status = "approved"
             update.approved_by = "system"
             update.approved_at = datetime.now(UTC)
@@ -1037,9 +1020,7 @@ class UpdateChecker:
         if existing:
             return
 
-        max_retries = await SettingsService.get_int(
-            db, "update_retry_max_attempts", default=3
-        )
+        max_retries = await SettingsService.get_int(db, "update_retry_max_attempts", default=3)
         backoff_multiplier = await SettingsService.get_int(
             db, "update_retry_backoff_multiplier", default=3
         )
@@ -1092,9 +1073,7 @@ class UpdateChecker:
             List of pending updates
         """
         result = await db.execute(
-            select(Update)
-            .where(Update.status == "pending")
-            .order_by(Update.created_at.desc())
+            select(Update).where(Update.status == "pending").order_by(Update.created_at.desc())
         )
         return result.scalars().all()
 
@@ -1144,9 +1123,7 @@ class UpdateChecker:
         return result.scalars().all()
 
     @staticmethod
-    async def _enrich_with_vulnforge(
-        db: AsyncSession, update: Update, container: Container
-    ):
+    async def _enrich_with_vulnforge(db: AsyncSession, update: Update, container: Container):
         """Enrich update record with VulnForge vulnerability data.
 
         Args:
@@ -1259,10 +1236,7 @@ class UpdateChecker:
                 if comparison["current"]:
                     container.current_vuln_count = comparison["current"]["total_vulns"]
 
-                logger.info(
-                    f"VulnForge enrichment for {container.name}: "
-                    f"{comparison['summary']}"
-                )
+                logger.info(f"VulnForge enrichment for {container.name}: {comparison['summary']}")
 
             finally:
                 await vulnforge.close()
@@ -1334,25 +1308,18 @@ class UpdateChecker:
                     )
                 else:
                     logger.info(
-                        f"VulnForge baseline missing for {container.name} "
-                        f"({container.current_tag})"
+                        f"VulnForge baseline missing for {container.name} ({container.current_tag})"
                     )
             finally:
                 await vulnforge.close()
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"VulnForge HTTP error refreshing baseline for {container.name}: {e}"
-            )
+            logger.error(f"VulnForge HTTP error refreshing baseline for {container.name}: {e}")
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(
                 f"VulnForge connection error refreshing baseline for {container.name}: {e}"
             )
         except OperationalError as e:
-            logger.error(
-                f"Database error refreshing VulnForge baseline for {container.name}: {e}"
-            )
+            logger.error(f"Database error refreshing VulnForge baseline for {container.name}: {e}")
         except (ValueError, KeyError, AttributeError) as e:
-            logger.error(
-                f"Invalid VulnForge data refreshing baseline for {container.name}: {e}"
-            )
+            logger.error(f"Invalid VulnForge data refreshing baseline for {container.name}: {e}")

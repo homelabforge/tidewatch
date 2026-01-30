@@ -41,11 +41,14 @@ class RegistryRateLimits:
 # Documented rate limits per registry (conservative estimates)
 REGISTRY_RATE_LIMITS: dict[RegistryType, RegistryRateLimits] = {
     # Docker Hub: 100 pulls/6 hours unauthenticated, 200/6 hours authenticated
-    # Being conservative: ~30 req/min max to avoid throttling
+    # Authenticated = 200 req/6 hrs = ~33 req/hr = 0.55 req/min
+    # Being VERY conservative to avoid 429 errors during full checks:
+    # - 3 req/min = 180 req/hr (stays well under 6-hour quota if checks run hourly)
+    # - Low concurrent limit to avoid burst exhaustion
     RegistryType.DOCKERHUB: RegistryRateLimits(
-        requests_per_minute=30,
-        concurrent_limit=5,
-        burst_limit=10,
+        requests_per_minute=3,
+        concurrent_limit=2,
+        burst_limit=5,
     ),
     # GHCR: 60 req/hour unauthenticated, 5000/hour authenticated
     # With auth: ~80 req/min safe; being conservative at 60
@@ -74,11 +77,11 @@ REGISTRY_RATE_LIMITS: dict[RegistryType, RegistryRateLimits] = {
     ),
 }
 
-# Default limits for unknown registries
+# Default limits for unknown registries (conservative to avoid rate limiting)
 DEFAULT_RATE_LIMITS = RegistryRateLimits(
-    requests_per_minute=30,
-    concurrent_limit=5,
-    burst_limit=10,
+    requests_per_minute=5,
+    concurrent_limit=3,
+    burst_limit=5,
 )
 
 
@@ -241,18 +244,14 @@ class RegistryRateLimiter:
                         f"Rate limiting {normalized}: waiting {wait_needed:.2f}s "
                         f"({len(state.request_times)} requests in window)"
                     )
-                    self._wait_count[normalized] = (
-                        self._wait_count.get(normalized, 0) + 1
-                    )
+                    self._wait_count[normalized] = self._wait_count.get(normalized, 0) + 1
                     await asyncio.sleep(wait_needed)
                     wait_time = wait_needed
 
                     # Re-clean after waiting
                     now = time.monotonic()
                     window_start = now - 60
-                    state.request_times = [
-                        t for t in state.request_times if t > window_start
-                    ]
+                    state.request_times = [t for t in state.request_times if t > window_start]
 
             # Record this request
             state.request_times.append(time.monotonic())
@@ -286,8 +285,7 @@ class RegistryRateLimiter:
                 "total_requests": self._total_requests.get(registry, 0),
                 "wait_count": self._wait_count.get(registry, 0),
             }
-            for registry in set(self._total_requests.keys())
-            | set(self._wait_count.keys())
+            for registry in set(self._total_requests.keys()) | set(self._wait_count.keys())
         }
 
     def reset_metrics(self) -> None:

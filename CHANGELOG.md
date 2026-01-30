@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Policy display mismatch on container cards** - Container cards now correctly display all 6 policy types (Patch Only, Minor + Patch, Auto, Security, Manual, Disabled) instead of showing "Manual" for non-auto policies
+- **Pending updates deleted on registry rate limit (429)** - When registry checks fail due to rate limiting, timeouts, or connection errors, existing pending update records are now preserved instead of being deleted. Previously, a failed re-check would clear valid pending updates, causing notifications to be sent but updates not appearing in the UI.
 
 ### Changed
 - **Update Frequency card styling** - "Total Updates" label now displays above the number with consistent styling matching the Successful/Failed labels
 - **Backend policy validation** - Added `patch-only` and `minor-and-patch` as valid policy values with proper Pydantic validation
+- **Docker Hub rate limits reduced** - Reduced from 30 req/min to 3 req/min to stay well within Docker Hub's authenticated limit of 200 req/6 hours (~0.55 req/min)
+- **Registry clients raise exceptions on failure** - Registry clients (Docker Hub, GHCR, LSCR, GCR, Quay) now raise `RegistryCheckError` on transient failures instead of silently returning empty results, allowing callers to properly handle errors and preserve state
 
 ## [3.6.1] - 2025-01-27
 

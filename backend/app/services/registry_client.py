@@ -13,6 +13,27 @@ from app.utils.retry import async_retry
 
 logger = logging.getLogger(__name__)
 
+
+class RegistryCheckError(Exception):
+    """Raised when a registry check fails due to rate limiting or connection issues.
+
+    This exception indicates a transient failure that should NOT clear existing
+    pending updates. The caller should preserve any existing update records
+    since we couldn't verify their status.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None):
+        """Initialize the exception.
+
+        Args:
+            message: Error description
+            status_code: HTTP status code if applicable (e.g., 429 for rate limit)
+        """
+        super().__init__(message)
+        self.status_code = status_code
+        self.is_rate_limit = status_code == 429
+
+
 # Non-PEP 440 prerelease indicators that packaging.Version won't detect
 # These are common in Docker image tags but not standard Python versioning
 NON_PEP440_PRERELEASE_INDICATORS = [
@@ -73,10 +94,7 @@ def is_prerelease_tag(tag: str) -> bool:
                     # Base is valid, check if suffix indicates prerelease
                     suffix = parts[1].lower()
                     # Check non-PEP 440 indicators in suffix
-                    if any(
-                        indicator in suffix
-                        for indicator in NON_PEP440_PRERELEASE_INDICATORS
-                    ):
+                    if any(indicator in suffix for indicator in NON_PEP440_PRERELEASE_INDICATORS):
                         return True
                 except InvalidVersion:
                     pass
@@ -196,9 +214,7 @@ class TagCache:
             Number of entries removed
         """
         now = datetime.now(UTC)
-        expired_keys = [
-            key for key, entry in self._cache.items() if now > entry["expires_at"]
-        ]
+        expired_keys = [key for key, entry in self._cache.items() if now > entry["expires_at"]]
         for key in expired_keys:
             del self._cache[key]
         return len(expired_keys)
@@ -262,9 +278,7 @@ HOST_ARCH_CANONICAL = canonical_arch_suffix(platform.machine().lower())
 class RegistryClient(ABC):
     """Base class for registry clients."""
 
-    def __init__(
-        self, username: str | None = None, token: str | None = None
-    ) -> None:
+    def __init__(self, username: str | None = None, token: str | None = None) -> None:
         """Initialize registry client.
 
         Args:
@@ -280,9 +294,7 @@ class RegistryClient(ABC):
         elif token:  # Token-only auth (GitHub PAT, etc.)
             headers["Authorization"] = f"Bearer {token}"
 
-        self.client = httpx.AsyncClient(
-            timeout=30.0, headers=headers, auth=auth if auth else None
-        )
+        self.client = httpx.AsyncClient(timeout=30.0, headers=headers, auth=auth if auth else None)
         self._registry_name = self.__class__.__name__.replace("Client", "").lower()
 
     def _get_cache_key(self, image: str) -> str:
@@ -599,17 +611,20 @@ class DockerHubClient(RegistryClient):
             logger.error(
                 f"HTTP error fetching Docker Hub tags for {image}: {e.response.status_code}"
             )
-            return []
+            raise RegistryCheckError(
+                f"HTTP error fetching Docker Hub tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching Docker Hub tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(
+                f"Connection error fetching Docker Hub tags for {image}: {e}"
+            ) from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Docker Hub tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(f"Timeout fetching Docker Hub tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
-            logger.error(
-                f"Invalid response data fetching Docker Hub tags for {image}: {e}"
-            )
+            logger.error(f"Invalid response data fetching Docker Hub tags for {image}: {e}")
             return []
 
         # Cache the results
@@ -650,9 +665,7 @@ class DockerHubClient(RegistryClient):
             return None  # No update
 
         # For semantic versions, use optimized fetching
-        return await self._get_semver_update(
-            image, current_tag, scope, include_prereleases
-        )
+        return await self._get_semver_update(image, current_tag, scope, include_prereleases)
 
     async def _check_digest_change(
         self, image: str, current_tag: str, current_digest: str | None = None
@@ -684,9 +697,7 @@ class DockerHubClient(RegistryClient):
             # If we have a stored digest, compare them
             if current_digest:
                 if current_digest == new_digest:
-                    logger.debug(
-                        f"Digest unchanged for {image}:{current_tag} ({new_digest})"
-                    )
+                    logger.debug(f"Digest unchanged for {image}:{current_tag} ({new_digest})")
                     return None  # No change
                 else:
                     logger.info(
@@ -695,9 +706,7 @@ class DockerHubClient(RegistryClient):
                     return {"tag": current_tag, "digest": new_digest, "changed": True}
             else:
                 # No stored digest - this is the first check, store it
-                logger.info(
-                    f"No previous digest for {image}:{current_tag}, storing: {new_digest}"
-                )
+                logger.info(f"No previous digest for {image}:{current_tag}, storing: {new_digest}")
                 return {
                     "tag": current_tag,
                     "digest": new_digest,
@@ -710,17 +719,13 @@ class DockerHubClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error checking digest for {image}:{current_tag}: {e}"
-            )
+            logger.error(f"Connection error checking digest for {image}:{current_tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout checking digest for {image}:{current_tag}: {e}")
             return None
         except (ValueError, KeyError) as e:
-            logger.error(
-                f"Invalid metadata checking digest for {image}:{current_tag}: {e}"
-            )
+            logger.error(f"Invalid metadata checking digest for {image}:{current_tag}: {e}")
             return None
 
     async def _get_semver_update(
@@ -799,9 +804,7 @@ class DockerHubClient(RegistryClient):
                         for t in data.get("results", [])
                         if self._parse_semver(t["name"])
                     ]
-                    if page_versions and all(
-                        v <= current_version for v in page_versions
-                    ):
+                    if page_versions and all(v <= current_version for v in page_versions):
                         logger.debug(f"Early exit: found {best_tag}, rest are older")
                         break
 
@@ -811,16 +814,18 @@ class DockerHubClient(RegistryClient):
                     break
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching tags for {image}: {e.response.status_code}"
-            )
-            return None
+            logger.error(f"HTTP error fetching tags for {image}: {e.response.status_code}")
+            # Raise RegistryCheckError for transient failures so callers can preserve state
+            raise RegistryCheckError(
+                f"HTTP error fetching tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching tags for {image}: {e}")
-            return None
+            raise RegistryCheckError(f"Connection error fetching tags for {image}: {e}") from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching tags for {image}: {e}")
-            return None
+            raise RegistryCheckError(f"Timeout fetching tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid response data fetching tags for {image}: {e}")
             return None
@@ -851,9 +856,7 @@ class DockerHubClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error fetching Docker Hub metadata for {image}:{tag}: {e}"
-            )
+            logger.error(f"Connection error fetching Docker Hub metadata for {image}:{tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Docker Hub metadata for {image}:{tag}: {e}")
@@ -871,9 +874,7 @@ class GHCRClient(RegistryClient):
     BASE_URL = "https://ghcr.io"
     TOKEN_URL = "https://ghcr.io/token"
 
-    def __init__(
-        self, username: str | None = None, token: str | None = None
-    ) -> None:
+    def __init__(self, username: str | None = None, token: str | None = None) -> None:
         """Initialize GHCR client.
 
         Store credentials separately to avoid applying Basic Auth to the main httpx client.
@@ -906,14 +907,10 @@ class GHCRClient(RegistryClient):
                     f"GHCR: Using Basic Auth for token request (username: {self._username[: min(4, len(self._username))]}..., token length: {len(self._token)})"
                 )
             else:
-                logger.info(
-                    "GHCR: No credentials provided for token request (anonymous)"
-                )
+                logger.info("GHCR: No credentials provided for token request (anonymous)")
 
             async with httpx.AsyncClient(timeout=30.0) as token_client:
-                response = await token_client.get(
-                    self.TOKEN_URL, params=params, auth=auth
-                )
+                response = await token_client.get(self.TOKEN_URL, params=params, auth=auth)
                 response.raise_for_status()
                 data = response.json()
                 token = data.get("token")
@@ -922,14 +919,10 @@ class GHCRClient(RegistryClient):
                         f"GHCR: Successfully obtained bearer token for {image} (token length: {len(token)})"
                     )
                 else:
-                    logger.warning(
-                        f"GHCR: Token response did not contain a token for {image}"
-                    )
+                    logger.warning(f"GHCR: Token response did not contain a token for {image}")
                 return token
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching GHCR token for {image}: {e.response.status_code}"
-            )
+            logger.error(f"HTTP error fetching GHCR token for {image}: {e.response.status_code}")
             return None
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GHCR token for {image}: {e}")
@@ -992,16 +985,17 @@ class GHCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching GHCR tags for {image}: {e.response.status_code}"
-            )
-            return tags  # Return partial results if pagination failed mid-way
+            logger.error(f"HTTP error fetching GHCR tags for {image}: {e.response.status_code}")
+            raise RegistryCheckError(
+                f"HTTP error fetching GHCR tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GHCR tags for {image}: {e}")
-            return tags
+            raise RegistryCheckError(f"Connection error fetching GHCR tags for {image}: {e}") from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GHCR tags for {image}: {e}")
-            return tags
+            raise RegistryCheckError(f"Timeout fetching GHCR tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid response data fetching GHCR tags for {image}: {e}")
             return tags
@@ -1044,9 +1038,7 @@ class GHCRClient(RegistryClient):
 
         # Filter out "latest" and non-semantic tags
         version_tags = [
-            t
-            for t in tags
-            if t.lower() != "latest" and self._parse_semver(t) is not None
+            t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None
         ]
 
         # Filter out pre-release tags unless explicitly allowed
@@ -1118,9 +1110,7 @@ class GHCRClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error fetching GHCR metadata for {image}:{tag}: {e}"
-            )
+            logger.error(f"Connection error fetching GHCR metadata for {image}:{tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GHCR metadata for {image}:{tag}: {e}")
@@ -1154,9 +1144,7 @@ class LSCRClient(RegistryClient):
             data = response.json()
             return data.get("token")
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching LSCR token for {image}: {e.response.status_code}"
-            )
+            logger.error(f"HTTP error fetching LSCR token for {image}: {e.response.status_code}")
             return None
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching LSCR token for {image}: {e}")
@@ -1218,16 +1206,17 @@ class LSCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching LSCR tags for {image}: {e.response.status_code}"
-            )
-            return tags
+            logger.error(f"HTTP error fetching LSCR tags for {image}: {e.response.status_code}")
+            raise RegistryCheckError(
+                f"HTTP error fetching LSCR tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching LSCR tags for {image}: {e}")
-            return tags
+            raise RegistryCheckError(f"Connection error fetching LSCR tags for {image}: {e}") from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching LSCR tags for {image}: {e}")
-            return tags
+            raise RegistryCheckError(f"Timeout fetching LSCR tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid response data fetching LSCR tags for {image}: {e}")
             return tags
@@ -1321,9 +1310,7 @@ class LSCRClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error fetching LSCR metadata for {image}:{tag}: {e}"
-            )
+            logger.error(f"Connection error fetching LSCR metadata for {image}:{tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching LSCR metadata for {image}:{tag}: {e}")
@@ -1367,16 +1354,17 @@ class GCRClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching GCR tags for {image}: {e.response.status_code}"
-            )
-            return []
+            logger.error(f"HTTP error fetching GCR tags for {image}: {e.response.status_code}")
+            raise RegistryCheckError(
+                f"HTTP error fetching GCR tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching GCR tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(f"Connection error fetching GCR tags for {image}: {e}") from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GCR tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(f"Timeout fetching GCR tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid response data fetching GCR tags for {image}: {e}")
             return []
@@ -1419,9 +1407,7 @@ class GCRClient(RegistryClient):
 
         # Filter out "latest" and non-semantic tags
         version_tags = [
-            t
-            for t in tags
-            if t.lower() != "latest" and self._parse_semver(t) is not None
+            t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None
         ]
 
         # Filter out pre-release tags unless explicitly allowed
@@ -1483,9 +1469,7 @@ class GCRClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error fetching GCR metadata for {image}:{tag}: {e}"
-            )
+            logger.error(f"Connection error fetching GCR metadata for {image}:{tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching GCR metadata for {image}:{tag}: {e}")
@@ -1529,16 +1513,17 @@ class QuayClient(RegistryClient):
 
             return tags
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error fetching Quay tags for {image}: {e.response.status_code}"
-            )
-            return []
+            logger.error(f"HTTP error fetching Quay tags for {image}: {e.response.status_code}")
+            raise RegistryCheckError(
+                f"HTTP error fetching Quay tags for {image}: {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
         except httpx.ConnectError as e:
             logger.error(f"Connection error fetching Quay tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(f"Connection error fetching Quay tags for {image}: {e}") from e
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Quay tags for {image}: {e}")
-            return []
+            raise RegistryCheckError(f"Timeout fetching Quay tags for {image}: {e}") from e
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid response data fetching Quay tags for {image}: {e}")
             return []
@@ -1581,9 +1566,7 @@ class QuayClient(RegistryClient):
 
         # Filter out "latest" and non-semantic tags
         version_tags = [
-            t
-            for t in tags
-            if t.lower() != "latest" and self._parse_semver(t) is not None
+            t for t in tags if t.lower() != "latest" and self._parse_semver(t) is not None
         ]
 
         # Filter out pre-release tags unless explicitly allowed
@@ -1645,9 +1628,7 @@ class QuayClient(RegistryClient):
             )
             return None
         except httpx.ConnectError as e:
-            logger.error(
-                f"Connection error fetching Quay metadata for {image}:{tag}: {e}"
-            )
+            logger.error(f"Connection error fetching Quay metadata for {image}:{tag}: {e}")
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching Quay metadata for {image}:{tag}: {e}")

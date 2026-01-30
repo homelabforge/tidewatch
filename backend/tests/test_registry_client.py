@@ -159,9 +159,7 @@ class TestTagCache:
         import time
 
         time.sleep(0.001)
-        cache._cache["dockerhub:nginx"]["expires_at"] = datetime.now(
-            UTC
-        ) - timedelta(seconds=1)
+        cache._cache["dockerhub:nginx"]["expires_at"] = datetime.now(UTC) - timedelta(seconds=1)
 
         # Should return None (expired)
         assert cache.get("dockerhub:nginx") is None
@@ -458,16 +456,12 @@ class TestArchitectureMismatchDetection:
         """Test no mismatch when neither tag has architecture suffix."""
         assert mock_client._has_arch_mismatch("1.2.3", "1.2.4") is False
 
-    def test_has_arch_mismatch_current_has_suffix_candidate_no_suffix(
-        self, mock_client
-    ):
+    def test_has_arch_mismatch_current_has_suffix_candidate_no_suffix(self, mock_client):
         """Test mismatch when current has arch suffix but candidate doesn't."""
         # User pinned to architecture-specific tag, avoid switching styles
         assert mock_client._has_arch_mismatch("1.2.3-amd64", "1.2.4") is True
 
-    def test_has_arch_mismatch_candidate_has_suffix_current_no_suffix(
-        self, mock_client
-    ):
+    def test_has_arch_mismatch_candidate_has_suffix_current_no_suffix(self, mock_client):
         """Test behavior when candidate has arch suffix but current doesn't."""
         # Allow only if candidate matches host architecture
         # This test depends on HOST_ARCH_CANONICAL which varies by system
@@ -603,9 +597,7 @@ class TestDockerHubClient:
         }
         page2_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            client.client, "get", side_effect=[page1_response, page2_response]
-        ):
+        with patch.object(client.client, "get", side_effect=[page1_response, page2_response]):
             tags = await client.get_all_tags("nginx")
 
             # Should have all tags from both pages
@@ -648,11 +640,11 @@ class TestDockerHubClient:
         await client.close()
 
     @pytest.mark.asyncio
-    async def test_get_all_tags_returns_empty_on_http_error(self):
-        """Test Docker Hub client returns empty list on HTTP error."""
+    async def test_get_all_tags_raises_error_on_http_error(self):
+        """Test Docker Hub client raises RegistryCheckError on HTTP error."""
         import httpx
 
-        from app.services.registry_client import DockerHubClient
+        from app.services.registry_client import DockerHubClient, RegistryCheckError
 
         client = DockerHubClient()
 
@@ -663,9 +655,10 @@ class TestDockerHubClient:
         )
 
         with patch.object(client.client, "get", return_value=mock_response):
-            tags = await client.get_all_tags("nonexistent/image")
+            with pytest.raises(RegistryCheckError) as exc_info:
+                await client.get_all_tags("nonexistent/image")
 
-            assert tags == []
+            assert exc_info.value.status_code == 404
 
         await client.close()
 
