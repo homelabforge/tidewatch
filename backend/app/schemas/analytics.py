@@ -29,3 +29,4 @@ class AnalyticsSummary(BaseModel):
     policy_distribution: list[DistributionItem]
     avg_update_duration_seconds: float
     total_cves_fixed: int
+    updates_with_cves: int  # Count of updates that fixed at least one CVE

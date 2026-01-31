@@ -383,6 +383,7 @@ export interface AnalyticsSummary {
   policy_distribution: Record<string, number>;
   avg_update_duration_seconds: number;
   total_cves_fixed: number;
+  updates_with_cves: number;
 }
 
 // Event streaming types

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.app_dependency import AppDependency
@@ -81,9 +82,11 @@ async def ignore_dockerfile_dependency(
     If a newer version is released later, the ignore will be automatically cleared.
     """
     try:
-        # Get dependency
+        # Get dependency with container relationship loaded
         result = await db.execute(
-            select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
+            select(DockerfileDependency)
+            .where(DockerfileDependency.id == dependency_id)
+            .options(selectinload(DockerfileDependency.container))
         )
         dependency = result.scalar_one_or_none()
 
@@ -101,10 +104,13 @@ async def ignore_dockerfile_dependency(
         dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
 
+        # Get container name from relationship
+        container_name = dependency.container.name if dependency.container else "Unknown"
+
         # Create history entry
         history = UpdateHistory(
             container_id=dependency.container_id,
-            container_name="",  # Will be populated by trigger or additional query
+            container_name=container_name,
             update_id=None,
             from_tag=dependency.current_tag,
             to_tag=dependency.latest_tag or dependency.current_tag,
@@ -344,8 +350,12 @@ async def ignore_http_server(
     Marks the server as ignored for the current version transition.
     """
     try:
-        # Get server
-        result = await db.execute(select(HttpServer).where(HttpServer.id == server_id))
+        # Get server with container relationship loaded
+        result = await db.execute(
+            select(HttpServer)
+            .where(HttpServer.id == server_id)
+            .options(selectinload(HttpServer.container))
+        )
         server = result.scalar_one_or_none()
 
         if not server:
@@ -362,10 +372,13 @@ async def ignore_http_server(
         server.ignored_at = datetime.now(UTC)
         server.ignored_reason = request.reason
 
+        # Get container name from relationship
+        container_name = server.container.name if server.container else "Unknown"
+
         # Create history entry
         history = UpdateHistory(
             container_id=server.container_id,
-            container_name="",
+            container_name=container_name,
             update_id=None,
             from_tag=server.current_version or "unknown",
             to_tag=server.latest_version or "unknown",
@@ -736,8 +749,12 @@ async def ignore_app_dependency(
     Ignore an application dependency update.
     """
     try:
-        # Get dependency
-        result = await db.execute(select(AppDependency).where(AppDependency.id == dependency_id))
+        # Get dependency with container relationship loaded
+        result = await db.execute(
+            select(AppDependency)
+            .where(AppDependency.id == dependency_id)
+            .options(selectinload(AppDependency.container))
+        )
         dependency = result.scalar_one_or_none()
 
         if not dependency:
@@ -754,10 +771,13 @@ async def ignore_app_dependency(
         dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
 
+        # Get container name from relationship
+        container_name = dependency.container.name if dependency.container else "Unknown"
+
         # Create history entry
         history = UpdateHistory(
             container_id=dependency.container_id,
-            container_name="",
+            container_name=container_name,
             update_id=None,
             from_tag=dependency.current_version,
             to_tag=dependency.latest_version or dependency.current_version,

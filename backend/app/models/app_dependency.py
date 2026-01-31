@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -24,6 +25,9 @@ class AppDependency(Base):
     container_id = Column(
         Integer, ForeignKey("containers.id"), nullable=False, index=True
     )
+
+    # Relationship to Container
+    container = relationship("Container", backref="app_dependencies")
 
     # Dependency details
     name = Column(String, nullable=False, index=True)  # Package name

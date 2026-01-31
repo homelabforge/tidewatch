@@ -165,6 +165,7 @@ describe('Dashboard', () => {
     policy_distribution: {},
     avg_update_duration_seconds: 45,
     total_cves_fixed: 15,
+    updates_with_cves: 5,
   }
 
   const mockSettings = [

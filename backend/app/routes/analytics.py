@@ -139,6 +139,9 @@ async def get_analytics_summary(
     # Total CVEs fixed in the period
     total_cves_fixed = sum(cve_counts.values())
 
+    # Count updates that fixed at least one CVE
+    updates_with_cves = sum(1 for record in histories if record.cves_fixed)
+
     return AnalyticsSummary(
         period_days=30,
         total_updates=total_updates,
@@ -149,4 +152,5 @@ async def get_analytics_summary(
         policy_distribution=policy_distribution,
         avg_update_duration_seconds=avg_update_duration_seconds,
         total_cves_fixed=total_cves_fixed,
+        updates_with_cves=updates_with_cves,
     )

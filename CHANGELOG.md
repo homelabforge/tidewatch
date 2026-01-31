@@ -7,17 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.2] - 2025-01-31
+
+### Added
+- **Container info in Dockerfile update notifications** - Ntfy notifications for Dockerfile dependency updates now include the container name and Dockerfile path, making it clear which project needs updating
+- **Pattern-based dependency ignore** - Ignoring a dependency now uses major.minor version matching instead of exact version matching
+  - Ignoring `python:3.15.0a5-slim` now ignores all 3.15.x versions (stores prefix "3.15")
+  - Auto-clear only triggers when a genuinely new major.minor version is released (e.g., 3.16.0)
+  - Prevents pre-release version churn from repeatedly un-ignoring dependencies
+  - New `ignored_version_prefix` field added to all dependency models
+  - Migration 037 adds the column to dockerfile_dependencies, http_servers, and app_dependencies tables
+- **Container relationships for dependency models** - Added SQLAlchemy relationships from DockerfileDependency, HttpServer, and AppDependency to Container model for efficient lookups
+
 ### Fixed
+- **CVEs Resolved card layout inconsistency** - Dashboard CVEs Resolved card now matches the Update Frequency card layout: label above the main number, 2-column breakdown showing "With CVE Fixes" and "Without CVEs" counts, and footer with "Avg per update". Added new `updates_with_cves` field to analytics API.
 - **Policy display mismatch on container cards** - Container cards now correctly display all 6 policy types (Patch Only, Minor + Patch, Auto, Security, Manual, Disabled) instead of showing "Manual" for non-auto policies
 - **Pending updates deleted on registry rate limit (429)** - When registry checks fail due to rate limiting, timeouts, or connection errors, existing pending update records are now preserved instead of being deleted. Previously, a failed re-check would clear valid pending updates, causing notifications to be sent but updates not appearing in the UI.
 - **GHCR connection test false positive** - Fixed GHCR connection test to validate against the actual ghcr.io/token endpoint instead of GitHub API. Previously, expired or scope-limited tokens could pass the test but fail during actual registry checks.
 - **Docker Hub connection test uses correct auth method** - Fixed Docker Hub connection test to use Basic Auth on the repositories API (same method as DockerHubClient) instead of the /v2/users/login endpoint
+- **Missing container name in dependency ignore history** - History entries for dependency ignore/unignore operations now correctly display the container name instead of showing blank
 
 ### Changed
 - **Update Frequency card styling** - "Total Updates" label now displays above the number with consistent styling matching the Successful/Failed labels
 - **Backend policy validation** - Added `patch-only` and `minor-and-patch` as valid policy values with proper Pydantic validation
 - **Docker Hub rate limits reduced** - Reduced from 30 req/min to 3 req/min to stay well within Docker Hub's authenticated limit of 200 req/6 hours (~0.55 req/min)
 - **Registry clients raise exceptions on failure** - Registry clients (Docker Hub, GHCR, LSCR, GCR, Quay) now raise `RegistryCheckError` on transient failures instead of silently returning empty results, allowing callers to properly handle errors and preserve state
+- **oven/bun**: 1.3.7-alpine → 1.3.8-alpine
+- **autoprefixer**: 10.4.23 → 10.4.24
 
 ## [3.6.1] - 2025-01-27
 

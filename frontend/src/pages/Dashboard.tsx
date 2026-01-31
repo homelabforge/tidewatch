@@ -370,20 +370,27 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-3xl font-bold text-green-400">{analytics.total_cves_fixed}</span>
-                    <span className="text-xs text-tide-text-muted">CVEs fixed</span>
+                  <div>
+                    <div className="text-xs text-tide-text-muted">Total CVEs Fixed</div>
+                    <div className="text-3xl font-bold text-green-400">{analytics.total_cves_fixed}</div>
                   </div>
-                  <div className="text-xs text-tide-text-muted">
-                    {analytics.successful_updates > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span>Avg per update:</span>
-                        <span className="font-semibold text-tide-text">
-                          {(analytics.total_cves_fixed / analytics.successful_updates).toFixed(1)}
-                        </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-tide-text-muted">With CVE Fixes</div>
+                      <div className="text-lg font-semibold text-green-400">{analytics.updates_with_cves}</div>
+                    </div>
+                    <div>
+                      <div className="text-tide-text-muted">Without CVEs</div>
+                      <div className="text-lg font-semibold text-tide-text-muted">
+                        {analytics.successful_updates - analytics.updates_with_cves}
                       </div>
-                    )}
+                    </div>
                   </div>
+                  {analytics.successful_updates > 0 && (
+                    <div className="text-xs text-tide-text-muted pt-2 border-t border-tide-border">
+                      Avg per update: {(analytics.total_cves_fixed / analytics.successful_updates).toFixed(1)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
