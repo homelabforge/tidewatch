@@ -48,6 +48,52 @@ class DockerfileParser:
             # Fall back to default
             self.projects_directory = Path("/projects").resolve()
 
+    def _extract_version_prefix(self, tag: str | None) -> str | None:
+        """Extract major.minor version prefix from a tag.
+
+        Examples:
+            "3.15.0a5-slim" -> "3.15"
+            "22-alpine" -> "22"
+            "1.2.3" -> "1.2"
+            "latest" -> None
+
+        Args:
+            tag: Version tag string
+
+        Returns:
+            Major.minor prefix or None if cannot be parsed
+        """
+        if not tag:
+            return None
+
+        # Match version patterns like "3.15", "3.15.0", "3.15.0a5", "22", etc.
+        match = re.match(r"^(\d+)(?:\.(\d+))?", tag)
+        if match:
+            major = match.group(1)
+            minor = match.group(2)
+            if minor:
+                return f"{major}.{minor}"
+            return major
+        return None
+
+    def _is_version_greater(self, new_prefix: str, old_prefix: str) -> bool:
+        """Compare version prefixes to see if new is greater than old.
+
+        Args:
+            new_prefix: New version prefix (e.g., "3.16")
+            old_prefix: Old version prefix (e.g., "3.15")
+
+        Returns:
+            True if new_prefix is a greater version than old_prefix
+        """
+        try:
+            new_parts = [int(x) for x in new_prefix.split(".")]
+            old_parts = [int(x) for x in old_prefix.split(".")]
+            return new_parts > old_parts
+        except ValueError:
+            # If parsing fails, treat as not greater
+            return False
+
     async def scan_container_dockerfile(
         self,
         session: AsyncSession,
@@ -406,8 +452,24 @@ class DockerfileParser:
                     existing.dependency_type = new_dep.dependency_type
 
                     # PRESERVE ignored fields - only reset ignore if version has moved past ignored version
-                    if existing.ignored and existing.ignored_version:
-                        # If the latest version has changed beyond what was ignored, clear the ignore
+                    if existing.ignored and existing.ignored_version_prefix:
+                        # Pattern-based ignore: only clear if major.minor version increased
+                        new_prefix = self._extract_version_prefix(new_dep.latest_tag)
+                        if new_prefix and new_prefix != existing.ignored_version_prefix:
+                            # Compare version prefixes to see if it's actually newer
+                            if self._is_version_greater(new_prefix, existing.ignored_version_prefix):
+                                logger.info(
+                                    f"Clearing ignore for {existing.image_name} - "
+                                    f"new major.minor {new_prefix} > {existing.ignored_version_prefix}"
+                                )
+                                existing.ignored = False
+                                existing.ignored_version = None
+                                existing.ignored_version_prefix = None
+                                existing.ignored_by = None
+                                existing.ignored_at = None
+                                existing.ignored_reason = None
+                    elif existing.ignored and existing.ignored_version and not existing.ignored_version_prefix:
+                        # Legacy fallback: exact version matching for old ignores without prefix
                         if new_dep.latest_tag != existing.ignored_version:
                             logger.info(
                                 f"Clearing ignore for {existing.image_name} - "

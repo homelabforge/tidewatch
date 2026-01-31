@@ -526,6 +526,7 @@ class SchedulerService:
         try:
             async with AsyncSessionLocal() as db:
                 from sqlalchemy import select
+                from sqlalchemy.orm import joinedload
 
                 from app.models.dockerfile_dependency import DockerfileDependency
                 from app.services.dockerfile_parser import DockerfileParser
@@ -537,14 +538,17 @@ class SchedulerService:
                 total_scanned = stats.get("total_scanned", 0)
                 updates_found = stats.get("updates_found", 0)
 
-                # Send notifications for dependencies with updates
+                # Send notifications for dependencies with updates (excluding ignored)
                 if updates_found > 0:
-                    # Get all dependencies with updates
-                    stmt = select(DockerfileDependency).where(
-                        DockerfileDependency.update_available
+                    # Get all dependencies with updates, joined with Container for name
+                    stmt = (
+                        select(DockerfileDependency)
+                        .where(DockerfileDependency.update_available == True)
+                        .where(DockerfileDependency.ignored == False)
+                        .options(joinedload(DockerfileDependency.container))
                     )
                     result = await db.execute(stmt)
-                    deps_with_updates = result.scalars().all()
+                    deps_with_updates = result.unique().scalars().all()
 
                     from app.services.notifications.dispatcher import (
                         NotificationDispatcher,
@@ -557,6 +561,8 @@ class SchedulerService:
                             from_tag=dep.current_tag,
                             to_tag=dep.latest_tag or "unknown",
                             dependency_type=dep.dependency_type,
+                            container_name=dep.container.name if dep.container else None,
+                            dockerfile_path=dep.dockerfile_path,
                         )
 
                 duration = (datetime.now() - start_time).total_seconds()

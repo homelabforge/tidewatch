@@ -451,11 +451,18 @@ class NotificationDispatcher:
         from_tag: str,
         to_tag: str,
         dependency_type: str = "base_image",
+        container_name: str | None = None,
+        dockerfile_path: str | None = None,
     ) -> dict[str, bool]:
         """Send notification about Dockerfile dependency update."""
         dep_label = "Base Image" if dependency_type == "base_image" else "Build Image"
+        message = f"{dep_label}: {image_name}\n{from_tag} → {to_tag}"
+        if container_name:
+            message += f"\nContainer: {container_name}"
+        if dockerfile_path:
+            message += f"\nDockerfile: {dockerfile_path}"
         return await self.dispatch(
             event_type="dockerfile_update",
             title="Dockerfile Update Available",
-            message=f"{dep_label}: {image_name}\n{from_tag} → {to_tag}",
+            message=message,
         )

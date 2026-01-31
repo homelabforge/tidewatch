@@ -1,6 +1,7 @@
 """API endpoints for dependency ignore/unignore operations."""
 
 import logging
+import re
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,6 +31,36 @@ from app.services.dependency_update_service import DependencyUpdateService
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+
+def extract_version_prefix(tag: str | None) -> str | None:
+    """Extract major.minor version prefix from a tag.
+
+    Examples:
+        "3.15.0a5-slim" -> "3.15"
+        "22-alpine" -> "22"
+        "1.2.3" -> "1.2"
+        "latest" -> None
+
+    Args:
+        tag: Version tag string
+
+    Returns:
+        Major.minor prefix or None if cannot be parsed
+    """
+    if not tag:
+        return None
+
+    # Match version patterns like "3.15", "3.15.0", "3.15.0a5", "22", etc.
+    # Also handles tags like "3.14-slim" by stripping suffix first
+    match = re.match(r"^(\d+)(?:\.(\d+))?", tag)
+    if match:
+        major = match.group(1)
+        minor = match.group(2)
+        if minor:
+            return f"{major}.{minor}"
+        return major
+    return None
 
 router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
@@ -65,6 +96,7 @@ async def ignore_dockerfile_dependency(
         # Update dependency
         dependency.ignored = True
         dependency.ignored_version = dependency.latest_tag  # Track which version we're ignoring
+        dependency.ignored_version_prefix = extract_version_prefix(dependency.latest_tag)  # For pattern matching
         dependency.ignored_by = "user"  # TODO: Get from auth context when available
         dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
@@ -130,6 +162,7 @@ async def unignore_dockerfile_dependency(dependency_id: int, db: AsyncSession = 
         # Clear ignore fields
         dependency.ignored = False
         dependency.ignored_version = None
+        dependency.ignored_version_prefix = None
         dependency.ignored_by = None
         dependency.ignored_at = None
         dependency.ignored_reason = None
@@ -324,6 +357,7 @@ async def ignore_http_server(
         # Update server
         server.ignored = True
         server.ignored_version = server.latest_version
+        server.ignored_version_prefix = extract_version_prefix(server.latest_version)
         server.ignored_by = "user"
         server.ignored_at = datetime.now(UTC)
         server.ignored_reason = request.reason
@@ -385,6 +419,7 @@ async def unignore_http_server(server_id: int, db: AsyncSession = Depends(get_db
         # Clear ignore fields
         server.ignored = False
         server.ignored_version = None
+        server.ignored_version_prefix = None
         server.ignored_by = None
         server.ignored_at = None
         server.ignored_reason = None
@@ -714,6 +749,7 @@ async def ignore_app_dependency(
         # Update dependency
         dependency.ignored = True
         dependency.ignored_version = dependency.latest_version
+        dependency.ignored_version_prefix = extract_version_prefix(dependency.latest_version)
         dependency.ignored_by = "user"
         dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
@@ -775,6 +811,7 @@ async def unignore_app_dependency(dependency_id: int, db: AsyncSession = Depends
         # Clear ignore fields
         dependency.ignored = False
         dependency.ignored_version = None
+        dependency.ignored_version_prefix = None
         dependency.ignored_by = None
         dependency.ignored_at = None
         dependency.ignored_reason = None

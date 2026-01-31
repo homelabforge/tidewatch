@@ -41,6 +41,9 @@ class HttpServer(Base):
     ignored_version = Column(
         String, nullable=True
     )  # Which version transition was ignored (e.g., "2.6.0")
+    ignored_version_prefix = Column(
+        String(50), nullable=True
+    )  # Major.minor prefix for pattern matching (e.g., "2.6" ignores all 2.6.x)
     ignored_by = Column(String, nullable=True)  # Who ignored the update
     ignored_at = Column(DateTime(timezone=True), nullable=True)  # When it was ignored
     ignored_reason = Column(Text, nullable=True)  # Optional reason for ignoring
