@@ -16,11 +16,18 @@ class ChangelogUpdater:
     # Pattern to match any version section header (to know where Unreleased ends)
     VERSION_SECTION_PATTERN = re.compile(r"^## \[\d+\.\d+\.\d+\]")
 
-    # Pattern to match the ### Changed subsection
-    CHANGED_SECTION_PATTERN = re.compile(r"^### Changed\s*$", re.IGNORECASE)
-
     # Pattern to match any ### subsection (Added, Changed, Fixed, etc.)
     SUBSECTION_PATTERN = re.compile(r"^### \w+")
+
+    # Mapping from dependency types to section headers
+    SECTION_HEADERS = {
+        "http_server": "### HTTP Servers",
+        "dockerfile": "### Dockerfile Dependencies",
+        "app_dependency_production": "### App Dependencies",
+        "app_dependency_optional": "### App Dependencies",
+        "app_dependency_peer": "### App Dependencies",
+        "app_dependency_development": "### Dev Dependencies",
+    }
 
     @staticmethod
     def extract_project_root(dependency_path: str, base_path: Path) -> Path | None:
@@ -59,12 +66,13 @@ class ChangelogUpdater:
         old_version: str,
         new_version: str,
         dependency_type: str = "app_dependency",
+        app_dependency_type: str = "production",
     ) -> bool:
         """
         Update CHANGELOG.md with a dependency update entry.
 
-        Adds an entry under the [Unreleased] section's ### Changed subsection.
-        Creates the ### Changed subsection if it doesn't exist.
+        Adds an entry under the [Unreleased] section's appropriate subsection based on dependency type.
+        Creates the subsection if it doesn't exist.
 
         Args:
             project_root: Path to the project root directory
@@ -72,6 +80,7 @@ class ChangelogUpdater:
             old_version: Previous version
             new_version: New version
             dependency_type: Type of dependency (dockerfile, http_server, app_dependency)
+            app_dependency_type: For app_dependency, the specific type (production, development, optional, peer)
 
         Returns:
             True if changelog was updated successfully, False otherwise
@@ -83,6 +92,16 @@ class ChangelogUpdater:
             return False
 
         try:
+            # Determine the section header based on dependency type
+            if dependency_type == "app_dependency":
+                section_key = f"app_dependency_{app_dependency_type}"
+            else:
+                section_key = dependency_type
+
+            section_header = ChangelogUpdater.SECTION_HEADERS.get(
+                section_key, "### Changed"
+            )
+
             # Read the current changelog
             content = changelog_path.read_text(encoding="utf-8")
             lines = content.splitlines(keepends=True)
@@ -107,8 +126,8 @@ class ChangelogUpdater:
                 return False
 
             # Find where to insert the entry
-            # Look for ### Changed section within [Unreleased]
-            changed_idx = None
+            # Look for the target section within [Unreleased]
+            section_idx = None
 
             for i in range(unreleased_idx + 1, len(lines)):
                 line = lines[i].strip()
@@ -117,15 +136,15 @@ class ChangelogUpdater:
                 if ChangelogUpdater.VERSION_SECTION_PATTERN.match(line):
                     break
 
-                # Check if this is the ### Changed section
-                if ChangelogUpdater.CHANGED_SECTION_PATTERN.match(line):
-                    changed_idx = i
+                # Check if this is the target section
+                if line == section_header:
+                    section_idx = i
                     break
 
             # Determine where to insert
-            if changed_idx is not None:
-                # Find the last entry in ### Changed section to append after it
-                insert_idx = changed_idx + 1
+            if section_idx is not None:
+                # Find the last entry in the section to append after it
+                insert_idx = section_idx + 1
 
                 # Skip past all existing entries (lines starting with "- ")
                 while insert_idx < len(lines):
@@ -152,7 +171,7 @@ class ChangelogUpdater:
                         lines.insert(next_line_idx, "\n")
 
             else:
-                # Need to create ### Changed section
+                # Need to create the section
                 # Insert after [Unreleased] header
                 insert_idx = unreleased_idx + 1
 
@@ -161,8 +180,8 @@ class ChangelogUpdater:
                     insert_idx += 1
 
                 # Build the new section content
-                # We want: ### Changed\n- entry\n\n (with blank line after for separation)
-                new_section = "### Changed\n" + entry + "\n"
+                # We want: ### Section\n- entry\n\n (with blank line after for separation)
+                new_section = section_header + "\n" + entry + "\n"
                 lines.insert(insert_idx, new_section)
 
             # Write back

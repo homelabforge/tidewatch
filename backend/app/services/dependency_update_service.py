@@ -788,6 +788,7 @@ class DependencyUpdateService:
                         old_version=old_version,
                         new_version=new_version,
                         dependency_type="app_dependency",
+                        app_dependency_type=dependency.dependency_type,
                     )
             except Exception as changelog_err:
                 logger.warning(f"Failed to update CHANGELOG: {changelog_err}")

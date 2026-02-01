@@ -1427,6 +1427,7 @@ async def get_http_servers(
     Returns all HTTP servers running in the container with version information.
     """
     try:
+        from app.models.http_server import HttpServer
         from app.services.http_server_scanner import http_scanner
 
         # Get container
@@ -1436,24 +1437,50 @@ async def get_http_servers(
         if not container:
             raise HTTPException(status_code=404, detail="Container not found")
 
-        # Scan for HTTP servers
-        servers = await http_scanner.scan_container_http_servers(container.name)
+        # Get persisted HTTP servers from database
+        result = await db.execute(
+            select(HttpServer)
+            .where(HttpServer.container_id == container_id)
+            .order_by(HttpServer.name)
+        )
+        servers = result.scalars().all()
 
-        # Calculate severity for each server
+        # Convert to response schemas
+        server_schemas = []
         for server in servers:
-            server["severity"] = http_scanner._calculate_severity(
-                server.get("current_version"),
-                server.get("latest_version"),
-                server.get("update_available", False),
+            severity = http_scanner._calculate_severity(
+                server.current_version, server.latest_version, server.update_available
+            )
+            server_schemas.append(
+                HttpServerSchema(
+                    id=server.id,  # Now has database ID!
+                    container_id=server.container_id,
+                    name=server.name,
+                    current_version=server.current_version,
+                    latest_version=server.latest_version,
+                    update_available=server.update_available and not server.ignored,
+                    severity=severity,
+                    detection_method=server.detection_method,
+                    dockerfile_path=server.dockerfile_path,
+                    line_number=server.line_number,
+                    ignored=server.ignored,
+                    ignored_version=server.ignored_version,
+                    ignored_by=server.ignored_by,
+                    ignored_at=server.ignored_at,
+                    ignored_reason=server.ignored_reason,
+                    last_checked=server.last_checked,
+                    created_at=server.created_at,
+                    updated_at=server.updated_at,
+                )
             )
 
         return HttpServersResponse(
-            servers=[HttpServerSchema(**server) for server in servers],
+            servers=server_schemas,
             total=len(servers),
             with_updates=sum(
-                1 for server in servers if server.get("update_available", False)
+                1 for s in servers if s.update_available and not s.ignored
             ),
-            last_scan=servers[0].get("last_checked") if servers else None,
+            last_scan=servers[0].last_checked if servers else None,
             scan_status="idle",
         )
     except HTTPException:
@@ -1508,16 +1535,23 @@ async def scan_http_servers(
         if not container:
             raise HTTPException(status_code=404, detail="Container not found")
 
-        # Scan for HTTP servers
-        servers = await http_scanner.scan_container_http_servers(container.name)
+        # Scan for HTTP servers (pass container model for Dockerfile detection)
+        servers = await http_scanner.scan_container_http_servers(
+            container.name, container_model=container, db=db
+        )
+
+        # Persist to database
+        persisted = await http_scanner.persist_http_servers(container_id, servers, db)
 
         return {
             "success": True,
             "message": "HTTP server scan completed",
-            "servers_found": len(servers),
-            "servers": [server["name"] for server in servers],
+            "servers_found": len(persisted),
+            "servers": [server.name for server in persisted],
             "updates_available": sum(
-                1 for server in servers if server.get("update_available", False)
+                1
+                for server in persisted
+                if server.update_available and not server.ignored
             ),
         }
     except HTTPException:

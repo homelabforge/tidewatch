@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **HTTP server database persistence** - HTTP servers are now persisted to the database with proper IDs, matching the pattern used by AppDependency and DockerfileDependency
+  - New `persist_http_servers()` method in `HttpServerScanner` for upsert operations based on `(container_id, name)`
+  - Scan endpoint now persists servers to database after detection
+  - GET endpoint reads from database instead of live scanning
+  - Enables HTTP server updates, ignore/unignore functionality, and update history tracking
+- **Dockerfile path detection for HTTP servers** - Scanner now detects Dockerfile paths for all HTTP servers, not just those detected via labels
+  - New `_find_dockerfile_path()` method searches for Dockerfiles in My Projects containers
+  - Enables updates for containers without `http.server.*` labels (detected via version checks or other methods)
+  - Handles container volume mount mapping (`/projects` vs `/srv/raid0/docker/build`)
+- **Dockerfile LABEL as version source of truth** - For My Projects containers, HTTP server versions are read from Dockerfile LABELs instead of running container binaries
+  - New `_read_version_from_dockerfile()` method parses `LABEL http.server.version="X.Y.Z"` from Dockerfiles
+  - Scanner prefers Dockerfile version over container version for My Projects
+  - Ensures UI displays correct version after successful updates without requiring container rebuild
+
+### Changed
+- **Configurable projects directory for HTTP server scanning** - HTTP server scanner now reads `projects_directory` from Settings instead of hardcoded `/projects/` path
+  - Users can configure the path in Settings > Docker > My Projects Configuration
+  - Matches pattern used by other services (project_scanner, app_dependencies)
+  - Backward compatible with `/projects` as default fallback
+
+### Fixed
+- **HTTP server updates failing with null server_id** - Fixed 422 validation error when updating HTTP servers caused by servers not being persisted to database
+- **HTTP server updates failing with missing Dockerfile path** - Fixed update failures for containers detected via version checks or other methods (not just label detection)
+- **HTTP server version not updating in UI after successful updates** - Fixed rescan overwriting database with stale container version instead of reading updated Dockerfile LABEL
+
 ## [3.6.2] - 2025-01-31
 
 ### Added

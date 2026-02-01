@@ -78,13 +78,15 @@ class HttpServerScanner:
         }
 
     async def scan_container_http_servers(
-        self, container_name: str
+        self, container_name: str, container_model=None, db=None
     ) -> list[dict[str, any]]:
         """
         Scan a container for running HTTP servers.
 
         Args:
             container_name: Name of the container to scan
+            container_model: Optional Container database model for dockerfile detection
+            db: Optional database session for reading settings
 
         Returns:
             List of detected HTTP servers with version information
@@ -95,7 +97,7 @@ class HttpServerScanner:
             container = self.docker_client.containers.get(container_name)
 
             # Method 0: Check container labels (works even when stopped)
-            label_servers = await self._detect_from_labels(container)
+            label_servers = await self._detect_from_labels(container, container_model, db)
 
             # If container is not running, only use label detection
             if container.status != "running":
@@ -148,6 +150,27 @@ class HttpServerScanner:
                 # Convert back to list
                 servers = list(servers_dict.values())
 
+            # Detect Dockerfile paths for all detected servers (if not already set)
+            # Also read version from Dockerfile if available (source of truth for My Projects)
+            for server in servers:
+                if not server.get("dockerfile_path"):
+                    dockerfile_path, line_number = await self._find_dockerfile_path(
+                        container, container_model, db
+                    )
+                    if dockerfile_path:
+                        server["dockerfile_path"] = dockerfile_path
+                        server["line_number"] = line_number
+
+                        # Read version from Dockerfile LABEL (source of truth)
+                        dockerfile_version = self._read_version_from_dockerfile(
+                            dockerfile_path
+                        )
+                        if dockerfile_version:
+                            server["current_version"] = dockerfile_version
+                            logger.info(
+                                f"Using Dockerfile version {dockerfile_version} for {server['name']} (overriding container version)"
+                            )
+
             # Get latest versions for detected servers
             for server in servers:
                 server["latest_version"] = await self._get_latest_version(
@@ -167,6 +190,101 @@ class HttpServerScanner:
             logger.error(f"Invalid data scanning container {container_name}: {e}")
 
         return servers
+
+    async def persist_http_servers(
+        self, container_id: int, servers: list[dict], db
+    ) -> list:
+        """Persist scanned HTTP servers to database.
+
+        Args:
+            container_id: Container ID
+            servers: List of detected servers from scan_container_http_servers()
+            db: Database session
+
+        Returns:
+            List of persisted HttpServer model instances with IDs
+        """
+        from datetime import UTC, datetime
+
+        from app.models.http_server import HttpServer
+        from sqlalchemy import select
+
+        def extract_version_prefix(tag: str | None) -> str | None:
+            """Extract major.minor version prefix from a tag."""
+            if not tag:
+                return None
+            import re
+
+            match = re.match(r"^(\d+)(?:\.(\d+))?", tag)
+            if match:
+                major = match.group(1)
+                minor = match.group(2)
+                if minor:
+                    return f"{major}.{minor}"
+                return major
+            return None
+
+        persisted = []
+        for server_data in servers:
+            # Check if exists (upsert based on container_id + name)
+            result = await db.execute(
+                select(HttpServer).where(
+                    HttpServer.container_id == container_id,
+                    HttpServer.name == server_data["name"],
+                )
+            )
+            server = result.scalar_one_or_none()
+
+            if server:
+                # Update existing record
+                server.current_version = server_data.get("current_version")
+                server.latest_version = server_data.get("latest_version")
+                server.update_available = server_data.get("update_available", False)
+                server.detection_method = server_data.get("detection_method")
+                server.dockerfile_path = server_data.get("dockerfile_path")
+                server.line_number = server_data.get("line_number")
+                server.last_checked = datetime.now(UTC)
+
+                # Clear ignore if new version beyond ignored version
+                if server.ignored and server.latest_version != server.ignored_version:
+                    version_prefix = extract_version_prefix(server.latest_version)
+                    if version_prefix != server.ignored_version_prefix:
+                        server.ignored = False
+                        server.ignored_version = None
+                        server.ignored_version_prefix = None
+                        server.ignored_by = None
+                        server.ignored_at = None
+                        server.ignored_reason = None
+                        logger.info(
+                            f"Cleared ignore for {server.name} (version changed from {server.ignored_version} to {server.latest_version})"
+                        )
+            else:
+                # Create new record
+                server = HttpServer(
+                    container_id=container_id,
+                    name=server_data["name"],
+                    current_version=server_data.get("current_version"),
+                    latest_version=server_data.get("latest_version"),
+                    update_available=server_data.get("update_available", False),
+                    detection_method=server_data.get("detection_method"),
+                    dockerfile_path=server_data.get("dockerfile_path"),
+                    line_number=server_data.get("line_number"),
+                    last_checked=datetime.now(UTC),
+                )
+                db.add(server)
+                logger.info(
+                    f"Created new HTTP server record: {server.name} for container {container_id}"
+                )
+
+            persisted.append(server)
+
+        # Commit and refresh to get IDs
+        await db.commit()
+
+        for server in persisted:
+            await db.refresh(server)
+
+        return persisted
 
     async def _detect_from_processes(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers from running processes."""
@@ -383,8 +501,19 @@ class HttpServerScanner:
             # If version parsing fails, default to info severity
             return "info"
 
-    async def _detect_from_labels(self, container) -> list[dict[str, any]]:
-        """Detect HTTP servers from container labels."""
+    async def _detect_from_labels(
+        self, container, container_model=None, db=None
+    ) -> list[dict[str, any]]:
+        """Detect HTTP servers from container labels.
+
+        Args:
+            container: Docker container object
+            container_model: Optional Container database model with is_my_project flag
+            db: Optional database session for reading settings
+
+        Returns:
+            List of server info dicts with dockerfile_path populated if available
+        """
         servers = []
 
         try:
@@ -399,6 +528,15 @@ class HttpServerScanner:
                     "detection_method": "labels",
                     "last_checked": datetime.utcnow(),
                 }
+
+                # Detect Dockerfile path for "My Projects" containers
+                dockerfile_path, line_number = await self._find_dockerfile_path(
+                    container, container_model, db
+                )
+                if dockerfile_path:
+                    server_info["dockerfile_path"] = dockerfile_path
+                    server_info["line_number"] = line_number
+
                 servers.append(server_info)
                 logger.info(f"Detected {server_name} from labels in {container.name}")
 
@@ -406,6 +544,105 @@ class HttpServerScanner:
             logger.debug(f"Failed to detect from labels: {e}")
 
         return servers
+
+    def _read_version_from_dockerfile(self, dockerfile_path: str) -> str | None:
+        """Read http.server.version from Dockerfile LABEL.
+
+        Args:
+            dockerfile_path: Path to the Dockerfile
+
+        Returns:
+            Version string or None
+        """
+        try:
+            with open(dockerfile_path, encoding="utf-8") as f:
+                for line in f:
+                    if 'LABEL http.server.version=' in line:
+                        # Extract version from: LABEL http.server.version="2.6.1"
+                        match = re.search(r'LABEL\s+http\.server\.version="([^"]+)"', line)
+                        if match:
+                            return match.group(1)
+        except (OSError, IOError) as e:
+            logger.debug(f"Error reading version from Dockerfile {dockerfile_path}: {e}")
+        return None
+
+    async def _find_dockerfile_path(
+        self, container, container_model=None, db=None
+    ) -> tuple[str | None, int | None]:
+        """Find Dockerfile path and line number for http.server.version label.
+
+        For "My Projects" containers, the Dockerfile is located at:
+        {projects_directory}/{project_name}/Dockerfile
+
+        Args:
+            container: Docker container object
+            container_model: Optional Container database model
+            db: Database session (required to read projects_directory setting)
+
+        Returns:
+            Tuple of (dockerfile_path, line_number) or (None, None)
+        """
+        from pathlib import Path
+        from app.services.settings_service import SettingsService
+
+        try:
+            # Check if this is a "My Project" container
+            is_my_project = (
+                container_model and getattr(container_model, "is_my_project", False)
+            )
+
+            if not is_my_project:
+                logger.debug(
+                    f"Container {container.name} is not a My Project, skipping Dockerfile detection"
+                )
+                return None, None
+
+            # Get projects directory from settings (fallback to /projects)
+            if db:
+                projects_dir = await SettingsService.get(db, "projects_directory")
+            else:
+                projects_dir = "/projects"  # Fallback if no db session
+                logger.warning("No db session provided, using default projects_directory: /projects")
+
+            # Extract project name from container name
+            # Examples: "familycircle-dev" -> "familycircle", "mygarage" -> "mygarage"
+            project_name = container.name.split("-")[0]
+
+            # Construct Dockerfile path using setting
+            dockerfile_path = f"{projects_dir}/{project_name}/Dockerfile"
+
+            # Verify file exists
+            if not Path(dockerfile_path).exists():
+                logger.warning(
+                    f"Expected Dockerfile not found at {dockerfile_path} for container {container.name}"
+                )
+                return None, None
+
+            # Find line number of http.server.version label
+            line_number = None
+            with open(dockerfile_path, encoding="utf-8") as f:
+                for i, line in enumerate(f, start=1):
+                    if 'LABEL http.server.version=' in line:
+                        line_number = i
+                        break
+
+            if line_number:
+                logger.info(
+                    f"Found Dockerfile at {dockerfile_path}:{line_number} for {container.name}"
+                )
+            else:
+                logger.warning(
+                    f"Could not find http.server.version label in {dockerfile_path}"
+                )
+
+            return dockerfile_path, line_number
+
+        except (OSError, IOError) as e:
+            logger.error(f"Error reading Dockerfile: {e}")
+            return None, None
+        except (AttributeError, IndexError) as e:
+            logger.debug(f"Error parsing container name: {e}")
+            return None, None
 
     async def _detect_from_container_config(self, container) -> list[dict[str, any]]:
         """Detect HTTP servers from container config without exec."""
