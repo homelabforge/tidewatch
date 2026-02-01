@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.3] - 2025-02-01
+
 ### Added
 - **HTTP server database persistence** - HTTP servers are now persisted to the database with proper IDs, matching the pattern used by AppDependency and DockerfileDependency
   - New `persist_http_servers()` method in `HttpServerScanner` for upsert operations based on `(container_id, name)`
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HTTP server updates failing with null server_id** - Fixed 422 validation error when updating HTTP servers caused by servers not being persisted to database
 - **HTTP server updates failing with missing Dockerfile path** - Fixed update failures for containers detected via version checks or other methods (not just label detection)
 - **HTTP server version not updating in UI after successful updates** - Fixed rescan overwriting database with stale container version instead of reading updated Dockerfile LABEL
+- **Duplicate import of re module** - Removed redundant import flagged by CodeQL
 
 ## [3.6.2] - 2025-01-31
 
