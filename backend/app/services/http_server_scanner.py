@@ -213,8 +213,6 @@ class HttpServerScanner:
             """Extract major.minor version prefix from a tag."""
             if not tag:
                 return None
-            import re
-
             match = re.match(r"^(\d+)(?:\.(\d+))?", tag)
             if match:
                 major = match.group(1)
