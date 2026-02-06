@@ -79,9 +79,7 @@ async def create_webhook(
         safe_error_response(logger, e, "Failed to create webhook")
 
 
-@router.get(
-    "/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK
-)
+@router.get("/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK)
 async def get_webhook(
     webhook_id: int,
     admin: dict | None = Depends(require_auth),
@@ -109,9 +107,7 @@ async def get_webhook(
     return webhook
 
 
-@router.put(
-    "/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK
-)
+@router.put("/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK)
 async def update_webhook(
     webhook_id: int,
     webhook: WebhookUpdate,
@@ -201,8 +197,6 @@ async def test_webhook(
 
     # If webhook not found, return 404
     if not result.success and result.error == "Webhook not found":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
 
     return result

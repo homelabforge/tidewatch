@@ -88,9 +88,7 @@ async def _cleanup_expired_pending_links(db: AsyncSession):
         db: Database session
     """
     cutoff = datetime.now(UTC)
-    await db.execute(
-        delete(OIDCPendingLink).where(OIDCPendingLink.expires_at <= cutoff)
-    )
+    await db.execute(delete(OIDCPendingLink).where(OIDCPendingLink.expires_at <= cutoff))
     await db.commit()
 
 
@@ -242,9 +240,7 @@ async def store_oidc_state(db: AsyncSession, state: str, redirect_uri: str, nonc
     logger.debug("Stored OIDC state: %s...", state[:16])
 
 
-async def validate_and_consume_state(
-    db: AsyncSession, state: str
-) -> dict[str, Any] | None:
+async def validate_and_consume_state(db: AsyncSession, state: str) -> dict[str, Any] | None:
     """Validate and consume OIDC state from database (one-time use).
 
     Args:
@@ -372,9 +368,7 @@ async def exchange_code_for_tokens(
     try:
         validate_oidc_url(token_endpoint)
     except (SSRFProtectionError, ValueError) as e:
-        logger.error(
-            "SSRF protection blocked token endpoint: %s - %s", token_endpoint, str(e)
-        )
+        logger.error("SSRF protection blocked token endpoint: %s - %s", token_endpoint, str(e))
         return None
 
     # Prepare token request
@@ -402,9 +396,7 @@ async def exchange_code_for_tokens(
 
             # Log response details for debugging
             if response.status_code != 200:
-                logger.error(
-                    "Token exchange failed with status %s", response.status_code
-                )
+                logger.error("Token exchange failed with status %s", response.status_code)
                 logger.error("Response body: %s", response.text)
 
             response.raise_for_status()
@@ -571,14 +563,12 @@ async def link_oidc_to_admin(
     provider_name = config.get("provider_name", "OIDC Provider")
 
     # Link OIDC to admin
-    await update_admin_oidc_link(db, sub, provider_name)
+    await update_admin_oidc_link(db, sub or "", provider_name)
 
     # Update last login
     await update_admin_last_login(db)
 
-    logger.info(
-        "Linked OIDC account to admin user (sub: %s, provider: %s)", sub, provider_name
-    )
+    logger.info("Linked OIDC account to admin user (sub: %s, provider: %s)", sub, provider_name)
 
 
 async def create_pending_link(
@@ -648,9 +638,7 @@ async def verify_pending_link(
     await _cleanup_expired_pending_links(db)
 
     # Find pending link
-    result = await db.execute(
-        select(OIDCPendingLink).where(OIDCPendingLink.token == token)
-    )
+    result = await db.execute(select(OIDCPendingLink).where(OIDCPendingLink.token == token))
     pending_link = result.scalar_one_or_none()
 
     if not pending_link:
@@ -664,10 +652,8 @@ async def verify_pending_link(
         return None
 
     # Check max attempts
-    max_attempts = await SettingsService.get(
-        db, "oidc_link_max_password_attempts", default="3"
-    )
-    if pending_link.attempt_count >= int(max_attempts):
+    max_attempts = await SettingsService.get(db, "oidc_link_max_password_attempts", default="3")
+    if pending_link.attempt_count >= int(max_attempts or "3"):
         logger.warning("Max password attempts exceeded for pending link")
         await db.delete(pending_link)
         await db.commit()
@@ -688,9 +674,7 @@ async def verify_pending_link(
         # Increment attempt count
         pending_link.attempt_count += 1
         await db.commit()
-        logger.warning(
-            "Invalid password for pending link (attempt %d)", pending_link.attempt_count
-        )
+        logger.warning("Invalid password for pending link (attempt %d)", pending_link.attempt_count)
         return None
 
     # Password verified - parse claims and delete token
@@ -698,9 +682,7 @@ async def verify_pending_link(
     await db.delete(pending_link)
     await db.commit()
 
-    logger.info(
-        "Pending link verified successfully for username: %s", pending_link.username
-    )
+    logger.info("Pending link verified successfully for username: %s", pending_link.username)
     return claims
 
 

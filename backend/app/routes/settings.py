@@ -4,6 +4,7 @@ import logging
 
 import docker
 import httpx
+from docker.errors import DockerException
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,9 @@ router = APIRouter()
 @router.get("/", response_model=list[SettingSchema])
 async def get_all_settings(
     admin: dict | None = Depends(require_auth),
-    category: str = None,
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
-) -> list[SettingSchema]:
+):
     """Get all settings, optionally filtered by category."""
     from app.schemas.setting import SENSITIVE_KEYS
 
@@ -175,8 +176,9 @@ async def test_docker_connection(
     Returns:
         Connection test result with status and details
     """
+    docker_socket = "unknown"
     try:
-        docker_socket = await SettingsService.get(db, "docker_socket")
+        docker_socket = await SettingsService.get(db, "docker_socket") or "unknown"
 
         # Determine docker host format
         if docker_socket.startswith(("tcp://", "unix://")):
@@ -208,7 +210,7 @@ async def test_docker_connection(
                 "containers": containers,
             },
         }
-    except docker.errors.DockerException:
+    except DockerException:
         return {
             "success": False,
             "message": "Failed to connect to Docker",
@@ -238,6 +240,7 @@ async def test_vulnforge_connection(
     Returns:
         Connection test result with status and details
     """
+    vulnforge_url = "unknown"
     try:
         # Get VulnForge settings
         vulnforge_url = await SettingsService.get(db, "vulnforge_url")
@@ -349,6 +352,8 @@ async def test_ntfy_connection(
     Returns:
         Connection test result with status and details
     """
+    ntfy_server = "unknown"
+    ntfy_topic = "unknown"
     try:
         # Get ntfy settings
         ntfy_enabled = await SettingsService.get_bool(db, "ntfy_enabled")
@@ -568,6 +573,7 @@ async def test_gotify_connection(
     Returns:
         Connection test result with status and details
     """
+    gotify_server = "unknown"
     try:
         gotify_enabled = await SettingsService.get_bool(db, "gotify_enabled")
         gotify_server = await SettingsService.get(db, "gotify_server")
@@ -1009,6 +1015,10 @@ async def test_email_connection(
     Returns:
         Connection test result with status and details
     """
+    import aiosmtplib
+
+    smtp_host = "unknown"
+    smtp_port = 0
     try:
         email_enabled = await SettingsService.get_bool(db, "email_enabled")
         smtp_host = await SettingsService.get(db, "email_smtp_host")
@@ -1041,8 +1051,6 @@ async def test_email_connection(
 
         # Send test email
         from email.message import EmailMessage
-
-        import aiosmtplib
 
         msg = EmailMessage()
         msg["Subject"] = "TideWatch: Connection Test"

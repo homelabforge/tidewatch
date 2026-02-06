@@ -3,7 +3,8 @@
 import logging
 import time
 
-from fastapi import HTTPException, Request
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.buckets: dict[str, TokenBucket] = {}
         self.capacity = requests_per_minute
         self.refill_rate = requests_per_minute / 60.0  # tokens per second
-        self.cleanup_interval = 300  # Clean up old buckets every 5 minutes
+        self.cleanup_interval: float = 300  # Clean up old buckets every 5 minutes
         self.last_cleanup = time.time()
 
     def _get_client_ip(self, request: Request) -> str:
@@ -188,9 +189,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     retry_after = window
                     break
 
-            raise HTTPException(
+            return JSONResponse(
                 status_code=429,
-                detail="Rate limit exceeded. Please try again later.",
+                content={"detail": "Rate limit exceeded. Please try again later."},
                 headers={"Retry-After": str(retry_after)},
             )
 
@@ -200,8 +201,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Process request
         response = await call_next(request)
 
-        # Add rate limit headers
-        response.headers["X-RateLimit-Limit"] = str(self.capacity)
+        # Add rate limit headers (use endpoint-specific capacity, not global)
+        response.headers["X-RateLimit-Limit"] = str(capacity)
         response.headers["X-RateLimit-Remaining"] = str(int(bucket.tokens))
 
         return response

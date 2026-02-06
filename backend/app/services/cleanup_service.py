@@ -102,14 +102,12 @@ class CleanupService:
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(
-                    f"Failed to get disk usage: {sanitize_log_message(str(error_msg))}"
-                )
+                logger.error(f"Failed to get disk usage: {sanitize_log_message(str(error_msg))}")
                 return {"error": error_msg}
 
             # Parse JSON output (one per line for different resource types)
             lines = stdout.decode().strip().split("\n")
-            result = {
+            result: dict[str, dict[str, int | str]] = {
                 "images": {"count": 0, "size": 0, "reclaimable": 0},
                 "containers": {"count": 0, "size": 0, "reclaimable": 0},
                 "volumes": {"count": 0, "size": 0, "reclaimable": 0},
@@ -162,11 +160,11 @@ class CleanupService:
             for key in result:
                 if "size" in result[key]:
                     result[key]["size_formatted"] = CleanupService._format_bytes(
-                        result[key]["size"]
+                        int(result[key]["size"])
                     )
                 if "reclaimable" in result[key]:
                     result[key]["reclaimable_formatted"] = CleanupService._format_bytes(
-                        result[key]["reclaimable"]
+                        int(result[key]["reclaimable"])
                     )
 
             return result
@@ -234,9 +232,7 @@ class CleanupService:
             return images
 
         except (TimeoutError, OSError, PermissionError) as e:
-            logger.error(
-                f"Error getting dangling images: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Error getting dangling images: {sanitize_log_message(str(e))}")
             return []
 
     @staticmethod
@@ -284,13 +280,9 @@ class CleanupService:
 
                     # Check exclude patterns against name and image
                     if exclude_patterns:
-                        if CleanupService._matches_exclude_pattern(
-                            name, exclude_patterns
-                        ):
+                        if CleanupService._matches_exclude_pattern(name, exclude_patterns):
                             continue
-                        if CleanupService._matches_exclude_pattern(
-                            image, exclude_patterns
-                        ):
+                        if CleanupService._matches_exclude_pattern(image, exclude_patterns):
                             continue
 
                     containers.append(
@@ -308,9 +300,7 @@ class CleanupService:
             return containers
 
         except (TimeoutError, OSError, PermissionError) as e:
-            logger.error(
-                f"Error getting exited containers: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Error getting exited containers: {sanitize_log_message(str(e))}")
             return []
 
     @staticmethod
@@ -353,9 +343,7 @@ class CleanupService:
                     data = json.loads(line)
                     repo = data.get("Repository", "<none>")
                     tag = data.get("Tag", "<none>")
-                    full_name = (
-                        f"{repo}:{tag}" if repo != "<none>" else data.get("ID", "")
-                    )
+                    full_name = f"{repo}:{tag}" if repo != "<none>" else data.get("ID", "")
 
                     # Check exclude patterns
                     if exclude_patterns and CleanupService._matches_exclude_pattern(
@@ -383,7 +371,7 @@ class CleanupService:
 
     @staticmethod
     async def get_cleanup_preview(
-        mode: str = "dangling",
+        mode: str | None = "dangling",
         days: int = 7,
         exclude_patterns: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -410,9 +398,7 @@ class CleanupService:
         }
 
         # Always get dangling images
-        result["dangling_images"] = await CleanupService.get_dangling_images(
-            exclude_patterns
-        )
+        result["dangling_images"] = await CleanupService.get_dangling_images(exclude_patterns)
         result["totals"]["images"] = len(result["dangling_images"])
 
         # Get containers for moderate and aggressive modes
@@ -424,14 +410,10 @@ class CleanupService:
 
         # Get old images for aggressive mode
         if mode == "aggressive":
-            result["old_images"] = await CleanupService.get_old_images(
-                days, exclude_patterns
-            )
+            result["old_images"] = await CleanupService.get_old_images(days, exclude_patterns)
             # Add old images to total (excluding already counted dangling)
             dangling_ids = {img["id"] for img in result["dangling_images"]}
-            unique_old = [
-                img for img in result["old_images"] if img["id"] not in dangling_ids
-            ]
+            unique_old = [img for img in result["old_images"] if img["id"] not in dangling_ids]
             result["totals"]["images"] += len(unique_old)
 
         return result
@@ -453,9 +435,7 @@ class CleanupService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=300.0
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
@@ -476,9 +456,7 @@ class CleanupService:
 
             # Count deleted images
             for line in output.split("\n"):
-                if line.startswith("deleted:") or (
-                    line and not line.startswith("Total")
-                ):
+                if line.startswith("deleted:") or (line and not line.startswith("Total")):
                     if "sha256:" in line or len(line.strip()) == 12:
                         images_removed += 1
 
@@ -495,9 +473,7 @@ class CleanupService:
                 "success": True,
                 "images_removed": images_removed,
                 "space_reclaimed": space_reclaimed,
-                "space_reclaimed_formatted": CleanupService._format_bytes(
-                    space_reclaimed
-                ),
+                "space_reclaimed_formatted": CleanupService._format_bytes(space_reclaimed),
             }
 
         except TimeoutError:
@@ -562,9 +538,7 @@ class CleanupService:
                 except (TimeoutError, OSError, PermissionError) as e:
                     errors.append(f"{container['name']}: {e}")
 
-            logger.info(
-                f"Removed {sanitize_log_message(str(removed))} exited containers"
-            )
+            logger.info(f"Removed {sanitize_log_message(str(removed))} exited containers")
 
             return {
                 "success": len(errors) == 0,
@@ -583,15 +557,11 @@ class CleanupService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=300.0
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(
-                    f"Failed to prune containers: {sanitize_log_message(str(error_msg))}"
-                )
+                logger.error(f"Failed to prune containers: {sanitize_log_message(str(error_msg))}")
                 return {"success": False, "error": error_msg, "containers_removed": 0}
 
             # Count removed containers from output
@@ -599,16 +569,10 @@ class CleanupService:
             containers_removed = 0
             for line in output.split("\n"):
                 line = line.strip()
-                if (
-                    line
-                    and not line.startswith("Total")
-                    and not line.startswith("Deleted")
-                ):
+                if line and not line.startswith("Total") and not line.startswith("Deleted"):
                     containers_removed += 1
 
-            logger.info(
-                f"Pruned {sanitize_log_message(str(containers_removed))} exited containers"
-            )
+            logger.info(f"Pruned {sanitize_log_message(str(containers_removed))} exited containers")
 
             return {
                 "success": True,
@@ -661,9 +625,7 @@ class CleanupService:
                         stderr=asyncio.subprocess.PIPE,
                     )
 
-                    _, stderr_out = await asyncio.wait_for(
-                        process.communicate(), timeout=60.0
-                    )
+                    _, stderr_out = await asyncio.wait_for(process.communicate(), timeout=60.0)
 
                     if process.returncode == 0:
                         removed += 1
@@ -691,9 +653,7 @@ class CleanupService:
                 "success": len(errors) == 0,
                 "images_removed": removed,
                 "space_reclaimed": space_reclaimed,
-                "space_reclaimed_formatted": CleanupService._format_bytes(
-                    space_reclaimed
-                ),
+                "space_reclaimed_formatted": CleanupService._format_bytes(space_reclaimed),
                 "errors": errors if errors else None,
             }
 
@@ -711,15 +671,11 @@ class CleanupService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=300.0
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
 
             if process.returncode != 0:
                 error_msg = stderr.decode().strip()
-                logger.error(
-                    f"Failed to prune old images: {sanitize_log_message(str(error_msg))}"
-                )
+                logger.error(f"Failed to prune old images: {sanitize_log_message(str(error_msg))}")
                 return {
                     "success": False,
                     "error": error_msg,
@@ -749,9 +705,7 @@ class CleanupService:
                 "success": True,
                 "images_removed": images_removed,
                 "space_reclaimed": space_reclaimed,
-                "space_reclaimed_formatted": CleanupService._format_bytes(
-                    space_reclaimed
-                ),
+                "space_reclaimed_formatted": CleanupService._format_bytes(space_reclaimed),
             }
 
         except TimeoutError:
@@ -773,7 +727,7 @@ class CleanupService:
 
     @staticmethod
     async def run_cleanup(
-        mode: str = "dangling",
+        mode: str | None = "dangling",
         days: int = 7,
         exclude_patterns: list[str] | None = None,
         cleanup_containers: bool = True,
@@ -807,9 +761,7 @@ class CleanupService:
 
         # Moderate mode: also clean containers
         if mode in ["moderate", "aggressive"] and cleanup_containers:
-            container_result = await CleanupService.prune_exited_containers(
-                exclude_patterns
-            )
+            container_result = await CleanupService.prune_exited_containers(exclude_patterns)
             result["containers_removed"] = container_result.get("containers_removed", 0)
             if not container_result.get("success"):
                 result["errors"].append(f"Containers: {container_result.get('error')}")

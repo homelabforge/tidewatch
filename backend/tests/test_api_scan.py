@@ -53,9 +53,7 @@ class TestScanContainerEndpoint:
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(
-                f"/api/v1/scan/container/{container.id}"
-            )
+            response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -87,9 +85,7 @@ class TestScanContainerEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.post(
-            f"/api/v1/scan/container/{container.id}"
-        )
+        response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
 
         print(f"Response status: {response.status_code}")
         print(f"Response JSON: {response.json()}")
@@ -274,9 +270,7 @@ class TestGetScanResultsEndpoint:
         db.add(scan)
         await db.commit()
 
-        response = await authenticated_client.get(
-            f"/api/v1/scan/results/{container.id}"
-        )
+        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -300,9 +294,7 @@ class TestGetScanResultsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(
-            f"/api/v1/scan/results/{container.id}"
-        )
+        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "no scan results" in response.json()["detail"].lower()
@@ -338,9 +330,7 @@ class TestGetScanResultsEndpoint:
         db.add(scan)
         await db.commit()
 
-        response = await authenticated_client.get(
-            f"/api/v1/scan/results/{container.id}"
-        )
+        response = await authenticated_client.get(f"/api/v1/scan/results/{container.id}")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

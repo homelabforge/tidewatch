@@ -30,6 +30,4 @@ async def down(db):
     """Remove rejection fields from updates table."""
     # SQLite doesn't support DROP COLUMN directly, so we'd need to recreate the table
     # For now, just document this limitation
-    raise NotImplementedError(
-        "Downgrade not supported for SQLite ALTER TABLE ADD COLUMN"
-    )
+    raise NotImplementedError("Downgrade not supported for SQLite ALTER TABLE ADD COLUMN")

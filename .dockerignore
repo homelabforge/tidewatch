@@ -55,5 +55,10 @@ docs/
 *.md
 !README.md
 
+# Playwright
+frontend/e2e/
+frontend/test-results/
+frontend/playwright-report/
+
 # Ruff cache
 .ruff_cache/

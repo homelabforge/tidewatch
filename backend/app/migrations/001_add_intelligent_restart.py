@@ -197,9 +197,7 @@ async def migrate():
                     )
                 )
                 await conn.execute(
-                    text(
-                        "CREATE INDEX idx_restart_log_success ON container_restart_log(success)"
-                    )
+                    text("CREATE INDEX idx_restart_log_success ON container_restart_log(success)")
                 )
 
                 logger.info("  ✓ Created container_restart_log table with indexes")

@@ -2,6 +2,7 @@
 
 import base64
 import logging
+from typing import Any
 
 import httpx
 
@@ -136,8 +137,8 @@ class VulnForgeClient:
             if candidate_tag != target_tag:
                 continue
 
-            candidate_registry, candidate_name, candidate_registry_explicit = (
-                cls._parse_image_repo(repo_part)
+            candidate_registry, candidate_name, candidate_registry_explicit = cls._parse_image_repo(
+                repo_part
             )
 
             if candidate_registry != target_registry:
@@ -182,9 +183,7 @@ class VulnForgeClient:
             image_ref = f"{image}:{tag}"
 
         target_repo, target_tag = image_ref.rsplit(":", 1)
-        target_registry, target_name, target_registry_explicit = self._parse_image_repo(
-            target_repo
-        )
+        target_registry, target_name, target_registry_explicit = self._parse_image_repo(target_repo)
 
         try:
             # Query VulnForge API for containers (VulnForge v1 API)
@@ -233,16 +232,11 @@ class VulnForgeClient:
             # Get CVE list from latest scan if available
             cves = []
             if last_scan and last_scan.get("vulnerabilities"):
-                cves = [
-                    v.get("cve_id")
-                    for v in last_scan["vulnerabilities"]
-                    if v.get("cve_id")
-                ]
+                cves = [v.get("cve_id") for v in last_scan["vulnerabilities"] if v.get("cve_id")]
 
             return {
                 "image": image_ref,
-                "scan_date": last_scan.get("finished_at")
-                or last_scan.get("started_at"),
+                "scan_date": last_scan.get("finished_at") or last_scan.get("started_at"),
                 "total_vulns": vuln_summary.get("total", 0),
                 "critical": vuln_summary.get("critical", 0),
                 "high": vuln_summary.get("high", 0),
@@ -284,18 +278,12 @@ class VulnForgeClient:
             Comparison dict with delta information
         """
         # Get vulnerability data for both versions
-        current_vulns = await self.get_image_vulnerabilities(
-            current_image, current_tag, registry
-        )
-        new_vulns = await self.get_image_vulnerabilities(
-            current_image, new_tag, registry
-        )
+        current_vulns = await self.get_image_vulnerabilities(current_image, current_tag, registry)
+        new_vulns = await self.get_image_vulnerabilities(current_image, new_tag, registry)
 
         # If either is missing, can't compare
         if not current_vulns:
-            logger.warning(
-                f"No current vulnerability data for {current_image}:{current_tag}"
-            )
+            logger.warning(f"No current vulnerability data for {current_image}:{current_tag}")
             return None
 
         if not new_vulns:
@@ -498,7 +486,7 @@ class VulnForgeClient:
         """
         try:
             url = f"{self.base_url}/api/v1/scans/cve-delta"
-            params: dict[str, any] = {"since_hours": since_hours}
+            params: dict[str, Any] = {"since_hours": since_hours}
             if container_name:
                 params["container_name"] = container_name
 

@@ -54,7 +54,7 @@ async def get_auth_status(
     """
     setup_complete = await is_setup_complete(db)
     auth_mode = await get_auth_mode(db)
-    oidc_enabled_str = await SettingsService.get(db, "oidc_enabled", default="false")
+    oidc_enabled_str = await SettingsService.get(db, "oidc_enabled", default="false") or "false"
     oidc_enabled = oidc_enabled_str.lower() == "true"
 
     return {
@@ -64,9 +64,7 @@ async def get_auth_status(
     }
 
 
-@router.post(
-    "/setup", response_model=SetupResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/setup", response_model=SetupResponse, status_code=status.HTTP_201_CREATED)
 async def setup_admin_account(
     request: Request,
     setup_data: SetupRequest,
@@ -256,6 +254,8 @@ async def update_admin_profile_endpoint(
 
     # Get updated profile
     updated_profile = await get_admin_profile(db)
+    if not updated_profile:
+        raise HTTPException(status_code=500, detail="Failed to retrieve updated profile")
 
     logger.info("Admin profile updated")
 

@@ -45,14 +45,10 @@ async def upgrade() -> None:
 
         # Create indexes
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_check_job_status ON check_jobs(status)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_check_job_status ON check_jobs(status)")
         )
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_check_job_created_at ON check_jobs(created_at)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_check_job_created_at ON check_jobs(created_at)")
         )
 
 

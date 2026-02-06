@@ -65,9 +65,7 @@ async def migrate():
 
                 # Create index for cleanup operations
                 await conn.execute(
-                    text(
-                        "CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)"
-                    )
+                    text("CREATE INDEX idx_oidc_states_expires_at ON oidc_states(expires_at)")
                 )
 
                 logger.info("  ✓ Created oidc_states table with indexes")

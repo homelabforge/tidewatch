@@ -94,9 +94,7 @@ class PushoverNotificationService(NotificationService):
                 logger.info(f"[pushover] Sent notification: {title}")
                 return True
             else:
-                logger.error(
-                    f"[pushover] API error: {result.get('errors', 'Unknown error')}"
-                )
+                logger.error(f"[pushover] API error: {result.get('errors', 'Unknown error')}")
                 return False
 
         except httpx.HTTPStatusError as e:

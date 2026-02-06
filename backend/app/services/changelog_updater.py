@@ -98,9 +98,7 @@ class ChangelogUpdater:
             else:
                 section_key = dependency_type
 
-            section_header = ChangelogUpdater.SECTION_HEADERS.get(
-                section_key, "### Changed"
-            )
+            section_header = ChangelogUpdater.SECTION_HEADERS.get(section_key, "### Changed")
 
             # Read the current changelog
             content = changelog_path.read_text(encoding="utf-8")
@@ -164,10 +162,9 @@ class ChangelogUpdater:
                 if next_line_idx < len(lines):
                     next_line = lines[next_line_idx].strip()
                     # If it's a section header and there's no blank line, add one
-                    if (
-                        ChangelogUpdater.VERSION_SECTION_PATTERN.match(next_line)
-                        or ChangelogUpdater.SUBSECTION_PATTERN.match(next_line)
-                    ):
+                    if ChangelogUpdater.VERSION_SECTION_PATTERN.match(
+                        next_line
+                    ) or ChangelogUpdater.SUBSECTION_PATTERN.match(next_line):
                         lines.insert(next_line_idx, "\n")
 
             else:

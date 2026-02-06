@@ -80,18 +80,14 @@ class TestUpdateOIDCConfigEndpoint:
             "redirect_uri": "https://tidewatch.local/api/v1/auth/oidc/callback",
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/oidc/config", json=config_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "message" in data
         assert "updated successfully" in data["message"].lower()
 
-    async def test_update_config_preserves_masked_secret(
-        self, authenticated_client, db
-    ):
+    async def test_update_config_preserves_masked_secret(self, authenticated_client, db):
         """Test preserves existing secret when masked value sent."""
         from app.services.settings_service import SettingsService
 
@@ -109,9 +105,7 @@ class TestUpdateOIDCConfigEndpoint:
             "redirect_uri": "",
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/oidc/config", json=config_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -171,9 +165,7 @@ class TestOIDCTestEndpoint:
                 "issuer": "https://auth.example.com",
             }
 
-            response = await authenticated_client.post(
-                "/api/v1/auth/oidc/test", json=config_data
-            )
+            response = await authenticated_client.post("/api/v1/auth/oidc/test", json=config_data)
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -260,9 +252,7 @@ class TestOIDCLoginEndpoint:
                     "abc123",
                 )
 
-                response = await client.get(
-                    "/api/v1/auth/oidc/login", follow_redirects=False
-                )
+                response = await client.get("/api/v1/auth/oidc/login", follow_redirects=False)
 
                 assert response.status_code == status.HTTP_302_FOUND
                 assert "location" in response.headers
@@ -283,16 +273,12 @@ class TestOIDCCallbackEndpoint:
 
     async def test_callback_invalid_state(self, client):
         """Test invalid state returns 400 (CSRF protection)."""
-        response = await client.get(
-            "/api/v1/auth/oidc/callback?code=abc123&state=invalid-state"
-        )
+        response = await client.get("/api/v1/auth/oidc/callback?code=abc123&state=invalid-state")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "invalid or expired state" in response.json()["detail"].lower()
 
-    @pytest.mark.skip(
-        reason="Requires complete OIDC flow mocking with state/nonce validation"
-    )
+    @pytest.mark.skip(reason="Requires complete OIDC flow mocking with state/nonce validation")
     async def test_callback_valid_state_code_returns_token(self, client, db):
         """Test valid state + code returns JWT token."""
         pass

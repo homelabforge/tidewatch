@@ -42,9 +42,7 @@ class DockerfileParser:
                 # Fall back to default
                 self.projects_directory = Path("/projects").resolve()
         except (ValueError, FileNotFoundError) as e:
-            logger.error(
-                f"Invalid projects directory path: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Invalid projects directory path: {sanitize_log_message(str(e))}")
             # Fall back to default
             self.projects_directory = Path("/projects").resolve()
 
@@ -113,9 +111,7 @@ class DockerfileParser:
         """
         try:
             # Find Dockerfile
-            dockerfile_path = await self._find_dockerfile(
-                container, manual_dockerfile_path
-            )
+            dockerfile_path = await self._find_dockerfile(container, manual_dockerfile_path)
             if not dockerfile_path:
                 logger.warning(
                     f"Could not find Dockerfile for container {sanitize_log_message(str(container.name))}"
@@ -153,9 +149,7 @@ class DockerfileParser:
             )
             return []
 
-    async def _find_dockerfile(
-        self, container: Container, manual_path: str | None
-    ) -> Path | None:
+    async def _find_dockerfile(self, container: Container, manual_path: str | None) -> Path | None:
         """
         Find the Dockerfile for a container.
 
@@ -211,9 +205,7 @@ class DockerfileParser:
                         self.projects_directory.resolve(),
                         compose_path.parent.resolve(),
                     ]
-                    if any(
-                        str(resolved).startswith(str(parent)) for parent in safe_parents
-                    ):
+                    if any(str(resolved).startswith(str(parent)) for parent in safe_parents):
                         return path
                     else:
                         logger.warning(
@@ -254,9 +246,7 @@ class DockerfileParser:
                 #   FROM node:22-alpine
                 #   FROM node:22-alpine AS builder
                 #   FROM python:3.14-slim
-                match = re.match(
-                    r"^FROM\s+([^\s]+)(?:\s+AS\s+([^\s]+))?", line, re.IGNORECASE
-                )
+                match = re.match(r"^FROM\s+([^\s]+)(?:\s+AS\s+([^\s]+))?", line, re.IGNORECASE)
 
                 if match:
                     full_image = match.group(1)
@@ -457,7 +447,9 @@ class DockerfileParser:
                         new_prefix = self._extract_version_prefix(new_dep.latest_tag)
                         if new_prefix and new_prefix != existing.ignored_version_prefix:
                             # Compare version prefixes to see if it's actually newer
-                            if self._is_version_greater(new_prefix, existing.ignored_version_prefix):
+                            if self._is_version_greater(
+                                new_prefix, existing.ignored_version_prefix
+                            ):
                                 logger.info(
                                     f"Clearing ignore for {existing.image_name} - "
                                     f"new major.minor {new_prefix} > {existing.ignored_version_prefix}"
@@ -468,7 +460,11 @@ class DockerfileParser:
                                 existing.ignored_by = None
                                 existing.ignored_at = None
                                 existing.ignored_reason = None
-                    elif existing.ignored and existing.ignored_version and not existing.ignored_version_prefix:
+                    elif (
+                        existing.ignored
+                        and existing.ignored_version
+                        and not existing.ignored_version_prefix
+                    ):
                         # Legacy fallback: exact version matching for old ignores without prefix
                         if new_dep.latest_tag != existing.ignored_version:
                             logger.info(
@@ -598,15 +594,11 @@ class DockerfileParser:
 
         except OperationalError as e:
             await session.rollback()
-            logger.error(
-                f"Database error in bulk update check: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Database error in bulk update check: {sanitize_log_message(str(e))}")
             raise
         except (ValueError, AttributeError) as e:
             await session.rollback()
-            logger.error(
-                f"Invalid data in bulk update check: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Invalid data in bulk update check: {sanitize_log_message(str(e))}")
             raise
 
         return stats

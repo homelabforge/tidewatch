@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
 
 from app.database import get_db
+from app.dependencies import get_container_or_404
 from app.models.container import Container
 from app.models.history import UpdateHistory
 from app.models.update import Update
@@ -50,19 +51,13 @@ router = APIRouter()
 async def list_containers(
     admin: dict | None = Depends(require_auth),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(
-        100, ge=1, le=1000, description="Maximum number of records to return"
-    ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
     policy: str | None = Query(
         None,
         description="Filter by update policy (patch-only, minor-and-patch, auto, security, manual, disabled)",
     ),
-    name: str | None = Query(
-        None, description="Search by container name (partial match)"
-    ),
-    image: str | None = Query(
-        None, description="Search by image name (partial match)"
-    ),
+    name: str | None = Query(None, description="Search by container name (partial match)"),
+    image: str | None = Query(None, description="Search by image name (partial match)"),
     db: AsyncSession = Depends(get_db),
 ) -> list[ContainerSchema]:
     """List all tracked containers with pagination and filtering.
@@ -93,14 +88,13 @@ async def list_containers(
 
     result = await db.execute(query)
     containers = result.scalars().all()
-    return containers
+    return list(containers)
 
 
 @router.get("/{container_id}", response_model=ContainerSchema)
 async def get_container(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> ContainerSchema:
     """Get basic container details by ID.
 
@@ -110,12 +104,6 @@ async def get_container(
     Returns:
         Container details
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     response = ContainerSchema.model_validate(container)
     if hasattr(response, "health_check_has_auth"):
         response.health_check_has_auth = bool(container.health_check_auth)
@@ -124,8 +112,8 @@ async def get_container(
 
 @router.get("/{container_id}/details", response_model=ContainerDetailsSchema)
 async def get_container_details(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerDetailsSchema:
     """Get comprehensive container details including history and updates.
@@ -136,19 +124,12 @@ async def get_container_details(
     Returns:
         Detailed container information with history timeline and available updates
     """
-    # Get container
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get current pending/approved update
     update_result = await db.execute(
         select(Update)
         .where(
             and_(
-                Update.container_id == container_id,
+                Update.container_id == container.id,
                 Update.status.in_(["pending", "approved"]),
             )
         )
@@ -167,7 +148,7 @@ async def get_container_details(
             undefer(UpdateHistory.dependency_name),
             undefer(UpdateHistory.file_path),
         )
-        .where(UpdateHistory.container_id == container_id)
+        .where(UpdateHistory.container_id == container.id)
         .order_by(desc(UpdateHistory.started_at))
         .limit(20)
     )
@@ -192,9 +173,7 @@ async def get_container_details(
     # Build response
     details = ContainerDetailsSchema(
         container=ContainerSchema.model_validate(container),
-        current_update=UpdateInfoSchema.model_validate(current_update)
-        if current_update
-        else None,
+        current_update=UpdateInfoSchema.model_validate(current_update) if current_update else None,
         history=[HistoryItemSchema.model_validate(h) for h in history],
         health_status=health_status,
         last_health_check=datetime.now(UTC),
@@ -206,12 +185,10 @@ async def get_container_details(
 
 @router.get("/{container_id}/history", response_model=list[HistoryItemSchema])
 async def get_container_history(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(
-        50, ge=1, le=500, description="Maximum number of records to return"
-    ),
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of records to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[HistoryItemSchema]:
     """Get update history for a specific container.
@@ -224,19 +201,10 @@ async def get_container_history(
     Returns:
         List of update history entries for the container
     """
-    # Verify container exists
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(
-            status_code=404, detail=f"Container with ID {container_id} not found"
-        )
-
     # Get update history (undefer deferred columns for Pydantic validation)
     history_result = await db.execute(
         select(UpdateHistory)
-        .where(UpdateHistory.container_id == container_id)
+        .where(UpdateHistory.container_id == container.id)
         .options(
             undefer(UpdateHistory.event_type),
             undefer(UpdateHistory.dependency_type),
@@ -255,9 +223,9 @@ async def get_container_history(
 
 @router.put("/{container_id}", response_model=ContainerSchema)
 async def update_container(
-    container_id: int,
     update: ContainerUpdate,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerSchema:
     """Update container policy and settings.
@@ -269,12 +237,6 @@ async def update_container(
     Returns:
         Updated container
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Update fields if provided
     if update.policy is not None:
         container.policy = update.policy
@@ -286,9 +248,7 @@ async def update_container(
         container.vulnforge_enabled = update.vulnforge_enabled
     if update.health_check_url is not None:
         # Empty string should be stored as None
-        container.health_check_url = (
-            update.health_check_url if update.health_check_url else None
-        )
+        container.health_check_url = update.health_check_url if update.health_check_url else None
     if update.health_check_method is not None:
         if update.health_check_method not in ["auto", "http", "docker"]:
             raise HTTPException(
@@ -298,14 +258,10 @@ async def update_container(
         container.health_check_method = update.health_check_method
     if update.health_check_auth is not None:
         # Empty string should be stored as None (clears auth)
-        container.health_check_auth = (
-            update.health_check_auth if update.health_check_auth else None
-        )
+        container.health_check_auth = update.health_check_auth if update.health_check_auth else None
     if update.release_source is not None:
         # Empty string should be stored as None
-        container.release_source = (
-            update.release_source if update.release_source else None
-        )
+        container.release_source = update.release_source if update.release_source else None
     if update.is_my_project is not None:
         container.is_my_project = update.is_my_project
 
@@ -317,9 +273,9 @@ async def update_container(
 
 @router.put("/{container_id}/policy", response_model=ContainerSchema)
 async def update_container_policy(
-    container_id: int,
     policy_update: PolicyUpdate,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerSchema:
     """Quick update for container policy.
@@ -336,12 +292,6 @@ async def update_container_policy(
             status_code=400,
             detail=f"Invalid policy. Must be one of: {', '.join(sorted(VALID_POLICIES))}",
         )
-
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
 
     container.policy = policy_update.policy
     await db.commit()
@@ -374,8 +324,8 @@ async def sync_containers(
 
 @router.delete("/{container_id}")
 async def delete_container(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Delete a container from tracking.
@@ -386,12 +336,6 @@ async def delete_container(
     Returns:
         Success message
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     await db.delete(container)
     await db.commit()
 
@@ -400,8 +344,8 @@ async def delete_container(
 
 @router.post("/{container_id}/exclude")
 async def exclude_container(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Exclude container from automatic updates by setting policy to 'disabled'.
@@ -412,12 +356,6 @@ async def exclude_container(
     Returns:
         Updated container
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Store previous policy if not already disabled
     if container.policy != "disabled":
         # We don't have a field to store previous policy, so we'll just set to disabled
@@ -434,8 +372,8 @@ async def exclude_container(
 
 @router.post("/{container_id}/include")
 async def include_container(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Include previously excluded container by setting policy to 'manual'.
@@ -446,12 +384,6 @@ async def include_container(
     Returns:
         Updated container
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Set to manual policy (conservative default)
     if container.policy == "disabled":
         container.policy = "manual"
@@ -478,14 +410,13 @@ async def list_excluded_containers(
         select(Container).where(Container.policy == "disabled").order_by(Container.name)
     )
     containers = result.scalars().all()
-    return containers
+    return list(containers)
 
 
 @router.get("/{container_id}/dependencies")
 async def get_container_dependencies(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container dependencies and dependents.
 
@@ -495,12 +426,6 @@ async def get_container_dependencies(
     Returns:
         Dict with dependencies and dependents arrays
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     import json
 
     dependencies = []
@@ -527,9 +452,9 @@ async def get_container_dependencies(
 
 @router.put("/{container_id}/dependencies")
 async def update_container_dependencies(
-    container_id: int,
     dependencies: list[str],
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Update container dependencies.
@@ -541,24 +466,14 @@ async def update_container_dependencies(
     Returns:
         Success message with updated dependencies
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Validate dependencies
-    valid, error = await DependencyManager.validate_dependencies(
-        db, container.name, dependencies
-    )
+    valid, error = await DependencyManager.validate_dependencies(db, container.name, dependencies)
 
     if not valid:
         raise HTTPException(status_code=400, detail=error)
 
     # Update dependencies and reverse links
-    await DependencyManager.update_container_dependencies(
-        db, container.name, dependencies
-    )
+    await DependencyManager.update_container_dependencies(db, container.name, dependencies)
 
     return {
         "success": True,
@@ -569,9 +484,8 @@ async def update_container_dependencies(
 
 @router.get("/{container_id}/update-window")
 async def get_container_update_window(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container update window configuration.
 
@@ -581,12 +495,6 @@ async def get_container_update_window(
     Returns:
         Dict with update window configuration
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Validate format if set
     valid = True
     error = None
@@ -605,9 +513,9 @@ async def get_container_update_window(
 
 @router.put("/{container_id}/update-window")
 async def update_container_update_window(
-    container_id: int,
     window_update: UpdateWindowUpdate,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Update container update window.
@@ -619,21 +527,13 @@ async def update_container_update_window(
     Returns:
         Success message with updated window
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     update_window = window_update.update_window
 
     # Validate format if not empty
     if update_window:
         valid, error = UpdateWindow.validate_format(update_window)
         if not valid:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid window format: {error}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid window format: {error}")
 
     container.update_window = update_window if update_window else None
     await db.commit()
@@ -648,9 +548,8 @@ async def update_container_update_window(
 
 @router.get("/{container_id}/metrics")
 async def get_container_metrics(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container resource metrics (CPU, memory, network, disk I/O).
 
@@ -660,13 +559,6 @@ async def get_container_metrics(
     Returns:
         Dict with container metrics
     """
-    # Get container from database
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Check if container is running
     is_running = await docker_stats_service.check_container_running(container.name)
 
@@ -680,17 +572,15 @@ async def get_container_metrics(
     stats = await docker_stats_service.get_container_stats(container.name)
 
     if not stats:
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve container metrics"
-        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve container metrics")
 
     return stats
 
 
 @router.get("/{container_id}/metrics/history")
 async def get_container_metrics_history(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     period: str = Query(default="24h", pattern="^(1h|6h|24h|7d|30d)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
@@ -706,13 +596,6 @@ async def get_container_metrics_history(
     from datetime import datetime, timedelta
 
     from app.models.metrics_history import MetricsHistory
-
-    # Get container
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
 
     # Calculate time range based on period
     now = datetime.now(UTC)
@@ -732,7 +615,7 @@ async def get_container_metrics_history(
         select(MetricsHistory)
         .where(
             and_(
-                MetricsHistory.container_id == container_id,
+                MetricsHistory.container_id == container.id,
                 MetricsHistory.collected_at >= start_time,
             )
         )
@@ -743,7 +626,7 @@ async def get_container_metrics_history(
     # Convert to list of dicts for JSON response
     return [
         {
-            "timestamp": m.collected_at.isoformat(),
+            "timestamp": m.collected_at.isoformat() if m.collected_at else None,
             "cpu_percent": m.cpu_percent,
             "memory_usage": m.memory_usage,
             "memory_limit": m.memory_limit,
@@ -760,9 +643,8 @@ async def get_container_metrics_history(
 
 @router.get("/{container_id}/detect-health-check")
 async def detect_health_check(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Detect health check URL from compose file.
 
@@ -771,12 +653,6 @@ async def detect_health_check(
     - Host from traefik labels
     - Combines them into a full URL
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Extract health check URL from compose file
     detected_url = ComposeParser.extract_health_check_url(
         container.compose_file, container.service_name
@@ -795,21 +671,14 @@ async def detect_health_check(
 
 @router.get("/{container_id}/detect-release-source")
 async def detect_release_source(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Detect release source from image registry.
 
     Extracts GitHub repository from image string.
     Currently supports ghcr.io images.
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Extract release source from image
     detected_source = ComposeParser.extract_release_source(container.image)
 
@@ -828,9 +697,8 @@ async def detect_release_source(
 
 @router.post("/{container_id}/restart")
 async def restart_container(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
+    container: Container = Depends(get_container_or_404),
 ) -> dict[str, str]:
     """Restart a container using docker compose.
 
@@ -847,13 +715,6 @@ async def restart_container(
         validate_container_name,
     )
 
-    # Get container
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Validate container name to prevent command injection
     try:
         validated_name = validate_container_name(container.name)
@@ -863,9 +724,7 @@ async def restart_container(
     # Get compose file path
     compose_file = container.compose_file
     if not compose_file:
-        raise HTTPException(
-            status_code=400, detail="Container has no associated compose file"
-        )
+        raise HTTPException(status_code=400, detail="Container has no associated compose file")
 
     # Validate compose file path to prevent path traversal
     try:
@@ -902,8 +761,8 @@ async def restart_container(
 
 @router.post("/{container_id}/recheck-updates")
 async def recheck_updates(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Re-check updates for a single container.
@@ -917,12 +776,6 @@ async def recheck_updates(
     Returns:
         Update check results with success status
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Import UpdateChecker
     from app.services.update_checker import UpdateChecker
 
@@ -939,16 +792,14 @@ async def recheck_updates(
             "message": f"Update check completed for {container.name}",
         }
     except Exception as e:
-        logger.error(
-            f"Failed to re-check updates for {container.name}: {e}", exc_info=True
-        )
+        logger.error(f"Failed to re-check updates for {container.name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to re-check updates")
 
 
 @router.get("/{container_id}/logs")
 async def get_container_logs(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     tail: int = Query(default=100, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -964,21 +815,13 @@ async def get_container_logs(
     from datetime import datetime
 
     import docker
+    from docker.errors import APIError, DockerException, NotFound
 
     from app.services import SettingsService
 
-    # Get container
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     try:
         # Get docker socket
-        docker_socket = (
-            await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
-        )
+        docker_socket = await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
 
         # Determine docker host format
         if docker_socket.startswith(("tcp://", "unix://")):
@@ -1000,11 +843,11 @@ async def get_container_logs(
 
         return {"logs": log_lines, "timestamp": datetime.now(UTC).isoformat()}
 
-    except docker.errors.NotFound:
+    except NotFound:
         raise HTTPException(status_code=404, detail="Container not found in Docker")
-    except docker.errors.APIError as e:
+    except APIError as e:
         safe_error_response(logger, e, "Docker API error", status_code=500)
-    except docker.errors.DockerException as e:
+    except DockerException as e:
         safe_error_response(logger, e, "Docker error", status_code=500)
     except OperationalError as e:
         safe_error_response(logger, e, "Database error", status_code=500)
@@ -1014,8 +857,8 @@ async def get_container_logs(
 
 @router.get("/{container_id}/app-dependencies", response_model=AppDependenciesResponse)
 async def get_app_dependencies(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> AppDependenciesResponse:
     """Get application dependencies for a container.
@@ -1033,13 +876,6 @@ async def get_app_dependencies(
 
     from app.services.app_dependencies import scanner
 
-    # Verify container exists and is marked as "My Project"
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     if not container.is_my_project:
         raise HTTPException(
             status_code=403,
@@ -1048,12 +884,12 @@ async def get_app_dependencies(
 
     try:
         # Try to fetch persisted dependencies first
-        dependencies = await scanner.get_persisted_dependencies(db, container_id)
+        dependencies = await scanner.get_persisted_dependencies(db, container.id)
 
         # If no dependencies found, scan and persist
         if not dependencies:
             logger.info(
-                f"No persisted dependencies found for container {sanitize_log_message(str(container_id))}, scanning..."
+                f"No persisted dependencies found for container {sanitize_log_message(str(container.id))}, scanning..."
             )
             # Scan dependencies
             scanned_deps = await scanner.scan_container_dependencies(
@@ -1062,11 +898,9 @@ async def get_app_dependencies(
 
             # Persist to database
             if scanned_deps:
-                await scanner.persist_dependencies(db, container_id, scanned_deps)
+                await scanner.persist_dependencies(db, container.id, scanned_deps)
                 # Fetch the persisted dependencies with IDs
-                dependencies = await scanner.get_persisted_dependencies(
-                    db, container_id
-                )
+                dependencies = await scanner.get_persisted_dependencies(db, container.id)
             else:
                 dependencies = []
 
@@ -1079,9 +913,7 @@ async def get_app_dependencies(
         last_scan = dependencies[0].last_checked if dependencies else datetime.utcnow()
 
         return AppDependenciesResponse(
-            dependencies=[
-                AppDependencySchema.model_validate(dep) for dep in dependencies
-            ],
+            dependencies=[AppDependencySchema.model_validate(dep) for dep in dependencies],
             total=total,
             with_updates=with_updates,
             with_security_issues=with_security,
@@ -1090,25 +922,25 @@ async def get_app_dependencies(
         )
     except (OSError, PermissionError) as e:
         logger.error(
-            f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"File system error scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to access dependency files")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse dependencies")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dependency scanner not available")
 
 
 @router.post("/{container_id}/app-dependencies/scan")
 async def scan_app_dependencies(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Force a rescan of application dependencies.
@@ -1122,13 +954,6 @@ async def scan_app_dependencies(
         Status message
     """
     from app.services.app_dependencies import scanner
-
-    # Verify container exists and is marked as "My Project"
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
 
     if not container.is_my_project:
         raise HTTPException(
@@ -1144,7 +969,7 @@ async def scan_app_dependencies(
 
         # Persist to database
         if dependencies:
-            await scanner.persist_dependencies(db, container_id, dependencies)
+            await scanner.persist_dependencies(db, container.id, dependencies)
 
         return {
             "message": "Dependency scan completed and persisted",
@@ -1153,17 +978,17 @@ async def scan_app_dependencies(
         }
     except (OSError, PermissionError) as e:
         logger.error(
-            f"File system error scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"File system error scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to access dependency files")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse dependencies")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module scanning dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dependency scanner not available")
 
@@ -1173,9 +998,9 @@ async def scan_app_dependencies(
     response_model=DockerfileDependenciesResponse,
 )
 async def get_dockerfile_dependencies(
-    container_id: int,
     include_ignored: bool = Query(True, description="Include ignored dependencies"),
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> DockerfileDependenciesResponse:
     """Get Dockerfile dependencies for a container.
@@ -1186,18 +1011,9 @@ async def get_dockerfile_dependencies(
     try:
         from app.services.dockerfile_parser import DockerfileParser
 
-        # Get container
-        result = await db.execute(select(Container).where(Container.id == container_id))
-        container = result.scalar_one_or_none()
-
-        if not container:
-            raise HTTPException(status_code=404, detail="Container not found")
-
         # Get dependencies from database
         parser = DockerfileParser()
-        all_dependencies = await parser.get_container_dockerfile_dependencies(
-            db, container_id
-        )
+        all_dependencies = await parser.get_container_dockerfile_dependencies(db, container.id)
 
         # Always include ignored dependencies (frontend handles display logic)
         # The include_ignored parameter is kept for backwards compatibility but defaults to True
@@ -1207,13 +1023,9 @@ async def get_dockerfile_dependencies(
             dependencies = all_dependencies
 
         return DockerfileDependenciesResponse(
-            dependencies=[
-                DockerfileDependencySchema.model_validate(dep) for dep in dependencies
-            ],
+            dependencies=[DockerfileDependencySchema.model_validate(dep) for dep in dependencies],
             total=len(dependencies),
-            with_updates=sum(
-                1 for dep in dependencies if dep.update_available and not dep.ignored
-            ),
+            with_updates=sum(1 for dep in dependencies if dep.update_available and not dep.ignored),
             last_scan=dependencies[0].last_checked if dependencies else None,
             scan_status="idle",
         )
@@ -1221,27 +1033,25 @@ async def get_dockerfile_dependencies(
         raise
     except OperationalError as e:
         logger.error(
-            f"Database error getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Database error getting Dockerfile dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail="Database error retrieving dependencies"
-        )
+        raise HTTPException(status_code=500, detail="Database error retrieving dependencies")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data getting Dockerfile dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse dependency data")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module getting Dockerfile dependencies for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module getting Dockerfile dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dockerfile parser not available")
 
 
 @router.post("/{container_id}/dockerfile-dependencies/scan")
 async def scan_dockerfile_dependencies(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     manual_path: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1260,53 +1070,38 @@ async def scan_dockerfile_dependencies(
     try:
         from app.services.dockerfile_parser import DockerfileParser
 
-        # Get container
-        result = await db.execute(select(Container).where(Container.id == container_id))
-        container = result.scalar_one_or_none()
-
-        if not container:
-            raise HTTPException(status_code=404, detail="Container not found")
-
         # Scan Dockerfile
         parser = DockerfileParser()
-        dependencies = await parser.scan_container_dockerfile(
-            db, container, manual_path
-        )
+        dependencies = await parser.scan_container_dockerfile(db, container, manual_path)
 
         return {
             "success": True,
             "message": "Dockerfile scan completed",
             "dependencies_found": len(dependencies),
-            "base_images": sum(
-                1 for dep in dependencies if dep.dependency_type == "base_image"
-            ),
-            "build_images": sum(
-                1 for dep in dependencies if dep.dependency_type == "build_image"
-            ),
+            "base_images": sum(1 for dep in dependencies if dep.dependency_type == "base_image"),
+            "build_images": sum(1 for dep in dependencies if dep.dependency_type == "build_image"),
             "updates_available": sum(1 for dep in dependencies if dep.update_available),
         }
     except HTTPException:
         raise
     except (OSError, PermissionError) as e:
         logger.error(
-            f"File system error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"File system error scanning Dockerfile for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to access Dockerfile")
     except OperationalError as e:
         logger.error(
-            f"Database error scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Database error scanning Dockerfile for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail="Database error saving dependencies"
-        )
+        raise HTTPException(status_code=500, detail="Database error saving dependencies")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data scanning Dockerfile for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse Dockerfile")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module scanning Dockerfile for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module scanning Dockerfile for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dockerfile parser not available")
 
@@ -1378,7 +1173,7 @@ async def scan_my_projects(
         skipped_count = int(results.get("skipped", 0))
 
         # Build response with only verified-safe data
-        response_results = {
+        response_results: dict[str, int | str] = {
             "added": added_count,
             "updated": updated_count,
             "skipped": skipped_count,
@@ -1393,33 +1188,23 @@ async def scan_my_projects(
 
         return {"success": True, "results": response_results}
     except (OSError, PermissionError) as e:
-        logger.error(
-            f"File system error scanning my projects: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=500, detail="Failed to access projects directory"
-        )
+        logger.error(f"File system error scanning my projects: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=500, detail="Failed to access projects directory")
     except OperationalError as e:
-        logger.error(
-            f"Database error scanning my projects: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Database error scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Database error saving projects")
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(
-            f"Invalid data scanning my projects: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Invalid data scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Failed to parse project data")
     except (ImportError, ModuleNotFoundError) as e:
-        logger.error(
-            f"Missing module scanning my projects: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Missing module scanning my projects: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Project scanner not available")
 
 
 @router.get("/{container_id}/http-servers", response_model=HttpServersResponse)
 async def get_http_servers(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> HttpServersResponse:
     """Get HTTP servers detected in a container.
@@ -1430,17 +1215,10 @@ async def get_http_servers(
         from app.models.http_server import HttpServer
         from app.services.http_server_scanner import http_scanner
 
-        # Get container
-        result = await db.execute(select(Container).where(Container.id == container_id))
-        container = result.scalar_one_or_none()
-
-        if not container:
-            raise HTTPException(status_code=404, detail="Container not found")
-
         # Get persisted HTTP servers from database
         result = await db.execute(
             select(HttpServer)
-            .where(HttpServer.container_id == container_id)
+            .where(HttpServer.container_id == container.id)
             .order_by(HttpServer.name)
         )
         servers = result.scalars().all()
@@ -1477,9 +1255,7 @@ async def get_http_servers(
         return HttpServersResponse(
             servers=server_schemas,
             total=len(servers),
-            with_updates=sum(
-                1 for s in servers if s.update_available and not s.ignored
-            ),
+            with_updates=sum(1 for s in servers if s.update_available and not s.ignored),
             last_scan=servers[0].last_checked if servers else None,
             scan_status="idle",
         )
@@ -1487,32 +1263,30 @@ async def get_http_servers(
         raise
     except subprocess.CalledProcessError as e:
         logger.error(
-            f"Docker exec error getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Docker exec error getting HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to execute scanner in container"
-        )
+        raise HTTPException(status_code=500, detail="Failed to execute scanner in container")
     except TimeoutError as e:
         logger.error(
-            f"Timeout getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Timeout getting HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=504, detail="HTTP server scan timed out")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data getting HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse server data")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module getting HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module getting HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="HTTP server scanner not available")
 
 
 @router.post("/{container_id}/http-servers/scan")
 async def scan_http_servers(
-    container_id: int,
     admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Scan a container for running HTTP servers.
@@ -1528,20 +1302,13 @@ async def scan_http_servers(
     try:
         from app.services.http_server_scanner import http_scanner
 
-        # Get container
-        result = await db.execute(select(Container).where(Container.id == container_id))
-        container = result.scalar_one_or_none()
-
-        if not container:
-            raise HTTPException(status_code=404, detail="Container not found")
-
         # Scan for HTTP servers (pass container model for Dockerfile detection)
         servers = await http_scanner.scan_container_http_servers(
             container.name, container_model=container, db=db
         )
 
         # Persist to database
-        persisted = await http_scanner.persist_http_servers(container_id, servers, db)
+        persisted = await http_scanner.persist_http_servers(container.id, servers, db)
 
         return {
             "success": True,
@@ -1549,32 +1316,28 @@ async def scan_http_servers(
             "servers_found": len(persisted),
             "servers": [server.name for server in persisted],
             "updates_available": sum(
-                1
-                for server in persisted
-                if server.update_available and not server.ignored
+                1 for server in persisted if server.update_available and not server.ignored
             ),
         }
     except HTTPException:
         raise
     except subprocess.CalledProcessError as e:
         logger.error(
-            f"Docker exec error scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Docker exec error scanning HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to execute scanner in container"
-        )
+        raise HTTPException(status_code=500, detail="Failed to execute scanner in container")
     except TimeoutError as e:
         logger.error(
-            f"Timeout scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Timeout scanning HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=504, detail="HTTP server scan timed out")
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            f"Invalid data scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Invalid data scanning HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Failed to parse server data")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            f"Missing module scanning HTTP servers for container {sanitize_log_message(str(container_id))}: {sanitize_log_message(str(e))}"
+            f"Missing module scanning HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="HTTP server scanner not available")

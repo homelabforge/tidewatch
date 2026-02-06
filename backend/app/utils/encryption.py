@@ -147,9 +147,7 @@ class EncryptionService:
             # Convert to string
             return decrypted_bytes.decode("utf-8")
         except InvalidToken:
-            logger.error(
-                "Decryption failed: Invalid token (wrong key or tampered data)"
-            )
+            logger.error("Decryption failed: Invalid token (wrong key or tampered data)")
             raise ValueError(
                 "Failed to decrypt data. This could mean:\n"
                 "1. Encryption key has changed\n"

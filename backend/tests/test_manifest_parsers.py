@@ -58,9 +58,7 @@ class TestUpdatePackageJson:
     def test_preserves_semver_caret_prefix(self, tmp_path):
         """Test preserves ^ (caret) semver prefix."""
         package_json = tmp_path / "package.json"
-        package_json.write_text(
-            json.dumps({"dependencies": {"react": "^18.0.0"}}, indent=2)
-        )
+        package_json.write_text(json.dumps({"dependencies": {"react": "^18.0.0"}}, indent=2))
 
         success, content = update_package_json(package_json, "react", "18.2.0")
 
@@ -71,9 +69,7 @@ class TestUpdatePackageJson:
     def test_preserves_semver_tilde_prefix(self, tmp_path):
         """Test preserves ~ (tilde) semver prefix."""
         package_json = tmp_path / "package.json"
-        package_json.write_text(
-            json.dumps({"dependencies": {"vue": "~3.2.0"}}, indent=2)
-        )
+        package_json.write_text(json.dumps({"dependencies": {"vue": "~3.2.0"}}, indent=2))
 
         success, content = update_package_json(package_json, "vue", "3.2.47")
 
@@ -84,9 +80,7 @@ class TestUpdatePackageJson:
     def test_handles_exact_version_no_prefix(self, tmp_path):
         """Test handles exact version (no semver prefix)."""
         package_json = tmp_path / "package.json"
-        package_json.write_text(
-            json.dumps({"dependencies": {"moment": "2.29.4"}}, indent=2)
-        )
+        package_json.write_text(json.dumps({"dependencies": {"moment": "2.29.4"}}, indent=2))
 
         success, content = update_package_json(package_json, "moment", "2.30.0")
 
@@ -97,9 +91,7 @@ class TestUpdatePackageJson:
     def test_updates_dev_dependencies(self, tmp_path):
         """Test updates devDependencies section."""
         package_json = tmp_path / "package.json"
-        package_json.write_text(
-            json.dumps({"devDependencies": {"jest": "^29.0.0"}}, indent=2)
-        )
+        package_json.write_text(json.dumps({"devDependencies": {"jest": "^29.0.0"}}, indent=2))
 
         success, content = update_package_json(
             package_json, "jest", "29.5.0", dependency_type="devDependencies"
@@ -134,9 +126,7 @@ class TestUpdatePackageJson:
     def test_returns_false_when_package_not_found(self, tmp_path):
         """Test returns False when package doesn't exist."""
         package_json = tmp_path / "package.json"
-        package_json.write_text(
-            json.dumps({"dependencies": {"lodash": "^4.17.0"}}, indent=2)
-        )
+        package_json.write_text(json.dumps({"dependencies": {"lodash": "^4.17.0"}}, indent=2))
 
         success, content = update_package_json(package_json, "nonexistent", "1.0.0")
 
@@ -230,9 +220,7 @@ class TestUpdateRequirementsTxt:
     def test_skips_comment_lines(self, tmp_path):
         """Test skips comment-only lines."""
         requirements = tmp_path / "requirements.txt"
-        requirements.write_text(
-            "# This is a comment\nflask==2.0.0\n# Another comment\n"
-        )
+        requirements.write_text("# This is a comment\nflask==2.0.0\n# Another comment\n")
 
         success, content = update_requirements_txt(requirements, "flask", "2.3.2")
 
@@ -366,9 +354,7 @@ fastapi = "^0.95.0"
 class TestUpdateComposerJson:
     """Test suite for update_composer_json() function (PHP)."""
 
-    @pytest.mark.skip(
-        reason="composer.json support needs verification of implementation"
-    )
+    @pytest.mark.skip(reason="composer.json support needs verification of implementation")
     def test_updates_require_dependency(self, tmp_path):
         """Test updates dependency in require section."""
         composer = tmp_path / "composer.json"
@@ -386,15 +372,11 @@ class TestUpdateComposerJson:
         assert updated_data["require"]["symfony/console"] == "^6.3.0"
         assert updated_data["require"]["guzzlehttp/guzzle"] == "^7.5"  # Unchanged
 
-    @pytest.mark.skip(
-        reason="composer.json support needs verification of implementation"
-    )
+    @pytest.mark.skip(reason="composer.json support needs verification of implementation")
     def test_updates_require_dev_dependency(self, tmp_path):
         """Test updates dependency in require-dev section."""
         composer = tmp_path / "composer.json"
-        composer.write_text(
-            json.dumps({"require-dev": {"phpunit/phpunit": "^10.0"}}, indent=4)
-        )
+        composer.write_text(json.dumps({"require-dev": {"phpunit/phpunit": "^10.0"}}, indent=4))
 
         success, content = update_composer_json(
             composer, "phpunit/phpunit", "10.2.0", dependency_type="require-dev"
@@ -407,13 +389,9 @@ class TestUpdateComposerJson:
     def test_returns_false_when_package_not_found(self, tmp_path):
         """Test returns False when package not found."""
         composer = tmp_path / "composer.json"
-        composer.write_text(
-            json.dumps({"require": {"symfony/console": "^6.0"}}, indent=4)
-        )
+        composer.write_text(json.dumps({"require": {"symfony/console": "^6.0"}}, indent=4))
 
-        success, content = update_composer_json(
-            composer, "nonexistent/package", "1.0.0"
-        )
+        success, content = update_composer_json(composer, "nonexistent/package", "1.0.0")
 
         assert success is False
         assert content == ""
@@ -439,9 +417,7 @@ tokio = { version = "1.28", features = ["full"] }
 
         assert success is True
         assert 'serde = "1.0.180"' in content
-        assert (
-            'tokio = { version = "1.28", features = ["full"] }' in content
-        )  # Unchanged
+        assert 'tokio = { version = "1.28", features = ["full"] }' in content  # Unchanged
 
     def test_updates_dependency_with_features(self, tmp_path):
         """Test updates dependency with features dict."""
@@ -517,9 +493,7 @@ require (
 )
 """)
 
-        success, content = update_go_mod(
-            go_mod, "github.com/nonexistent/module", "v1.0.0"
-        )
+        success, content = update_go_mod(go_mod, "github.com/nonexistent/module", "v1.0.0")
 
         assert success is False
         assert content == ""
@@ -527,12 +501,6 @@ require (
 
 class TestManifestParserErrorHandling:
     """Test error handling across all manifest parsers."""
-
-    @pytest.mark.skip(reason="Permission tests behave differently in Docker containers")
-    def test_package_json_handles_permission_error(self, tmp_path):
-        """Test package.json handles permission errors."""
-        # Skip - permission tests behave differently in Docker containers running as root
-        pass
 
     def test_requirements_txt_handles_unicode_error(self, tmp_path):
         """Test requirements.txt handles encoding errors."""
@@ -548,9 +516,7 @@ class TestManifestParserErrorHandling:
     def test_preserves_file_on_error(self, tmp_path):
         """Test original file preserved when update fails."""
         package_json = tmp_path / "package.json"
-        original_content = json.dumps(
-            {"dependencies": {"express": "^4.17.0"}}, indent=2
-        )
+        original_content = json.dumps({"dependencies": {"express": "^4.17.0"}}, indent=2)
         package_json.write_text(original_content)
 
         # Try to update non-existent package (should fail)

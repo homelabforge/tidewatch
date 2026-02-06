@@ -73,9 +73,7 @@ class UpdateApproval(BaseModel):
 class UpdateApply(BaseModel):
     """Update apply request."""
 
-    triggered_by: str = (
-        "user"  # Who triggered the update: username, "system", "scheduler"
-    )
+    triggered_by: str = "user"  # Who triggered the update: username, "system", "scheduler"
 
 
 class UpdateReasoning(BaseModel):

@@ -93,18 +93,10 @@ async def downgrade():
         print("Dropping dockerfile_dependencies table...")
 
         # Drop indexes (SQLite will drop them automatically with the table, but being explicit)
-        await conn.execute(
-            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_container_id")
-        )
-        await conn.execute(
-            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_dependency_type")
-        )
-        await conn.execute(
-            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_update_available")
-        )
-        await conn.execute(
-            text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_last_checked")
-        )
+        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_container_id"))
+        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_dependency_type"))
+        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_update_available"))
+        await conn.execute(text("DROP INDEX IF EXISTS ix_dockerfile_dependencies_last_checked"))
         print("✓ Dropped indexes")
 
         # Drop table

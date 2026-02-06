@@ -22,9 +22,7 @@ async def upgrade():
     """Add latest_major_tag column to containers table."""
     async with engine.begin() as conn:
         # Add column for storing major version updates (nullable, no default)
-        await conn.execute(
-            text("ALTER TABLE containers ADD COLUMN latest_major_tag TEXT NULL")
-        )
+        await conn.execute(text("ALTER TABLE containers ADD COLUMN latest_major_tag TEXT NULL"))
 
 
 async def downgrade():

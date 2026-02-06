@@ -59,7 +59,7 @@ async def upgrade():
             )
 
             result = await conn.execute(text("SELECT changes()"))
-            deleted_count = result.scalar()
+            deleted_count = result.scalar() or 0
             if deleted_count > 0:
                 print(f"✓ Removed {deleted_count} duplicate update record(s)")
             else:

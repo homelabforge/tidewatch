@@ -247,9 +247,7 @@ class TestAnalyticsSummaryEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_summary_vulnerability_trends_structure(
-        self, authenticated_client, db
-    ):
+    async def test_summary_vulnerability_trends_structure(self, authenticated_client, db):
         """Test vulnerability trends have correct structure."""
         response = await authenticated_client.get("/api/v1/analytics/summary")
 

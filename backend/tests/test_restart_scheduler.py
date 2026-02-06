@@ -127,9 +127,7 @@ class TestStartMonitoring:
         # Should not add any jobs
         scheduler.add_job.assert_not_called()
 
-    async def test_uses_custom_interval(
-        self, restart_scheduler, scheduler, mock_settings, db
-    ):
+    async def test_uses_custom_interval(self, restart_scheduler, scheduler, mock_settings, db):
         """Test uses custom monitoring interval from settings."""
         mock_settings.get_bool.return_value = True
         mock_settings.get_int.return_value = 120
@@ -140,9 +138,7 @@ class TestStartMonitoring:
         monitor_call = scheduler.add_job.call_args_list[0]
         assert monitor_call[1]["seconds"] == 120
 
-    async def test_replaces_existing_jobs(
-        self, restart_scheduler, scheduler, mock_settings, db
-    ):
+    async def test_replaces_existing_jobs(self, restart_scheduler, scheduler, mock_settings, db):
         """Test replaces existing jobs when called again."""
         mock_settings.get_bool.return_value = True
 
@@ -192,12 +188,10 @@ class TestMonitorLoop:
         # Should get state for enabled containers only
         assert mock_restart_service.get_or_create_restart_state.call_count == 2
 
-    async def test_handles_database_errors(
-        self, restart_scheduler, db, caplog, mock_async_session
-    ):
+    async def test_handles_database_errors(self, restart_scheduler, db, caplog, mock_async_session):
         """Test handles database errors gracefully."""
         with patch("app.services.restart_scheduler.select") as mock_select:
-            mock_select.side_effect = OperationalError("statement", "params", "orig")
+            mock_select.side_effect = OperationalError("statement", "params", Exception("orig"))
 
             # Should not raise
             await restart_scheduler._monitor_loop()
@@ -457,9 +451,7 @@ class TestCheckAndScheduleRestart:
         # Should schedule restart job
         scheduler.add_job.assert_called_once()
         call_args = scheduler.add_job.call_args[1]
-        assert (
-            call_args["id"] == f"restart_{container.id}_3"
-        )  # consecutive_failures + 1
+        assert call_args["id"] == f"restart_{container.id}_3"  # consecutive_failures + 1
         assert "run_date" in call_args
 
         # Should publish event
@@ -841,14 +833,14 @@ class TestCleanupSuccessfulContainers:
         # Should not reset backoff
         mock_restart_service.check_and_reset_backoff.assert_not_awaited()
 
-    async def test_handles_database_errors(
-        self, restart_scheduler, db, caplog, mock_async_session
-    ):
+    async def test_handles_database_errors(self, restart_scheduler, db, caplog, mock_async_session):
         """Test handles database errors gracefully."""
         from sqlalchemy.exc import OperationalError
 
         with patch("app.services.restart_scheduler.select") as mock_select:
-            mock_select.side_effect = OperationalError("Database error", None, None)
+            mock_select.side_effect = OperationalError(
+                "Database error", None, Exception("db error")
+            )
 
             # Should not raise
             await restart_scheduler._cleanup_successful_containers()

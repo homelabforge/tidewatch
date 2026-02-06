@@ -8,7 +8,6 @@ Tests system information and health endpoints:
 - GET /api/v1/system/metrics - Prometheus metrics
 """
 
-import pytest
 from fastapi import status
 
 from app.models.container import Container
@@ -153,23 +152,53 @@ class TestHealthCheckEndpoint:
         # Should still work without auth
         assert response.status_code == status.HTTP_200_OK
 
-    @pytest.mark.skip("Requires mocking database failure")
-    async def test_health_database_down(self, client):
+    async def test_health_database_down(self, client, monkeypatch):
         """Test health check when database is down."""
-        # This would require mocking database connection failure
-        pass
+        from sqlalchemy.ext.asyncio import AsyncSession
 
-    @pytest.mark.skip("Requires mocking Docker daemon")
-    async def test_health_docker_unreachable(self, client):
+        async def failing_execute(self, *args, **kwargs):
+            raise Exception("Connection refused")
+
+        monkeypatch.setattr(AsyncSession, "execute", failing_execute)
+
+        response = await client.get("/api/v1/system/health")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["components"]["database"] == "unhealthy"
+
+    async def test_health_docker_unreachable(self, client, monkeypatch):
         """Test health check when Docker is unreachable."""
-        # This would require mocking Docker version check failure
-        pass
 
-    @pytest.mark.skip("Requires mocking disk usage")
-    async def test_health_low_disk_space(self, client):
+        async def mock_docker_version():
+            raise Exception("Docker daemon not running")
+
+        monkeypatch.setattr("app.routes.system.get_docker_version", mock_docker_version)
+
+        response = await client.get("/api/v1/system/health")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["components"]["docker"] == "unhealthy"
+
+    async def test_health_low_disk_space(self, client, monkeypatch):
         """Test health check warns on low disk space."""
-        # This would require mocking shutil.disk_usage
-        pass
+        from collections import namedtuple
+
+        DiskUsage = namedtuple("usage", ["total", "used", "free"])
+        # 100GB total, 5GB free = 5% free (below 10% threshold)
+        mock_usage = DiskUsage(
+            total=100_000_000_000,
+            used=95_000_000_000,
+            free=5_000_000_000,
+        )
+        monkeypatch.setattr("app.routes.system.shutil.disk_usage", lambda _: mock_usage)
+
+        response = await client.get("/api/v1/system/health")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["components"]["disk_space"] == "warning"
 
 
 class TestReadinessProbeEndpoint:
@@ -205,10 +234,7 @@ class TestPrometheusMetricsEndpoint:
         response = await client.get("/api/v1/system/metrics")
 
         assert response.status_code == status.HTTP_200_OK
-        assert (
-            response.headers["content-type"]
-            == "text/plain; version=0.0.4; charset=utf-8"
-        )
+        assert response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
 
         content = response.text
         assert "# HELP" in content
@@ -236,7 +262,6 @@ class TestPrometheusMetricsEndpoint:
         assert "tidewatch_containers_total" in content
         assert "tidewatch_containers_monitored" in content
 
-    @pytest.mark.skip("Update model has complex NOT NULL constraints")
     async def test_metrics_includes_update_stats(self, client, db, make_update):
         """Test metrics includes update counters."""
         # Create test container and update

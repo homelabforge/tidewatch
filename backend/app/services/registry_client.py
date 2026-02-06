@@ -800,9 +800,7 @@ class DockerHubClient(RegistryClient):
                 if best_tag and current_version:
                     # If this page has versions older than current, stop searching
                     page_versions = [
-                        self._parse_semver(t["name"])
-                        for t in data.get("results", [])
-                        if self._parse_semver(t["name"])
+                        v for t in data.get("results", []) if (v := self._parse_semver(t["name"]))
                     ]
                     if page_versions and all(v <= current_version for v in page_versions):
                         logger.debug(f"Early exit: found {best_tag}, rest are older")

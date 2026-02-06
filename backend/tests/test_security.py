@@ -135,8 +135,7 @@ class TestMaskSensitive:
     def test_custom_mask_character(self):
         """Test custom mask character."""
         assert (
-            mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X")
-            == "XXXcdef"
+            mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
         )
         assert mask_sensitive("password", visible_chars=3, mask_char="#") == "###ord"
 
@@ -386,10 +385,7 @@ class TestValidateImageName:
     def test_validates_image_with_registry(self):
         """Test validates image name with registry."""
         assert validate_image_name("docker.io/nginx:latest") == "docker.io/nginx:latest"
-        assert (
-            validate_image_name("ghcr.io/user/repo:v1.0.0")
-            == "ghcr.io/user/repo:v1.0.0"
-        )
+        assert validate_image_name("ghcr.io/user/repo:v1.0.0") == "ghcr.io/user/repo:v1.0.0"
 
     def test_validates_image_with_namespace(self):
         """Test validates image name with namespace."""

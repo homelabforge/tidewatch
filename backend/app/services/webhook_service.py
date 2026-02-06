@@ -72,9 +72,7 @@ class WebhookService:
             return True
 
     @staticmethod
-    async def create_webhook(
-        db: AsyncSession, webhook_data: WebhookCreate
-    ) -> WebhookSchema:
+    async def create_webhook(db: AsyncSession, webhook_data: WebhookCreate) -> WebhookSchema:
         """Create a new webhook with SSRF protection.
 
         Args:
@@ -89,7 +87,7 @@ class WebhookService:
         """
         # SSRF protection - check if URL points to private IP
         parsed_url = urlparse(str(webhook_data.url))
-        if WebhookService._is_private_ip(parsed_url.hostname):
+        if parsed_url.hostname and WebhookService._is_private_ip(parsed_url.hostname):
             raise ValueError(
                 f"Webhook URL cannot point to private/internal IP addresses. "
                 f"Host: {parsed_url.hostname}"
@@ -172,7 +170,7 @@ class WebhookService:
         # If URL is being updated, check SSRF protection
         if webhook_data.url:
             parsed_url = urlparse(str(webhook_data.url))
-            if WebhookService._is_private_ip(parsed_url.hostname):
+            if parsed_url.hostname and WebhookService._is_private_ip(parsed_url.hostname):
                 raise ValueError(
                     f"Webhook URL cannot point to private/internal IP addresses. "
                     f"Host: {parsed_url.hostname}"
@@ -310,9 +308,7 @@ class WebhookService:
                             "attempt": attempt + 1,
                         }
                     else:
-                        last_error = (
-                            f"HTTP {response.status_code}: {response.text[:200]}"
-                        )
+                        last_error = f"HTTP {response.status_code}: {response.text[:200]}"
 
             except httpx.TimeoutException:
                 last_error = "Request timeout"

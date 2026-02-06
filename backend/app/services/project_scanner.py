@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from ruamel.yaml import YAML, YAMLError
 from sqlalchemy import select
@@ -21,7 +22,7 @@ class ProjectScanner:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def scan_projects_directory(self) -> dict[str, any]:
+    async def scan_projects_directory(self) -> dict[str, Any]:
         """
         Scan projects directory for dev containers.
 
@@ -53,13 +54,9 @@ class ProjectScanner:
         # Allowed base directories: /projects (production), /tmp (tests), /srv/raid0/docker/build (homelab)
         try:
             if projects_dir.startswith("/projects"):
-                projects_path = sanitize_path(
-                    projects_dir, "/projects", allow_symlinks=False
-                )
+                projects_path = sanitize_path(projects_dir, "/projects", allow_symlinks=False)
             elif projects_dir.startswith("/tmp"):
-                projects_path = sanitize_path(
-                    projects_dir, "/tmp", allow_symlinks=False
-                )
+                projects_path = sanitize_path(projects_dir, "/tmp", allow_symlinks=False)
             elif projects_dir.startswith("/srv/raid0/docker/build"):
                 projects_path = sanitize_path(
                     projects_dir, "/srv/raid0/docker/build", allow_symlinks=False
@@ -85,9 +82,7 @@ class ProjectScanner:
                 }
 
         except (ValueError, FileNotFoundError) as e:
-            logger.error(
-                f"Invalid projects directory path: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Invalid projects directory path: {sanitize_log_message(str(e))}")
             return {
                 "added": 0,
                 "updated": 0,
@@ -306,9 +301,7 @@ class ProjectScanner:
         """
         try:
             # Check if auto-scan is enabled
-            auto_scan_enabled = await SettingsService.get(
-                self.db, "dockerfile_auto_scan"
-            )
+            auto_scan_enabled = await SettingsService.get(self.db, "dockerfile_auto_scan")
             if not auto_scan_enabled or auto_scan_enabled.lower() != "true":
                 return
 
@@ -325,14 +318,10 @@ class ProjectScanner:
             from app.services.dockerfile_parser import DockerfileParser
 
             # Get container object
-            result = await self.db.execute(
-                select(Container).where(Container.id == container_id)
-            )
+            result = await self.db.execute(select(Container).where(Container.id == container_id))
             container = result.scalar_one_or_none()
             if not container:
-                logger.warning(
-                    f"Container {container_id} not found for Dockerfile scan"
-                )
+                logger.warning(f"Container {container_id} not found for Dockerfile scan")
                 return
 
             logger.info(f"Auto-scanning Dockerfile for container {container_id}")
@@ -340,9 +329,7 @@ class ProjectScanner:
             dependencies = await parser.scan_container_dockerfile(
                 self.db, container, str(dockerfile_path)
             )
-            logger.info(
-                f"Dockerfile scan completed: {len(dependencies)} dependencies found"
-            )
+            logger.info(f"Dockerfile scan completed: {len(dependencies)} dependencies found")
 
         except (OSError, PermissionError) as e:
             logger.error(

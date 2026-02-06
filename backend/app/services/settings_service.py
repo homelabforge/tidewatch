@@ -560,9 +560,7 @@ class SettingsService:
         }
         legacy_changes = False
         for legacy_key, new_key in legacy_key_map.items():
-            legacy_result = await db.execute(
-                select(Setting).where(Setting.key == legacy_key)
-            )
+            legacy_result = await db.execute(select(Setting).where(Setting.key == legacy_key))
             legacy_setting = legacy_result.scalar_one_or_none()
             if not legacy_setting:
                 continue
@@ -578,15 +576,11 @@ class SettingsService:
                 await db.delete(legacy_setting)
             else:
                 legacy_setting.key = new_key
-                legacy_setting.category = default_config.get(
-                    "category", legacy_setting.category
-                )
+                legacy_setting.category = default_config.get("category", legacy_setting.category)
                 legacy_setting.description = default_config.get(
                     "description", legacy_setting.description
                 )
-                legacy_setting.encrypted = default_config.get(
-                    "encrypted", legacy_setting.encrypted
-                )
+                legacy_setting.encrypted = default_config.get("encrypted", legacy_setting.encrypted)
             legacy_changes = True
 
         if legacy_changes:
@@ -607,9 +601,7 @@ class SettingsService:
         await db.commit()
 
     @classmethod
-    async def get(
-        cls, db: AsyncSession, key: str, default: str | None = None
-    ) -> str | None:
+    async def get(cls, db: AsyncSession, key: str, default: str | None = None) -> str | None:
         """Get setting value by key.
 
         Automatically decrypts encrypted settings if encryption is configured.
@@ -648,7 +640,7 @@ class SettingsService:
                 )
                 return None
 
-        return setting.value
+        return str(setting.value)
 
     @staticmethod
     async def get_bool(db: AsyncSession, key: str, default: bool = False) -> bool:
@@ -696,9 +688,7 @@ class SettingsService:
             try:
                 encryption_service = get_encryption_service()
                 value_to_store = encryption_service.encrypt(value)
-                logger.debug(
-                    f"Encrypted setting '{sanitize_log_message(str(key))}' before storing"
-                )
+                logger.debug(f"Encrypted setting '{sanitize_log_message(str(key))}' before storing")
             except Exception as e:
                 logger.error(
                     f"Failed to encrypt setting '{sanitize_log_message(str(key))}': {sanitize_log_message(str(e))}"
@@ -732,9 +722,7 @@ class SettingsService:
         return setting
 
     @staticmethod
-    async def get_all(
-        db: AsyncSession, category: str | None = None
-    ) -> list[Setting]:
+    async def get_all(db: AsyncSession, category: str | None = None) -> list[Setting]:
         """Get all settings, optionally filtered by category."""
         query = select(Setting)
         if category:
@@ -756,7 +744,7 @@ class SettingsService:
     @staticmethod
     async def get_cors_origins(db: AsyncSession) -> list[str]:
         """Get CORS origins as a list."""
-        origins = await SettingsService.get(db, "cors_origins", "*")
+        origins = await SettingsService.get(db, "cors_origins", "*") or "*"
         if origins == "*":
             return ["*"]
         # Split by comma and strip whitespace

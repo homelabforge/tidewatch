@@ -31,16 +31,12 @@ class DependencyManager:
             MD5 hash of the serialized graph
         """
         # Sort keys and convert sets to sorted lists for deterministic serialization
-        normalized = {
-            name: sorted(list(deps)) for name, deps in sorted(dependencies.items())
-        }
+        normalized = {name: sorted(list(deps)) for name, deps in sorted(dependencies.items())}
         serialized = json.dumps(normalized, sort_keys=True)
         return hashlib.md5(serialized.encode()).hexdigest()
 
     @staticmethod
-    async def get_update_order(
-        db: AsyncSession, container_names: list[str]
-    ) -> list[str]:
+    async def get_update_order(db: AsyncSession, container_names: list[str]) -> list[str]:
         """Get containers in dependency-ordered update sequence with caching.
 
         Containers with no dependencies are updated first, followed by their
@@ -60,9 +56,7 @@ class DependencyManager:
             return []
 
         # Get all containers with their dependencies
-        result = await db.execute(
-            select(Container).where(Container.name.in_(container_names))
-        )
+        result = await db.execute(select(Container).where(Container.name.in_(container_names)))
         containers = {c.name: c for c in result.scalars().all()}
 
         # Build dependency graph
@@ -71,9 +65,7 @@ class DependencyManager:
         for name in container_names:
             container = containers.get(name)
             if not container:
-                logger.warning(
-                    f"Container {sanitize_log_message(str(name))} not found in database"
-                )
+                logger.warning(f"Container {sanitize_log_message(str(name))} not found in database")
                 dependencies[name] = set()
                 continue
 
@@ -87,8 +79,7 @@ class DependencyManager:
                         deps = {d for d in deps_list if d in container_names}
                 except json.JSONDecodeError:
                     logger.warning(
-                        f"Invalid dependencies JSON for {name}: "
-                        f"{container.dependencies}"
+                        f"Invalid dependencies JSON for {name}: {container.dependencies}"
                     )
 
             dependencies[name] = deps
@@ -167,16 +158,12 @@ class DependencyManager:
         if len(result) != len(dependencies):
             # Circular dependency detected
             unprocessed = set(dependencies.keys()) - set(result)
-            raise ValueError(
-                f"Circular dependency detected involving: {', '.join(unprocessed)}"
-            )
+            raise ValueError(f"Circular dependency detected involving: {', '.join(unprocessed)}")
 
         return result
 
     @staticmethod
-    async def auto_detect_dependencies(
-        db: AsyncSession, container_name: str
-    ) -> list[str]:
+    async def auto_detect_dependencies(db: AsyncSession, container_name: str) -> list[str]:
         """Auto-detect container dependencies from Docker compose links/depends_on.
 
         This is a placeholder for future implementation that would parse
@@ -194,9 +181,7 @@ class DependencyManager:
         # - links
         # - network dependencies
         # For now, return empty list (manual configuration required)
-        logger.debug(
-            f"Auto-detect dependencies not yet implemented for {container_name}"
-        )
+        logger.debug(f"Auto-detect dependencies not yet implemented for {container_name}")
         return []
 
     @staticmethod
@@ -221,9 +206,7 @@ class DependencyManager:
             dependencies: List of container names this container depends on
         """
         # Get the container
-        result = await db.execute(
-            select(Container).where(Container.name == container_name)
-        )
+        result = await db.execute(select(Container).where(Container.name == container_name))
         container = result.scalar_one_or_none()
 
         if not container:
@@ -247,9 +230,7 @@ class DependencyManager:
         # Update reverse dependencies (dependents)
         # Remove this container from old dependencies' dependents lists
         for dep_name in old_deps - new_deps:
-            await DependencyManager._remove_from_dependents(
-                db, dep_name, container_name
-            )
+            await DependencyManager._remove_from_dependents(db, dep_name, container_name)
 
         # Add this container to new dependencies' dependents lists
         for dep_name in new_deps - old_deps:
@@ -262,9 +243,7 @@ class DependencyManager:
         logger.info(f"Updated dependencies for {container_name}: {dependencies}")
 
     @staticmethod
-    async def _add_to_dependents(
-        db: AsyncSession, container_name: str, dependent_name: str
-    ):
+    async def _add_to_dependents(db: AsyncSession, container_name: str, dependent_name: str):
         """Add a dependent to a container's dependents list.
 
         Args:
@@ -272,15 +251,12 @@ class DependencyManager:
             container_name: Container that is depended on
             dependent_name: Container that depends on container_name
         """
-        result = await db.execute(
-            select(Container).where(Container.name == container_name)
-        )
+        result = await db.execute(select(Container).where(Container.name == container_name))
         container = result.scalar_one_or_none()
 
         if not container:
             logger.warning(
-                f"Cannot add dependent {dependent_name} to non-existent "
-                f"container {container_name}"
+                f"Cannot add dependent {dependent_name} to non-existent container {container_name}"
             )
             return
 
@@ -299,9 +275,7 @@ class DependencyManager:
         container.dependents = json.dumps(list(dependents))
 
     @staticmethod
-    async def _remove_from_dependents(
-        db: AsyncSession, container_name: str, dependent_name: str
-    ):
+    async def _remove_from_dependents(db: AsyncSession, container_name: str, dependent_name: str):
         """Remove a dependent from a container's dependents list.
 
         Args:
@@ -309,9 +283,7 @@ class DependencyManager:
             container_name: Container that is depended on
             dependent_name: Container to remove from dependents
         """
-        result = await db.execute(
-            select(Container).where(Container.name == container_name)
-        )
+        result = await db.execute(select(Container).where(Container.name == container_name))
         container = result.scalar_one_or_none()
 
         if not container:
@@ -346,9 +318,7 @@ class DependencyManager:
             Tuple of (is_valid, error_message)
         """
         # Check that all dependencies exist
-        result = await db.execute(
-            select(Container.name).where(Container.name.in_(dependencies))
-        )
+        result = await db.execute(select(Container.name).where(Container.name.in_(dependencies)))
         existing = {name for (name,) in result.fetchall()}
 
         missing = set(dependencies) - existing

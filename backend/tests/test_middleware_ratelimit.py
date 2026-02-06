@@ -111,9 +111,6 @@ class TestTokenBucket:
         assert bucket.last_refill > initial_time
 
 
-@pytest.mark.skip(
-    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
-)
 class TestRateLimitMiddleware:
     """Test suite for RateLimitMiddleware."""
 
@@ -246,9 +243,7 @@ class TestRateLimitMiddleware:
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
         request = MagicMock()
-        request.headers.get = MagicMock(
-            side_effect=lambda h: {"X-Real-IP": "203.0.113.42"}.get(h)
-        )
+        request.headers.get = MagicMock(side_effect=lambda h: {"X-Real-IP": "203.0.113.42"}.get(h))
         request.client = None
 
         ip = middleware._get_client_ip(request)
@@ -277,19 +272,18 @@ class TestRateLimitMiddleware:
         async def test():
             return {"message": "success"}
 
-        client1 = TestClient(app)
-        client2 = TestClient(app)
+        client = TestClient(app)
 
-        # Client 1 exhausts their limit
+        # Client 1 (IP: 10.0.0.1) exhausts their limit
         for _ in range(5):
-            client1.get("/test")
+            client.get("/test", headers={"X-Forwarded-For": "10.0.0.1"})
 
         # Client 1 should be rate limited
-        response1 = client1.get("/test")
+        response1 = client.get("/test", headers={"X-Forwarded-For": "10.0.0.1"})
         assert response1.status_code == 429
 
-        # Client 2 should still work (separate bucket)
-        response2 = client2.get("/test")
+        # Client 2 (IP: 10.0.0.2) should still work (separate bucket)
+        response2 = client.get("/test", headers={"X-Forwarded-For": "10.0.0.2"})
         assert response2.status_code == 200
 
     def test_bucket_cleanup_prevents_memory_leak(self):
@@ -297,8 +291,8 @@ class TestRateLimitMiddleware:
         app = FastAPI()
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
-        # Manually manipulate cleanup interval for testing
-        middleware.cleanup_interval = 0.1  # 0.1 seconds
+        # Bypass the cleanup interval time check
+        middleware.last_cleanup = 0
 
         # Create buckets for many IPs
         for i in range(100):
@@ -316,6 +310,9 @@ class TestRateLimitMiddleware:
         """Test aggressive cleanup when exceeding max buckets."""
         app = FastAPI()
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
+
+        # Bypass the cleanup interval time check
+        middleware.last_cleanup = 0
 
         # Create more than max buckets (10,000)
         for i in range(10001):
@@ -351,9 +348,6 @@ class TestRateLimitMiddleware:
         assert "new_ip" in middleware.buckets
 
 
-@pytest.mark.skip(
-    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
-)
 class TestRateLimitSecurity:
     """Test suite for rate limiting security properties."""
 
@@ -387,16 +381,14 @@ class TestRateLimitSecurity:
         async def test():
             return {"message": "success"}
 
-        # Create clients simulating different IPs
-        client1 = TestClient(app)
-        client2 = TestClient(app)
+        client = TestClient(app)
 
-        # Exhaust client1's limit
+        # Exhaust IP 10.0.0.1's limit
         for _ in range(5):
-            client1.get("/test")
+            client.get("/test", headers={"X-Forwarded-For": "10.0.0.1"})
 
-        client1_blocked = client1.get("/test")
-        client2_ok = client2.get("/test")
+        client1_blocked = client.get("/test", headers={"X-Forwarded-For": "10.0.0.1"})
+        client2_ok = client.get("/test", headers={"X-Forwarded-For": "10.0.0.2"})
 
         assert client1_blocked.status_code == 429
         assert client2_ok.status_code == 200
@@ -421,9 +413,6 @@ class TestRateLimitSecurity:
         # This test verifies the logic exists; actual calculation tested in integration
 
 
-@pytest.mark.skip(
-    reason="Rate limiting middleware disabled in test environment (TIDEWATCH_TESTING=true) - integration tests not applicable"
-)
 class TestRateLimitIntegration:
     """Integration tests for rate limiting with real scenarios."""
 

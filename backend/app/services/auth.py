@@ -153,16 +153,12 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     if expires_delta:
         expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(UTC) + timedelta(
-            minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.now(UTC) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "iat": datetime.now(UTC)})
     header = {"alg": JWT_ALGORITHM}
     encoded_jwt = jwt.encode(header, to_encode, _SECRET_KEY)
-    return (
-        encoded_jwt.decode("utf-8") if isinstance(encoded_jwt, bytes) else encoded_jwt
-    )
+    return encoded_jwt.decode("utf-8") if isinstance(encoded_jwt, bytes) else encoded_jwt
 
 
 def get_token_from_request(
@@ -253,12 +249,8 @@ async def get_admin_profile(db: AsyncSession) -> dict | None:
         "username": await SettingsService.get(db, "admin_username", default=""),
         "email": await SettingsService.get(db, "admin_email", default=""),
         "full_name": await SettingsService.get(db, "admin_full_name", default=""),
-        "auth_method": await SettingsService.get(
-            db, "admin_auth_method", default="local"
-        ),
-        "oidc_provider": await SettingsService.get(
-            db, "admin_oidc_provider", default=""
-        ),
+        "auth_method": await SettingsService.get(db, "admin_auth_method", default="local"),
+        "oidc_provider": await SettingsService.get(db, "admin_oidc_provider", default=""),
         "created_at": await SettingsService.get(db, "admin_created_at", default=""),
         "last_login": await SettingsService.get(db, "admin_last_login", default=""),
     }
@@ -279,9 +271,7 @@ async def update_admin_password(db: AsyncSession, new_hash: str) -> None:
     await SettingsService.set(db, "admin_password_hash", new_hash)
 
 
-async def update_admin_oidc_link(
-    db: AsyncSession, oidc_subject: str, provider: str
-) -> None:
+async def update_admin_oidc_link(db: AsyncSession, oidc_subject: str, provider: str) -> None:
     """Link OIDC identity to admin account."""
     await SettingsService.set(db, "admin_oidc_subject", oidc_subject)
     await SettingsService.set(db, "admin_oidc_provider", provider)
@@ -299,9 +289,7 @@ async def update_admin_last_login(db: AsyncSession) -> None:
 # ============================================================================
 
 
-async def authenticate_admin(
-    db: AsyncSession, username: str, password: str
-) -> dict | None:
+async def authenticate_admin(db: AsyncSession, username: str, password: str) -> dict | None:
     """Authenticate admin user by username and password.
 
     Returns:
@@ -357,9 +345,7 @@ async def get_current_admin(
     )
 
     if not token:
-        logger.error(
-            "No credentials provided - %s %s", request.method, request.url.path
-        )
+        logger.error("No credentials provided - %s %s", request.method, request.url.path)
         raise credentials_exception
 
     logger.debug("Processing authentication token")

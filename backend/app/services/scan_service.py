@@ -40,13 +40,9 @@ class ScanService:
         if not container:
             raise ValueError(f"Container with ID {container_id} not found")
 
-        logger.info(
-            f"Container {container.name}: vulnforge_enabled={container.vulnforge_enabled}"
-        )
+        logger.info(f"Container {container.name}: vulnforge_enabled={container.vulnforge_enabled}")
         if not container.vulnforge_enabled:
-            error_msg = (
-                f"VulnForge scanning is disabled for container '{container.name}'"
-            )
+            error_msg = f"VulnForge scanning is disabled for container '{container.name}'"
             logger.error(f"Raising ValueError: {error_msg}")
             raise ValueError(error_msg)
 
@@ -59,14 +55,16 @@ class ScanService:
         async with VulnForgeClient(base_url=vulnforge_url) as client:
             try:
                 # Get vulnerability data from VulnForge
-                image_full = f"{container.image}:{container.current_tag}"
-                vuln_data = await client.get_image_vulnerabilities(image_full)
+                vuln_data = await client.get_image_vulnerabilities(
+                    str(container.image), str(container.current_tag)
+                )
 
                 # Parse vulnerability data
-                total_vulns = vuln_data.get("total_vulnerabilities", 0)
-                severity_counts = vuln_data.get("severity_counts", {})
-                cves = vuln_data.get("cve_list", [])
-                risk_score = vuln_data.get("risk_score")
+                vuln_dict = vuln_data or {}
+                total_vulns = vuln_dict.get("total_vulnerabilities", 0)
+                severity_counts = vuln_dict.get("severity_counts", {})
+                cves = vuln_dict.get("cve_list", [])
+                risk_score = vuln_dict.get("risk_score")
 
                 # Create scan record
                 scan = VulnerabilityScan(
@@ -155,9 +153,7 @@ class ScanService:
             ValueError: If no scan results found
         """
         # Get container
-        container_result = await db.execute(
-            select(Container).where(Container.id == container_id)
-        )
+        container_result = await db.execute(select(Container).where(Container.id == container_id))
         container = container_result.scalar_one_or_none()
 
         if not container:
@@ -240,9 +236,7 @@ class ScanService:
         )
 
         # Get last scan timestamp
-        last_scan_result = await db.execute(
-            select(func.max(VulnerabilityScan.scanned_at))
-        )
+        last_scan_result = await db.execute(select(func.max(VulnerabilityScan.scanned_at)))
         last_scan = last_scan_result.scalar()
 
         return ScanSummarySchema(

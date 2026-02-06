@@ -10,7 +10,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://backend:8788',
+        target: process.env.VITE_API_TARGET || 'http://backend:8788',
         changeOrigin: true,
       },
     },
@@ -19,6 +19,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/__tests__/setup.ts',
+    exclude: ['node_modules/', 'e2e/'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

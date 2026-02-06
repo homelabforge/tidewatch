@@ -28,6 +28,4 @@ async def up(db):
 async def down(db):  # noqa: ARG001
     """Remove compose_project column from containers table."""
     # SQLite doesn't support DROP COLUMN directly in older versions
-    raise NotImplementedError(
-        "Downgrade not supported for SQLite ALTER TABLE ADD COLUMN"
-    )
+    raise NotImplementedError("Downgrade not supported for SQLite ALTER TABLE ADD COLUMN")

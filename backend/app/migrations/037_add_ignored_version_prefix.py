@@ -37,9 +37,7 @@ async def up(db):
 
     if "ignored_version_prefix" not in columns:
         await db.execute(
-            text(
-                "ALTER TABLE http_servers ADD COLUMN ignored_version_prefix VARCHAR(50)"
-            )
+            text("ALTER TABLE http_servers ADD COLUMN ignored_version_prefix VARCHAR(50)")
         )
 
     # ===================================================================
@@ -50,9 +48,7 @@ async def up(db):
 
     if "ignored_version_prefix" not in columns:
         await db.execute(
-            text(
-                "ALTER TABLE app_dependencies ADD COLUMN ignored_version_prefix VARCHAR(50)"
-            )
+            text("ALTER TABLE app_dependencies ADD COLUMN ignored_version_prefix VARCHAR(50)")
         )
 
     await db.commit()

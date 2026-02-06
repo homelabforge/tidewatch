@@ -18,6 +18,11 @@ vi.mock('../services/api', () => ({
       cancelRetry: vi.fn(),
       delete: vi.fn(),
       checkAll: vi.fn(),
+      getCheckJob: vi.fn(),
+      cancelCheckJob: vi.fn(),
+    },
+    containers: {
+      getAll: vi.fn(),
     },
   },
 }))
@@ -27,7 +32,19 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
+}))
+
+// Mock useEventStream hook
+vi.mock('../hooks/useEventStream', () => ({
+  useEventStream: vi.fn(),
+}))
+
+// Mock CheckProgressBar component
+vi.mock('../components/CheckProgressBar', () => ({
+  default: () => null,
+  CheckJobState: {},
 }))
 
 // Mock UpdateCard component for simpler testing
@@ -203,6 +220,7 @@ describe('Updates', () => {
     ;(api.updates.getSecurity as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockUpdates.filter((u) => u.cves_fixed && u.cves_fixed.length > 0)
     )
+    ;(api.containers.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([])
   })
 
   describe('Data loading', () => {
@@ -225,7 +243,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
@@ -314,8 +332,8 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        // Security count shows 2 (mysql and apache)
-        expect(screen.getByText(/Security \(2\)/)).toBeInTheDocument()
+        // Security count shows 3 (nginx, mysql, apache have CVEs)
+        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
       })
     })
   })
@@ -325,7 +343,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
@@ -335,10 +353,10 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const securityButton = screen.getByText(/Security \(2\)/)
+      const securityButton = screen.getByText(/Security \(3\)/)
       fireEvent.click(securityButton)
 
       await waitFor(() => {
@@ -350,13 +368,13 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const allButton = screen.getByText('All Updates')
       expect(allButton).toHaveClass('bg-primary')
 
-      const securityButton = screen.getByText(/Security \(2\)/)
+      const securityButton = screen.getByText(/Security \(3\)/)
       fireEvent.click(securityButton)
 
       await waitFor(() => {
@@ -370,7 +388,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       // All updates except mysql (which is applied)
@@ -383,14 +401,14 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const pendingButton = screen.getByText(/Pending \(3\)/)
       fireEvent.click(pendingButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for mongo/)).toBeInTheDocument()
@@ -402,7 +420,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const approvedButton = screen.getByText(/Approved \(1\)/)
@@ -412,14 +430,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to rejected updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const rejectedButton = screen.getByText(/Rejected \(1\)/)
@@ -429,14 +447,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for redis/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to stale updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const staleButton = screen.getByText(/Stale \(1\)/)
@@ -446,14 +464,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for mongo/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to retrying updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const retryingButton = screen.getByText(/Retrying \(1\)/)
@@ -463,14 +481,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for rabbitmq/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
     it('filters to applied updates only', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const appliedButton = screen.getByText(/Applied \(1\)/)
@@ -480,14 +498,14 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for mysql/)).toBeInTheDocument()
       })
 
-      expect(screen.queryByText(/nginx/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
     it('highlights active filter button', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const pendingButton = screen.getByText(/Pending \(3\)/)
@@ -499,88 +517,95 @@ describe('Updates', () => {
     })
   })
 
-  describe('Check all action', () => {
+  describe('Check updates action', () => {
     it('calls checkAll API when button clicked', async () => {
       ;(api.updates.checkAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-        stats: { checked: 10, updates_found: 5 },
+        job_id: 1,
+        already_running: false,
       })
 
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const checkAllButtons = screen.getAllByText('Check All')
-      fireEvent.click(checkAllButtons[0])
+      const checkButton = screen.getByText('Check Updates')
+      fireEvent.click(checkButton)
 
       await waitFor(() => {
         expect(api.updates.checkAll).toHaveBeenCalled()
       })
     })
 
-    it('shows success toast with stats after checking', async () => {
+    it('shows info toast when check starts', async () => {
       const { toast } = await import('sonner')
       ;(api.updates.checkAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-        stats: { checked: 10, updates_found: 5 },
+        job_id: 1,
+        already_running: false,
       })
 
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const checkAllButtons = screen.getAllByText('Check All')
-      fireEvent.click(checkAllButtons[0])
+      const checkButton = screen.getByText('Check Updates')
+      fireEvent.click(checkButton)
 
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalledWith('Checked 10 containers, found 5 updates')
+        expect(toast.info).toHaveBeenCalledWith('Update check started')
       })
     })
 
-    it('reloads updates after checking', async () => {
+    it('handles already running check', async () => {
+      const { toast } = await import('sonner')
       ;(api.updates.checkAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-        stats: { checked: 10, updates_found: 5 },
+        job_id: 1,
+        already_running: true,
+      })
+      ;(api.updates.getCheckJob as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 1,
+        status: 'running',
+        total_count: 10,
+        checked_count: 5,
+        updates_found: 2,
+        errors_count: 0,
+        current_container: 'nginx',
+        progress_percent: 50,
       })
 
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const checkAllButtons = screen.getAllByText('Check All')
-      fireEvent.click(checkAllButtons[0])
+      const checkButton = screen.getByText('Check Updates')
+      fireEvent.click(checkButton)
 
       await waitFor(() => {
-        expect(api.updates.getAll).toHaveBeenCalledTimes(2) // Initial load + reload
+        expect(toast.info).toHaveBeenCalledWith('Update check already in progress')
       })
     })
 
-    it('handles check all error', async () => {
+    it('handles check error', async () => {
       const { toast } = await import('sonner')
       ;(api.updates.checkAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API Error'))
 
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const checkAllButtons = screen.getAllByText('Check All')
-      fireEvent.click(checkAllButtons[0])
+      const checkButton = screen.getByText('Check Updates')
+      fireEvent.click(checkButton)
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to check for updates')
+        expect(toast.error).toHaveBeenCalledWith('Failed to start update check')
       })
-    })
-
-    it('disables check all button while loading', async () => {
-      render(<Updates />)
-
-      const checkAllButtons = screen.getAllByText('Check All')
-      expect(checkAllButtons[0]).toBeDisabled()
     })
   })
 
@@ -592,7 +617,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const approveButtons = screen.getAllByText('Approve')
@@ -615,7 +640,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -641,7 +666,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -669,7 +694,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -690,7 +715,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -715,7 +740,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
@@ -735,7 +760,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const snoozeButtons = screen.getAllByText('Snooze')
@@ -757,7 +782,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const removeButtons = screen.getAllByText('Remove Container')
@@ -781,7 +806,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const cancelButtons = screen.getAllByText('Cancel Retry')
@@ -803,7 +828,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const deleteButtons = screen.getAllByText('Delete')
@@ -829,7 +854,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const approveButtons = screen.getAllByText('Approve')
@@ -850,7 +875,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const rejectButtons = screen.getAllByText('Reject')
@@ -873,14 +898,13 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const applyButtons = screen.getAllByText('Apply')
       fireEvent.click(applyButtons[0])
 
       await waitFor(() => {
-        // The error message from the Error object is passed through
         expect(toast.error).toHaveBeenCalledWith('API Error')
       })
 
@@ -894,7 +918,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const snoozeButtons = screen.getAllByText('Snooze')
@@ -915,7 +939,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const removeButtons = screen.getAllByText('Remove Container')
@@ -935,7 +959,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const cancelButtons = screen.getAllByText('Cancel Retry')
@@ -956,7 +980,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       const deleteButtons = screen.getAllByText('Delete')
@@ -996,7 +1020,7 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       // Filter to a status with no updates
@@ -1008,7 +1032,7 @@ describe('Updates', () => {
       })
 
       // Then filter to security which should have no rejected updates
-      const securityButton = screen.getByText(/Security \(2\)/)
+      const securityButton = screen.getByText(/Security \(3\)/)
       fireEvent.click(securityButton)
 
       await waitFor(() => {
@@ -1023,40 +1047,32 @@ describe('Updates', () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
       })
 
-      // nginx update has no CVEs, should render without security info
-      const nginxCard = screen.getByTestId('update-card-1')
-      expect(nginxCard).toBeInTheDocument()
-      expect(nginxCard.textContent).not.toContain('Security:')
+      // postgres has empty cves_fixed, should render without security info
+      const postgresCard = screen.getByTestId('update-card-2')
+      expect(postgresCard).toBeInTheDocument()
+      expect(postgresCard.textContent).not.toContain('Security:')
     })
 
     it('handles updates with CVEs', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/nginx/)).toBeInTheDocument()
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      // Switch to applied filter to see mysql update (which has CVEs)
-      const appliedButton = screen.getByText(/Applied \(1\)/)
-      fireEvent.click(appliedButton)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for mysql/)).toBeInTheDocument()
-      })
-
-      // mysql update has 2 CVEs
-      const mysqlCard = screen.getByTestId('update-card-4')
-      expect(mysqlCard.textContent).toContain('Security: 2 CVEs')
+      // nginx has 1 CVE, visible in default filter
+      const nginxCard = screen.getByTestId('update-card-1')
+      expect(nginxCard.textContent).toContain('Security: 1 CVEs')
     })
 
     it('maintains security count across filter switches', async () => {
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Security \(2\)/)).toBeInTheDocument()
+        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
       })
 
       // Switch to pending filter
@@ -1064,8 +1080,8 @@ describe('Updates', () => {
       fireEvent.click(pendingButton)
 
       await waitFor(() => {
-        // Security count should still be 2
-        expect(screen.getByText(/Security \(2\)/)).toBeInTheDocument()
+        // Security count should still be 3
+        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
       })
     })
   })

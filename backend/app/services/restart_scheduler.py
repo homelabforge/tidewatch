@@ -37,18 +37,14 @@ class RestartSchedulerService:
             db: Database session for getting settings
         """
         # Check if restart monitoring is enabled
-        enabled = await SettingsService.get_bool(
-            db, "restart_monitor_enabled", default=True
-        )
+        enabled = await SettingsService.get_bool(db, "restart_monitor_enabled", default=True)
 
         if not enabled:
             logger.info("Restart monitoring is disabled")
             return
 
         # Get monitor interval
-        interval = await SettingsService.get_int(
-            db, "restart_monitor_interval", default=30
-        )
+        interval = await SettingsService.get_int(db, "restart_monitor_interval", default=30)
 
         # Add monitoring loop job
         self.scheduler.add_job(
@@ -80,14 +76,10 @@ class RestartSchedulerService:
         async with AsyncSessionLocal() as db:
             try:
                 # Get all containers with auto-restart enabled
-                result = await db.execute(
-                    select(Container).where(Container.auto_restart_enabled)
-                )
+                result = await db.execute(select(Container).where(Container.auto_restart_enabled))
                 containers = result.scalars().all()
 
-                logger.debug(
-                    f"Monitoring {len(containers)} containers with auto-restart enabled"
-                )
+                logger.debug(f"Monitoring {len(containers)} containers with auto-restart enabled")
 
                 for container in containers:
                     await self._check_and_schedule_restart(db, container)
@@ -123,17 +115,13 @@ class RestartSchedulerService:
                     return
 
             # Check if circuit breaker is open
-            allowed, reason = await restart_service.check_circuit_breaker(
-                db, container.id
-            )
+            allowed, reason = await restart_service.check_circuit_breaker(db, container.id)
             if not allowed:
                 logger.debug(f"Circuit breaker open for {container.name}: {reason}")
                 return
 
             # Check container status
-            container_state = await container_monitor.get_container_state(
-                container.name
-            )
+            container_state = await container_monitor.get_container_state(container.name)
 
             if not container_state:
                 logger.warning(f"Could not get state for {container.name}")
@@ -217,7 +205,7 @@ class RestartSchedulerService:
 
                     dispatcher = NotificationDispatcher(db)
                     await dispatcher.notify_max_retries_reached(
-                        container.name, state.consecutive_failures, exit_code
+                        container.name, state.consecutive_failures, exit_code or 0
                     )
 
                 return
@@ -280,9 +268,7 @@ class RestartSchedulerService:
         async with AsyncSessionLocal() as db:
             try:
                 # Get container
-                result = await db.execute(
-                    select(Container).where(Container.id == container_id)
-                )
+                result = await db.execute(select(Container).where(Container.id == container_id))
                 container = result.scalar_one_or_none()
 
                 if not container:
@@ -302,14 +288,10 @@ class RestartSchedulerService:
                     return
 
                 # Double-check if container is still down
-                container_state = await container_monitor.get_container_state(
-                    container.name
-                )
+                container_state = await container_monitor.get_container_state(container.name)
 
                 if container_state and container_state.get("running"):
-                    logger.info(
-                        f"Container {container.name} is already running, skipping restart"
-                    )
+                    logger.info(f"Container {container.name} is already running, skipping restart")
                     # Reset state since it's running
                     state.consecutive_failures = 0
                     state.next_retry_at = None
@@ -395,9 +377,7 @@ class RestartSchedulerService:
                         )
 
                         if container_state and container_state.get("running"):
-                            await restart_service.check_and_reset_backoff(
-                                db, state, container
-                            )
+                            await restart_service.check_and_reset_backoff(db, state, container)
                             reset_count += 1
 
                 if reset_count > 0:
@@ -406,9 +386,7 @@ class RestartSchedulerService:
             except OperationalError as e:
                 logger.error(f"Database error in cleanup job: {e}", exc_info=True)
             except (ImportError, AttributeError) as e:
-                logger.error(
-                    f"Service dependency error in cleanup job: {e}", exc_info=True
-                )
+                logger.error(f"Service dependency error in cleanup job: {e}", exc_info=True)
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid data in cleanup job: {e}", exc_info=True)
 

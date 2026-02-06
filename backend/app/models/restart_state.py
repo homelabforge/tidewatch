@@ -1,17 +1,18 @@
 """Container restart state model for tracking intelligent retry logic."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    Column,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
 )
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -27,60 +28,64 @@ class ContainerRestartState(Base):
     __tablename__ = "container_restart_state"
 
     # Primary key
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # Container reference
-    container_id = Column(
+    container_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("containers.id"), nullable=False, unique=True, index=True
     )
-    container_name = Column(String, nullable=False, index=True)
+    container_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     # Restart tracking
-    consecutive_failures = Column(Integer, default=0, nullable=False)
-    total_restarts = Column(Integer, default=0, nullable=False)
-    last_exit_code = Column(Integer, nullable=True)
-    last_failure_reason = Column(
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_restarts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_failure_reason: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # "exit_code_1", "health_check_failed", "oom_killed"
 
     # Backoff state
-    current_backoff_seconds = Column(Float, default=0.0, nullable=False)
-    next_retry_at = Column(DateTime(timezone=True), nullable=True)
-    max_retries_reached = Column(Boolean, default=False, nullable=False)
+    current_backoff_seconds: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    max_retries_reached: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Success tracking (for reset logic)
-    last_successful_start = Column(DateTime(timezone=True), nullable=True)
-    last_failure_at = Column(DateTime(timezone=True), nullable=True)
-    success_window_seconds = Column(
+    last_successful_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    success_window_seconds: Mapped[int] = mapped_column(
         Integer, default=300, nullable=False
     )  # 5 minutes default
 
     # Configuration (per-container overrides)
-    enabled = Column(Boolean, default=True, nullable=False)
-    max_attempts = Column(Integer, default=10, nullable=False)
-    backoff_strategy = Column(
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    backoff_strategy: Mapped[str] = mapped_column(
         String, default="exponential", nullable=False
     )  # exponential, linear, fixed
-    base_delay_seconds = Column(Float, default=2.0, nullable=False)
-    max_delay_seconds = Column(Float, default=300.0, nullable=False)
+    base_delay_seconds: Mapped[float] = mapped_column(Float, default=2.0, nullable=False)
+    max_delay_seconds: Mapped[float] = mapped_column(Float, default=300.0, nullable=False)
 
     # Health check configuration
-    health_check_enabled = Column(Boolean, default=True, nullable=False)
-    health_check_timeout = Column(Integer, default=60, nullable=False)
-    rollback_on_health_fail = Column(Boolean, default=False, nullable=False)
+    health_check_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    health_check_timeout: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    rollback_on_health_fail: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Circuit breaker
-    paused_until = Column(DateTime(timezone=True), nullable=True)  # Manual pause
-    pause_reason = Column(String, nullable=True)
+    paused_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # Manual pause
+    pause_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata
-    restart_history = Column(
+    restart_history: Mapped[list[Any]] = mapped_column(
         JSON, default=list, nullable=False
     )  # Last N restart timestamps
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at = Column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
@@ -107,7 +112,7 @@ class ContainerRestartState(Base):
             if self.paused_until.tzinfo is None
             else self.paused_until
         )
-        return datetime.now(UTC) < paused_until
+        return bool(datetime.now(UTC) < paused_until)
 
     @property
     def is_ready_for_retry(self) -> bool:
@@ -124,7 +129,7 @@ class ContainerRestartState(Base):
             if self.next_retry_at.tzinfo is None
             else self.next_retry_at
         )
-        return datetime.now(UTC) >= next_retry
+        return bool(datetime.now(UTC) >= next_retry)
 
     @property
     def uptime_seconds(self) -> float | None:
@@ -147,7 +152,7 @@ class ContainerRestartState(Base):
         if uptime is None:
             return False
 
-        return uptime >= self.success_window_seconds
+        return bool(uptime >= self.success_window_seconds)
 
     def add_restart_to_history(self, timestamp: datetime | None = None) -> None:
         """Add a restart timestamp to history (maintains last 100)."""

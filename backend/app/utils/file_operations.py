@@ -168,20 +168,18 @@ def validate_version_string(version: str, ecosystem: str | None = None) -> bool:
 
         elif ecosystem == "pypi":
             # PEP 440: 1.2.3, 1.2.3a1, 1.2.3.post1, 1.2.3+local
-            pypi_pattern = (
-                r"^\d+(\.\d+)*([a-z]+\d+)?(\.(post|dev)\d+)?(\+[a-zA-Z0-9.]+)?$"
-            )
+            pypi_pattern = r"^\d+(\.\d+)*([a-z]+\d+)?(\.(post|dev)\d+)?(\+[a-zA-Z0-9.]+)?$"
             if not re.match(pypi_pattern, version):
-                raise VersionValidationError(
-                    f"Invalid Python version format: {version}"
-                )
+                raise VersionValidationError(f"Invalid Python version format: {version}")
 
         elif ecosystem == "docker":
             # Docker tags: 1.2.3, 1.2.3-alpine, latest, sha256:abc...
             # Limit length to prevent ReDoS attacks
             if len(version) > 255:
                 raise VersionValidationError("Docker tag too long (max 255 characters)")
-            docker_pattern = r"^[a-zA-Z0-9.\-_]+(?::[a-zA-Z0-9.\-_]+)?$"  # Fixed: removed extra '?' after ':'
+            docker_pattern = (
+                r"^[a-zA-Z0-9.\-_]+(?::[a-zA-Z0-9.\-_]+)?$"  # Fixed: removed extra '?' after ':'
+            )
             if not re.match(docker_pattern, version):
                 raise VersionValidationError(f"Invalid Docker tag format: {version}")
 

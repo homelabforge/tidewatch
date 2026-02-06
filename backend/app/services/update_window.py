@@ -39,9 +39,7 @@ class UpdateWindow:
     }
 
     @staticmethod
-    def is_in_window(
-        update_window: str | None, check_time: datetime | None = None
-    ) -> bool:
+    def is_in_window(update_window: str | None, check_time: datetime | None = None) -> bool:
         """Check if current time is within the update window.
 
         Args:
@@ -80,13 +78,11 @@ class UpdateWindow:
 
             if in_window:
                 logger.debug(
-                    f"Current time {current_time} is within window "
-                    f"{start_time}-{end_time}"
+                    f"Current time {current_time} is within window {start_time}-{end_time}"
                 )
             else:
                 logger.debug(
-                    f"Current time {current_time} is outside window "
-                    f"{start_time}-{end_time}"
+                    f"Current time {current_time} is outside window {start_time}-{end_time}"
                 )
 
             return in_window

@@ -16,7 +16,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _parse_exclude_patterns(patterns_str: str) -> list[str]:
+def _parse_exclude_patterns(patterns_str: str | None) -> list[str]:
     """Parse comma-separated exclude patterns string."""
     if not patterns_str:
         return []
@@ -36,9 +36,7 @@ async def get_disk_usage(
         return {"success": True, "stats": stats}
     except Exception as e:
         logger.error(f"Error getting disk usage stats: {sanitize_log_message(str(e))}")
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve disk usage statistics"
-        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve disk usage statistics")
 
 
 @router.get("/preview")
@@ -80,12 +78,8 @@ async def preview_cleanup(
 @router.post("/images")
 async def cleanup_images(
     admin: dict | None = Depends(require_auth),
-    dangling_only: bool = Query(
-        True, description="Only remove dangling (untagged) images"
-    ),
-    older_than_days: int | None = Query(
-        None, description="Remove images older than X days"
-    ),
+    dangling_only: bool = Query(True, description="Only remove dangling (untagged) images"),
+    older_than_days: int | None = Query(None, description="Remove images older than X days"),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Clean up Docker images.
@@ -108,15 +102,11 @@ async def cleanup_images(
 
     # Optionally remove old images
     if not dangling_only and older_than_days:
-        old_result = await CleanupService.cleanup_old_images(
-            older_than_days, exclude_patterns
-        )
+        old_result = await CleanupService.cleanup_old_images(older_than_days, exclude_patterns)
         result["images_removed"] += old_result.get("images_removed", 0)
         result["space_reclaimed"] += old_result.get("space_reclaimed", 0)
 
-    result["space_reclaimed_formatted"] = CleanupService._format_bytes(
-        result["space_reclaimed"]
-    )
+    result["space_reclaimed_formatted"] = CleanupService._format_bytes(result["space_reclaimed"])
 
     logger.info(
         f"Image cleanup complete: {result['images_removed']} images, {result['space_reclaimed_formatted']}"
@@ -240,9 +230,7 @@ async def get_cleanup_settings(
             "enabled": await SettingsService.get_bool(db, "cleanup_old_images", False),
             "mode": await SettingsService.get(db, "cleanup_mode", "dangling"),
             "days": await SettingsService.get_int(db, "cleanup_after_days", 7),
-            "cleanup_containers": await SettingsService.get_bool(
-                db, "cleanup_containers", True
-            ),
+            "cleanup_containers": await SettingsService.get_bool(db, "cleanup_containers", True),
             "schedule": await SettingsService.get(db, "cleanup_schedule", "0 4 * * *"),
             "exclude_patterns": await SettingsService.get(
                 db, "cleanup_exclude_patterns", "-dev,rollback"

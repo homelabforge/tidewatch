@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from sqlalchemy import text
@@ -21,9 +22,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", default_db)
 # Ensure database directory exists (skip for in-memory databases used in tests)
 if DATABASE_URL.startswith("sqlite") and ":memory:" not in DATABASE_URL:
     # Extract path from URL (handle both sqlite:/// and sqlite://)
-    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace(
-        "sqlite+aiosqlite://", ""
-    )
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite+aiosqlite://", "")
 
     # Validate database path to prevent path traversal
     # Allow /data directory for production and /tmp for tests
@@ -84,7 +83,7 @@ AsyncSessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency for getting database sessions."""
     async with AsyncSessionLocal() as session:
         yield session
@@ -113,9 +112,7 @@ async def init_db():
             # Enable foreign keys
             await conn.execute(text("PRAGMA foreign_keys=ON"))
 
-            logger.info(
-                "SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout"
-            )
+            logger.info("SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout")
 
     # Run pending migrations
     try:

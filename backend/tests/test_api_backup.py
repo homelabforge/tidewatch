@@ -32,9 +32,7 @@ class TestCreateBackupEndpoint:
             patch("builtins.open", mock_open()),
             patch("app.routes.backup.BACKUP_DIR") as mock_dir,
         ):
-            mock_dir.__truediv__ = MagicMock(
-                return_value=Path("/data/backups/test.json")
-            )
+            mock_dir.__truediv__ = MagicMock(return_value=Path("/data/backups/test.json"))
             mock_path = MagicMock()
             mock_path.stat.return_value = MagicMock(st_size=1024)
             mock_dir.__truediv__.return_value = mock_path
@@ -110,9 +108,7 @@ class TestListBackupsEndpoint:
             patch("app.routes.backup.Path") as mock_path,
         ):
             mock_path.return_value.exists.return_value = True
-            mock_path.return_value.stat.return_value = MagicMock(
-                st_size=1024, st_mtime=1234567890
-            )
+            mock_path.return_value.stat.return_value = MagicMock(st_size=1024, st_mtime=1234567890)
 
             # Act
             response = await authenticated_client.get("/api/v1/backup/list")
@@ -148,9 +144,7 @@ class TestListBackupsEndpoint:
             patch("app.routes.backup.Path") as mock_path,
         ):
             mock_path.return_value.exists.return_value = True
-            mock_path.return_value.stat.return_value = MagicMock(
-                st_size=1024, st_mtime=1234567890
-            )
+            mock_path.return_value.stat.return_value = MagicMock(st_size=1024, st_mtime=1234567890)
 
             # Act
             response = await authenticated_client.get("/api/v1/backup/list")
@@ -160,10 +154,7 @@ class TestListBackupsEndpoint:
             data = response.json()
             assert "backups" in data
             assert len(data["backups"]) == 2
-            assert (
-                data["backups"][0]["filename"]
-                == "tidewatch-settings-2025-01-01-120000.json"
-            )
+            assert data["backups"][0]["filename"] == "tidewatch-settings-2025-01-01-120000.json"
             assert data["backups"][1]["is_safety"] is True
 
     async def test_list_backups_requires_auth(self, client, db):
@@ -222,9 +213,7 @@ class TestRestoreBackupEndpoint:
             mock_dir.__truediv__.return_value = mock_path
 
             # Act
-            response = await authenticated_client.post(
-                "/api/v1/backup/restore/test-backup.json"
-            )
+            response = await authenticated_client.post("/api/v1/backup/restore/test-backup.json")
 
             # Assert
             assert response.status_code == status.HTTP_200_OK
@@ -276,9 +265,7 @@ class TestRestoreBackupEndpoint:
             mock_dir.__truediv__.return_value = mock_path
 
             # Act
-            response = await authenticated_client.post(
-                "/api/v1/backup/restore/test.json"
-            )
+            response = await authenticated_client.post("/api/v1/backup/restore/test.json")
 
             # Assert
             assert response.status_code == status.HTTP_200_OK
@@ -299,9 +286,7 @@ class TestRestoreBackupEndpoint:
             mock_validate.return_value = mock_path
 
             # Act
-            response = await authenticated_client.post(
-                "/api/v1/backup/restore/invalid.json"
-            )
+            response = await authenticated_client.post("/api/v1/backup/restore/invalid.json")
 
             # Assert
             assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -315,9 +300,7 @@ class TestRestoreBackupEndpoint:
             mock_validate.return_value = mock_path
 
             # Act
-            response = await authenticated_client.post(
-                "/api/v1/backup/restore/nonexistent.json"
-            )
+            response = await authenticated_client.post("/api/v1/backup/restore/nonexistent.json")
 
             # Assert
             assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -400,9 +383,7 @@ class TestBackupStatsEndpoint:
             data = response.json()
             assert "backups" in data
             assert data["backups"]["count"] == 2
-            assert data["backups"]["total_size_mb"] == round(
-                (10240 + 20480) / 1024 / 1024, 2
-            )
+            assert data["backups"]["total_size_mb"] == round((10240 + 20480) / 1024 / 1024, 2)
 
     async def test_stats_requires_auth(self, client, db):
         """Test requires authentication."""

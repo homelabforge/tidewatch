@@ -34,12 +34,10 @@ router = APIRouter()
 @router.get("/", response_model=list[UpdateSchema])
 async def list_updates(
     admin: dict | None = Depends(require_auth),
-    status: str = None,
+    status: str | None = None,
     container_id: int | None = Query(None, description="Filter by container ID"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(
-        100, ge=1, le=1000, description="Maximum number of records to return"
-    ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[UpdateSchema]:
     """List updates by status with pagination.
@@ -63,42 +61,37 @@ async def list_updates(
 
     # Filter out snoozed updates
     now = datetime.now(UTC)
-    query = query.where(
-        (Update.snoozed_until.is_(None)) | (Update.snoozed_until <= now)
-    )
+    query = query.where((Update.snoozed_until.is_(None)) | (Update.snoozed_until <= now))
 
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
     updates = result.scalars().all()
-    return updates
+    return list(updates)
 
 
 @router.get("/pending", response_model=list[UpdateSchema])
 async def get_pending_updates(
     admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[UpdateSchema]:
+) -> list[Update]:
     """Get all pending updates."""
-    updates = await UpdateChecker.get_pending_updates(db)
-    return updates
+    return await UpdateChecker.get_pending_updates(db)
 
 
 @router.get("/auto-approvable", response_model=list[UpdateSchema])
 async def get_auto_approvable_updates(
     admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[UpdateSchema]:
+) -> list[Update]:
     """Get updates that can be auto-approved."""
-    updates = await UpdateChecker.get_auto_approvable_updates(db)
-    return updates
+    return await UpdateChecker.get_auto_approvable_updates(db)
 
 
 @router.get("/security", response_model=list[UpdateSchema])
 async def get_security_updates(
     admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[UpdateSchema]:
+) -> list[Update]:
     """Get security-related updates."""
-    updates = await UpdateChecker.get_security_updates(db)
-    return updates
+    return await UpdateChecker.get_security_updates(db)
 
 
 @router.post("/check", response_model=CheckJobStartResponse)
@@ -142,9 +135,7 @@ async def check_updates(
 @router.get("/check/history", response_model=list[CheckJobSummary])
 async def get_check_history(
     admin: dict | None = Depends(require_auth),
-    limit: int = Query(
-        20, ge=1, le=100, description="Maximum number of jobs to return"
-    ),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of jobs to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[CheckJobSummary]:
     """Get history of update check jobs.
@@ -317,9 +308,7 @@ async def batch_approve_updates(
 
                 # Idempotency check - already approved is OK
                 if update.status == "approved":
-                    approved.append(
-                        {"id": update_id, "container_id": update.container_id}
-                    )
+                    approved.append({"id": update_id, "container_id": update.container_id})
                     continue
 
                 # Only allow pending -> approved transition
@@ -358,9 +347,7 @@ async def batch_approve_updates(
             logger.error(
                 f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
             )
-            failed.append(
-                {"id": update_id, "reason": "An error occurred processing the update"}
-            )
+            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
 
     return {
         "approved": approved,
@@ -406,9 +393,7 @@ async def batch_reject_updates(
 
                 # Idempotency check - already rejected is OK
                 if update.status == "rejected":
-                    rejected.append(
-                        {"id": update_id, "container_id": update.container_id}
-                    )
+                    rejected.append({"id": update_id, "container_id": update.container_id})
                     continue
 
                 # Only allow pending/approved -> rejected transition
@@ -449,9 +434,7 @@ async def batch_reject_updates(
             logger.error(
                 f"Error rejecting update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
             )
-            failed.append(
-                {"id": update_id, "reason": "An error occurred processing the update"}
-            )
+            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
 
     return {
         "rejected": rejected,
@@ -562,15 +545,11 @@ async def apply_update(
         Result of the update operation
     """
     try:
-        result = await UpdateEngine.apply_update(
-            db, update_id, triggered_by=request.triggered_by
-        )
+        result = await UpdateEngine.apply_update(db, update_id, triggered_by=request.triggered_by)
 
         if not result["success"]:
             # Log internal details but don't expose to client
-            logger.error(
-                "Update failed: %s", sanitize_log_message(result.get("message", ""))
-            )
+            logger.error("Update failed: %s", sanitize_log_message(result.get("message", "")))
             raise HTTPException(status_code=500, detail="Update failed")
 
         # Return only safe fields to client (no internal error details)
@@ -615,9 +594,7 @@ async def reject_update(
         raise HTTPException(status_code=404, detail="Update not found")
 
     if update.status not in ["pending", "pending_retry"]:
-        raise HTTPException(
-            status_code=400, detail=f"Update is already {update.status}"
-        )
+        raise HTTPException(status_code=400, detail=f"Update is already {update.status}")
 
     # Wrap status updates in transaction for atomicity
     async with db.begin_nested():
@@ -628,9 +605,7 @@ async def reject_update(
         update.version += 1  # Increment version for optimistic locking
 
         # Clear update_available flag on container
-        result = await db.execute(
-            select(Container).where(Container.id == update.container_id)
-        )
+        result = await db.execute(select(Container).where(Container.id == update.container_id))
         container = result.scalar_one_or_none()
         if container:
             container.update_available = False
@@ -736,9 +711,7 @@ async def snooze_update(
         raise HTTPException(status_code=404, detail="Update not found")
 
     # Get threshold from settings
-    threshold_days = await SettingsService.get_int(
-        db, "stale_detection_threshold_days", default=30
-    )
+    threshold_days = await SettingsService.get_int(db, "stale_detection_threshold_days", default=30)
 
     # Set snooze expiration
     now = datetime.now(UTC)
@@ -788,9 +761,7 @@ async def remove_container_from_db(
         )
 
     # Get container
-    result = await db.execute(
-        select(Container).where(Container.id == update.container_id)
-    )
+    result = await db.execute(select(Container).where(Container.id == update.container_id))
     container = result.scalar_one_or_none()
 
     if not container:
@@ -807,9 +778,7 @@ async def remove_container_from_db(
                 select(UpdateHistory).where(UpdateHistory.container_id == container.id)
             )
             await db.execute(
-                UpdateHistory.__table__.delete().where(
-                    UpdateHistory.container_id == container.id
-                )
+                UpdateHistory.__table__.delete().where(UpdateHistory.container_id == container.id)
             )
 
             # 2. Delete restart state and logs
@@ -825,9 +794,7 @@ async def remove_container_from_db(
             )
 
             # 3. Delete all updates for this container
-            await db.execute(
-                Update.__table__.delete().where(Update.container_id == container.id)
-            )
+            await db.execute(Update.__table__.delete().where(Update.container_id == container.id))
 
             # 4. Delete the container itself
             await db.delete(container)
@@ -852,12 +819,8 @@ async def remove_container_from_db(
         )
     except OperationalError as e:
         await db.rollback()
-        logger.error(
-            f"Database error removing container: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=500, detail="Database error during container removal"
-        )
+        logger.error(f"Database error removing container: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=500, detail="Database error during container removal")
     except (KeyError, AttributeError) as e:
         await db.rollback()
         logger.error(f"Invalid data removing container: {sanitize_log_message(str(e))}")
@@ -893,9 +856,7 @@ async def trigger_scheduler(
         logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(
-            f"Invalid data triggering update check: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Invalid data triggering update check: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")
 
 
@@ -919,17 +880,11 @@ async def reload_scheduler(
             "scheduler": status,
         }
     except OperationalError as e:
-        logger.error(
-            f"Database error reloading scheduler: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=500, detail="Database error reloading configuration"
-        )
+        logger.error(f"Database error reloading scheduler: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=500, detail="Database error reloading configuration")
     except (ImportError, ModuleNotFoundError, AttributeError) as e:
         logger.error(f"Scheduler service error: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Scheduler service not available")
     except (ValueError, KeyError) as e:
-        logger.error(
-            f"Invalid data reloading scheduler: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Invalid data reloading scheduler: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Invalid scheduler configuration")

@@ -73,14 +73,14 @@ class RestartHistoryResponse(BaseModel):
 class EnableRestartRequest(BaseModel):
     """Request to enable auto-restart."""
 
-    max_attempts: int | None = 10
-    backoff_strategy: str | None = "exponential"
-    base_delay_seconds: float | None = 2.0
-    max_delay_seconds: float | None = 300.0
-    success_window_seconds: int | None = 300
-    health_check_enabled: bool | None = True
-    health_check_timeout: int | None = 60
-    rollback_on_health_fail: bool | None = False
+    max_attempts: int = 10
+    backoff_strategy: str = "exponential"
+    base_delay_seconds: float = 2.0
+    max_delay_seconds: float = 300.0
+    success_window_seconds: int = 300
+    health_check_enabled: bool = True
+    health_check_timeout: int = 60
+    rollback_on_health_fail: bool = False
 
 
 class DisableRestartRequest(BaseModel):

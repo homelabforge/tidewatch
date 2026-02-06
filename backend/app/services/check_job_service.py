@@ -73,9 +73,7 @@ class CheckJobService:
             Created CheckJob
         """
         # Count containers that will be checked
-        result = await db.execute(
-            select(Container).where(Container.policy != "disabled")
-        )
+        result = await db.execute(select(Container).where(Container.policy != "disabled"))
         containers = result.scalars().all()
 
         job = CheckJob(
@@ -98,8 +96,7 @@ class CheckJobService:
         )
 
         logger.info(
-            f"Created check job {job.id} ({triggered_by}): "
-            f"{job.total_count} containers to check"
+            f"Created check job {job.id} ({triggered_by}): {job.total_count} containers to check"
         )
 
         return job
@@ -145,9 +142,7 @@ class CheckJobService:
             db: Database session
             job_id: Job ID to cancel
         """
-        await db.execute(
-            update(CheckJob).where(CheckJob.id == job_id).values(cancel_requested=1)
-        )
+        await db.execute(update(CheckJob).where(CheckJob.id == job_id).values(cancel_requested=1))
         await db.commit()
 
         await event_bus.publish(
@@ -182,9 +177,7 @@ class CheckJobService:
                     logger.warning(f"Check job {job_id} not found")
                     return
                 if str(job.status) != "queued":  # type: ignore[attr-defined]
-                    logger.warning(
-                        f"Check job {job_id} not in queued state: {job.status}"
-                    )
+                    logger.warning(f"Check job {job_id} not in queued state: {job.status}")
                     return
 
                 job.status = "running"  # type: ignore[attr-defined]
@@ -213,9 +206,7 @@ class CheckJobService:
                 )
 
                 # Get containers to check
-                result = await db.execute(
-                    select(Container).where(Container.policy != "disabled")
-                )
+                result = await db.execute(select(Container).where(Container.policy != "disabled"))
                 containers = list(result.scalars().all())
 
                 if not containers:
@@ -256,9 +247,7 @@ class CheckJobService:
 
                 # Group containers for deduplication (if enabled)
                 if deduplication_enabled:
-                    groups = run_context.group_containers(
-                        containers, include_prereleases_lookup
-                    )
+                    groups = run_context.group_containers(containers, include_prereleases_lookup)
                 else:
                     # No grouping - each container is its own group
                     groups = {
@@ -291,11 +280,7 @@ class CheckJobService:
                     group_containers: list[Container],
                     semaphore: asyncio.Semaphore,
                 ) -> None:
-                    nonlocal \
-                        cancel_requested, \
-                        checked_count, \
-                        updates_found, \
-                        errors_count
+                    nonlocal cancel_requested, checked_count, updates_found, errors_count
 
                     async with semaphore:
                         # Check for cancellation before starting
@@ -310,9 +295,7 @@ class CheckJobService:
                                 # Re-fetch containers in this session to avoid detached instance errors
                                 container_ids = [c.id for c in group_containers]  # type: ignore[attr-defined]
                                 result = await worker_db.execute(
-                                    select(Container).where(
-                                        Container.id.in_(container_ids)
-                                    )
+                                    select(Container).where(Container.id.in_(container_ids))
                                 )
                                 fresh_containers = list(result.scalars().all())
 
@@ -321,14 +304,10 @@ class CheckJobService:
                                     fresh_containers[0] if fresh_containers else None
                                 )
                                 if not fresh_representative:
-                                    raise ValueError(
-                                        f"No containers found for group {key.image}"
-                                    )
+                                    raise ValueError(f"No containers found for group {key.image}")
 
                                 # Fetch tags for this image signature
-                                tag_fetcher = TagFetcher(
-                                    worker_db, rate_limiter, run_context
-                                )
+                                tag_fetcher = TagFetcher(worker_db, rate_limiter, run_context)
                                 fetch_response = await tag_fetcher.fetch_tags_for_key(
                                     key,
                                     current_digest=(
@@ -431,9 +410,7 @@ class CheckJobService:
                                 )
 
                             except Exception as group_error:
-                                logger.error(
-                                    f"Error checking group {key.image}: {group_error}"
-                                )
+                                logger.error(f"Error checking group {key.image}: {group_error}")
                                 # Record error for all containers in group
                                 async with progress_lock:
                                     for container in group_containers:
@@ -511,9 +488,7 @@ class CheckJobService:
                         }
                     )
 
-                    logger.info(
-                        f"Check job {job_id} canceled at {checked_count}/{total_count}"
-                    )
+                    logger.info(f"Check job {job_id} canceled at {checked_count}/{total_count}")
                     return
 
                 # Mark job as complete

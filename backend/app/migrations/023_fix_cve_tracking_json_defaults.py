@@ -120,14 +120,12 @@ async def upgrade():
 
 def downgrade():
     """Revert the migration (no-op for data backfill)."""
-    print(
-        "Downgrade for migration 023 is a no-op (server defaults removed at SQLAlchemy level)"
-    )
-    print(
-        "Note: We don't reverse the CVE data backfill as it represents corrected historical data"
-    )
+    print("Downgrade for migration 023 is a no-op (server defaults removed at SQLAlchemy level)")
+    print("Note: We don't reverse the CVE data backfill as it represents corrected historical data")
 
 
 if __name__ == "__main__":
+    import asyncio
+
     print("Running migration 023...")
-    upgrade()
+    asyncio.run(upgrade())

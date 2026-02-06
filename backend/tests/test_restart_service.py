@@ -307,9 +307,7 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(
-            mock_db, container_id=1
-        )
+        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
         assert allow is True
         assert reason is None
@@ -332,11 +330,10 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(
-            mock_db, container_id=1
-        )
+        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
         assert allow is False
+        assert reason is not None
         assert "Paused until" in reason
         assert "Manual investigation" in reason
 
@@ -369,9 +366,7 @@ class TestCircuitBreaker:
 
             mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
 
-            allow, reason = await RestartService.check_circuit_breaker(
-                mock_db, container_id=1
-            )
+            allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
             assert allow is True
             assert reason is None
@@ -390,11 +385,10 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(
-            mock_db, container_id=1
-        )
+        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
         assert allow is False
+        assert reason is not None
         assert "Maximum retry attempts reached" in reason
 
     @pytest.mark.asyncio
@@ -411,11 +405,10 @@ class TestCircuitBreaker:
 
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        allow, reason = await RestartService.check_circuit_breaker(
-            mock_db, container_id=1
-        )
+        allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
         assert allow is False
+        assert reason is not None
         assert "Auto-restart disabled" in reason
 
     @pytest.mark.asyncio
@@ -443,11 +436,10 @@ class TestCircuitBreaker:
 
             mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
 
-            allow, reason = await RestartService.check_circuit_breaker(
-                mock_db, container_id=1
-            )
+            allow, reason = await RestartService.check_circuit_breaker(mock_db, container_id=1)
 
             assert allow is False
+            assert reason is not None
             assert "Concurrent restart limit" in reason
             assert "10/10" in reason
 
@@ -464,9 +456,7 @@ class TestCheckAndResetBackoff:
 
         container = Container(name="test")
 
-        was_reset = await RestartService.check_and_reset_backoff(
-            mock_db, state, container
-        )
+        was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
 
         assert was_reset is False
 
@@ -485,9 +475,7 @@ class TestCheckAndResetBackoff:
         with patch.object(ContainerRestartState, "uptime_seconds", None):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(
-                mock_db, state, container
-            )
+            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
 
             assert was_reset is False
 
@@ -513,9 +501,7 @@ class TestCheckAndResetBackoff:
         with patch.object(ContainerRestartState, "uptime_seconds", 400):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(
-                mock_db, state, container
-            )
+            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
 
             assert was_reset is True
             assert state.consecutive_failures == 0
@@ -541,9 +527,7 @@ class TestCheckAndResetBackoff:
         with patch.object(ContainerRestartState, "uptime_seconds", 200):
             container = Container(name="test")
 
-            was_reset = await RestartService.check_and_reset_backoff(
-                mock_db, state, container
-            )
+            was_reset = await RestartService.check_and_reset_backoff(mock_db, state, container)
 
             assert was_reset is False
             assert state.consecutive_failures == 2  # Not reset
@@ -577,9 +561,7 @@ class TestGetOrCreateRestartState:
         """Test returns existing state if found."""
         mock_db = AsyncMock()
 
-        existing_state = ContainerRestartState(
-            id=1, container_id=1, consecutive_failures=3
-        )
+        existing_state = ContainerRestartState(id=1, container_id=1, consecutive_failures=3)
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = existing_state

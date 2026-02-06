@@ -198,9 +198,7 @@ class TestValidateUrlForSSRF:
 
     def test_blocks_javascript_scheme(self):
         """Test blocks javascript: URLs."""
-        with pytest.raises(
-            SSRFProtectionError, match="URL scheme 'javascript' not allowed"
-        ):
+        with pytest.raises(SSRFProtectionError, match="URL scheme 'javascript' not allowed"):
             validate_url_for_ssrf("javascript:alert('xss')")
 
     def test_blocks_data_scheme(self):
@@ -218,16 +216,12 @@ class TestValidateUrlForSSRF:
     def test_blocks_localhost_variants(self):
         """Test blocks localhost variant hostnames."""
         for hostname in LOCALHOST_HOSTNAMES:
-            with pytest.raises(
-                SSRFProtectionError, match="Blocked private/internal hostname"
-            ):
+            with pytest.raises(SSRFProtectionError, match="Blocked private/internal hostname"):
                 validate_url_for_ssrf(f"http://{hostname}/")
 
     def test_blocks_ipv4_loopback(self):
         """Test blocks IPv4 loopback addresses."""
-        with pytest.raises(
-            SSRFProtectionError, match="Blocked private IP address: 127.0.0.1"
-        ):
+        with pytest.raises(SSRFProtectionError, match="Blocked private IP address: 127.0.0.1"):
             validate_url_for_ssrf("http://127.0.0.1:8080/")
 
     def test_blocks_ipv4_private_ips(self):
@@ -266,22 +260,14 @@ class TestValidateUrlForSSRF:
 
     def test_blocks_dns_rebinding_to_localhost(self):
         """Test DNS rebinding protection - hostname resolving to localhost."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="127.0.0.1"
-        ):
-            with pytest.raises(
-                SSRFProtectionError, match="resolves to private IP: 127.0.0.1"
-            ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="127.0.0.1"):
+            with pytest.raises(SSRFProtectionError, match="resolves to private IP: 127.0.0.1"):
                 validate_url_for_ssrf("http://evil.com/")
 
     def test_blocks_dns_rebinding_to_private_ip(self):
         """Test DNS rebinding protection - hostname resolving to private IP."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="192.168.1.1"
-        ):
-            with pytest.raises(
-                SSRFProtectionError, match="resolves to private IP: 192.168.1.1"
-            ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="192.168.1.1"):
+            with pytest.raises(SSRFProtectionError, match="resolves to private IP: 192.168.1.1"):
                 validate_url_for_ssrf("http://rebind.network/")
 
     def test_allows_url_when_dns_resolution_fails(self):
@@ -307,9 +293,7 @@ class TestValidateUrlForSSRF:
 
     def test_custom_allowed_schemes(self):
         """Test custom allowed schemes."""
-        parsed = validate_url_for_ssrf(
-            "ftp://ftp.example.com/", allowed_schemes=["ftp"]
-        )
+        parsed = validate_url_for_ssrf("ftp://ftp.example.com/", allowed_schemes=["ftp"])
         assert parsed.scheme == "ftp"
 
         with pytest.raises(SSRFProtectionError, match="URL scheme 'http' not allowed"):
@@ -328,35 +312,21 @@ class TestValidateUrlForSSRF:
     def test_handles_idn_hostnames(self):
         """Test handles Internationalized Domain Names (IDN)."""
         # IDN example: "münchen.de" -> "xn--mnchen-3ya.de" (punycode)
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("http://münchen.de/")
             assert parsed is not None
 
-    @pytest.mark.skip(
-        reason="Cannot mock str.encode on immutable type - IDN validation happens at urlparse level"
-    )
-    def test_raises_on_invalid_idn(self):
-        """Test raises ValueError on invalid IDN encoding."""
-        # IDN validation errors are caught by urlparse before we can test them
-        # Real invalid IDN characters would be rejected by the browser/client before reaching us
-        pass
-
     def test_normalizes_hostname_case(self):
         """Test normalizes hostname to lowercase."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("http://EXAMPLE.COM/")
             # Hostname should be normalized by urlparse
+            assert parsed.hostname is not None
             assert parsed.hostname.lower() == "example.com"
 
     def test_handles_url_with_credentials(self):
         """Test handles URLs with username/password."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("http://user:pass@example.com/")
             assert parsed.hostname == "example.com"
             assert parsed.username == "user"
@@ -378,9 +348,7 @@ class TestValidateOIDCUrl:
 
     def test_allows_https_oidc_url(self):
         """Test allows HTTPS OIDC provider URLs."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_oidc_url(
                 "https://accounts.google.com/.well-known/openid-configuration"
             )
@@ -390,9 +358,7 @@ class TestValidateOIDCUrl:
     def test_allows_http_oidc_url_for_testing(self):
         """Test allows HTTP OIDC URLs (for local testing)."""
         # Note: In production, OIDC should use HTTPS, but for local dev/testing HTTP is allowed
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_oidc_url("http://auth.example.com/token")
             assert parsed.scheme == "http"
 
@@ -410,9 +376,7 @@ class TestValidateOIDCUrl:
 
     def test_blocks_oidc_dns_rebinding(self):
         """Test blocks OIDC URLs with DNS rebinding attack."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="127.0.0.1"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="127.0.0.1"):
             with pytest.raises(SSRFProtectionError, match="resolves to private IP"):
                 validate_oidc_url("http://evil-oidc.com/")
 
@@ -422,17 +386,13 @@ class TestSSRFProtectionEdgeCases:
 
     def test_url_with_fragment(self):
         """Test handles URLs with fragments."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("https://example.com/page#section")
             assert parsed.fragment == "section"
 
     def test_url_with_query_params(self):
         """Test handles URLs with query parameters."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("https://example.com/api?key=value&foo=bar")
             assert parsed.query == "key=value&foo=bar"
 
@@ -465,9 +425,7 @@ class TestSSRFProtectionEdgeCases:
 
     def test_dns_returns_invalid_ip_doesnt_crash(self):
         """Test handles DNS returning invalid IP gracefully."""
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="invalid-ip"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="invalid-ip"):
             # Should not crash, just continue (invalid IP raises ValueError in is_private_ip)
             parsed = validate_url_for_ssrf("http://example.com/")
             assert parsed.hostname == "example.com"
@@ -481,9 +439,7 @@ class TestSSRFProtectionEdgeCases:
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
             ]
 
-            with pytest.raises(
-                SSRFProtectionError, match="resolves to private IP: 192.168.1.1"
-            ):
+            with pytest.raises(SSRFProtectionError, match="resolves to private IP: 192.168.1.1"):
                 validate_url_for_ssrf("http://dual-stack.example.com/")
 
     def test_ipv6_compressed_notation(self):
@@ -495,8 +451,6 @@ class TestSSRFProtectionEdgeCases:
     def test_case_insensitive_scheme_check(self):
         """Test scheme validation is case-insensitive."""
         # HTTP in uppercase should still work
-        with patch(
-            "app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"
-        ):
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("HTTP://EXAMPLE.COM/")
             assert parsed.scheme == "http"  # urlparse normalizes to lowercase

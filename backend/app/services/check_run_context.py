@@ -42,9 +42,7 @@ class ImageCheckKey:
     include_prereleases: bool
 
     @classmethod
-    def from_container(
-        cls, container: Container, include_prereleases: bool
-    ) -> ImageCheckKey:
+    def from_container(cls, container: Container, include_prereleases: bool) -> ImageCheckKey:
         """Create ImageCheckKey from a Container.
 
         Args:
@@ -127,9 +125,7 @@ class CheckRunMetrics:
     registry_cache_hits: dict[str, int] = field(default_factory=dict)
     registry_cache_misses: dict[str, int] = field(default_factory=dict)
 
-    def record_container_check(
-        self, registry: str, latency: float, cache_hit: bool
-    ) -> None:
+    def record_container_check(self, registry: str, latency: float, cache_hit: bool) -> None:
         """Record metrics for a container check.
 
         Args:
@@ -141,13 +137,9 @@ class CheckRunMetrics:
         self.registry_calls[registry] = self.registry_calls.get(registry, 0) + 1
 
         if cache_hit:
-            self.registry_cache_hits[registry] = (
-                self.registry_cache_hits.get(registry, 0) + 1
-            )
+            self.registry_cache_hits[registry] = self.registry_cache_hits.get(registry, 0) + 1
         else:
-            self.registry_cache_misses[registry] = (
-                self.registry_cache_misses.get(registry, 0) + 1
-            )
+            self.registry_cache_misses[registry] = self.registry_cache_misses.get(registry, 0) + 1
 
     def record_update_found(self) -> None:
         """Record that an update was found."""
@@ -194,9 +186,7 @@ class CheckRunMetrics:
         """
         return {
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_seconds": self.duration_seconds,
             "total_containers": self.total_containers,
             "checked_containers": self.checked_containers,
@@ -273,9 +263,7 @@ class CheckRunContext:
         async with self._lock:
             return self._tag_cache.get(key)
 
-    async def set_cached_result(
-        self, key: ImageCheckKey, result: TagFetchResult
-    ) -> None:
+    async def set_cached_result(self, key: ImageCheckKey, result: TagFetchResult) -> None:
         """Cache tag fetch result for this run.
 
         Args:

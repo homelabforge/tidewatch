@@ -103,9 +103,7 @@ class TestValidateTagFormat:
 
     def test_valid_sha256_digest(self):
         """Test valid sha256 digest."""
-        digest = (
-            "sha256:abc123def4567890123456789012345678901234567890123456789012345678"
-        )
+        digest = "sha256:abc123def4567890123456789012345678901234567890123456789012345678"
         assert validate_tag_format(digest) is True
 
     def test_invalid_empty_tag(self):
@@ -221,7 +219,9 @@ class TestParseImageString:
 
     def test_parse_simple_image(self):
         """Test parsing simple image name (defaults to Docker Hub)."""
-        registry, image, tag = ComposeParser._parse_image_string("nginx")
+        result = ComposeParser._parse_image_string("nginx")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "dockerhub"
         assert image == "nginx"
@@ -229,7 +229,9 @@ class TestParseImageString:
 
     def test_parse_image_with_tag(self):
         """Test parsing image with tag."""
-        registry, image, tag = ComposeParser._parse_image_string("nginx:1.25.3")
+        result = ComposeParser._parse_image_string("nginx:1.25.3")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "dockerhub"
         assert image == "nginx"
@@ -237,7 +239,9 @@ class TestParseImageString:
 
     def test_parse_user_image(self):
         """Test parsing user/image format."""
-        registry, image, tag = ComposeParser._parse_image_string("linuxserver/plex")
+        result = ComposeParser._parse_image_string("linuxserver/plex")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "dockerhub"
         assert image == "linuxserver/plex"
@@ -245,9 +249,9 @@ class TestParseImageString:
 
     def test_parse_ghcr_image(self):
         """Test parsing GitHub Container Registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "ghcr.io/owner/app:v1.0.0"
-        )
+        result = ComposeParser._parse_image_string("ghcr.io/owner/app:v1.0.0")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "ghcr"
         assert image == "owner/app"
@@ -255,9 +259,9 @@ class TestParseImageString:
 
     def test_parse_lscr_image(self):
         """Test parsing LinuxServer.io registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "lscr.io/linuxserver/plex:1.40.0"
-        )
+        result = ComposeParser._parse_image_string("lscr.io/linuxserver/plex:1.40.0")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "lscr"
         assert image == "linuxserver/plex"
@@ -268,22 +272,21 @@ class TestParseImageString:
 
         Implementation correctly handles digests by checking for '@sha256:' before splitting on ':'.
         """
-        registry, image, tag = ComposeParser._parse_image_string(
+        result = ComposeParser._parse_image_string(
             "nginx@sha256:abc123def45678901234567890123456789012345678901234567890123456"
         )
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "dockerhub"
         assert image == "nginx"
-        assert (
-            tag
-            == "sha256:abc123def45678901234567890123456789012345678901234567890123456"
-        )
+        assert tag == "sha256:abc123def45678901234567890123456789012345678901234567890123456"
 
     def test_parse_quay_image(self):
         """Test parsing Quay.io registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "quay.io/user/app:latest"
-        )
+        result = ComposeParser._parse_image_string("quay.io/user/app:latest")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "quay"
         assert image == "user/app"
@@ -291,9 +294,9 @@ class TestParseImageString:
 
     def test_parse_gcr_image(self):
         """Test parsing Google Container Registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "gcr.io/project/app:v2.0.0"
-        )
+        result = ComposeParser._parse_image_string("gcr.io/project/app:v2.0.0")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "gcr"
         assert image == "project/app"
@@ -301,9 +304,9 @@ class TestParseImageString:
 
     def test_parse_private_registry(self):
         """Test parsing private registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "registry.example.com/app:1.0.0"
-        )
+        result = ComposeParser._parse_image_string("registry.example.com/app:1.0.0")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "registry.example.com"
         assert image == "app"
@@ -311,9 +314,9 @@ class TestParseImageString:
 
     def test_parse_localhost_registry(self):
         """Test parsing localhost registry image."""
-        registry, image, tag = ComposeParser._parse_image_string(
-            "localhost:5000/app:test"
-        )
+        result = ComposeParser._parse_image_string("localhost:5000/app:test")
+        assert result is not None
+        registry, image, tag = result
 
         assert registry == "localhost:5000"
         assert image == "app"
@@ -423,6 +426,7 @@ class TestHealthCheckExtraction:
         url = ComposeParser._extract_healthcheck_url(health_config, "app")
 
         # Should normalize localhost to service name
+        assert url is not None
         assert "http://app:8080/health" in url
 
     def test_extract_healthcheck_url_from_list(self):
@@ -431,6 +435,7 @@ class TestHealthCheckExtraction:
 
         url = ComposeParser._extract_healthcheck_url(health_config, "service")
 
+        assert url is not None
         assert "http://service:9000/ping" in url
 
     def test_extract_healthcheck_url_from_dict(self):
@@ -448,6 +453,7 @@ class TestHealthCheckExtraction:
 
         url = ComposeParser._extract_healthcheck_url(health_config, "webapp")
 
+        assert url is not None
         assert "http://webapp:3000/healthz" in url
 
     def test_extract_healthcheck_url_normalizes_127_0_0_1(self):
@@ -472,6 +478,7 @@ class TestHealthCheckExtraction:
 
         url = ComposeParser._extract_healthcheck_url(health_config, "secure-app")
 
+        assert url is not None
         assert "https://secure-app:8443/health" in url
 
     def test_extract_healthcheck_url_returns_none_for_no_url(self):

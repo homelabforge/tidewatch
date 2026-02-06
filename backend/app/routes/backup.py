@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Backup directory configuration
 BACKUP_DIR = Path("/data/backups")
-DATABASE_PATH = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace(
-    "sqlite+aiosqlite://", ""
-)
+DATABASE_PATH = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite+aiosqlite://", "")
 
 
 def ensure_backup_dir() -> None:
@@ -51,9 +49,7 @@ def get_database_stats() -> dict[str, Any]:
             "exists": False,
         }
     except PermissionError as e:
-        logger.error(
-            f"Permission denied reading database stats: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Permission denied reading database stats: {sanitize_log_message(str(e))}")
         return {
             "path": DATABASE_PATH,
             "size_mb": 0,
@@ -90,9 +86,7 @@ def get_backup_files() -> list[dict[str, Any]]:
                 }
             )
     except PermissionError as e:
-        logger.error(
-            f"Permission denied listing backup files: {sanitize_log_message(str(e))}"
-        )
+        logger.error(f"Permission denied listing backup files: {sanitize_log_message(str(e))}")
     except OSError as e:
         logger.error(f"OS error listing backup files: {sanitize_log_message(str(e))}")
 
@@ -154,9 +148,7 @@ async def get_stats(admin: dict | None = Depends(require_auth)) -> dict[str, Any
         }
     except PermissionError as e:
         logger.error(f"Permission denied getting stats: {sanitize_log_message(str(e))}")
-        raise HTTPException(
-            status_code=403, detail="Permission denied accessing backup files"
-        )
+        raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except OSError as e:
         logger.error(f"OS error getting stats: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
@@ -180,9 +172,7 @@ async def list_backups(admin: dict | None = Depends(require_auth)) -> dict[str, 
         db_stats = {
             "database_path": str(db_path),
             "database_size": db_path.stat().st_size if db_path.exists() else 0,
-            "database_modified": datetime.fromtimestamp(
-                db_path.stat().st_mtime
-            ).isoformat()
+            "database_modified": datetime.fromtimestamp(db_path.stat().st_mtime).isoformat()
             if db_path.exists()
             else None,
             "database_exists": db_path.exists(),
@@ -193,12 +183,8 @@ async def list_backups(admin: dict | None = Depends(require_auth)) -> dict[str, 
 
         return {"backups": backups, "stats": db_stats}
     except PermissionError as e:
-        logger.error(
-            f"Permission denied listing backups: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied accessing backup files"
-        )
+        logger.error(f"Permission denied listing backups: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except OSError as e:
         logger.error(f"OS error listing backups: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
@@ -257,19 +243,13 @@ async def create_backup(
             "filename": filename,
         }
     except PermissionError as e:
-        logger.error(
-            f"Permission denied creating backup: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied writing backup file"
-        )
+        logger.error(f"Permission denied creating backup: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied writing backup file")
     except OSError as e:
         logger.error(f"OS error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
-    except json.JSONEncodeError as e:
-        logger.error(
-            f"JSON encoding error creating backup: {sanitize_log_message(str(e))}"
-        )
+    except (TypeError, ValueError) as e:
+        logger.error(f"JSON encoding error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Failed to encode backup data", status_code=500)
 
 
@@ -298,12 +278,8 @@ async def download_backup(filename: str, admin: dict | None = Depends(require_au
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(
-            f"Permission denied downloading backup: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied reading backup file"
-        )
+        logger.error(f"Permission denied downloading backup: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied reading backup file")
     except OSError as e:
         logger.error(f"OS error downloading backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
@@ -358,9 +334,7 @@ async def restore_backup(
         with open(safety_path, "w") as f:
             json.dump(safety_data, f, indent=2)
 
-        logger.info(
-            f"Created safety backup: {sanitize_log_message(str(safety_filename))}"
-        )
+        logger.info(f"Created safety backup: {sanitize_log_message(str(safety_filename))}")
 
         # Read and validate backup file
         with open(backup_path) as f:
@@ -418,12 +392,8 @@ async def restore_backup(
     except json.JSONDecodeError as e:
         safe_error_response(logger, e, "Invalid JSON in backup file", status_code=400)
     except PermissionError as e:
-        logger.error(
-            f"Permission denied restoring backup: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied accessing backup files"
-        )
+        logger.error(f"Permission denied restoring backup: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied accessing backup files")
     except FileNotFoundError as e:
         logger.error(f"Backup file not found: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Backup file not found", status_code=404)
@@ -451,10 +421,8 @@ async def upload_backup(
         ensure_backup_dir()
 
         # Validate file type
-        if not file.filename.endswith(".json"):
-            raise HTTPException(
-                status_code=400, detail="Invalid file type. Must be .json"
-            )
+        if not file.filename or not file.filename.endswith(".json"):
+            raise HTTPException(status_code=400, detail="Invalid file type. Must be .json")
 
         # Sanitize filename
         safe_filename = os.path.basename(file.filename)
@@ -473,12 +441,8 @@ async def upload_backup(
         # Validate it's valid JSON
         try:
             backup_data = json.loads(content)
-            if "settings" not in backup_data or not isinstance(
-                backup_data["settings"], list
-            ):
-                raise HTTPException(
-                    status_code=400, detail="Invalid backup file structure"
-                )
+            if "settings" not in backup_data or not isinstance(backup_data["settings"], list):
+                raise HTTPException(status_code=400, detail="Invalid backup file structure")
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON file")
 
@@ -503,12 +467,8 @@ async def upload_backup(
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(
-            f"Permission denied uploading backup: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied writing backup file"
-        )
+        logger.error(f"Permission denied uploading backup: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied writing backup file")
     except OSError as e:
         logger.error(f"OS error uploading backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
@@ -550,12 +510,8 @@ async def delete_backup(
     except HTTPException:
         raise
     except PermissionError as e:
-        logger.error(
-            f"Permission denied deleting backup: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=403, detail="Permission denied deleting backup file"
-        )
+        logger.error(f"Permission denied deleting backup: {sanitize_log_message(str(e))}")
+        raise HTTPException(status_code=403, detail="Permission denied deleting backup file")
     except OSError as e:
         logger.error(f"OS error deleting backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "File system error", status_code=500)
@@ -601,10 +557,8 @@ async def download_backup_legacy(
             content=backup_data,
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-    except json.JSONEncodeError as e:
-        logger.error(
-            f"JSON encoding error creating backup: {sanitize_log_message(str(e))}"
-        )
+    except (TypeError, ValueError) as e:
+        logger.error(f"JSON encoding error creating backup: {sanitize_log_message(str(e))}")
         safe_error_response(logger, e, "Failed to encode backup data", status_code=500)
 
 

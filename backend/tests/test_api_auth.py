@@ -598,9 +598,7 @@ class TestProfileUpdateEndpoint:
         # Should succeed (XSS is handled at output/rendering level)
         assert response.status_code == status.HTTP_200_OK
 
-    @pytest.mark.skip(
-        reason="CSRF testing requires session middleware setup in test fixtures"
-    )
+    @pytest.mark.skip(reason="CSRF testing requires session middleware setup in test fixtures")
     async def test_update_profile_csrf_required(self, authenticated_client):
         """Test profile update requires CSRF token."""
         # Profile update should require CSRF token
@@ -622,9 +620,7 @@ class TestPasswordChangeEndpoint:
             "new_password": "NewPassword456!",
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/password", json=password_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -633,18 +629,14 @@ class TestPasswordChangeEndpoint:
     @pytest.mark.skip(
         reason="Database fixture isolation issue - admin credentials not visible to API request handler"
     )
-    async def test_change_password_wrong_current(
-        self, authenticated_client, admin_user, db
-    ):
+    async def test_change_password_wrong_current(self, authenticated_client, admin_user, db):
         """Test password change fails with wrong current password."""
         password_data = {
             "current_password": "WrongPassword123!",
             "new_password": "NewPassword456!",
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/password", json=password_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "current password" in response.json()["detail"].lower()
@@ -656,9 +648,7 @@ class TestPasswordChangeEndpoint:
             "new_password": "weak",  # Too weak
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/password", json=password_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -672,9 +662,7 @@ class TestPasswordChangeEndpoint:
             "new_password": "AdminPassword123!",  # Same as current
         }
 
-        response = await authenticated_client.put(
-            "/api/v1/auth/password", json=password_data
-        )
+        response = await authenticated_client.put("/api/v1/auth/password", json=password_data)
 
         # May succeed (no specific validation for same password in current implementation)
         # Or may fail depending on business logic
@@ -721,9 +709,7 @@ class TestPasswordChangeEndpoint:
             status.HTTP_403_FORBIDDEN,
         ]
 
-    @pytest.mark.skip(
-        reason="CSRF testing requires session middleware setup in test fixtures"
-    )
+    @pytest.mark.skip(reason="CSRF testing requires session middleware setup in test fixtures")
     async def test_change_password_csrf_required(self, authenticated_client):
         """Test password change requires CSRF token."""
         # Password change should require CSRF token

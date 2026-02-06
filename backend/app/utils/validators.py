@@ -89,8 +89,7 @@ def validate_service_name(name: str) -> str:
     # Service names should be alphanumeric + underscore/dash only
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         raise ValidationError(
-            "Service name must contain only alphanumeric characters, "
-            "underscores, and dashes"
+            "Service name must contain only alphanumeric characters, underscores, and dashes"
         )
 
     # Reject names starting with dash

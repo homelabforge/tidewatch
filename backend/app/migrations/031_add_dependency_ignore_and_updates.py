@@ -62,18 +62,14 @@ async def up(db):
             "CREATE INDEX IF NOT EXISTS ix_http_servers_container_id ON http_servers (container_id)"
         )
     )
-    await db.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_http_servers_name ON http_servers (name)")
-    )
+    await db.execute(text("CREATE INDEX IF NOT EXISTS ix_http_servers_name ON http_servers (name)"))
     await db.execute(
         text(
             "CREATE INDEX IF NOT EXISTS ix_http_servers_update_available ON http_servers (update_available)"
         )
     )
     await db.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_http_servers_ignored ON http_servers (ignored)"
-        )
+        text("CREATE INDEX IF NOT EXISTS ix_http_servers_ignored ON http_servers (ignored)")
     )
     await db.execute(
         text(
@@ -131,9 +127,7 @@ async def up(db):
         )
     )
     await db.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_app_dependencies_name ON app_dependencies (name)"
-        )
+        text("CREATE INDEX IF NOT EXISTS ix_app_dependencies_name ON app_dependencies (name)")
     )
     await db.execute(
         text(
@@ -146,9 +140,7 @@ async def up(db):
         )
     )
     await db.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_app_dependencies_ignored ON app_dependencies (ignored)"
-        )
+        text("CREATE INDEX IF NOT EXISTS ix_app_dependencies_ignored ON app_dependencies (ignored)")
     )
     await db.execute(
         text(
@@ -171,22 +163,14 @@ async def up(db):
         )
     if "ignored_version" not in columns:
         await db.execute(
-            text(
-                "ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_version VARCHAR"
-            )
+            text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_version VARCHAR")
         )
     if "ignored_by" not in columns:
-        await db.execute(
-            text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_by VARCHAR")
-        )
+        await db.execute(text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_by VARCHAR"))
     if "ignored_at" not in columns:
-        await db.execute(
-            text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_at DATETIME")
-        )
+        await db.execute(text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_at DATETIME"))
     if "ignored_reason" not in columns:
-        await db.execute(
-            text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_reason TEXT")
-        )
+        await db.execute(text("ALTER TABLE dockerfile_dependencies ADD COLUMN ignored_reason TEXT"))
     if "version" not in columns:
         await db.execute(
             text(
@@ -209,25 +193,15 @@ async def up(db):
     columns = {row[1] for row in result.fetchall()}
 
     if "event_type" not in columns:
-        await db.execute(
-            text("ALTER TABLE update_history ADD COLUMN event_type VARCHAR")
-        )
+        await db.execute(text("ALTER TABLE update_history ADD COLUMN event_type VARCHAR"))
     if "dependency_type" not in columns:
-        await db.execute(
-            text("ALTER TABLE update_history ADD COLUMN dependency_type VARCHAR")
-        )
+        await db.execute(text("ALTER TABLE update_history ADD COLUMN dependency_type VARCHAR"))
     if "dependency_id" not in columns:
-        await db.execute(
-            text("ALTER TABLE update_history ADD COLUMN dependency_id INTEGER")
-        )
+        await db.execute(text("ALTER TABLE update_history ADD COLUMN dependency_id INTEGER"))
     if "dependency_name" not in columns:
-        await db.execute(
-            text("ALTER TABLE update_history ADD COLUMN dependency_name VARCHAR")
-        )
+        await db.execute(text("ALTER TABLE update_history ADD COLUMN dependency_name VARCHAR"))
     if "file_path" not in columns:
-        await db.execute(
-            text("ALTER TABLE update_history ADD COLUMN file_path VARCHAR")
-        )
+        await db.execute(text("ALTER TABLE update_history ADD COLUMN file_path VARCHAR"))
 
     # Create index for dependency_id column
     await db.execute(

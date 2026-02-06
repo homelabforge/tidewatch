@@ -155,8 +155,7 @@ class TagFetcher:
             if cached:
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.debug(
-                    f"Run-cache hit for {request.image}:{request.current_tag} "
-                    f"({duration_ms:.1f}ms)"
+                    f"Run-cache hit for {request.image}:{request.current_tag} ({duration_ms:.1f}ms)"
                 )
                 return FetchTagsResponse(
                     latest_tag=cached.latest_tag,
@@ -168,11 +167,10 @@ class TagFetcher:
                 )
 
         # Fetch from registry with rate limiting
+        response: FetchTagsResponse | None = None
         try:
             async with RateLimitedRequest(self._rate_limiter, request.registry):
-                client = await RegistryClientFactory.get_client(
-                    request.registry, self._db
-                )
+                client = await RegistryClientFactory.get_client(request.registry, self._db)
 
                 try:
                     # Fetch latest tag within scope
@@ -194,9 +192,7 @@ class TagFetcher:
                                 include_prereleases=request.include_prereleases,
                             )
                         except Exception as e:
-                            logger.warning(
-                                f"Failed to fetch major tag for {request.image}: {e}"
-                            )
+                            logger.warning(f"Failed to fetch major tag for {request.image}: {e}")
 
                     # Get all tags (may be cached in global 15-min cache)
                     all_tags = await client.get_all_tags(request.image)
@@ -205,9 +201,7 @@ class TagFetcher:
                     metadata = None
                     if request.current_tag == "latest":
                         try:
-                            metadata = await client.get_tag_metadata(
-                                request.image, "latest"
-                            )
+                            metadata = await client.get_tag_metadata(request.image, "latest")
                         except Exception as e:
                             logger.warning(
                                 f"Failed to fetch metadata for {request.image}:latest: {e}"
@@ -232,7 +226,7 @@ class TagFetcher:
                         f"-> latest={latest_tag} ({duration_ms:.1f}ms)"
                     )
 
-                    return FetchTagsResponse(
+                    response = FetchTagsResponse(
                         latest_tag=latest_tag,
                         latest_major_tag=latest_major_tag,
                         all_tags=all_tags,
@@ -246,10 +240,8 @@ class TagFetcher:
 
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
-            logger.error(
-                f"Error fetching tags for {request.image}:{request.current_tag}: {e}"
-            )
-            return FetchTagsResponse(
+            logger.error(f"Error fetching tags for {request.image}:{request.current_tag}: {e}")
+            response = FetchTagsResponse(
                 latest_tag=None,
                 latest_major_tag=None,
                 all_tags=[],
@@ -259,9 +251,14 @@ class TagFetcher:
                 error=str(e),
             )
 
-    async def fetch_tags_for_container(
-        self, container: Container
-    ) -> FetchTagsResponse:
+        if response is None:
+            raise RuntimeError(
+                f"Tag fetch for {request.image}:{request.current_tag} "
+                "completed without producing a response"
+            )
+        return response
+
+    async def fetch_tags_for_container(self, container: Container) -> FetchTagsResponse:
         """Convenience method to fetch tags for a container.
 
         Automatically resolves the effective include_prereleases setting
@@ -287,9 +284,7 @@ class TagFetcher:
         image: str = str(container.image)  # type: ignore[attr-defined]
         current_tag: str = str(container.current_tag)  # type: ignore[attr-defined]
         scope: str = str(container.scope)  # type: ignore[attr-defined]
-        current_digest: str | None = (
-            container.current_digest if current_tag == "latest" else None
-        )  # type: ignore[attr-defined]
+        current_digest: str | None = container.current_digest if current_tag == "latest" else None  # type: ignore[attr-defined]
 
         return await self.fetch_tags(
             FetchTagsRequest(

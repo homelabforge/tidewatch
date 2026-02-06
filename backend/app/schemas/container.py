@@ -95,9 +95,7 @@ class HistoryItemSchema(BaseModel):
     from_tag: str
     to_tag: str
     status: str
-    event_type: str | None = (
-        None  # 'update', 'dependency_ignore', 'dependency_unignore'
-    )
+    event_type: str | None = None  # 'update', 'dependency_ignore', 'dependency_unignore'
     update_type: str | None = None
     reason: str | None = None
     reason_type: str | None = None
@@ -113,9 +111,7 @@ class HistoryItemSchema(BaseModel):
     rolled_back_at: datetime | None = None
 
     # Dependency-specific fields (present for dependency ignore/unignore events)
-    dependency_type: str | None = (
-        None  # 'dockerfile', 'http_server', 'app_dependency'
-    )
+    dependency_type: str | None = None  # 'dockerfile', 'http_server', 'app_dependency'
     dependency_id: int | None = None
     dependency_name: str | None = None
 
@@ -161,9 +157,7 @@ class ContainerUpdate(BaseModel):
 
     policy: str | None = None  # patch-only, minor-and-patch, auto, security, manual, disabled
     scope: str | None = None  # patch, minor, major
-    include_prereleases: bool | None = (
-        None  # Include nightly, dev, alpha, beta, rc tags
-    )
+    include_prereleases: bool | None = None  # Include nightly, dev, alpha, beta, rc tags
     vulnforge_enabled: bool | None = None
     health_check_url: str | None = None
     health_check_method: str | None = None

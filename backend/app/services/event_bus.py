@@ -36,8 +36,7 @@ class EventBus:
         payload = json.dumps(
             {
                 **event,
-                "timestamp": event.get("timestamp")
-                or datetime.now(UTC).isoformat(),
+                "timestamp": event.get("timestamp") or datetime.now(UTC).isoformat(),
             }
         )
 

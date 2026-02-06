@@ -31,9 +31,7 @@ class ContainerMonitorService:
         """
         # Validate container name to prevent command injection
         if not validate_container_name(container_name):
-            logger.warning(
-                f"Invalid container name '{container_name}', rejecting for security"
-            )
+            logger.warning(f"Invalid container name '{container_name}', rejecting for security")
             return {"error": "Invalid container name", "running": False}
 
         try:
@@ -66,9 +64,7 @@ class ContainerMonitorService:
             return {"error": str(e), "running": False}
 
     @staticmethod
-    async def should_retry_restart(
-        exit_code: int | None, oom_killed: bool
-    ) -> tuple[bool, str]:
+    async def should_retry_restart(exit_code: int | None, oom_killed: bool) -> tuple[bool, str]:
         """Determine if container should be restarted based on exit code.
 
         Exit code semantics:
@@ -102,9 +98,7 @@ class ContainerMonitorService:
 
         # OOM killed - retry but log warning
         if oom_killed:
-            logger.warning(
-                "Container was OOM killed - consider increasing memory limits"
-            )
+            logger.warning("Container was OOM killed - consider increasing memory limits")
             return True, "oom_killed"
 
         # Application error - retry
@@ -192,9 +186,7 @@ class ContainerMonitorService:
         }
 
     @staticmethod
-    def categorize_failure(
-        exit_code: int | None, oom_killed: bool, error: str
-    ) -> str:
+    def categorize_failure(exit_code: int | None, oom_killed: bool, error: str) -> str:
         """Categorize the type of container failure.
 
         Args:

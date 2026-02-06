@@ -13,7 +13,7 @@ curl -fsSL https://bun.sh/install | bash
 
 **Verify installation:**
 ```bash
-bun --version  # Should be 1.3.4 or higher
+bun --version  # Should be 1.3.8 or higher
 ```
 
 ### Other Requirements

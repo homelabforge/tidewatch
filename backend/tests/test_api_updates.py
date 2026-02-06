@@ -21,9 +21,7 @@ from fastapi import status
 class TestListUpdatesEndpoint:
     """Test suite for GET /api/v1/updates endpoint."""
 
-    async def test_list_updates_all(
-        self, authenticated_client, db, make_container, make_update
-    ):
+    async def test_list_updates_all(self, authenticated_client, db, make_container, make_update):
         """Test listing all updates."""
         # Create a test container first
         container = make_container(
@@ -59,9 +57,7 @@ class TestListUpdatesEndpoint:
         assert isinstance(data, list)
         assert len(data) >= 2
 
-    async def test_list_updates_filter_by_status(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_list_updates_filter_by_status(self, authenticated_client, db, make_container):
         """Test filtering updates by status (pending, approved, applied, failed)."""
         response = await authenticated_client.get("/api/v1/updates?status=pending")
 
@@ -122,17 +118,13 @@ class TestListUpdatesEndpoint:
         await db.commit()
 
         # Filter by container1
-        response = await authenticated_client.get(
-            f"/api/v1/updates/?container_id={container1.id}"
-        )
+        response = await authenticated_client.get(f"/api/v1/updates/?container_id={container1.id}")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert len(data) >= 1
         assert all(u["container_id"] == container1.id for u in data)
 
-    async def test_list_updates_pagination(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_list_updates_pagination(self, authenticated_client, db, make_container):
         """Test pagination with limit and offset."""
         # Test with limit
         response = await authenticated_client.get("/api/v1/updates?limit=1")
@@ -166,9 +158,7 @@ class TestListUpdatesEndpoint:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    async def test_list_updates_empty_result(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_list_updates_empty_result(self, authenticated_client, db, make_container):
         """Test listing updates when none exist."""
         # Use a status that likely has no updates
         response = await authenticated_client.get("/api/v1/updates?status=nonexistent")
@@ -177,20 +167,48 @@ class TestListUpdatesEndpoint:
         data = response.json()
         assert isinstance(data, list)
 
-    @pytest.mark.skip(reason="CVE data integration not yet fully implemented")
     async def test_list_updates_includes_cve_data(
-        self, authenticated_client, db, make_container
+        self, authenticated_client, db, make_container, make_update
     ):
         """Test CVE data is included in response."""
-        pass
+        from datetime import datetime
+
+        container = make_container(
+            name=f"cve-list-test-{id(self)}",
+            image="nginx:1.20",
+            current_tag="1.20",
+            status="running",
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        update = make_update(
+            container_id=container.id,
+            current_tag="1.20",
+            new_tag="1.21",
+            status="pending",
+            cves_fixed=["CVE-2024-1234", "CVE-2024-5678"],
+            created_at=datetime.now(UTC),
+        )
+        db.add(update)
+        await db.commit()
+
+        response = await authenticated_client.get("/api/v1/updates")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        # Find our update in the list
+        cve_update = next((u for u in data if u.get("cves_fixed")), None)
+        assert cve_update is not None
+        assert "CVE-2024-1234" in cve_update["cves_fixed"]
+        assert "CVE-2024-5678" in cve_update["cves_fixed"]
 
 
 class TestGetUpdateEndpoint:
     """Test suite for GET /api/v1/updates/{id} endpoint."""
 
-    async def test_get_update_valid_id(
-        self, authenticated_client, db, make_update, make_container
-    ):
+    async def test_get_update_valid_id(self, authenticated_client, db, make_update, make_container):
         """Test getting update by valid ID returns update object."""
         from datetime import datetime
 
@@ -230,12 +248,39 @@ class TestGetUpdateEndpoint:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    @pytest.mark.skip(reason="CVE data integration not yet fully implemented")
     async def test_get_update_includes_cve_data(
-        self, authenticated_client, db, make_container
+        self, authenticated_client, db, make_container, make_update
     ):
         """Test get update includes CVE data if available."""
-        pass
+        from datetime import datetime
+
+        container = make_container(
+            name=f"cve-get-test-{id(self)}",
+            image="nginx:1.20",
+            current_tag="1.20",
+            status="running",
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        update = make_update(
+            container_id=container.id,
+            current_tag="1.20",
+            new_tag="1.21",
+            status="pending",
+            cves_fixed=["CVE-2024-9999"],
+            created_at=datetime.now(UTC),
+        )
+        db.add(update)
+        await db.commit()
+        await db.refresh(update)
+
+        response = await authenticated_client.get(f"/api/v1/updates/{update.id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "CVE-2024-9999" in data["cves_fixed"]
 
     async def test_get_update_requires_auth(self, client, db, make_container):
         """Test get update requires authentication."""
@@ -252,9 +297,7 @@ class TestGetUpdateEndpoint:
 class TestCheckUpdatesEndpoint:
     """Test suite for POST /api/v1/updates/check endpoint."""
 
-    async def test_check_updates_single_container(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_check_updates_single_container(self, authenticated_client, db, make_container):
         """Test checking updates for single container."""
 
         # Create test container
@@ -269,18 +312,14 @@ class TestCheckUpdatesEndpoint:
         await db.refresh(container)
 
         # Check for updates on this specific container
-        response = await authenticated_client.post(
-            f"/api/v1/updates/check/{container.id}"
-        )
+        response = await authenticated_client.post(f"/api/v1/updates/check/{container.id}")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
         assert "update_available" in data
 
-    async def test_check_updates_all_containers(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_check_updates_all_containers(self, authenticated_client, db, make_container):
         """Test checking updates for all containers (batch check)."""
 
         # Create multiple test containers
@@ -312,9 +351,7 @@ class TestCheckUpdatesEndpoint:
         assert "message" in data
 
     @pytest.mark.skip(reason="Concurrent check handling not yet implemented")
-    async def test_check_updates_already_running(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_check_updates_already_running(self, authenticated_client, db, make_container):
         """Test check updates returns 409 if already running."""
         pass
 
@@ -575,9 +612,7 @@ class TestRejectUpdateEndpoint:
         await db.refresh(update)
 
         # Reject the update
-        response = await authenticated_client.post(
-            f"/api/v1/updates/{update.id}/reject"
-        )
+        response = await authenticated_client.post(f"/api/v1/updates/{update.id}/reject")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -621,9 +656,7 @@ class TestRejectUpdateEndpoint:
         await db.refresh(update)
 
         # Try to reject again
-        response = await authenticated_client.post(
-            f"/api/v1/updates/{update.id}/reject"
-        )
+        response = await authenticated_client.post(f"/api/v1/updates/{update.id}/reject")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
@@ -780,9 +813,7 @@ class TestApplyUpdateEndpoint:
         with patch(
             "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
         ) as mock_apply:
-            mock_apply.side_effect = ValueError(
-                "Update must be approved before applying"
-            )
+            mock_apply.side_effect = ValueError("Update must be approved before applying")
 
             # Try to apply pending update
             response = await authenticated_client.post(
@@ -924,9 +955,7 @@ class TestApplyUpdateEndpoint:
         ]
 
     @pytest.mark.skip(reason="Concurrent handling not yet implemented")
-    async def test_apply_update_concurrent_request(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_apply_update_concurrent_request(self, authenticated_client, db, make_container):
         """Test concurrent apply requests are handled safely."""
         pass
 
@@ -937,9 +966,7 @@ class TestApplyUpdateEndpoint:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await client.post(
-            "/api/v1/updates/1/apply", json={"triggered_by": "user"}
-        )
+        response = await client.post("/api/v1/updates/1/apply", json={"triggered_by": "user"})
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -1212,9 +1239,7 @@ class TestBatchOperations:
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert (
-            data["summary"]["approved_count"] == 3
-        )  # All three (update2 is idempotent)
+        assert data["summary"]["approved_count"] == 3  # All three (update2 is idempotent)
         assert data["summary"]["failed_count"] == 0  # None fail due to idempotency
 
     async def test_batch_approve_returns_summary(
@@ -1349,13 +1374,9 @@ class TestBatchOperations:
         await db.commit()
 
         # Test batch approve without auth
-        response = await client.post(
-            "/api/v1/updates/batch/approve", json={"update_ids": [1, 2]}
-        )
+        response = await client.post("/api/v1/updates/batch/approve", json={"update_ids": [1, 2]})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
         # Test batch reject without auth
-        response = await client.post(
-            "/api/v1/updates/batch/reject", json={"update_ids": [1, 2]}
-        )
+        response = await client.post("/api/v1/updates/batch/reject", json={"update_ids": [1, 2]})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED

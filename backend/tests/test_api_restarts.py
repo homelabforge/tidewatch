@@ -17,9 +17,7 @@ from fastapi import status
 class TestGetRestartStateEndpoint:
     """Test suite for GET /api/v1/restarts/{container_id}/state endpoint."""
 
-    async def test_get_restart_state_existing(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_restart_state_existing(self, authenticated_client, db, make_container):
         """Test returns restart state for existing container."""
         # Arrange - Create container
         container = make_container(
@@ -30,9 +28,7 @@ class TestGetRestartStateEndpoint:
         await db.refresh(container)
 
         # Act
-        response = await authenticated_client.get(
-            f"/api/v1/restarts/{container.id}/state"
-        )
+        response = await authenticated_client.get(f"/api/v1/restarts/{container.id}/state")
 
         # Assert
         assert response.status_code == status.HTTP_200_OK
@@ -66,9 +62,7 @@ class TestGetRestartStateEndpoint:
 class TestManualRestartEndpoint:
     """Test suite for POST /api/v1/restarts/{container_id}/manual-restart endpoint."""
 
-    async def test_manual_restart_success(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_manual_restart_success(self, authenticated_client, db, make_container):
         """Test manually triggers container restart."""
         # Arrange - Create container
         container = make_container(
@@ -100,9 +94,7 @@ class TestManualRestartEndpoint:
             assert "restarted" in data["message"].lower()
             mock_restart.assert_called_once()
 
-    async def test_manual_restart_with_skip_backoff(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_manual_restart_with_skip_backoff(self, authenticated_client, db, make_container):
         """Test manual restart can skip backoff."""
         # Arrange - Create container
         container = make_container(
@@ -132,9 +124,7 @@ class TestManualRestartEndpoint:
             data = response.json()
             assert data["success"] is True
 
-    async def test_manual_restart_failure(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_manual_restart_failure(self, authenticated_client, db, make_container):
         """Test handles restart failure."""
         # Arrange - Create container
         container = make_container(
@@ -225,9 +215,7 @@ class TestResetRestartStateEndpoint:
         assert data["state"]["current_backoff_seconds"] == 0.0
         assert data["state"]["max_retries_reached"] is False
 
-    async def test_reset_restart_state_no_state(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_reset_restart_state_no_state(self, authenticated_client, db, make_container):
         """Test returns 404 if restart state doesn't exist."""
         # Arrange - Create container without restart state
         container = make_container(
@@ -253,9 +241,7 @@ class TestResetRestartStateEndpoint:
         await db.commit()
 
         # Act
-        response = await client.post(
-            "/api/v1/restarts/1/reset", json={"reason": "test"}
-        )
+        response = await client.post("/api/v1/restarts/1/reset", json={"reason": "test"})
 
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -348,9 +334,7 @@ class TestResumeRestartEndpoint:
         await db.commit()
 
         # Act
-        response = await authenticated_client.post(
-            f"/api/v1/restarts/{container.id}/resume"
-        )
+        response = await authenticated_client.post(f"/api/v1/restarts/{container.id}/resume")
 
         # Assert
         assert response.status_code == status.HTTP_200_OK

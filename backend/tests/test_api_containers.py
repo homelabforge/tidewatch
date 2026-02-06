@@ -62,9 +62,7 @@ async def test_list_containers_pagination(
 
 
 @pytest.mark.asyncio
-async def test_get_container_by_id(
-    authenticated_client, db, sample_container_data, make_container
-):
+async def test_get_container_by_id(authenticated_client, db, sample_container_data, make_container):
     """Test getting a specific container by ID."""
     container = make_container(**sample_container_data)
     db.add(container)
@@ -249,9 +247,7 @@ class TestContainerFilteringEndpoint:
 class TestContainerDetailsEndpoint:
     """Test suite for detailed container information."""
 
-    async def test_get_container_environment_vars(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_environment_vars(self, authenticated_client, db, make_container):
         """Test returns container environment variables (masked)."""
         # Create test container
         container = make_container(
@@ -264,9 +260,7 @@ class TestContainerDetailsEndpoint:
         await db.refresh(container)
 
         # Get detailed container info
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/details"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/details")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -275,9 +269,7 @@ class TestContainerDetailsEndpoint:
         # Environment vars might not be in all response schemas
         assert data["container"]["name"] == f"test-container-{id(self)}"
 
-    async def test_get_container_volumes(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_volumes(self, authenticated_client, db, make_container):
         """Test returns container volume mounts."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -288,9 +280,7 @@ class TestContainerDetailsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/details"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/details")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -298,9 +288,7 @@ class TestContainerDetailsEndpoint:
         assert "container" in data
         assert "name" in data["container"]
 
-    async def test_get_container_networks(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_networks(self, authenticated_client, db, make_container):
         """Test returns container network configuration."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -311,9 +299,7 @@ class TestContainerDetailsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/details"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/details")
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -328,15 +314,11 @@ class TestContainerDetailsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/details"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/details")
 
         assert response.status_code == status.HTTP_200_OK
 
-    async def test_get_container_health_status(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_health_status(self, authenticated_client, db, make_container):
         """Test returns container health check status."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -347,9 +329,7 @@ class TestContainerDetailsEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/details"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/details")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -361,9 +341,7 @@ class TestContainerDetailsEndpoint:
 class TestContainerPolicyManagement:
     """Test suite for container policy management."""
 
-    async def test_update_policy_to_auto(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_update_policy_to_auto(self, authenticated_client, db, make_container):
         """Test updating policy to auto."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -383,9 +361,7 @@ class TestContainerPolicyManagement:
         data = response.json()
         assert data["policy"] == "auto"
 
-    async def test_update_policy_to_manual(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_update_policy_to_manual(self, authenticated_client, db, make_container):
         """Test updating policy to manual."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -405,9 +381,7 @@ class TestContainerPolicyManagement:
         data = response.json()
         assert data["policy"] == "manual"
 
-    async def test_update_policy_to_disabled(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_update_policy_to_disabled(self, authenticated_client, db, make_container):
         """Test updating policy to disabled."""
         container = make_container(
             name=f"test-container-{id(self)}",
@@ -439,9 +413,7 @@ class TestContainerPolicyManagement:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await client.put(
-            "/api/v1/containers/1/policy", json={"policy": "auto"}
-        )
+        response = await client.put("/api/v1/containers/1/policy", json={"policy": "auto"})
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -449,9 +421,7 @@ class TestContainerPolicyManagement:
 class TestContainerExclusion:
     """Test suite for container exclusion management."""
 
-    async def test_exclude_container_from_updates(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_exclude_container_from_updates(self, authenticated_client, db, make_container):
         """Test excluding container from updates."""
         # Create container with manual policy
         container = make_container(
@@ -468,9 +438,7 @@ class TestContainerExclusion:
         await db.refresh(container)
 
         # Exclude container
-        response = await authenticated_client.post(
-            f"/api/v1/containers/{container.id}/exclude"
-        )
+        response = await authenticated_client.post(f"/api/v1/containers/{container.id}/exclude")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
@@ -480,9 +448,7 @@ class TestContainerExclusion:
         await db.refresh(container)
         assert container.policy == "disabled"
 
-    async def test_include_excluded_container(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_include_excluded_container(self, authenticated_client, db, make_container):
         """Test including previously excluded container."""
         # Create excluded container
         container = make_container(
@@ -499,9 +465,7 @@ class TestContainerExclusion:
         await db.refresh(container)
 
         # Include container
-        response = await authenticated_client.post(
-            f"/api/v1/containers/{container.id}/include"
-        )
+        response = await authenticated_client.post(f"/api/v1/containers/{container.id}/include")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
@@ -511,9 +475,7 @@ class TestContainerExclusion:
         await db.refresh(container)
         assert container.policy == "manual"
 
-    async def test_list_excluded_containers(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_list_excluded_containers(self, authenticated_client, db, make_container):
         """Test listing all excluded containers."""
         # Create mix of excluded and included containers
         container1 = make_container(
@@ -614,9 +576,7 @@ class TestContainerStats:
         )
 
         # Test endpoint (may not be implemented yet)
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/uptime"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/uptime")
 
         # Accept 200 (implemented), 404 (not implemented), or 501 (not implemented)
         assert response.status_code in [
@@ -644,9 +604,7 @@ class TestContainerStats:
         )
 
         # Test endpoint (may not be implemented yet)
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/restarts"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/restarts")
 
         # Accept 200 (implemented), 404 (not implemented), or 501 (not implemented)
         assert response.status_code in [
@@ -655,9 +613,7 @@ class TestContainerStats:
             status.HTTP_501_NOT_IMPLEMENTED,
         ]
 
-    async def test_get_container_update_history(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_update_history(self, authenticated_client, db, make_container):
         """Test retrieving container update history."""
         from datetime import datetime
 
@@ -701,9 +657,7 @@ class TestContainerStats:
         await db.commit()
 
         # Get container history
-        response = await authenticated_client.get(
-            f"/api/v1/containers/{container.id}/history"
-        )
+        response = await authenticated_client.get(f"/api/v1/containers/{container.id}/history")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -714,9 +668,7 @@ class TestContainerStats:
         assert data[0]["to_tag"] == "1.20"
         assert data[1]["to_tag"] == "1.19"
 
-    async def test_get_container_history_pagination(
-        self, authenticated_client, db, make_container
-    ):
+    async def test_get_container_history_pagination(self, authenticated_client, db, make_container):
         """Test history endpoint pagination."""
         from datetime import datetime
 
@@ -806,9 +758,7 @@ class TestContainerStats:
 class TestContainerSync:
     """Test suite for container synchronization with Docker."""
 
-    async def test_sync_containers_from_docker(
-        self, authenticated_client, mock_docker_client
-    ):
+    async def test_sync_containers_from_docker(self, authenticated_client, mock_docker_client):
         """Test syncing container list from Docker daemon."""
         # Sync endpoint exists at POST /api/v1/containers/sync
         response = await authenticated_client.post("/api/v1/containers/sync")
@@ -835,9 +785,7 @@ class TestContainerSync:
         # When sync is implemented, verify container was removed from DB
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND]
 
-    async def test_sync_adds_new_containers(
-        self, authenticated_client, db, mock_docker_client
-    ):
+    async def test_sync_adds_new_containers(self, authenticated_client, db, mock_docker_client):
         """Test sync adds new containers from Docker."""
         # Add container to mock Docker that's not in DB
         mock_docker_client.add_container(
@@ -894,9 +842,7 @@ class TestContainerValidation:
         """Test container name validation."""
         pass
 
-    @pytest.mark.skip(
-        reason="Policy validation tested in TestContainerPolicyManagement"
-    )
+    @pytest.mark.skip(reason="Policy validation tested in TestContainerPolicyManagement")
     async def test_validate_policy_values(self, authenticated_client):
         """Test policy value validation."""
         pass

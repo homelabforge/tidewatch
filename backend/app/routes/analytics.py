@@ -53,20 +53,16 @@ async def get_analytics_summary(
     frequency_rows = frequency_result.all()
 
     update_frequency: list[FrequencyPoint] = [
-        FrequencyPoint(date=row.day, count=row.count) for row in frequency_rows
+        FrequencyPoint(date=row[0], count=int(row[1])) for row in frequency_rows
     ]
 
     # Vulnerability trends (CVEs fixed per day)
-    history_rows = await db.execute(
-        select(UpdateHistory).where(timestamp_col >= start_window_str)
-    )
+    history_rows = await db.execute(select(UpdateHistory).where(timestamp_col >= start_window_str))
     histories = history_rows.scalars().all()
 
     cve_counts: dict[str, int] = defaultdict(int)
     for record in histories:
-        reference_time = (
-            record.completed_at or record.started_at or record.created_at or now
-        )
+        reference_time = record.completed_at or record.started_at or record.created_at or now
         if reference_time.tzinfo is None:
             reference_time = reference_time.replace(tzinfo=UTC)
         else:
@@ -75,8 +71,7 @@ async def get_analytics_summary(
         cve_counts[day_key] += len(record.cves_fixed or [])
 
     vulnerability_trends: list[VulnerabilityPoint] = [
-        VulnerabilityPoint(date=key, cves_fixed=value)
-        for key, value in sorted(cve_counts.items())
+        VulnerabilityPoint(date=key, cves_fixed=value) for key, value in sorted(cve_counts.items())
     ]
 
     # Policy distribution
@@ -86,14 +81,12 @@ async def get_analytics_summary(
 
     policy_rows = policy_result.all()
     policy_distribution: list[DistributionItem] = [
-        DistributionItem(label=row.policy, value=row.count) for row in policy_rows
+        DistributionItem(label=row[0], value=int(row[1])) for row in policy_rows
     ]
 
     # Total updates (all statuses) in the period
     total_updates_result = await db.execute(
-        select(func.count())
-        .select_from(UpdateHistory)
-        .where(timestamp_col >= start_window_str)
+        select(func.count()).select_from(UpdateHistory).where(timestamp_col >= start_window_str)
     )
     total_updates = total_updates_result.scalar_one()
 

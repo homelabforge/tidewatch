@@ -102,15 +102,11 @@ class NtfyNotificationService(NotificationService):
                         encoded_headers.append((key, value))
                     except UnicodeEncodeError:
                         # For Unicode (emojis), pass raw UTF-8 bytes
-                        encoded_headers.append(
-                            (key.encode("utf-8"), value.encode("utf-8"))
-                        )
+                        encoded_headers.append((key.encode("utf-8"), value.encode("utf-8")))
                 else:
                     encoded_headers.append((key, value))
 
-            response = await self.client.post(
-                endpoint, content=message, headers=encoded_headers
-            )
+            response = await self.client.post(endpoint, content=message, headers=encoded_headers)
             response.raise_for_status()
 
             logger.info(f"[ntfy] Sent notification: {title}")

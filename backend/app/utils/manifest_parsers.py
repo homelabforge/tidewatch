@@ -73,9 +73,7 @@ def update_package_json(
                     break
 
         # Apply prefix to new version if it doesn't already have one
-        if prefix and not any(
-            new_version.startswith(p) for p in ["^", "~", ">=", "<=", ">", "<"]
-        ):
+        if prefix and not any(new_version.startswith(p) for p in ["^", "~", ">=", "<=", ">", "<"]):
             new_version = prefix + new_version
 
         data[dependency_type][package_name] = new_version
@@ -460,9 +458,7 @@ def update_cargo_toml(
         return False, ""
 
 
-def update_go_mod(
-    file_path: Path, module_name: str, new_version: str
-) -> tuple[bool, str]:
+def update_go_mod(file_path: Path, module_name: str, new_version: str) -> tuple[bool, str]:
     """
     Update module version in go.mod.
 
@@ -485,9 +481,7 @@ def update_go_mod(
         updated = False
         for i, line in enumerate(lines):
             # Match require statements: module v1.2.3
-            match = re.match(
-                rf"^\s*({re.escape(module_name)})\s+(v[\d.]+)(.*)$", line.strip()
-            )
+            match = re.match(rf"^\s*({re.escape(module_name)})\s+(v[\d.]+)(.*)$", line.strip())
 
             if match:
                 module = match.group(1)

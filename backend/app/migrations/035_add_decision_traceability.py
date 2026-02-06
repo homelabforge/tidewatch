@@ -22,25 +22,15 @@ async def up(db):
     columns = {row[1] for row in result.fetchall()}
 
     if "decision_trace" not in columns:
-        await db.execute(
-            text("ALTER TABLE updates ADD COLUMN decision_trace TEXT DEFAULT NULL")
-        )
+        await db.execute(text("ALTER TABLE updates ADD COLUMN decision_trace TEXT DEFAULT NULL"))
 
     if "update_kind" not in columns:
-        await db.execute(
-            text("ALTER TABLE updates ADD COLUMN update_kind TEXT DEFAULT NULL")
-        )
-        await db.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_update_kind ON updates(update_kind)")
-        )
+        await db.execute(text("ALTER TABLE updates ADD COLUMN update_kind TEXT DEFAULT NULL"))
+        await db.execute(text("CREATE INDEX IF NOT EXISTS idx_update_kind ON updates(update_kind)"))
 
     if "change_type" not in columns:
-        await db.execute(
-            text("ALTER TABLE updates ADD COLUMN change_type TEXT DEFAULT NULL")
-        )
-        await db.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_change_type ON updates(change_type)")
-        )
+        await db.execute(text("ALTER TABLE updates ADD COLUMN change_type TEXT DEFAULT NULL"))
+        await db.execute(text("CREATE INDEX IF NOT EXISTS idx_change_type ON updates(change_type)"))
 
     await db.commit()
 
@@ -49,6 +39,4 @@ async def down(db):
     """Remove decision traceability fields from updates table."""
     # SQLite doesn't support DROP COLUMN directly in older versions
     # For now, just document this limitation
-    raise NotImplementedError(
-        "Downgrade not supported for SQLite ALTER TABLE ADD COLUMN"
-    )
+    raise NotImplementedError("Downgrade not supported for SQLite ALTER TABLE ADD COLUMN")

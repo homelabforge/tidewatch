@@ -48,6 +48,4 @@ class PendingLinkRequiredException(Exception):
         self.claims = claims
         self.userinfo = userinfo
         self.config = config
-        super().__init__(
-            "Admin account requires password verification for OIDC linking"
-        )
+        super().__init__("Admin account requires password verification for OIDC linking")

@@ -1,7 +1,9 @@
 """Container restart log model for audit trail of restart attempts."""
 
+from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -17,60 +19,66 @@ class ContainerRestartLog(Base):
     __tablename__ = "container_restart_log"
 
     # Primary key
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # Container reference
-    container_id = Column(
+    container_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("containers.id"), nullable=False, index=True
     )
-    container_name = Column(String, nullable=False, index=True)
-    restart_state_id = Column(
+    container_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    restart_state_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("container_restart_state.id"), nullable=False
     )
 
     # Attempt details
-    attempt_number = Column(Integer, nullable=False)
-    trigger_reason = Column(
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    trigger_reason: Mapped[str] = mapped_column(
         String, nullable=False
     )  # "exit_code", "health_check", "manual", "oom_killed"
-    exit_code = Column(Integer, nullable=True)
-    failure_reason = Column(
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # Detailed reason from container state
 
     # Backoff strategy used
-    backoff_strategy = Column(String, nullable=False)  # exponential, linear, fixed
-    backoff_delay_seconds = Column(Float, nullable=False)
+    backoff_strategy: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # exponential, linear, fixed
+    backoff_delay_seconds: Mapped[float] = mapped_column(Float, nullable=False)
 
     # Execution
-    restart_method = Column(
+    restart_method: Mapped[str] = mapped_column(
         String, nullable=False
     )  # "docker_compose", "docker_restart"
-    docker_command = Column(String, nullable=True)  # Actual command executed
+    docker_command: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Actual command executed
 
     # Result
-    success = Column(Boolean, nullable=False)
-    error_message = Column(String, nullable=True)
-    duration_seconds = Column(Float, nullable=True)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Health validation
-    health_check_enabled = Column(Boolean, default=False, nullable=False)
-    health_check_passed = Column(Boolean, nullable=True)
-    health_check_duration = Column(Float, nullable=True)
-    health_check_method = Column(String, nullable=True)  # "http", "docker_inspect"
-    health_check_error = Column(String, nullable=True)
+    health_check_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    health_check_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    health_check_duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    health_check_method: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # "http", "docker_inspect"
+    health_check_error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Container state after restart
-    final_container_status = Column(
+    final_container_status: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # "running", "exited", "restarting"
-    final_exit_code = Column(Integer, nullable=True)
+    final_exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Timestamps
-    scheduled_at = Column(DateTime(timezone=True), nullable=False)
-    executed_at = Column(DateTime(timezone=True), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 

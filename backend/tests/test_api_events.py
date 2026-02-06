@@ -35,9 +35,7 @@ class TestEventStreamEndpoint:
             patch(
                 "app.routes.events.event_bus.subscribe", new_callable=AsyncMock
             ) as mock_subscribe,
-            patch(
-                "app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock
-            ) as mock_unsub,
+            patch("app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock) as mock_unsub,
             patch(
                 "app.routes.events.Request.is_disconnected",
                 new_callable=AsyncMock,
@@ -54,10 +52,7 @@ class TestEventStreamEndpoint:
             ) as response:
                 # Assert - Check headers immediately
                 assert response.status_code == status.HTTP_200_OK
-                assert (
-                    response.headers["content-type"]
-                    == "text/event-stream; charset=utf-8"
-                )
+                assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
                 # Read the first line; Request.is_disconnected is patched to end the stream after it
                 line_iter = response.aiter_lines()
@@ -76,9 +71,7 @@ class TestEventStreamEndpoint:
             patch(
                 "app.routes.events.event_bus.subscribe", new_callable=AsyncMock
             ) as mock_subscribe,
-            patch(
-                "app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock
-            ) as mock_unsub,
+            patch("app.routes.events.event_bus.unsubscribe", new_callable=AsyncMock) as mock_unsub,
             patch(
                 "app.routes.events.Request.is_disconnected",
                 new_callable=AsyncMock,

@@ -78,9 +78,7 @@ class TestCreateWebhookEndpoint:
             "retry_count": 3,
         }
 
-        response = await authenticated_client.post(
-            "/api/v1/webhooks", json=webhook_data
-        )
+        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
         if response.status_code != status.HTTP_201_CREATED:
             print(f"Response status: {response.status_code}")
@@ -102,9 +100,7 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post(
-            "/api/v1/webhooks", json=webhook_data
-        )
+        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -117,9 +113,7 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post(
-            "/api/v1/webhooks", json=webhook_data
-        )
+        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert (
@@ -147,9 +141,7 @@ class TestCreateWebhookEndpoint:
             "events": ["update_applied"],
         }
 
-        response = await authenticated_client.post(
-            "/api/v1/webhooks", json=webhook_data
-        )
+        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
         assert response.status_code == status.HTTP_409_CONFLICT
 
@@ -162,9 +154,7 @@ class TestCreateWebhookEndpoint:
             "events": ["invalid_event", "another_bad_event"],
         }
 
-        response = await authenticated_client.post(
-            "/api/v1/webhooks", json=webhook_data
-        )
+        response = await authenticated_client.post("/api/v1/webhooks", json=webhook_data)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -262,9 +252,7 @@ class TestUpdateWebhookEndpoint:
         """Test updating non-existent webhook returns 404."""
         update_data = {"name": "new-name"}
 
-        response = await authenticated_client.put(
-            "/api/v1/webhooks/99999", json=update_data
-        )
+        response = await authenticated_client.put("/api/v1/webhooks/99999", json=update_data)
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -322,9 +310,7 @@ class TestDeleteWebhookEndpoint:
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         # Verify webhook was deleted
-        verify_response = await authenticated_client.get(
-            f"/api/v1/webhooks/{webhook.id}"
-        )
+        verify_response = await authenticated_client.get(f"/api/v1/webhooks/{webhook.id}")
         assert verify_response.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_delete_webhook_invalid_id(self, authenticated_client):
@@ -371,9 +357,7 @@ class TestTestWebhookEndpoint:
             mock_instance.post = AsyncMock(return_value=mock_response)
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(
-                f"/api/v1/webhooks/{webhook.id}/test"
-            )
+            response = await authenticated_client.post(f"/api/v1/webhooks/{webhook.id}/test")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -403,9 +387,7 @@ class TestTestWebhookEndpoint:
             mock_instance.post = AsyncMock(return_value=mock_response)
             mock_client.return_value = mock_instance
 
-            response = await authenticated_client.post(
-                f"/api/v1/webhooks/{webhook.id}/test"
-            )
+            response = await authenticated_client.post(f"/api/v1/webhooks/{webhook.id}/test")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()

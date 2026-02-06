@@ -13,7 +13,7 @@ class ScanResultSchema(BaseModel):
     id: int
     container_id: int
     container_name: str
-    scanned_at: datetime
+    scanned_at: datetime | None = None
     total_vulns: int
     critical: int
     high: int
@@ -31,8 +31,6 @@ class ScanSummarySchema(BaseModel):
 
     total_containers_scanned: int
     total_vulnerabilities: int
-    severity_breakdown: dict[
-        str, int
-    ]  # {"critical": X, "high": Y, "medium": Z, "low": W}
+    severity_breakdown: dict[str, int]  # {"critical": X, "high": Y, "medium": Z, "low": W}
     last_scan: datetime | None = None
     containers_at_risk: int  # Containers with critical or high vulnerabilities

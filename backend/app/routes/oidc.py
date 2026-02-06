@@ -115,16 +115,14 @@ async def update_oidc_config(
     # If client_secret is masked, keep the existing secret instead of overwriting
     client_secret = oidc_config.client_secret
     if oidc_service.is_masked_secret(client_secret):
-        existing_secret = await SettingsService.get(
-            db, "oidc_client_secret", default=""
-        )
+        existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
         client_secret = existing_secret
 
     # Update OIDC settings
     await SettingsService.set(db, "oidc_enabled", str(oidc_config.enabled).lower())
     await SettingsService.set(db, "oidc_issuer_url", oidc_config.issuer_url)
     await SettingsService.set(db, "oidc_client_id", oidc_config.client_id)
-    await SettingsService.set(db, "oidc_client_secret", client_secret)
+    await SettingsService.set(db, "oidc_client_secret", client_secret or "")
     await SettingsService.set(db, "oidc_provider_name", oidc_config.provider_name)
     await SettingsService.set(db, "oidc_scopes", oidc_config.scopes)
     await SettingsService.set(db, "oidc_redirect_uri", oidc_config.redirect_uri or "")
@@ -162,9 +160,7 @@ async def test_oidc_connection(
     # If client_secret is masked, use existing secret
     client_secret = oidc_config.client_secret
     if oidc_service.is_masked_secret(client_secret):
-        existing_secret = await SettingsService.get(
-            db, "oidc_client_secret", default=""
-        )
+        existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
         client_secret = existing_secret
 
     # Convert to config dict
@@ -300,9 +296,7 @@ async def oidc_callback(
     # Validate and consume state from database (one-time use)
     state_data = await oidc_service.validate_and_consume_state(db, state)
     if not state_data:
-        logger.warning(
-            "Invalid or expired state parameter: %s", sanitize_log_message(state[:16])
-        )
+        logger.warning("Invalid or expired state parameter: %s", sanitize_log_message(state[:16]))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state parameter. Please try logging in again.",
@@ -330,9 +324,7 @@ async def oidc_callback(
     # Exchange code for tokens
     redirect_uri = state_data["redirect_uri"]
     try:
-        tokens = await oidc_service.exchange_code_for_tokens(
-            code, config, metadata, redirect_uri
-        )
+        tokens = await oidc_service.exchange_code_for_tokens(code, config, metadata, redirect_uri)
         if not tokens:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -375,9 +367,7 @@ async def oidc_callback(
         try:
             userinfo = await oidc_service.get_userinfo(access_token, metadata)
         except (httpx.TimeoutException, httpx.ConnectError):
-            logger.warning(
-                "Failed to fetch userinfo, continuing with ID token claims only"
-            )
+            logger.warning("Failed to fetch userinfo, continuing with ID token claims only")
 
     # Link OIDC to admin account
     try:
@@ -429,9 +419,7 @@ async def oidc_callback(
     frontend_url = f"{scheme}://{host}"
     redirect_url = f"{frontend_url}/"
 
-    redirect_response = RedirectResponse(
-        url=redirect_url, status_code=status.HTTP_302_FOUND
-    )
+    redirect_response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
     redirect_response.set_cookie(
         key=JWT_COOKIE_NAME,
         value=jwt_token,
@@ -477,6 +465,10 @@ async def link_oidc_account(
     """
     # Validate and consume pending link token
     result = await oidc_service.verify_pending_link(db, token, password)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Link verification failed"
+        )
 
     if not result["success"]:
         logger.warning("OIDC link failed: %s", result["error"])
@@ -502,9 +494,7 @@ async def link_oidc_account(
         expires_delta=access_token_expires,
     )
 
-    logger.info(
-        "OIDC account linked successfully for admin: %s", admin_profile["username"]
-    )
+    logger.info("OIDC account linked successfully for admin: %s", admin_profile["username"])
 
     # Set httpOnly cookie
     response.set_cookie(

@@ -40,9 +40,7 @@ class MetricsCollector:
         for container in containers:
             try:
                 # Check if container is running
-                is_running = await docker_stats_service.check_container_running(
-                    container.name
-                )
+                is_running = await docker_stats_service.check_container_running(container.name)
 
                 if not is_running:
                     logger.debug(
@@ -78,9 +76,7 @@ class MetricsCollector:
                 stats["collected"] += 1
 
             except OperationalError as e:
-                logger.error(
-                    f"Database error collecting metrics for {container.name}: {e}"
-                )
+                logger.error(f"Database error collecting metrics for {container.name}: {e}")
                 stats["errors"] += 1
                 continue
             except (ValueError, KeyError, AttributeError) as e:
@@ -116,17 +112,15 @@ class MetricsCollector:
         """
         cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
-        result = await db.execute(
+        cursor_result = await db.execute(
             delete(MetricsHistory).where(MetricsHistory.collected_at < cutoff_date)
         )
 
-        deleted_count = result.rowcount
+        deleted_count: int = cursor_result.rowcount  # type: ignore[assignment]
         await db.commit()
 
         if deleted_count > 0:
-            logger.info(
-                f"Cleaned up {deleted_count} old metrics records (older than {days} days)"
-            )
+            logger.info(f"Cleaned up {deleted_count} old metrics records (older than {days} days)")
 
         return deleted_count
 

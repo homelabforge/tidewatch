@@ -341,12 +341,14 @@ class TestValidateFormat:
         """Test rejects missing time separator."""
         is_valid, error = UpdateWindow.validate_format("12:00")
         assert is_valid is False
+        assert error is not None
         assert "Invalid time range format" in error
 
     def test_rejects_invalid_minute(self):
         """Test rejects invalid minute."""
         is_valid, error = UpdateWindow.validate_format("12:60-14:00")
         assert is_valid is False
+        assert error is not None
         assert "Invalid minute" in error
 
 

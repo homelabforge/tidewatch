@@ -107,16 +107,12 @@ class NotificationDispatcher:
         group_key, event_key = settings_keys
 
         # Check if group is enabled
-        group_enabled = await SettingsService.get_bool(
-            self.db, group_key, default=False
-        )
+        group_enabled = await SettingsService.get_bool(self.db, group_key, default=False)
         if not group_enabled:
             return False
 
         # Check if specific event is enabled
-        event_enabled = await SettingsService.get_bool(
-            self.db, event_key, default=False
-        )
+        event_enabled = await SettingsService.get_bool(self.db, event_key, default=False)
         return event_enabled
 
     async def _get_enabled_services(self) -> list[NotificationService]:
@@ -130,9 +126,7 @@ class NotificationDispatcher:
         # Check ntfy
         if await SettingsService.get_bool(self.db, "ntfy_enabled", default=False):
             server = await SettingsService.get(self.db, "ntfy_server")
-            topic = await SettingsService.get(
-                self.db, "ntfy_topic", default="tidewatch"
-            )
+            topic = await SettingsService.get(self.db, "ntfy_topic", default="tidewatch")
             api_key = await SettingsService.get(self.db, "ntfy_token")
             if server and topic:
                 services.append(NtfyNotificationService(server, topic, api_key))
@@ -173,23 +167,13 @@ class NotificationDispatcher:
         # Check email
         if await SettingsService.get_bool(self.db, "email_enabled", default=False):
             smtp_host = await SettingsService.get(self.db, "email_smtp_host")
-            smtp_port = await SettingsService.get_int(
-                self.db, "email_smtp_port", default=587
-            )
+            smtp_port = await SettingsService.get_int(self.db, "email_smtp_port", default=587)
             smtp_user = await SettingsService.get(self.db, "email_smtp_user")
             smtp_password = await SettingsService.get(self.db, "email_smtp_password")
             from_address = await SettingsService.get(self.db, "email_from")
             to_address = await SettingsService.get(self.db, "email_to")
-            use_tls = await SettingsService.get_bool(
-                self.db, "email_smtp_tls", default=True
-            )
-            if (
-                smtp_host
-                and smtp_user
-                and smtp_password
-                and from_address
-                and to_address
-            ):
+            use_tls = await SettingsService.get_bool(self.db, "email_smtp_tls", default=True)
+            if smtp_host and smtp_user and smtp_password and from_address and to_address:
                 services.append(
                     EmailNotificationService(
                         smtp_host,
@@ -230,9 +214,7 @@ class NotificationDispatcher:
 
         # Check if this event type is enabled
         if not await self._is_event_enabled(event_type):
-            logger.debug(
-                f"Event type '{event_type}' is disabled, skipping notifications"
-            )
+            logger.debug(f"Event type '{event_type}' is disabled, skipping notifications")
             return results
 
         # Get enabled services
@@ -250,9 +232,7 @@ class NotificationDispatcher:
             self.db, "notification_retry_attempts", default=3
         )
         base_delay = float(
-            await SettingsService.get(
-                self.db, "notification_retry_delay", default="2.0"
-            )
+            await SettingsService.get(self.db, "notification_retry_delay", default="2.0") or "2.0"
         )
 
         # Send to all enabled services

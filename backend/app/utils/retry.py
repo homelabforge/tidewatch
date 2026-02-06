@@ -70,9 +70,7 @@ def async_retry(
 
             # This should never be reached due to raise on line 54, but satisfy type checker
             # If somehow reached, last_exception should be set from the loop
-            assert last_exception is not None, (
-                "No exception captured but max attempts reached"
-            )
+            assert last_exception is not None, "No exception captured but max attempts reached"
             raise last_exception
 
         return wrapper
@@ -134,9 +132,7 @@ def sync_retry(
 
             # This should never be reached due to raise on line 113, but satisfy type checker
             # If somehow reached, last_exception should be set from the loop
-            assert last_exception is not None, (
-                "No exception captured but max attempts reached"
-            )
+            assert last_exception is not None, "No exception captured but max attempts reached"
             raise last_exception
 
         return wrapper

@@ -1,5 +1,6 @@
 """Pydantic schemas for settings."""
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -47,4 +48,4 @@ class SettingCategory(BaseModel):
     """Settings grouped by category."""
 
     category: str
-    settings: list[SettingSchema]
+    settings: Sequence[SettingSchema]

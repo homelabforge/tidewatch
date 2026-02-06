@@ -271,11 +271,7 @@ class UpdateDecisionMaker:
 
         # Check for scope violation
         is_scope_violation = False
-        if (
-            latest_major_tag
-            and latest_major_tag != current_tag
-            and latest_major_tag != latest_tag
-        ):
+        if latest_major_tag and latest_major_tag != current_tag and latest_major_tag != latest_tag:
             is_scope_violation = True
             trace.set_scope_blocking(
                 blocked=True,

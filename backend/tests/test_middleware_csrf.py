@@ -20,11 +20,10 @@ def app():
     """Create test FastAPI app with CSRF middleware."""
     app = FastAPI()
 
-    # Add session middleware (required for CSRF)
+    # IMPORTANT: Starlette middleware is LIFO - last added runs first
+    # CSRF must be added BEFORE Session so Session executes first (outer)
+    app.add_middleware(CSRFProtectionMiddleware, force_enabled=True)
     app.add_middleware(SessionMiddleware, secret_key="test-secret-key")
-
-    # Add CSRF middleware
-    app.add_middleware(CSRFProtectionMiddleware)
 
     # Test endpoints
     @app.get("/test")
@@ -58,9 +57,6 @@ def client(app):
     return TestClient(app)
 
 
-@pytest.mark.skip(
-    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
-)
 class TestCSRFTokenGeneration:
     """Test suite for CSRF token generation on safe methods."""
 
@@ -120,9 +116,6 @@ class TestCSRFTokenGeneration:
         assert token1 == token2
 
 
-@pytest.mark.skip(
-    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
-)
 class TestCSRFTokenValidation:
     """Test suite for CSRF token validation on unsafe methods."""
 
@@ -208,9 +201,6 @@ class TestCSRFTokenValidation:
         assert "secrets.compare_digest" in source
 
 
-@pytest.mark.skip(
-    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
-)
 class TestCSRFExemptPaths:
     """Test suite for CSRF exempt paths."""
 
@@ -218,8 +208,8 @@ class TestCSRFExemptPaths:
     def app_with_auth(self):
         """Create app with auth endpoints."""
         app = FastAPI()
+        app.add_middleware(CSRFProtectionMiddleware, force_enabled=True)
         app.add_middleware(SessionMiddleware, secret_key="test-secret")
-        app.add_middleware(CSRFProtectionMiddleware)
 
         @app.post("/api/v1/auth/login")
         async def login():
@@ -296,9 +286,6 @@ class TestCSRFExemptPaths:
         assert response.status_code == 200
 
 
-@pytest.mark.skip(
-    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
-)
 class TestCSRFSecurityProperties:
     """Test suite for CSRF security properties."""
 
@@ -352,8 +339,8 @@ class TestCSRFSecurityProperties:
         monkeypatch.setenv("CSRF_SECURE_COOKIE", "true")
 
         app = FastAPI()
+        app.add_middleware(CSRFProtectionMiddleware, force_enabled=True)
         app.add_middleware(SessionMiddleware, secret_key="test-secret")
-        app.add_middleware(CSRFProtectionMiddleware)
 
         @app.get("/test")
         async def test():
@@ -364,16 +351,12 @@ class TestCSRFSecurityProperties:
         client = TestClient(app, base_url="https://example.com")
 
         response = client.get("/test")
-        response.headers.get("set-cookie", "")
+        set_cookie = response.headers.get("set-cookie", "")
 
-        # In production (HTTPS), cookie should be Secure
-        # Note: TestClient doesn't fully simulate HTTPS, so check env var effect
-        assert "CSRF_SECURE_COOKIE" in str(monkeypatch.setenv)
+        # When CSRF_SECURE_COOKIE=true, the cookie should have Secure flag
+        assert "Secure" in set_cookie
 
 
-@pytest.mark.skip(
-    reason="CSRF middleware may have session issues in test environment - integration tests not applicable"
-)
 class TestCSRFIntegration:
     """Integration tests for CSRF protection with real scenarios."""
 
@@ -420,8 +403,8 @@ class TestCSRFIntegration:
         from app.middleware.csrf import CSRFProtectionMiddleware
 
         app = FastAPI()
+        app.add_middleware(CSRFProtectionMiddleware, force_enabled=True)
         app.add_middleware(SessionMiddleware, secret_key="test-secret")
-        app.add_middleware(CSRFProtectionMiddleware)
 
         @app.get("/test")
         async def test():

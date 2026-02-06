@@ -40,9 +40,7 @@ class TestGetAllSettingsEndpoint:
         from app.services.settings_service import SettingsService
 
         # Set a sensitive setting (admin_password_hash is marked as sensitive)
-        await SettingsService.set(
-            db, "admin_password_hash", "supersecretpasswordhash123"
-        )
+        await SettingsService.set(db, "admin_password_hash", "supersecretpasswordhash123")
 
         response = await authenticated_client.get("/api/v1/settings")
 
@@ -50,9 +48,7 @@ class TestGetAllSettingsEndpoint:
         data = response.json()
 
         # Find the sensitive setting
-        sensitive_setting = next(
-            (s for s in data if s["key"] == "admin_password_hash"), None
-        )
+        sensitive_setting = next((s for s in data if s["key"] == "admin_password_hash"), None)
         if sensitive_setting:
             # Value should be masked
             assert "*" in sensitive_setting["value"]
@@ -100,9 +96,7 @@ class TestGetSettingEndpoint:
 
     async def test_get_setting_invalid_key(self, authenticated_client):
         """Test invalid key returns 404."""
-        response = await authenticated_client.get(
-            "/api/v1/settings/nonexistent_key_12345"
-        )
+        response = await authenticated_client.get("/api/v1/settings/nonexistent_key_12345")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         data = response.json()
@@ -113,13 +107,9 @@ class TestGetSettingEndpoint:
         from app.services.settings_service import SettingsService
 
         # Set a sensitive setting
-        await SettingsService.set(
-            db, "admin_password_hash", "verylongsecretpasswordhash12345"
-        )
+        await SettingsService.set(db, "admin_password_hash", "verylongsecretpasswordhash12345")
 
-        response = await authenticated_client.get(
-            "/api/v1/settings/admin_password_hash"
-        )
+        response = await authenticated_client.get("/api/v1/settings/admin_password_hash")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -168,16 +158,12 @@ class TestUpdateSettingEndpoint:
         """Test invalid value returns 400 validation error."""
         pass
 
-    @pytest.mark.skip(
-        reason="Encryption implementation details not testable at API level"
-    )
+    @pytest.mark.skip(reason="Encryption implementation details not testable at API level")
     async def test_update_setting_sensitive_encrypted(self, authenticated_client, db):
         """Test sensitive value is encrypted in storage."""
         pass
 
-    async def test_update_setting_triggers_event(
-        self, authenticated_client, db, mock_event_bus
-    ):
+    async def test_update_setting_triggers_event(self, authenticated_client, db, mock_event_bus):
         """Test triggers setting_changed event."""
         # Update a setting
         response = await authenticated_client.put(
@@ -216,9 +202,7 @@ class TestUpdateSettingEndpoint:
         await SettingsService.set(db, "auth_mode", "local")
         await db.commit()
 
-        response = await client.put(
-            "/api/v1/settings/check_interval", json={"value": "120"}
-        )
+        response = await client.put("/api/v1/settings/check_interval", json={"value": "120"})
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -257,9 +241,7 @@ class TestBulkUpdateSettingsEndpoint:
         auto_update = await SettingsService.get(db, "auto_update_enabled")
         assert auto_update == "true"
 
-    async def test_bulk_update_validation_error_rollback(
-        self, authenticated_client, db
-    ):
+    async def test_bulk_update_validation_error_rollback(self, authenticated_client, db):
         """Test validation errors rollback all changes."""
         # Set initial values
         from app.services.settings_service import SettingsService
@@ -321,11 +303,6 @@ class TestBulkUpdateSettingsEndpoint:
         # CSRF is disabled in test mode (TIDEWATCH_TESTING=true), so we get 401 (Auth)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @pytest.mark.skip(reason="CSRF protection tested in middleware tests")
-    async def test_bulk_update_csrf_required(self, authenticated_client):
-        """Test requires CSRF token."""
-        pass
-
 
 class TestSettingsValidation:
     """Test suite for settings validation."""
@@ -362,11 +339,6 @@ class TestSettingsValidation:
             )
             assert response.status_code == status.HTTP_200_OK
 
-    @pytest.mark.skip(reason="Path validation tested in UpdateEngine tests")
-    async def test_validate_docker_socket_path(self, authenticated_client, db):
-        """Test docker_socket_path prevents path traversal."""
-        pass
-
     async def test_validate_encryption_key(self, authenticated_client, db):
         """Test encryption_key is properly stored."""
         # Test setting encryption key
@@ -375,11 +347,6 @@ class TestSettingsValidation:
             json={"value": "test-encryption-key-12345"},
         )
         assert response.status_code == status.HTTP_200_OK
-
-    @pytest.mark.skip(reason="XSS sanitization tested in middleware tests")
-    async def test_validate_xss_in_string_values(self, authenticated_client, db):
-        """Test string values are sanitized for XSS."""
-        pass
 
 
 class TestSensitiveDataMasking:
@@ -390,9 +357,7 @@ class TestSensitiveDataMasking:
         from app.services.settings_service import SettingsService
 
         # Set an encryption key (which should be sensitive)
-        await SettingsService.set(
-            db, "encryption_key", "my-super-secret-encryption-key-12345"
-        )
+        await SettingsService.set(db, "encryption_key", "my-super-secret-encryption-key-12345")
 
         response = await authenticated_client.get("/api/v1/settings/encryption_key")
 
@@ -414,9 +379,7 @@ class TestSensitiveDataMasking:
             "https://discord.com/api/webhooks/123456789/super-secret-webhook-token",
         )
 
-        response = await authenticated_client.get(
-            "/api/v1/settings/discord_webhook_url"
-        )
+        response = await authenticated_client.get("/api/v1/settings/discord_webhook_url")
 
         if response.status_code == status.HTTP_200_OK:
             data = response.json()
@@ -444,9 +407,7 @@ class TestSensitiveDataMasking:
         from app.services.settings_service import SettingsService
 
         # Set OIDC client secret
-        await SettingsService.set(
-            db, "oidc_client_secret", "super-secret-client-secret-value"
-        )
+        await SettingsService.set(db, "oidc_client_secret", "super-secret-client-secret-value")
 
         response = await authenticated_client.get("/api/v1/settings/oidc_client_secret")
 

@@ -78,9 +78,7 @@ class RestartService:
         return delay
 
     @staticmethod
-    async def calculate_backoff_delay(
-        state: ContainerRestartState, db: AsyncSession
-    ) -> float:
+    async def calculate_backoff_delay(state: ContainerRestartState, db: AsyncSession) -> float:
         """Calculate backoff delay based on strategy and attempt count.
 
         Args:
@@ -107,9 +105,7 @@ class RestartService:
                 max_delay=state.max_delay_seconds,
             )
         elif state.backoff_strategy == "fixed":
-            return RestartService.calculate_fixed_backoff(
-                delay=state.base_delay_seconds
-            )
+            return RestartService.calculate_fixed_backoff(delay=state.base_delay_seconds)
         else:
             logger.warning(
                 f"Unknown backoff strategy '{state.backoff_strategy}', using exponential"
@@ -121,18 +117,14 @@ class RestartService:
             )
 
     @staticmethod
-    async def check_circuit_breaker(
-        db: AsyncSession, container_id: int
-    ) -> tuple[bool, str | None]:
+    async def check_circuit_breaker(db: AsyncSession, container_id: int) -> tuple[bool, str | None]:
         """Check if circuit breaker is open (preventing restarts).
 
         Returns:
             (allow_restart, reason_if_blocked)
         """
         result = await db.execute(
-            select(ContainerRestartState).where(
-                ContainerRestartState.container_id == container_id
-            )
+            select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
         )
         state = result.scalar_one_or_none()
 
@@ -164,16 +156,13 @@ class RestartService:
         concurrent_count_result = await db.execute(
             select(func.count(ContainerRestartState.id)).where(
                 ContainerRestartState.next_retry_at.isnot(None),
-                ContainerRestartState.next_retry_at
-                > datetime.now(UTC) - timedelta(minutes=5),
+                ContainerRestartState.next_retry_at > datetime.now(UTC) - timedelta(minutes=5),
             )
         )
         count = concurrent_count_result.scalar() or 0
 
         # Get global limit from settings
-        concurrent_limit = await SettingsService.get_int(
-            db, "restart_concurrent_limit", default=10
-        )
+        concurrent_limit = await SettingsService.get_int(db, "restart_concurrent_limit", default=10)
 
         if count >= concurrent_limit:
             return (
@@ -238,9 +227,7 @@ class RestartService:
             Container restart state
         """
         result = await db.execute(
-            select(ContainerRestartState).where(
-                ContainerRestartState.container_id == container.id
-            )
+            select(ContainerRestartState).where(ContainerRestartState.container_id == container.id)
         )
         state = result.scalar_one_or_none()
 
@@ -324,9 +311,7 @@ class RestartService:
 
         try:
             # Execute docker compose restart
-            restart_result = await RestartService._execute_docker_compose_restart(
-                container, db
-            )
+            restart_result = await RestartService._execute_docker_compose_restart(container, db)
 
             log_entry.docker_command = restart_result.get("command")
             log_entry.duration_seconds = restart_result.get("duration")
@@ -337,17 +322,13 @@ class RestartService:
                 log_entry.completed_at = datetime.now(UTC)
                 await db.commit()
 
-                logger.error(
-                    f"Failed to restart {container.name}: {restart_result.get('error')}"
-                )
+                logger.error(f"Failed to restart {container.name}: {restart_result.get('error')}")
                 return {"success": False, "error": restart_result.get("error")}
 
             # Wait a moment for container to start (configurable delay)
             from app.services.settings_service import SettingsService
 
-            startup_delay = await SettingsService.get_int(
-                db, "container_startup_delay", default=2
-            )
+            startup_delay = await SettingsService.get_int(db, "container_startup_delay", default=2)
             await asyncio.sleep(startup_delay)
 
             # Validate health check if enabled
@@ -364,15 +345,11 @@ class RestartService:
 
                 if not health_result["healthy"]:
                     log_entry.success = False
-                    log_entry.error_message = (
-                        f"Health check failed: {health_result.get('error')}"
-                    )
+                    log_entry.error_message = f"Health check failed: {health_result.get('error')}"
                     log_entry.completed_at = datetime.now(UTC)
                     await db.commit()
 
-                    logger.warning(
-                        f"Health check failed for {container.name} after restart"
-                    )
+                    logger.warning(f"Health check failed for {container.name} after restart")
                     return {
                         "success": False,
                         "error": "Health check failed",
@@ -432,9 +409,7 @@ class RestartService:
 
             return {"success": False, "error": str(e)}
         except (ImportError, AttributeError) as e:
-            logger.error(
-                f"Service dependency error during restart of {container.name}: {e}"
-            )
+            logger.error(f"Service dependency error during restart of {container.name}: {e}")
 
             log_entry.success = False
             log_entry.error_message = str(e)
@@ -453,9 +428,7 @@ class RestartService:
             return {"success": False, "error": str(e)}
 
     @staticmethod
-    async def _execute_docker_compose_restart(
-        container: Container, db: AsyncSession
-    ) -> dict:
+    async def _execute_docker_compose_restart(container: Container, db: AsyncSession) -> dict:
         """Execute docker compose restart command.
 
         Args:
@@ -469,20 +442,20 @@ class RestartService:
 
         try:
             # Get settings
-            docker_socket = await SettingsService.get(
-                db, "docker_socket", default="/var/run/docker.sock"
+            docker_socket = (
+                await SettingsService.get(db, "docker_socket", default="/var/run/docker.sock")
+                or "/var/run/docker.sock"
             )
-            docker_compose_cmd = await SettingsService.get(
-                db, "docker_compose_command", default="docker compose"
+            docker_compose_cmd = (
+                await SettingsService.get(db, "docker_compose_command", default="docker compose")
+                or "docker compose"
             )
 
             # Build command with explicit project and file flags
             cmd_parts = docker_compose_cmd.split()
             if container.compose_project:
                 cmd_parts.extend(["-p", container.compose_project])
-            cmd_parts.extend(
-                ["-f", container.compose_file, "restart", container.service_name]
-            )
+            cmd_parts.extend(["-f", container.compose_file, "restart", container.service_name])
 
             # Format docker socket to DOCKER_HOST environment variable
             docker_host = (
@@ -550,9 +523,7 @@ class RestartService:
             }
 
     @staticmethod
-    async def _validate_health_check(
-        container: Container, timeout: int, db: AsyncSession
-    ) -> dict:
+    async def _validate_health_check(container: Container, timeout: int, db: AsyncSession) -> dict:
         """Validate container health after restart.
 
         Reuses the existing health check logic from UpdateEngine.

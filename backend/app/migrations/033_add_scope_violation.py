@@ -23,9 +23,7 @@ async def upgrade():
     async with engine.begin() as conn:
         # Add column with default 0 (not a scope violation)
         await conn.execute(
-            text(
-                "ALTER TABLE updates ADD COLUMN scope_violation INTEGER DEFAULT 0 NOT NULL"
-            )
+            text("ALTER TABLE updates ADD COLUMN scope_violation INTEGER DEFAULT 0 NOT NULL")
         )
 
 

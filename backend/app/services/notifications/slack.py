@@ -127,9 +127,7 @@ class SlackNotificationService(NotificationService):
                 logger.info(f"[slack] Sent notification: {sanitize_log_message(title)}")
                 return True
             else:
-                logger.error(
-                    f"[slack] Unexpected response: {sanitize_log_message(response.text)}"
-                )
+                logger.error(f"[slack] Unexpected response: {sanitize_log_message(response.text)}")
                 return False
 
         except httpx.HTTPStatusError as e:

@@ -63,6 +63,7 @@ def extract_version_prefix(tag: str | None) -> str | None:
         return major
     return None
 
+
 router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
 
@@ -99,7 +100,9 @@ async def ignore_dockerfile_dependency(
         # Update dependency
         dependency.ignored = True
         dependency.ignored_version = dependency.latest_tag  # Track which version we're ignoring
-        dependency.ignored_version_prefix = extract_version_prefix(dependency.latest_tag)  # For pattern matching
+        dependency.ignored_version_prefix = extract_version_prefix(
+            dependency.latest_tag
+        )  # For pattern matching
         dependency.ignored_by = "user"  # TODO: Get from auth context when available
         dependency.ignored_at = datetime.now(UTC)
         dependency.ignored_reason = request.reason
@@ -621,9 +624,7 @@ async def batch_update_app_dependencies(
     for dep_id in request.dependency_ids:
         try:
             # Get dependency
-            result = await db.execute(
-                select(AppDependency).where(AppDependency.id == dep_id)
-            )
+            result = await db.execute(select(AppDependency).where(AppDependency.id == dep_id))
             dependency = result.scalar_one_or_none()
 
             if not dependency:
@@ -726,9 +727,7 @@ async def batch_update_app_dependencies(
     # Commit all successful updates
     await db.commit()
 
-    logger.info(
-        f"Batch update completed: {len(updated)} updated, {len(failed)} failed"
-    )
+    logger.info(f"Batch update completed: {len(updated)} updated, {len(failed)} failed")
 
     return BatchDependencyUpdateResponse(
         updated=updated,
@@ -950,7 +949,9 @@ async def update_app_dependency(
         raise HTTPException(status_code=500, detail=f"Failed to update app dependency: {str(e)}")
 
 
-@router.get("/app-dependencies/{dependency_id}/rollback-history", response_model=RollbackHistoryResponse)
+@router.get(
+    "/app-dependencies/{dependency_id}/rollback-history", response_model=RollbackHistoryResponse
+)
 async def get_app_dependency_rollback_history(
     dependency_id: int,
     limit: int = Query(10, ge=1, le=50, description="Max history items"),

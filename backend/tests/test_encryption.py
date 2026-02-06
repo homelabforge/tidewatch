@@ -56,9 +56,7 @@ class TestEncryptionService:
 
         assert "Invalid encryption key format" in str(exc_info.value)
 
-    def test_initialization_from_environment_variable(
-        self, encryption_key, monkeypatch
-    ):
+    def test_initialization_from_environment_variable(self, encryption_key, monkeypatch):
         """Test EncryptionService loads key from environment."""
         monkeypatch.setenv("TIDEWATCH_ENCRYPTION_KEY", encryption_key)
         service = EncryptionService()

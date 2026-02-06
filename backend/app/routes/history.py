@@ -119,20 +119,12 @@ def transform_restart_to_event(
 @router.get("/", response_model=list[UnifiedHistoryEventSchema])
 async def list_history(
     admin: dict | None = Depends(require_auth),
-    container_id: int = None,
-    status: str | None = Query(
-        None, description="Filter by status (success, failed, rolled_back)"
-    ),
-    start_date: str | None = Query(
-        None, description="Filter by start date (ISO format)"
-    ),
-    end_date: str | None = Query(
-        None, description="Filter by end date (ISO format)"
-    ),
+    container_id: int | None = None,
+    status: str | None = Query(None, description="Filter by status (success, failed, rolled_back)"),
+    start_date: str | None = Query(None, description="Filter by start date (ISO format)"),
+    end_date: str | None = Query(None, description="Filter by end date (ISO format)"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(
-        50, ge=1, le=500, description="Maximum number of records to return"
-    ),
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of records to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[UnifiedHistoryEventSchema]:
     """List unified history (updates + restarts) with pagination.
@@ -183,9 +175,7 @@ async def list_history(
         .order_by(ContainerRestartLog.created_at.desc())
     )
     if container_id:
-        restart_query = restart_query.where(
-            ContainerRestartLog.container_id == container_id
-        )
+        restart_query = restart_query.where(ContainerRestartLog.container_id == container_id)
     restart_query = restart_query.limit(fetch_limit)
 
     # Execute queries
@@ -205,7 +195,7 @@ async def list_history(
         unified_events.append(transform_restart_to_event(restart))
 
     # Sort by started_at descending
-    unified_events.sort(key=lambda e: e.started_at, reverse=True)
+    unified_events.sort(key=lambda e: e.started_at or datetime.min, reverse=True)
 
     # Apply pagination
     return unified_events[skip : skip + limit]
@@ -244,9 +234,7 @@ async def get_history_stats(
     failed_count = failed_result.scalar() or 0
 
     # Calculate success rate
-    success_rate = (
-        (successful_updates / total_updates * 100) if total_updates > 0 else 0.0
-    )
+    success_rate = (successful_updates / total_updates * 100) if total_updates > 0 else 0.0
 
     # Get average update time (only for completed updates)
     avg_time_result = await db.execute(
@@ -336,9 +324,7 @@ async def rollback_update(
 
         if not result["success"]:
             # Log internal details but don't expose to client
-            logger.error(
-                "Rollback failed: %s", sanitize_log_message(result.get("message", ""))
-            )
+            logger.error("Rollback failed: %s", sanitize_log_message(result.get("message", "")))
             raise HTTPException(status_code=500, detail="Rollback failed")
 
         # Return only safe fields to client (no internal error details)
@@ -350,9 +336,7 @@ async def rollback_update(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:
-        logger.error(
-            "Database error during rollback: %s", sanitize_log_message(str(e))
-        )
+        logger.error("Database error during rollback: %s", sanitize_log_message(str(e)))
         raise HTTPException(status_code=500, detail="Database error during rollback")
     except (KeyError, AttributeError) as e:
         logger.error("Invalid data during rollback: %s", sanitize_log_message(str(e)))

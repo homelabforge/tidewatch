@@ -29,9 +29,7 @@ class TestCleanupImagesEndpoint:
             }
 
             # Act
-            response = await authenticated_client.post(
-                "/api/v1/cleanup/images?dangling_only=true"
-            )
+            response = await authenticated_client.post("/api/v1/cleanup/images?dangling_only=true")
 
             # Assert
             assert response.status_code == status.HTTP_200_OK

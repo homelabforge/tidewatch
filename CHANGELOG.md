@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.4] - 2026-02-06
+
+### Added
+- **Database indexes for update and dependency queries** - Added 7 single-column and 2 composite indexes to improve query performance for updates, app dependencies, dockerfile dependencies, and HTTP servers (migration 038)
+- **Shared `get_container_or_404` dependency** - Extracted container lookup into a reusable FastAPI dependency, removing ~100 lines of duplicated boilerplate across 25 endpoints
+- **E2E test suite** - 15 Playwright + Chromium end-to-end tests across 7 spec files covering authentication, dashboard, navigation, settings, history, updates, and about pages
+- **CI integration for E2E tests** - New `test-e2e` job in GitHub Actions workflow with artifact upload on failure
+
+### Changed
+- **Frontend component decomposition** - Split ContainerModal.tsx (3,446 -> 148 lines) into 6 tab components and Settings.tsx (3,341 -> 212 lines) into 6 tab components for improved maintainability
+- **SQLAlchemy Mapped[T] conversion** - Converted all 14 model files from `Column()` to `Mapped[T] = mapped_column()` for full type safety with pyright
+- **Comprehensive type safety** - Eliminated all 980 pyright errors across the codebase (100% reduction) through return type fixes, None guards, type annotations, and structural refactoring
+- **update_checker.py refactoring** - Decomposed the 545-line `check_container()` method into 9 focused subroutines, reducing cyclomatic complexity from ~35 to ~12
+- **Dependency floor updates** - Bumped 13 backend dependency floors in pyproject.toml to match installed versions
+- **Build alignment** - Synced Bun version (1.3.4 -> 1.3.8) across Dockerfile, CI, and docs; fixed Granian label version (2.6.0 -> 2.7.0) in Dockerfile
+- **Staggered scheduler jobs** - Offset `metrics_collection` and `dockerfile_dependencies_check` cron schedules to reduce burst load
+
+### Fixed
+- **pyproject.toml dependency updates not applied** - Fixed missing mapping from `dependency_type` ("production") to section name ("dependencies") in pyproject.toml update handler
+- **pyproject.toml production dependencies not scanned** - Added support for PEP 621 inline `dependencies = [...]` array format under `[project]`
+- **HTTP server version reverting after update** - Scanner now reads from Dockerfile LABEL (source of truth) instead of container labels when a Dockerfile path is available
+- **Rate limiter header bug** - `X-RateLimit-Limit` was returning global capacity instead of endpoint-specific capacity
+- **Rate limiter ExceptionGroup crash** - Changed `raise HTTPException(429)` to `return JSONResponse(status_code=429)` for BaseHTTPMiddleware compatibility with newer Starlette
+- **CSRF middleware test bypass** - Added `force_enabled` constructor param so tests can exercise CSRF protection without the `TIDEWATCH_TESTING` bypass
+- **Test coverage expansion** - Un-skipped 52 middleware tests (29 CSRF + 23 rate limiting) and implemented 6 new health/system tests, reducing skipped tests from 104 to 40
+
 ## [3.6.3] - 2025-02-01
 
 ### Added

@@ -65,9 +65,7 @@ async def scan_container(
         safe_error_response(logger, e, "Failed to scan container")
 
 
-@router.post(
-    "/all", response_model=list[ScanResultSchema], status_code=status.HTTP_200_OK
-)
+@router.post("/all", response_model=list[ScanResultSchema], status_code=status.HTTP_200_OK)
 async def scan_all_containers(
     admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[ScanResultSchema]:
@@ -126,9 +124,7 @@ async def get_scan_results(
         safe_error_response(logger, e, "Failed to get scan results")
 
 
-@router.get(
-    "/summary", response_model=ScanSummarySchema, status_code=status.HTTP_200_OK
-)
+@router.get("/summary", response_model=ScanSummarySchema, status_code=status.HTTP_200_OK)
 async def get_scan_summary(
     admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> ScanSummarySchema:

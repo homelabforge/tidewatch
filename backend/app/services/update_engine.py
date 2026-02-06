@@ -51,9 +51,7 @@ class UpdateEngine:
         """
         # Validate the path before translation
         try:
-            validated_path = validate_compose_file_path(
-                container_path, allowed_base="/compose"
-            )
+            validated_path = validate_compose_file_path(container_path, allowed_base="/compose")
         except ValidationError as e:
             logger.error(f"Path validation failed: {str(e)}")
             raise
@@ -62,9 +60,7 @@ class UpdateEngine:
         try:
             rel_path = validated_path.relative_to("/compose")
         except ValueError:
-            raise ValidationError(
-                f"Path {container_path} is not within /compose directory"
-            )
+            raise ValidationError(f"Path {container_path} is not within /compose directory")
 
         # Construct safe host path
         host_base = Path("/srv/raid0/docker/compose")
@@ -103,16 +99,12 @@ class UpdateEngine:
             if project:
                 container.compose_project = project
                 await db.commit()
-                logger.info(
-                    f"Auto-populated compose_project={project} for {container.name}"
-                )
+                logger.info(f"Auto-populated compose_project={project} for {container.name}")
         except Exception as e:
             logger.debug(f"Could not get compose_project for {container.name}: {e}")
 
     @staticmethod
-    async def apply_update(
-        db: AsyncSession, update_id: int, triggered_by: str = "user"
-    ) -> dict:
+    async def apply_update(db: AsyncSession, update_id: int, triggered_by: str = "user") -> dict:
         """Apply an approved update.
 
         Args:
@@ -134,9 +126,7 @@ class UpdateEngine:
             raise ValueError(f"Update must be approved first (status: {update.status})")
 
         # Get the container
-        result = await db.execute(
-            select(Container).where(Container.id == update.container_id)
-        )
+        result = await db.execute(select(Container).where(Container.id == update.container_id))
         container = result.scalar_one_or_none()
 
         if not container:
@@ -145,10 +135,7 @@ class UpdateEngine:
         # Ensure compose_project is populated from Docker labels
         await UpdateEngine._ensure_compose_project(db, container)
 
-        logger.info(
-            f"Applying update for {container.name}: "
-            f"{update.from_tag} -> {update.to_tag}"
-        )
+        logger.info(f"Applying update for {container.name}: {update.from_tag} -> {update.to_tag}")
 
         # Determine update type based on who triggered it
         if triggered_by == "scheduler":
@@ -179,8 +166,7 @@ class UpdateEngine:
                 )
 
         logger.info(
-            f"Creating UpdateHistory for {container.name}: "
-            f"{len(cves_data)} CVEs will be recorded"
+            f"Creating UpdateHistory for {container.name}: {len(cves_data)} CVEs will be recorded"
         )
 
         # Create history record
@@ -218,9 +204,7 @@ class UpdateEngine:
 
         try:
             # Step 1: Backup current compose file
-            backup_path = await UpdateEngine._backup_compose_file(
-                container.compose_file
-            )
+            backup_path = await UpdateEngine._backup_compose_file(container.compose_file)
             history.backup_path = backup_path
             await db.commit()
 
@@ -259,9 +243,10 @@ class UpdateEngine:
             )
 
             # Step 3: Pull the new image (separate step with longer timeout)
-            docker_socket = await SettingsService.get(db, "docker_socket")
-            docker_compose_cmd = await SettingsService.get(
-                db, "docker_compose_command", "docker compose"
+            docker_socket = await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
+            docker_compose_cmd = (
+                await SettingsService.get(db, "docker_compose_command", "docker compose")
+                or "docker compose"
             )
 
             await event_bus.publish(
@@ -357,9 +342,7 @@ class UpdateEngine:
             # Trigger VulnForge rescan (fire-and-forget)
             # This runs in the background and doesn't block the update
             # Pass update_id so we can store CVE delta results when scan completes
-            asyncio.create_task(
-                UpdateEngine._trigger_vulnforge_rescan(container.name, update.id)
-            )
+            asyncio.create_task(UpdateEngine._trigger_vulnforge_rescan(container.name, update.id))
 
             # Success! Wrap status updates in transaction for atomicity
             async with db.begin_nested():
@@ -378,9 +361,7 @@ class UpdateEngine:
                             new_digest_value = None
 
                     if not new_digest_value:
-                        new_digest_value = await UpdateEngine._fetch_latest_digest(
-                            container, db
-                        )
+                        new_digest_value = await UpdateEngine._fetch_latest_digest(container, db)
 
                     if new_digest_value:
                         container.current_digest = new_digest_value
@@ -442,9 +423,7 @@ class UpdateEngine:
             raise
 
         except subprocess.CalledProcessError as e:
-            logger.error(
-                f"Docker compose command failed (exit code {e.returncode}): {e}"
-            )
+            logger.error(f"Docker compose command failed (exit code {e.returncode}): {e}")
 
             # Rollback compose file if backup exists
             if history.backup_path:
@@ -516,15 +495,13 @@ class UpdateEngine:
                     elif update.retry_count == 3:
                         delay_minutes = 60
                     else:
-                        delay_minutes = 60 * backoff_multiplier ** (
-                            update.retry_count - 3
+                        delay_minutes = 60 * int(backoff_multiplier) ** (
+                            int(update.retry_count) - 3
                         )
 
                     from datetime import timedelta
 
-                    update.next_retry_at = datetime.now(UTC) + timedelta(
-                        minutes=delay_minutes
-                    )
+                    update.next_retry_at = datetime.now(UTC) + timedelta(minutes=delay_minutes)
                     update.status = "pending_retry"  # New status for automatic retry
 
                     logger.info(
@@ -542,18 +519,12 @@ class UpdateEngine:
                     # Attempt to rollback automatically if backup exists
                     if history.backup_path:
                         try:
-                            logger.info(
-                                f"Attempting automatic rollback for update {update.id}"
-                            )
-                            rollback_result = await UpdateEngine.rollback_update(
-                                db, history.id
-                            )
+                            logger.info(f"Attempting automatic rollback for update {update.id}")
+                            rollback_result = await UpdateEngine.rollback_update(db, history.id)
                             if rollback_result["success"]:
                                 update.status = "rolled_back"
                                 update.last_error = f"Auto-rolled back after {update.retry_count} failed retry attempts"
-                                logger.info(
-                                    f"Successfully auto-rolled back update {update.id}"
-                                )
+                                logger.info(f"Successfully auto-rolled back update {update.id}")
                             else:
                                 update.status = "failed"
                                 update.last_error = f"Max retries reached. Auto-rollback failed: {rollback_result.get('message', 'Unknown error')}"
@@ -638,9 +609,7 @@ class UpdateEngine:
             Result dict
         """
         # Get the history record
-        result = await db.execute(
-            select(UpdateHistory).where(UpdateHistory.id == history_id)
-        )
+        result = await db.execute(select(UpdateHistory).where(UpdateHistory.id == history_id))
         history = result.scalar_one_or_none()
 
         if not history:
@@ -659,9 +628,7 @@ class UpdateEngine:
             )
 
         # Get the container
-        result = await db.execute(
-            select(Container).where(Container.id == history.container_id)
-        )
+        result = await db.execute(select(Container).where(Container.id == history.container_id))
         container = result.scalar_one_or_none()
 
         if not container:
@@ -674,9 +641,7 @@ class UpdateEngine:
                 f"expected {history.to_tag}. The container may have been updated again."
             )
 
-        logger.info(
-            f"Rolling back {container.name}: {history.to_tag} -> {history.from_tag}"
-        )
+        logger.info(f"Rolling back {container.name}: {history.to_tag} -> {history.from_tag}")
 
         await event_bus.publish(
             {
@@ -699,9 +664,10 @@ class UpdateEngine:
                 raise Exception("Failed to update compose file")
 
             # Step 2: Execute docker compose
-            docker_socket = await SettingsService.get(db, "docker_socket")
-            docker_compose_cmd = await SettingsService.get(
-                db, "docker_compose_command", "docker compose"
+            docker_socket = await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
+            docker_compose_cmd = (
+                await SettingsService.get(db, "docker_compose_command", "docker compose")
+                or "docker compose"
             )
             result = await UpdateEngine._execute_docker_compose(
                 container.compose_file,
@@ -740,9 +706,7 @@ class UpdateEngine:
             dispatcher = NotificationDispatcher(db)
             await dispatcher.notify_rollback(container.name, history.to_tag)
 
-            logger.info(
-                f"Successfully rolled back {container.name} to {history.from_tag}"
-            )
+            logger.info(f"Successfully rolled back {container.name} to {history.from_tag}")
 
             return {
                 "success": True,
@@ -822,7 +786,7 @@ class UpdateEngine:
 
     @staticmethod
     async def _validate_health_check(
-        container: Container, timeout: int = 60, db: AsyncSession = None
+        container: Container, timeout: int = 60, db: AsyncSession | None = None
     ) -> dict:
         """Validate container health after update."""
         import time
@@ -848,15 +812,11 @@ class UpdateEngine:
         use_exponential_backoff = True
         max_delay = 30
         if db:
-            base_delay = await SettingsService.get_int(
-                db, "health_check_retry_delay", default=5
-            )
+            base_delay = await SettingsService.get_int(db, "health_check_retry_delay", default=5)
             use_exponential_backoff = await SettingsService.get_bool(
                 db, "health_check_use_exponential_backoff", default=True
             )
-            max_delay = await SettingsService.get_int(
-                db, "health_check_max_delay", default=30
-            )
+            max_delay = await SettingsService.get_int(db, "health_check_max_delay", default=30)
 
         start_time = time.time()
         # Calculate max_retries based on total timeout
@@ -878,7 +838,7 @@ class UpdateEngine:
         for attempt in range(max_retries):
             try:
                 headers = {}
-                url = health_check_url
+                url = str(health_check_url)
                 if container.health_check_auth:
                     auth_value = container.health_check_auth.strip()
                     lower_value = auth_value.lower()
@@ -906,9 +866,7 @@ class UpdateEngine:
                                 if key and value and key.replace("_", "").isalnum():
                                     query_params[key] = [value]
                                 else:
-                                    logger.warning(
-                                        f"Invalid auth parameter format: {auth_value}"
-                                    )
+                                    logger.warning(f"Invalid auth parameter format: {auth_value}")
                         else:
                             # Default to apikey parameter
                             value = auth_value.strip()
@@ -928,13 +886,9 @@ class UpdateEngine:
                             )
                         )
 
-                logger.info(
-                    f"Health check for {service_name}: URL={url}, Headers={headers}"
-                )
+                logger.info(f"Health check for {service_name}: URL={url}, Headers={headers}")
                 async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(
-                        url, timeout=5.0, headers=headers or None
-                    )
+                    response = await client.get(url, timeout=5.0, headers=headers or None)
                     if response.status_code == 200:
                         elapsed = time.time() - start_time
                         logger.info(
@@ -985,9 +939,7 @@ class UpdateEngine:
                     )
 
                     # Fall back to Docker inspect to verify container is actually unhealthy
-                    docker_check = await UpdateEngine._check_container_runtime(
-                        container
-                    )
+                    docker_check = await UpdateEngine._check_container_runtime(container)
                     if docker_check["success"]:
                         logger.info(
                             f"Container {service_name} is running despite HTTP errors, "
@@ -1032,9 +984,7 @@ class UpdateEngine:
                         f"falling back to Docker inspect"
                     )
 
-                    docker_check = await UpdateEngine._check_container_runtime(
-                        container
-                    )
+                    docker_check = await UpdateEngine._check_container_runtime(container)
                     if docker_check["success"]:
                         logger.info(
                             f"Container {service_name} is running despite HTTP errors, "
@@ -1067,9 +1017,7 @@ class UpdateEngine:
                     else:
                         current_delay = base_delay
 
-                    logger.debug(
-                        f"Health check data error: {e}, retrying in {current_delay}s..."
-                    )
+                    logger.debug(f"Health check data error: {e}, retrying in {current_delay}s...")
                     await asyncio.sleep(current_delay)
                 else:
                     elapsed = time.time() - start_time
@@ -1078,9 +1026,7 @@ class UpdateEngine:
                         f"falling back to Docker inspect"
                     )
 
-                    docker_check = await UpdateEngine._check_container_runtime(
-                        container
-                    )
+                    docker_check = await UpdateEngine._check_container_runtime(container)
                     if docker_check["success"]:
                         logger.info(
                             f"Container {service_name} is running despite HTTP errors, "
@@ -1151,9 +1097,7 @@ class UpdateEngine:
             try:
                 validate_service_name(target)
             except ValidationError as e:
-                logger.warning(
-                    f"Invalid container name '{target}': {e}, skipping for security"
-                )
+                logger.warning(f"Invalid container name '{target}': {e}, skipping for security")
                 continue
 
             try:
@@ -1172,9 +1116,7 @@ class UpdateEngine:
                     stdout_bytes, stderr_bytes = await asyncio.wait_for(
                         process.communicate(), timeout=10
                     )
-                    stdout = (
-                        stdout_bytes.decode("utf-8").strip() if stdout_bytes else ""
-                    )
+                    stdout = stdout_bytes.decode("utf-8").strip() if stdout_bytes else ""
 
                     if process.returncode == 0:
                         status = stdout
@@ -1195,9 +1137,7 @@ class UpdateEngine:
                             "container": target,
                         }
 
-                    stderr = (
-                        stderr_bytes.decode("utf-8").strip() if stderr_bytes else ""
-                    )
+                    stderr = stderr_bytes.decode("utf-8").strip() if stderr_bytes else ""
                     last_error = stderr or "Failed to inspect container"
                     logger.error(f"Failed to inspect container {target}: {stderr}")
 
@@ -1260,16 +1200,12 @@ class UpdateEngine:
                         continue
 
                     stdout = stdout_bytes.decode("utf-8") if stdout_bytes else ""
-                    names = [
-                        line.strip() for line in stdout.splitlines() if line.strip()
-                    ]
+                    names = [line.strip() for line in stdout.splitlines() if line.strip()]
                     if names:
                         return names[0]
 
                 except TimeoutError:
-                    logger.debug(
-                        f"Timeout resolving container name for {container.service_name}"
-                    )
+                    logger.debug(f"Timeout resolving container name for {container.service_name}")
                     continue
 
         except subprocess.CalledProcessError as e:
@@ -1284,9 +1220,7 @@ class UpdateEngine:
         return None
 
     @staticmethod
-    async def _fetch_latest_digest(
-        container: Container, db: AsyncSession
-    ) -> str | None:
+    async def _fetch_latest_digest(container: Container, db: AsyncSession) -> str | None:
         """Fetch the current digest for a 'latest' tag from the registry.
 
         Args:
@@ -1302,9 +1236,7 @@ class UpdateEngine:
             registry = container.registry
 
             # Create registry client (correct parameters)
-            registry_client = await RegistryClientFactory.get_client(
-                registry=registry, db=db
-            )
+            registry_client = await RegistryClientFactory.get_client(registry=registry, db=db)
 
             # Fetch metadata which includes digest
             metadata = await registry_client.get_tag_metadata(
@@ -1313,14 +1245,10 @@ class UpdateEngine:
 
             if metadata and metadata.get("digest"):
                 digest = metadata["digest"]
-                logger.info(
-                    f"Fetched latest digest for {container.name}: {digest[:16]}..."
-                )
+                logger.info(f"Fetched latest digest for {container.name}: {digest[:16]}...")
                 return digest
             else:
-                logger.warning(
-                    f"Could not fetch digest for {container.name} from {registry}"
-                )
+                logger.warning(f"Could not fetch digest for {container.name} from {registry}")
                 return None
 
         except httpx.HTTPStatusError as e:
@@ -1498,9 +1426,7 @@ class UpdateEngine:
                 await asyncio.wait_for(stop_process.communicate(), timeout=60)
                 logger.info("Container stopped successfully (or was not running)")
             except Exception as e:
-                logger.warning(
-                    f"Stop command failed (container may not be running): {e}"
-                )
+                logger.warning(f"Stop command failed (container may not be running): {e}")
                 # Continue anyway - container might not have been running
 
             # Build command using list-based construction (safe)
@@ -1753,8 +1679,8 @@ class UpdateEngine:
         password = await SettingsService.get(db, "vulnforge_password")
 
         return VulnForgeClient(
-            base_url=vulnforge_url,
-            auth_type=auth_type,
+            base_url=vulnforge_url,  # Guaranteed non-None by check on line 1669
+            auth_type=auth_type or "none",
             api_key=api_key,
             username=username,
             password=password,
@@ -1820,17 +1746,13 @@ class UpdateEngine:
                             total_vulns = latest_scan.get("total_vulns", 0)
 
                             # Step 4: Update BOTH the Update record and UpdateHistory record with CVE data
-                            result = await db.execute(
-                                select(Update).where(Update.id == update_id)
-                            )
+                            result = await db.execute(select(Update).where(Update.id == update_id))
                             update_record = result.scalar_one_or_none()
 
                             if update_record:
                                 update_record.cves_fixed = cves_fixed
                                 update_record.new_vulns = total_vulns
-                                update_record.vuln_delta = len(cves_introduced) - len(
-                                    cves_fixed
-                                )
+                                update_record.vuln_delta = len(cves_introduced) - len(cves_fixed)
 
                                 # ALSO update the corresponding UpdateHistory record
                                 from app.models.history import UpdateHistory
@@ -1867,6 +1789,4 @@ class UpdateEngine:
 
         except Exception as e:
             # Don't fail - this is best-effort
-            logger.warning(
-                f"Failed to trigger VulnForge rescan for {container_name}: {e}"
-            )
+            logger.warning(f"Failed to trigger VulnForge rescan for {container_name}: {e}")

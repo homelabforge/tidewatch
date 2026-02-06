@@ -87,6 +87,11 @@ compose.dev.yaml
 htmlcov/
 coverage/
 
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/.auth/
+
 # Temporary files
 *.tmp
 *.temp

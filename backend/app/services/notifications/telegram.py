@@ -105,9 +105,7 @@ class TelegramNotificationService(NotificationService):
                 logger.info(f"[telegram] Sent notification: {title}")
                 return True
             else:
-                logger.error(
-                    f"[telegram] API error: {result.get('description', 'Unknown error')}"
-                )
+                logger.error(f"[telegram] API error: {result.get('description', 'Unknown error')}")
                 return False
 
         except httpx.HTTPStatusError as e:

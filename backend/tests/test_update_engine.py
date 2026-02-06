@@ -55,9 +55,7 @@ class TestPathTranslation:
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert (
-            host_path == "/srv/raid0/docker/compose/network/traefik/docker-compose.yml"
-        )
+        assert host_path == "/srv/raid0/docker/compose/network/traefik/docker-compose.yml"
 
     def test_rejects_path_outside_compose_directory(self):
         """Test paths outside /compose are rejected."""
@@ -243,9 +241,7 @@ class TestDockerComposeExecution:
             return await coro
 
         with (
-            patch(
-                "asyncio.create_subprocess_exec", return_value=mock_process
-            ) as mock_exec,
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             await UpdateEngine._execute_docker_compose(
@@ -273,9 +269,7 @@ class TestDockerComposeExecution:
             return await coro
 
         with (
-            patch(
-                "asyncio.create_subprocess_exec", return_value=mock_process
-            ) as mock_exec,
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._execute_docker_compose(
@@ -319,9 +313,7 @@ class TestDockerComposeExecution:
         service_name = "sonarr"
 
         mock_process = AsyncMock()
-        mock_process.communicate = AsyncMock(
-            return_value=(b"", b"Error: Image not found")
-        )
+        mock_process.communicate = AsyncMock(return_value=(b"", b"Error: Image not found"))
         mock_process.returncode = 1
 
         async def mock_wait_for(coro, timeout):
@@ -356,9 +348,7 @@ class TestImagePulling:
             return await coro
 
         with (
-            patch(
-                "asyncio.create_subprocess_exec", return_value=mock_process
-            ) as mock_exec,
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._pull_docker_image(
@@ -495,9 +485,7 @@ class TestHealthCheckValidation:
 
         mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
 
-        mock_docker_check = AsyncMock(
-            return_value={"success": True, "method": "docker_inspect"}
-        )
+        mock_docker_check = AsyncMock(return_value={"success": True, "method": "docker_inspect"})
 
         with (
             patch("httpx.AsyncClient", return_value=mock_client),
@@ -782,9 +770,7 @@ class TestApplyUpdateOrchestration:
         mock_compose_update = AsyncMock(return_value=True)
         mock_pull = AsyncMock(return_value={"success": True})
         mock_execute = AsyncMock(return_value={"success": True})
-        mock_health = AsyncMock(
-            return_value={"success": False, "error": "Health check timeout"}
-        )
+        mock_health = AsyncMock(return_value={"success": False, "error": "Health check timeout"})
         mock_restore = AsyncMock()
 
         with (
@@ -828,14 +814,10 @@ class TestApplyUpdateOrchestration:
 
         # Also need to mock the history query for rollback checking
         history_result = MagicMock()
-        history_result.scalar_one_or_none = MagicMock(
-            return_value=None
-        )  # No history yet
+        history_result.scalar_one_or_none = MagicMock(return_value=None)  # No history yet
 
         # Update execute mock to handle history query
-        mock_db.execute = AsyncMock(
-            side_effect=[update_result, container_result, history_result]
-        )
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, history_result])
 
         with (
             patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
@@ -957,9 +939,7 @@ class TestRollbackUpdate:
         assert "already been rolled back" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_rollback_rejects_if_container_version_mismatch(
-        self, mock_db, mock_history
-    ):
+    async def test_rollback_rejects_if_container_version_mismatch(self, mock_db, mock_history):
         """Test rollback rejects if container is not at expected version."""
         mock_history.to_tag = "4.0.0"
 
@@ -987,9 +967,7 @@ class TestRollbackUpdate:
         assert "expected 4.0.0" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_rollback_updates_compose_to_old_tag(
-        self, mock_db, mock_history, mock_container
-    ):
+    async def test_rollback_updates_compose_to_old_tag(self, mock_db, mock_history, mock_container):
         """Test rollback updates compose file to old tag."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -1023,9 +1001,7 @@ class TestRollbackUpdate:
             )
 
     @pytest.mark.asyncio
-    async def test_rollback_executes_docker_compose(
-        self, mock_db, mock_history, mock_container
-    ):
+    async def test_rollback_executes_docker_compose(self, mock_db, mock_history, mock_container):
         """Test rollback executes docker compose."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -1056,9 +1032,7 @@ class TestRollbackUpdate:
             mock_execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_rollback_updates_history_status(
-        self, mock_db, mock_history, mock_container
-    ):
+    async def test_rollback_updates_history_status(self, mock_db, mock_history, mock_container):
         """Test rollback updates history status and timestamp."""
         history_result = MagicMock()
         history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
@@ -1099,9 +1073,7 @@ class TestVulnForgeIntegration:
         """Test VulnForge client returns None when disabled."""
         mock_db = AsyncMock()
 
-        with patch(
-            "app.services.settings_service.SettingsService.get_bool", return_value=False
-        ):
+        with patch("app.services.settings_service.SettingsService.get_bool", return_value=False):
             client = await UpdateEngine._get_vulnforge_client(mock_db)
 
             assert client is None
@@ -1116,9 +1088,7 @@ class TestVulnForgeIntegration:
                 "app.services.settings_service.SettingsService.get_bool",
                 return_value=True,
             ),
-            patch(
-                "app.services.settings_service.SettingsService.get", return_value=None
-            ),
+            patch("app.services.settings_service.SettingsService.get", return_value=None),
         ):
             client = await UpdateEngine._get_vulnforge_client(mock_db)
 
@@ -1143,16 +1113,12 @@ class TestVulnForgeIntegration:
             return default
 
         with (
-            patch(
-                "app.services.settings_service.SettingsService.get_bool", mock_get_bool
-            ),
+            patch("app.services.settings_service.SettingsService.get_bool", mock_get_bool),
             patch("app.services.settings_service.SettingsService.get", mock_get),
         ):
             from app.services.vulnforge_client import VulnForgeClient
 
-            with patch.object(
-                VulnForgeClient, "__init__", return_value=None
-            ) as mock_init:
+            with patch.object(VulnForgeClient, "__init__", return_value=None) as mock_init:
                 await UpdateEngine._get_vulnforge_client(mock_db)
 
                 mock_init.assert_called_once_with(

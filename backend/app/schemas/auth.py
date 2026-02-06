@@ -18,9 +18,7 @@ class SetupRequest(BaseModel):
     def validate_username(cls, v: str) -> str:
         """Validate username format."""
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            raise ValueError(
-                "Username can only contain letters, numbers, underscores, and hyphens"
-            )
+            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
         return v
 
     @field_validator("password")

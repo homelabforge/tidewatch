@@ -32,9 +32,7 @@ async def migrate():
         async with engine.begin() as conn:
             if not await column_exists(conn, "containers", "release_source"):
                 logger.info("Adding release_source column to containers…")
-                await conn.execute(
-                    text("ALTER TABLE containers ADD COLUMN release_source TEXT")
-                )
+                await conn.execute(text("ALTER TABLE containers ADD COLUMN release_source TEXT"))
                 logger.info("  ✓ Column added")
             else:
                 logger.info("  ⊘ Column already exists")

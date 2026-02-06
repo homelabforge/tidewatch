@@ -1,6 +1,5 @@
 """Analytics schemas for TideWatch dashboards."""
 
-
 from pydantic import BaseModel
 
 

@@ -21,9 +21,7 @@ async def upgrade():
     async with engine.begin() as conn:
         # Container indexes
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_containers_policy ON containers(policy)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_containers_policy ON containers(policy)")
         )
         await conn.execute(
             text(
@@ -35,23 +33,15 @@ async def upgrade():
         )
 
         # Update indexes
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_updates_status ON updates(status)"))
         await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_updates_status ON updates(status)")
+            text("CREATE INDEX IF NOT EXISTS idx_updates_container_id ON updates(container_id)")
         )
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_updates_container_id ON updates(container_id)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC)")
         )
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_updates_snoozed_until ON updates(snoozed_until)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_updates_snoozed_until ON updates(snoozed_until)")
         )
 
         # UpdateHistory indexes
@@ -61,9 +51,7 @@ async def upgrade():
             )
         )
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_update_history_status ON update_history(status)"
-            )
+            text("CREATE INDEX IF NOT EXISTS idx_update_history_status ON update_history(status)")
         )
         await conn.execute(
             text(

@@ -48,9 +48,7 @@ def sanitize_log_message(msg: str | bytes | int | float | None) -> str:
     return sanitized
 
 
-def mask_sensitive(
-    value: str | None, visible_chars: int = 4, mask_char: str = "*"
-) -> str:
+def mask_sensitive(value: str | None, visible_chars: int = 4, mask_char: str = "*") -> str:
     """Mask sensitive values, showing only the last N characters.
 
     Used to prevent sensitive data exposure in logs and API responses while
@@ -275,9 +273,7 @@ def validate_container_name(name: str) -> str:
 
     # Docker container name regex: starts with alphanumeric, then alphanumeric + _ . -
     if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$", name):
-        raise ValueError(
-            f"Invalid container name: {name}. Must match [a-zA-Z0-9][a-zA-Z0-9_.-]*"
-        )
+        raise ValueError(f"Invalid container name: {name}. Must match [a-zA-Z0-9][a-zA-Z0-9_.-]*")
 
     return name
 

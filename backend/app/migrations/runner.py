@@ -122,9 +122,7 @@ class MigrationRunner:
             migration_func = module.up
 
         if migration_func is None:
-            raise AttributeError(
-                f"Migration {name} missing upgrade(), migrate(), or up() function"
-            )
+            raise AttributeError(f"Migration {name} missing upgrade(), migrate(), or up() function")
 
         logger.info(f"Running migration: {name}")
         # Check if function expects a db parameter

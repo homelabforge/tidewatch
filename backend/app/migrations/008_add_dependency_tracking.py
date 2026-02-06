@@ -68,9 +68,7 @@ async def upgrade():
             logger.info("⏭️  Skipped dependents column (already exists)")
 
     await engine.dispose()
-    logger.info(
-        "✅ Migration 008 completed: Dependency tracking added to containers table"
-    )
+    logger.info("✅ Migration 008 completed: Dependency tracking added to containers table")
 
 
 async def main():

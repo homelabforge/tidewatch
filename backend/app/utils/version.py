@@ -67,9 +67,7 @@ def get_version_change_type(from_version: str, to_version: str) -> str | None:
         return None
 
     except (ValueError, IndexError) as e:
-        logger.debug(
-            f"Could not parse versions '{from_version}' -> '{to_version}': {e}"
-        )
+        logger.debug(f"Could not parse versions '{from_version}' -> '{to_version}': {e}")
         return None
 
 

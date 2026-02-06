@@ -26,9 +26,7 @@ class TestGetUpdateOrder:
         result = await DependencyManager.get_update_order(db, [])
         assert result == []
 
-    async def test_orders_independent_containers_alphabetically(
-        self, db, make_container
-    ):
+    async def test_orders_independent_containers_alphabetically(self, db, make_container):
         """Test orders independent containers alphabetically."""
         # Create containers with no dependencies
         container1 = make_container(name="web", image="nginx", current_tag="latest")
@@ -393,9 +391,7 @@ class TestUpdateContainerDependencies:
 
         # Check reverse dependency
         await db.refresh(container_b)
-        dependents = (
-            json.loads(container_b.dependents) if container_b.dependents else []
-        )
+        dependents = json.loads(container_b.dependents) if container_b.dependents else []
         assert "a" in dependents
 
     async def test_removes_old_dependencies(self, db, make_container):
@@ -415,16 +411,12 @@ class TestUpdateContainerDependencies:
 
         # Check b no longer has a as dependent
         await db.refresh(container_b)
-        dependents = (
-            json.loads(container_b.dependents) if container_b.dependents else []
-        )
+        dependents = json.loads(container_b.dependents) if container_b.dependents else []
         assert "a" not in dependents
 
         # Check c has a as dependent
         await db.refresh(container_c)
-        dependents = (
-            json.loads(container_c.dependents) if container_c.dependents else []
-        )
+        dependents = json.loads(container_c.dependents) if container_c.dependents else []
         assert "a" in dependents
 
     async def test_clears_dependency_cache(self, db, make_container):
@@ -456,9 +448,7 @@ class TestUpdateContainerDependencies:
         # Should not raise
         await DependencyManager.update_container_dependencies(db, "a", ["b"])
 
-    async def test_handles_missing_dependent_container(
-        self, db, make_container, caplog
-    ):
+    async def test_handles_missing_dependent_container(self, db, make_container, caplog):
         """Test handles missing container when updating dependents."""
         container_a = make_container(name="a", image="alpine", current_tag="3")
         db.add(container_a)
@@ -469,10 +459,7 @@ class TestUpdateContainerDependencies:
         await DependencyManager._add_to_dependents(db, "nonexistent", "a")
 
         # Should log warning
-        assert (
-            "Cannot add dependent a to non-existent container nonexistent"
-            in caplog.text
-        )
+        assert "Cannot add dependent a to non-existent container nonexistent" in caplog.text
 
 
 class TestValidateDependencies:
@@ -496,11 +483,10 @@ class TestValidateDependencies:
         db.add(container_a)
         await db.commit()
 
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "a", ["nonexistent"]
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "a", ["nonexistent"])
 
         assert is_valid is False
+        assert error is not None
         assert "Dependencies not found: nonexistent" in error
 
     async def test_rejects_circular_dependencies(self, db, make_container):
@@ -520,6 +506,7 @@ class TestValidateDependencies:
         is_valid, error = await DependencyManager.validate_dependencies(db, "c", ["a"])
 
         assert is_valid is False
+        assert error is not None
         assert "Circular dependency detected" in error
 
     async def test_allows_complex_valid_graph(self, db, make_container):
@@ -536,9 +523,7 @@ class TestValidateDependencies:
         await db.commit()
 
         # Add e that depends on both c and d (diamond pattern)
-        is_valid, error = await DependencyManager.validate_dependencies(
-            db, "e", ["c", "d"]
-        )
+        is_valid, error = await DependencyManager.validate_dependencies(db, "e", ["c", "d"])
 
         assert is_valid is True
         assert error is None

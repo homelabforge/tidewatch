@@ -313,15 +313,6 @@ class TestCreateTimestampedBackup:
             with pytest.raises(BackupError, match="Failed to create backup"):
                 create_timestamped_backup(test_file)
 
-    def test_verifies_backup_size_matches(self, tmp_path):
-        """Test verifies backup file size matches original."""
-        # This test is skipped because mocking stat() is complex and the size check
-        # is redundant with the existence check in practice (if backup exists and copy2
-        # succeeded, sizes will match)
-        pytest.skip(
-            "Backup size verification is redundant with shutil.copy2 success check"
-        )
-
 
 class TestAtomicFileWrite:
     """Test suite for atomic_file_write() function."""

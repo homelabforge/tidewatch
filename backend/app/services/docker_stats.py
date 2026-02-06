@@ -54,15 +54,11 @@ class DockerStatsService:
             block_io_str = stats.get("BlockIO", "0B / 0B")
 
             return {
-                "cpu_percent": DockerStatsService._parse_percent(
-                    stats.get("CPUPerc", "0%")
-                ),
+                "cpu_percent": DockerStatsService._parse_percent(stats.get("CPUPerc", "0%")),
                 "memory_usage": DockerStatsService._parse_bytes(
                     DockerStatsService._extract_memory_usage(mem_usage_str)
                 ),
-                "memory_percent": DockerStatsService._parse_percent(
-                    stats.get("MemPerc", "0%")
-                ),
+                "memory_percent": DockerStatsService._parse_percent(stats.get("MemPerc", "0%")),
                 "memory_limit": DockerStatsService._parse_bytes(
                     DockerStatsService._extract_memory_limit(mem_usage_str)
                 ),
@@ -88,9 +84,7 @@ class DockerStatsService:
             logger.error(f"Failed to parse stats JSON: {e}")
             return None
         except (OSError, PermissionError) as e:
-            logger.error(
-                f"Process execution error getting stats for {container_name}: {e}"
-            )
+            logger.error(f"Process execution error getting stats for {container_name}: {e}")
             return None
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid stats data for {container_name}: {e}")
@@ -225,6 +219,7 @@ class DockerStatsService:
         Returns:
             Log output as string, or None if error
         """
+        process = None
         try:
             cmd = ["docker", "logs", "--timestamps"]
 
@@ -261,8 +256,7 @@ class DockerStatsService:
 
             if process.returncode != 0:
                 logger.warning(
-                    f"Failed to get logs for {container_name} "
-                    f"(exit code: {process.returncode})"
+                    f"Failed to get logs for {container_name} (exit code: {process.returncode})"
                 )
                 return None
 
@@ -276,9 +270,7 @@ class DockerStatsService:
                 await process.wait()
             return None
         except (OSError, PermissionError) as e:
-            logger.error(
-                f"Process execution error getting logs for {container_name}: {e}"
-            )
+            logger.error(f"Process execution error getting logs for {container_name}: {e}")
             return None
         except (UnicodeDecodeError, ValueError) as e:
             logger.error(f"Failed to decode logs for {container_name}: {e}")
@@ -314,9 +306,7 @@ class DockerStatsService:
             return output.lower() == "true"
 
         except (OSError, PermissionError) as e:
-            logger.debug(
-                f"Process execution error checking if {container_name} is running: {e}"
-            )
+            logger.debug(f"Process execution error checking if {container_name} is running: {e}")
             return False
         except (UnicodeDecodeError, ValueError, AttributeError) as e:
             logger.debug(f"Failed to parse container status for {container_name}: {e}")
@@ -361,9 +351,7 @@ class DockerStatsService:
             logger.error(f"Failed to parse exit info JSON for {container_name}: {e}")
             return None
         except (OSError, PermissionError) as e:
-            logger.error(
-                f"Process execution error getting exit info for {container_name}: {e}"
-            )
+            logger.error(f"Process execution error getting exit info for {container_name}: {e}")
             return None
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid exit info data for {container_name}: {e}")

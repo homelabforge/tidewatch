@@ -58,9 +58,7 @@ class ChangelogFetcher:
         first_500_chars = text_lower[:500]
 
         # Count HTML tag occurrences
-        html_tag_count = sum(
-            1 for indicator in html_indicators if indicator in first_500_chars
-        )
+        html_tag_count = sum(1 for indicator in html_indicators if indicator in first_500_chars)
 
         # If 3+ HTML tags found in first 500 chars, likely HTML
         return html_tag_count >= 3
@@ -101,16 +99,12 @@ class ChangelogFetcher:
             return markdown
 
         except Exception as e:
-            logger.error(
-                f"Failed to convert HTML to markdown: {sanitize_log_message(str(e))}"
-            )
+            logger.error(f"Failed to convert HTML to markdown: {sanitize_log_message(str(e))}")
             # Fallback: return original content with HTML stripped
             stripped = re.sub(r"<[^>]+>", "", html_content)
             return stripped.strip()
 
-    async def fetch(
-        self, source: str | None, image: str, tag: str
-    ) -> ChangelogResult | None:
+    async def fetch(self, source: str | None, image: str, tag: str) -> ChangelogResult | None:
         if not source:
             return None
 
@@ -120,9 +114,7 @@ class ChangelogFetcher:
             result = await self._fetch_github_release(owner_repo, tag)
         elif source.startswith("https://") or source.startswith("http://"):
             result = await self._fetch_url(source)
-        elif "/" in source and not source.startswith(
-            ("http://", "https://", "github:")
-        ):
+        elif "/" in source and not source.startswith(("http://", "https://", "github:")):
             # Handle bare owner/repo format as GitHub repository
             logger.debug(
                 f"Treating '{sanitize_log_message(str(source))}' as GitHub repository for {sanitize_log_message(str(image))}"
@@ -168,9 +160,7 @@ class ChangelogFetcher:
             )
             return None
 
-    async def _fetch_github_release(
-        self, owner_repo: str, tag: str
-    ) -> ChangelogResult | None:
+    async def _fetch_github_release(self, owner_repo: str, tag: str) -> ChangelogResult | None:
         # Validate owner_repo format to prevent path traversal in URL construction
         # Valid format: owner/repo (alphanumeric, hyphens, underscores, dots)
         import re
@@ -200,7 +190,9 @@ class ChangelogFetcher:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 for tag_variant in tag_variations:
                     # URL is constrained to api.github.com, owner_repo validated above
-                    api_url = f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag_variant}"
+                    api_url = (
+                        f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag_variant}"
+                    )
                     response = await client.get(api_url, headers=headers)
 
                     if response.status_code == 404:
@@ -254,9 +246,7 @@ class ChangelogClassifier:
     """Classify changelog text into reason types."""
 
     BUGFIX_PATTERNS = re.compile(r"\b(fix(?:es|ed)?|bug|patch)\b", re.IGNORECASE)
-    FEATURE_PATTERNS = re.compile(
-        r"\b(add(?:ed)?|new |feature|improve)\b", re.IGNORECASE
-    )
+    FEATURE_PATTERNS = re.compile(r"\b(add(?:ed)?|new |feature|improve)\b", re.IGNORECASE)
     MAINT_PATTERNS = re.compile(
         r"\b(maintenance|refactor|deps|dependency|cleanup)\b", re.IGNORECASE
     )

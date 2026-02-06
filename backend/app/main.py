@@ -169,19 +169,13 @@ cors_origins_env = os.getenv("CORS_ORIGINS")
 if cors_origins_env:
     if cors_origins_env == "*":
         cors_origins = ["*"]
-        logger.warning(
-            "⚠️  CORS configured with wildcard (*) - not recommended for production"
-        )
+        logger.warning("⚠️  CORS configured with wildcard (*) - not recommended for production")
     else:
-        cors_origins = [
-            origin.strip() for origin in cors_origins_env.split(",") if origin.strip()
-        ]
+        cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
         logger.info(f"CORS origins from environment: {cors_origins}")
 else:
     cors_origins = DEFAULT_CORS_ORIGINS
-    logger.info(
-        f"Using default CORS origins (localhost development): {len(cors_origins)} origins"
-    )
+    logger.info(f"Using default CORS origins (localhost development): {len(cors_origins)} origins")
 
 # Validate CORS configuration
 if cors_origins == ["*"] and os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true":
@@ -225,9 +219,7 @@ from app.utils.security import sanitize_path  # noqa: E402
 
 try:
     # Validate session secret file path (must be in /data)
-    session_secret_file = sanitize_path(
-        "/data/session_secret.key", "/data", allow_symlinks=False
-    )
+    session_secret_file = sanitize_path("/data/session_secret.key", "/data", allow_symlinks=False)
 
     if session_secret_file.exists():
         session_secret = session_secret_file.read_text().strip()
@@ -244,9 +236,7 @@ except (ValueError, FileNotFoundError) as e:
     logger.error(f"Invalid session secret file path: {e}")
     # Fall back to temporary in-memory secret (will change on restart)
     session_secret = secrets.token_urlsafe(32)
-    logger.warning(
-        "Using temporary in-memory session secret (will invalidate sessions on restart)"
-    )
+    logger.warning("Using temporary in-memory session secret (will invalidate sessions on restart)")
 
 app.add_middleware(
     SessionMiddleware,
@@ -299,9 +289,7 @@ async def security_headers_middleware(request: Request, call_next):
 
     # HSTS - only in production with HTTPS
     if os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true":
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     # Content Security Policy
     # Note: This is a basic policy. Adjust based on your frontend requirements.
@@ -359,9 +347,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     # Production mode - generic error message
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "An internal error occurred. Please contact support if this persists."
-        },
+        content={"detail": "An internal error occurred. Please contact support if this persists."},
     )
 
 
@@ -398,9 +384,7 @@ static_dir = Path("/app/static")
 
 if static_dir.exists():
     # Serve static assets (CSS, JS, images)
-    app.mount(
-        "/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets"
-    )
+    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
 
     # Serve frontend
     from fastapi.responses import FileResponse, JSONResponse

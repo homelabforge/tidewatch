@@ -95,9 +95,7 @@ async def upgrade():
         print("")
         print("⚠️  IMPORTANT: Values are NOT encrypted by this migration.")
         print("   Existing values remain in plain text until re-saved.")
-        print(
-            "   Configure TIDEWATCH_ENCRYPTION_KEY and update sensitive settings in UI."
-        )
+        print("   Configure TIDEWATCH_ENCRYPTION_KEY and update sensitive settings in UI.")
 
 
 async def downgrade():

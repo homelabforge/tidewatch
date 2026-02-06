@@ -78,9 +78,7 @@ async def migrate():
             for column, definition in columns_to_add:
                 if not await check_column_exists(conn, "container_restart_log", column):
                     await conn.execute(
-                        text(
-                            f"ALTER TABLE container_restart_log ADD COLUMN {column} {definition}"
-                        )
+                        text(f"ALTER TABLE container_restart_log ADD COLUMN {column} {definition}")
                     )
                     logger.info(f"  ✓ Added column: {column}")
                     added_count += 1
@@ -88,17 +86,13 @@ async def migrate():
                     logger.info(f"  ⊘ Column already exists: {column}")
 
             if added_count > 0:
-                logger.info(
-                    f"\n✅ Migration completed successfully! Added {added_count} columns."
-                )
+                logger.info(f"\n✅ Migration completed successfully! Added {added_count} columns.")
             else:
                 logger.info("\n✅ Migration already applied (all columns exist).")
 
             # Verify all columns exist
             logger.info("\nVerifying migration...")
-            result = await conn.execute(
-                text("PRAGMA table_info(container_restart_log)")
-            )
+            result = await conn.execute(text("PRAGMA table_info(container_restart_log)"))
             columns = result.fetchall()
             logger.info(f"  Total columns in container_restart_log: {len(columns)}")
 

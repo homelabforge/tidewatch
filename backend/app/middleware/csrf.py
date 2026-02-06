@@ -26,13 +26,15 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     - POST/PUT/DELETE/PATCH: Validate token from header matches session token
     """
 
-    def __init__(self, app):
+    def __init__(self, app, force_enabled: bool = False):
         """Initialize CSRF protection middleware.
 
         Args:
             app: FastAPI application
+            force_enabled: If True, skip the TIDEWATCH_TESTING bypass (for testing the middleware itself)
         """
         super().__init__(app)
+        self.force_enabled = force_enabled
         self.exempt_paths = [
             "/health",
             "/metrics",
@@ -56,8 +58,8 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         Returns:
             Response or CSRF error
         """
-        # Disable CSRF protection in test mode
-        if os.getenv("TIDEWATCH_TESTING", "false").lower() == "true":
+        # Disable CSRF protection in test mode (unless force_enabled for middleware testing)
+        if not self.force_enabled and os.getenv("TIDEWATCH_TESTING", "false").lower() == "true":
             return await call_next(request)
 
         # Exempt paths from CSRF protection
@@ -106,18 +108,14 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                 f"(session={bool(session_token)}, header={bool(header_token)}) "
                 f"for {request.method} {request.url.path}"
             )
-            return JSONResponse(
-                status_code=403, content={"detail": "CSRF token missing"}
-            )
+            return JSONResponse(status_code=403, content={"detail": "CSRF token missing"})
 
         # Tokens must match using constant-time comparison
         if not secrets.compare_digest(session_token, header_token):
             logger.warning(
                 f"CSRF validation failed: token mismatch for {request.method} {request.url.path}"
             )
-            return JSONResponse(
-                status_code=403, content={"detail": "CSRF token invalid"}
-            )
+            return JSONResponse(status_code=403, content={"detail": "CSRF token invalid"})
 
         # Token valid, proceed with request
         response = await call_next(request)

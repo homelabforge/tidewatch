@@ -91,9 +91,7 @@ class DependencyUpdateService:
         return DependencyUpdateService.DOCKER_IMAGE_GITHUB_REPOS.get(image_name.lower())
 
     @staticmethod
-    async def _get_github_repo_for_package(
-        package_name: str, ecosystem: str
-    ) -> str | None:
+    async def _get_github_repo_for_package(package_name: str, ecosystem: str) -> str | None:
         """Get GitHub repo for a package from its registry.
 
         Args:
@@ -109,9 +107,7 @@ class DependencyUpdateService:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 if ecosystem == "npm":
                     # Fetch from npm registry
-                    response = await client.get(
-                        f"https://registry.npmjs.org/{package_name}"
-                    )
+                    response = await client.get(f"https://registry.npmjs.org/{package_name}")
                     if response.status_code == 200:
                         data = response.json()
                         repo_url = data.get("repository", {})
@@ -135,9 +131,7 @@ class DependencyUpdateService:
 
                 elif ecosystem == "pypi":
                     # Fetch from PyPI JSON API
-                    response = await client.get(
-                        f"https://pypi.org/pypi/{package_name}/json"
-                    )
+                    response = await client.get(f"https://pypi.org/pypi/{package_name}/json")
                     if response.status_code == 200:
                         data = response.json()
                         project_urls = data.get("info", {}).get("project_urls", {})
@@ -193,12 +187,11 @@ class DependencyUpdateService:
             Dict with success, backup_path, history_id, changes_made
         """
         backup_path = None
+        dependency = None
         try:
             # Get dependency
             result = await db.execute(
-                select(DockerfileDependency).where(
-                    DockerfileDependency.id == dependency_id
-                )
+                select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
             )
             dependency = result.scalar_one_or_none()
 
@@ -369,7 +362,7 @@ class DependencyUpdateService:
             )
 
             # Try to restore backup
-            if backup_path and Path(backup_path).exists():
+            if backup_path and Path(backup_path).exists() and dependency:
                 try:
                     file_path = Path("/projects") / dependency.dockerfile_path
                     restore_from_backup(Path(backup_path), file_path)
@@ -398,11 +391,10 @@ class DependencyUpdateService:
         Similar to update_dockerfile_base_image but for LABEL instructions.
         """
         backup_path = None
+        server = None
         try:
             # Get HTTP server
-            result = await db.execute(
-                select(HttpServer).where(HttpServer.id == server_id)
-            )
+            result = await db.execute(select(HttpServer).where(HttpServer.id == server_id))
             server = result.scalar_one_or_none()
 
             if not server:
@@ -544,7 +536,7 @@ class DependencyUpdateService:
                     ChangelogUpdater.update_changelog(
                         project_root=project_root,
                         dependency_name=server.name,
-                        old_version=old_version,
+                        old_version=old_version or "unknown",
                         new_version=new_version,
                         dependency_type="http_server",
                     )
@@ -569,9 +561,9 @@ class DependencyUpdateService:
                 f"Unexpected error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
             )
 
-            if backup_path and Path(backup_path).exists():
+            if backup_path and Path(backup_path).exists() and server:
                 try:
-                    file_path = Path("/projects") / server.dockerfile_path
+                    file_path = Path("/projects") / (server.dockerfile_path or "")
                     restore_from_backup(Path(backup_path), file_path)
                 except Exception:
                     pass
@@ -596,6 +588,7 @@ class DependencyUpdateService:
         Supports: package.json, requirements.txt, pyproject.toml, composer.json, Cargo.toml, go.mod
         """
         backup_path = None
+        dependency = None
         try:
             # Get dependency
             result = await db.execute(
@@ -677,8 +670,9 @@ class DependencyUpdateService:
                 )
             elif manifest_name == "pyproject.toml":
                 # Map dependency_type to pyproject.toml section
-                # dependency_type can be: production, development, optional, peer
-                section = dependency.dependency_type  # Use dependency_type directly
+                section = (
+                    "dependencies" if dependency.dependency_type == "production" else "development"
+                )
                 success, updated_content = update_pyproject_toml(
                     validated_path, dependency.name, new_version, section
                 )
@@ -687,9 +681,7 @@ class DependencyUpdateService:
                     validated_path,
                     dependency.name,
                     new_version,
-                    "require"
-                    if dependency.dependency_type == "production"
-                    else "require-dev",
+                    "require" if dependency.dependency_type == "production" else "require-dev",
                 )
             elif manifest_name == "cargo.toml":
                 # Map dependency_type to Cargo.toml section
@@ -811,7 +803,7 @@ class DependencyUpdateService:
                 f"Unexpected error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
             )
 
-            if backup_path and Path(backup_path).exists():
+            if backup_path and Path(backup_path).exists() and dependency:
                 try:
                     file_path = Path("/projects") / dependency.manifest_file
                     restore_from_backup(Path(backup_path), file_path)
@@ -837,9 +829,7 @@ class DependencyUpdateService:
         try:
             if dependency_type == "dockerfile":
                 result = await db.execute(
-                    select(DockerfileDependency).where(
-                        DockerfileDependency.id == dependency_id
-                    )
+                    select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
                 )
                 dependency = result.scalar_one_or_none()
 
@@ -884,9 +874,7 @@ class DependencyUpdateService:
                 }
 
             elif dependency_type == "http_server":
-                result = await db.execute(
-                    select(HttpServer).where(HttpServer.id == dependency_id)
-                )
+                result = await db.execute(select(HttpServer).where(HttpServer.id == dependency_id))
                 server = result.scalar_one_or_none()
 
                 if not server:
@@ -913,10 +901,8 @@ class DependencyUpdateService:
                 # Try to fetch changelog
                 changelog_text = None
                 changelog_url = None
-                github_repo = (
-                    await DependencyUpdateService._get_github_repo_for_package(
-                        dependency.name, dependency.ecosystem
-                    )
+                github_repo = await DependencyUpdateService._get_github_repo_for_package(
+                    dependency.name, dependency.ecosystem
                 )
                 if github_repo:
                     try:
@@ -939,9 +925,7 @@ class DependencyUpdateService:
                 manifest_name = Path(dependency.manifest_file).name.lower()
 
                 if manifest_name == "package.json":
-                    current_line = (
-                        f'"{dependency.name}": "{dependency.current_version}"'
-                    )
+                    current_line = f'"{dependency.name}": "{dependency.current_version}"'
                     new_line = f'"{dependency.name}": "{new_version}"'
                 elif manifest_name in [
                     "requirements.txt",
@@ -1000,9 +984,7 @@ class DependencyUpdateService:
         # Get current version based on dependency type
         if dependency_type == "dockerfile":
             result = await db.execute(
-                select(DockerfileDependency).where(
-                    DockerfileDependency.id == dependency_id
-                )
+                select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
             )
             dep = result.scalar_one_or_none()
             if not dep:
@@ -1011,9 +993,7 @@ class DependencyUpdateService:
             dep_name = dep.image_name
 
         elif dependency_type == "http_server":
-            result = await db.execute(
-                select(HttpServer).where(HttpServer.id == dependency_id)
-            )
+            result = await db.execute(select(HttpServer).where(HttpServer.id == dependency_id))
             dep = result.scalar_one_or_none()
             if not dep:
                 return {"error": "HTTP server not found"}

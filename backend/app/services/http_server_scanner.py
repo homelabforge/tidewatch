@@ -3,9 +3,12 @@
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 import docker
 import httpx
+from docker.errors import APIError, DockerException, NotFound
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +82,7 @@ class HttpServerScanner:
 
     async def scan_container_http_servers(
         self, container_name: str, container_model=None, db=None
-    ) -> list[dict[str, any]]:
+    ) -> list[dict[str, Any]]:
         """
         Scan a container for running HTTP servers.
 
@@ -140,9 +143,7 @@ class HttpServerScanner:
                         servers_dict[server["name"]]["current_version"] = server.get(
                             "current_version"
                         )
-                        servers_dict[server["name"]]["detection_method"] = (
-                            "version_command"
-                        )
+                        servers_dict[server["name"]]["detection_method"] = "version_command"
                     else:
                         # Add new server
                         servers_dict[server["name"]] = server
@@ -162,9 +163,7 @@ class HttpServerScanner:
                         server["line_number"] = line_number
 
                         # Read version from Dockerfile LABEL (source of truth)
-                        dockerfile_version = self._read_version_from_dockerfile(
-                            dockerfile_path
-                        )
+                        dockerfile_version = self._read_version_from_dockerfile(dockerfile_path)
                         if dockerfile_version:
                             server["current_version"] = dockerfile_version
                             logger.info(
@@ -180,20 +179,18 @@ class HttpServerScanner:
                     server.get("current_version"), server.get("latest_version")
                 )
 
-        except docker.errors.NotFound:
+        except NotFound:
             logger.error(f"Container {container_name} not found")
-        except docker.errors.APIError as e:
+        except APIError as e:
             logger.error(f"Docker API error scanning container {container_name}: {e}")
-        except docker.errors.DockerException as e:
+        except DockerException as e:
             logger.error(f"Docker error scanning container {container_name}: {e}")
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid data scanning container {container_name}: {e}")
 
         return servers
 
-    async def persist_http_servers(
-        self, container_id: int, servers: list[dict], db
-    ) -> list:
+    async def persist_http_servers(self, container_id: int, servers: list[dict], db) -> list:
         """Persist scanned HTTP servers to database.
 
         Args:
@@ -206,8 +203,9 @@ class HttpServerScanner:
         """
         from datetime import UTC, datetime
 
-        from app.models.http_server import HttpServer
         from sqlalchemy import select
+
+        from app.models.http_server import HttpServer
 
         def extract_version_prefix(tag: str | None) -> str | None:
             """Extract major.minor version prefix from a tag."""
@@ -284,7 +282,7 @@ class HttpServerScanner:
 
         return persisted
 
-    async def _detect_from_processes(self, container) -> list[dict[str, any]]:
+    async def _detect_from_processes(self, container) -> list[dict[str, Any]]:
         """Detect HTTP servers from running processes."""
         servers = []
 
@@ -342,20 +340,18 @@ class HttpServerScanner:
                             "last_checked": datetime.utcnow(),
                         }
                     )
-                    logger.info(
-                        f"Detected {server_name} from process list in {container.name}"
-                    )
+                    logger.info(f"Detected {server_name} from process list in {container.name}")
 
-        except docker.errors.APIError as e:
+        except APIError as e:
             logger.debug(f"Docker API error detecting from processes: {e}")
-        except docker.errors.DockerException as e:
+        except DockerException as e:
             logger.debug(f"Docker error detecting from processes: {e}")
         except (UnicodeDecodeError, ValueError, AttributeError) as e:
             logger.debug(f"Failed to parse process list: {e}")
 
         return servers
 
-    async def _detect_from_version_commands(self, container) -> list[dict[str, any]]:
+    async def _detect_from_version_commands(self, container) -> list[dict[str, Any]]:
         """Detect HTTP servers by running version commands."""
         servers = []
 
@@ -384,23 +380,17 @@ class HttpServerScanner:
                                     "last_checked": datetime.utcnow(),
                                 }
                             )
-                            logger.info(
-                                f"Detected {server_name} v{version} in {container.name}"
-                            )
+                            logger.info(f"Detected {server_name} v{version} in {container.name}")
                             break  # Found version, no need to try other commands
 
-                except docker.errors.APIError as e:
-                    logger.debug(
-                        f"Docker API error running '{cmd}' for {server_name}: {e}"
-                    )
+                except APIError as e:
+                    logger.debug(f"Docker API error running '{cmd}' for {server_name}: {e}")
                     continue
-                except docker.errors.DockerException as e:
+                except DockerException as e:
                     logger.debug(f"Docker error running '{cmd}' for {server_name}: {e}")
                     continue
                 except (UnicodeDecodeError, ValueError, AttributeError) as e:
-                    logger.debug(
-                        f"Failed to parse output of '{cmd}' for {server_name}: {e}"
-                    )
+                    logger.debug(f"Failed to parse output of '{cmd}' for {server_name}: {e}")
                     continue
 
         return servers
@@ -436,17 +426,13 @@ class HttpServerScanner:
         except httpx.HTTPStatusError as e:
             logger.debug(f"HTTP error fetching latest version for {server_name}: {e}")
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.debug(
-                f"Connection error fetching latest version for {server_name}: {e}"
-            )
+            logger.debug(f"Connection error fetching latest version for {server_name}: {e}")
         except (ValueError, KeyError, AttributeError) as e:
             logger.debug(f"Failed to parse version data for {server_name}: {e}")
 
         return None
 
-    def _check_update_available(
-        self, current: str | None, latest: str | None
-    ) -> bool:
+    def _check_update_available(self, current: str | None, latest: str | None) -> bool:
         """Check if an update is available based on version comparison."""
         if not current or not latest:
             return False
@@ -464,14 +450,10 @@ class HttpServerScanner:
 
             return latest_parts > current_parts
         except (ValueError, TypeError, AttributeError) as e:
-            logger.debug(
-                f"Failed to parse versions for comparison ({current} vs {latest}): {e}"
-            )
+            logger.debug(f"Failed to parse versions for comparison ({current} vs {latest}): {e}")
             return False
 
-    def _calculate_severity(
-        self, current: str | None, latest: str | None, has_update: bool
-    ) -> str:
+    def _calculate_severity(self, current: str | None, latest: str | None, has_update: bool) -> str:
         """Calculate severity of update based on semver difference."""
         if not has_update or not current or not latest:
             return "info"
@@ -501,7 +483,7 @@ class HttpServerScanner:
 
     async def _detect_from_labels(
         self, container, container_model=None, db=None
-    ) -> list[dict[str, any]]:
+    ) -> list[dict[str, Any]]:
         """Detect HTTP servers from container labels.
 
         Args:
@@ -534,6 +516,17 @@ class HttpServerScanner:
                 if dockerfile_path:
                     server_info["dockerfile_path"] = dockerfile_path
                     server_info["line_number"] = line_number
+                    # Read version from Dockerfile (source of truth) instead of
+                    # container labels which may be stale from the built image
+                    dockerfile_version = self._read_version_from_dockerfile(
+                        str(Path("/projects") / dockerfile_path)
+                    )
+                    if dockerfile_version:
+                        server_info["current_version"] = dockerfile_version
+                        logger.info(
+                            f"Using Dockerfile version {dockerfile_version} for "
+                            f"{server_name} (overriding container label)"
+                        )
 
                 servers.append(server_info)
                 logger.info(f"Detected {server_name} from labels in {container.name}")
@@ -555,12 +548,12 @@ class HttpServerScanner:
         try:
             with open(dockerfile_path, encoding="utf-8") as f:
                 for line in f:
-                    if 'LABEL http.server.version=' in line:
+                    if "LABEL http.server.version=" in line:
                         # Extract version from: LABEL http.server.version="2.6.1"
                         match = re.search(r'LABEL\s+http\.server\.version="([^"]+)"', line)
                         if match:
                             return match.group(1)
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.debug(f"Error reading version from Dockerfile {dockerfile_path}: {e}")
         return None
 
@@ -581,13 +574,12 @@ class HttpServerScanner:
             Tuple of (dockerfile_path, line_number) or (None, None)
         """
         from pathlib import Path
+
         from app.services.settings_service import SettingsService
 
         try:
             # Check if this is a "My Project" container
-            is_my_project = (
-                container_model and getattr(container_model, "is_my_project", False)
-            )
+            is_my_project = container_model and getattr(container_model, "is_my_project", False)
 
             if not is_my_project:
                 logger.debug(
@@ -600,7 +592,9 @@ class HttpServerScanner:
                 projects_dir = await SettingsService.get(db, "projects_directory")
             else:
                 projects_dir = "/projects"  # Fallback if no db session
-                logger.warning("No db session provided, using default projects_directory: /projects")
+                logger.warning(
+                    "No db session provided, using default projects_directory: /projects"
+                )
 
             # Extract project name from container name
             # Examples: "familycircle-dev" -> "familycircle", "mygarage" -> "mygarage"
@@ -620,7 +614,7 @@ class HttpServerScanner:
             line_number = None
             with open(dockerfile_path, encoding="utf-8") as f:
                 for i, line in enumerate(f, start=1):
-                    if 'LABEL http.server.version=' in line:
+                    if "LABEL http.server.version=" in line:
                         line_number = i
                         break
 
@@ -629,20 +623,18 @@ class HttpServerScanner:
                     f"Found Dockerfile at {dockerfile_path}:{line_number} for {container.name}"
                 )
             else:
-                logger.warning(
-                    f"Could not find http.server.version label in {dockerfile_path}"
-                )
+                logger.warning(f"Could not find http.server.version label in {dockerfile_path}")
 
             return dockerfile_path, line_number
 
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.error(f"Error reading Dockerfile: {e}")
             return None, None
         except (AttributeError, IndexError) as e:
             logger.debug(f"Error parsing container name: {e}")
             return None, None
 
-    async def _detect_from_container_config(self, container) -> list[dict[str, any]]:
+    async def _detect_from_container_config(self, container) -> list[dict[str, Any]]:
         """Detect HTTP servers from container config without exec."""
         servers = []
 
@@ -668,16 +660,12 @@ class HttpServerScanner:
                     }
 
                     # Try to extract version from command args (rare but possible)
-                    version_match = re.search(
-                        r"--version[=\s]+(\d+\.\d+\.\d+)", full_cmd
-                    )
+                    version_match = re.search(r"--version[=\s]+(\d+\.\d+\.\d+)", full_cmd)
                     if version_match:
                         server_info["current_version"] = version_match.group(1)
 
                     servers.append(server_info)
-                    logger.info(
-                        f"Detected {server_name} from container config in {container.name}"
-                    )
+                    logger.info(f"Detected {server_name} from container config in {container.name}")
 
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug(f"Failed to detect from container config: {e}")
