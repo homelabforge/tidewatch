@@ -49,8 +49,11 @@ export default function History() {
     }
   };
 
-  const handleRollback = async (id: number) => {
-    if (!confirm('Are you sure you want to rollback this update? This will restore the previous version.')) {
+  const handleRollback = async (id: number, dataBackupStatus?: string | null) => {
+    const confirmMessage = dataBackupStatus === 'success'
+      ? 'This will restore both the container image and data from the pre-update backup. Continue?'
+      : 'This will revert the container image only. Database/config changes from the update will remain. Continue?';
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -253,7 +256,7 @@ export default function History() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {item.event_type === 'update' && item.rollback_available && (
                             <button
-                              onClick={() => handleRollback(item.id)}
+                              onClick={() => handleRollback(item.id, item.data_backup_status)}
                               className="flex items-center gap-1 px-3 py-1.5 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded text-xs font-medium transition-colors"
                             >
                               <RotateCcw size={12} />

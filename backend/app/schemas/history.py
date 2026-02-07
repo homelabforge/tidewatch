@@ -22,6 +22,8 @@ class UpdateHistorySchema(BaseModel):
     error_message: str | None = None
     triggered_by: str
     backup_path: str | None = None
+    data_backup_id: str | None = None
+    data_backup_status: str | None = None  # success, failed, skipped, timeout
     can_rollback: bool
     rolled_back_at: datetime | None = None
     duration_seconds: int | None = None
@@ -62,6 +64,8 @@ class UnifiedHistoryEventSchema(BaseModel):
     can_rollback: bool = False
     rollback_available: bool = False  # Alias for can_rollback
     backup_path: str | None = None
+    data_backup_id: str | None = None
+    data_backup_status: str | None = None
     cves_fixed: list[str] = Field(default_factory=list)
     rolled_back_at: datetime | None = None
 

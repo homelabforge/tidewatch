@@ -664,7 +664,11 @@ class TestApplyUpdateOrchestration:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        # Concurrency guard returns no in-progress history
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -703,7 +707,10 @@ class TestApplyUpdateOrchestration:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         call_order = []
 
@@ -764,7 +771,10 @@ class TestApplyUpdateOrchestration:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -806,7 +816,10 @@ class TestApplyUpdateOrchestration:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -959,7 +972,10 @@ class TestRollbackUpdate:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=container)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
 
         with pytest.raises(ValueError) as exc_info:
             await UpdateEngine.rollback_update(mock_db, 1)
@@ -975,7 +991,10 @@ class TestRollbackUpdate:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
 
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
@@ -1009,7 +1028,10 @@ class TestRollbackUpdate:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
 
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
@@ -1040,7 +1062,10 @@ class TestRollbackUpdate:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
 
         with (
             patch(
@@ -1165,7 +1190,10 @@ class TestEventBusProgress:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         events = []
 
@@ -1232,7 +1260,10 @@ class TestEventBusProgress:
         container_result = MagicMock()
         container_result.scalar_one_or_none = MagicMock(return_value=container)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result])
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
 
         events = []
 
@@ -1276,3 +1307,235 @@ class TestEventBusProgress:
             complete_events = [e for e in events if e.get("type") == "update-complete"]
             assert len(complete_events) > 0
             assert complete_events[0]["status"] == "success"
+
+
+class TestAutoRollbackOnMaxRetry:
+    """Regression tests for max-retry auto-rollback (concurrency guard fix)."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        db = AsyncMock()
+        db.execute = AsyncMock()
+        db.commit = AsyncMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.add = MagicMock()
+
+        mock_nested = AsyncMock()
+        mock_nested.__aenter__ = AsyncMock()
+        mock_nested.__aexit__ = AsyncMock()
+        db.begin_nested = MagicMock(return_value=mock_nested)
+
+        return db
+
+    @pytest.mark.asyncio
+    async def test_auto_rollback_sets_history_failed_before_calling_rollback(
+        self, mock_db, make_update
+    ):
+        """Verify history.status is set to 'failed' before rollback_update() runs.
+
+        This prevents the concurrency guard (which checks for in_progress records)
+        from blocking the auto-rollback, and ensures rollback_update()'s status
+        check (requires success|failed) also passes.
+        """
+        container = Container(
+            id=1,
+            name="sonarr",
+            image="lscr.io/linuxserver/sonarr",
+            current_tag="4.0.0",
+            registry="lscr.io",
+            compose_file="/compose/media/sonarr.yml",
+            service_name="sonarr",
+        )
+
+        update = make_update(
+            id=1,
+            container_id=1,
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            status="approved",
+            retry_count=2,  # Will become 3, hitting max_retries=3
+            max_retries=3,
+            version=1,
+            backoff_multiplier=3,
+        )
+
+        history = UpdateHistory(
+            id=10,
+            container_id=1,
+            container_name="sonarr",
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            update_id=1,
+            update_type="manual",
+            status="in_progress",
+            backup_path="/data/backups/sonarr.yml.backup",
+            triggered_by="system",
+        )
+
+        # Track the status when rollback_update is called
+        status_at_rollback_call = []
+
+        async def mock_rollback(db, history_id):  # noqa: ARG001
+            status_at_rollback_call.append(history.status)
+            return {"success": True}
+
+        with (
+            patch.object(
+                UpdateEngine,
+                "rollback_update",
+                side_effect=mock_rollback,
+            ),
+            patch.object(
+                UpdateEngine,
+                "_restore_compose_file",
+                AsyncMock(),
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher.notify_update_applied",
+                AsyncMock(),
+            ),
+        ):
+            await UpdateEngine._handle_update_failure(
+                mock_db, update, container, history, RuntimeError("deploy failed")
+            )
+
+        # The critical assertion: history must be "failed" when rollback_update() is called
+        assert len(status_at_rollback_call) == 1, "rollback_update should have been called"
+        assert status_at_rollback_call[0] == "failed", (
+            f"history.status was '{status_at_rollback_call[0]}' when rollback_update was called, "
+            "expected 'failed'. The concurrency guard would block an 'in_progress' record."
+        )
+
+        # db.flush() must have been called before rollback to persist the status change
+        mock_db.flush.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_successful_auto_rollback_preserves_rolled_back_status(
+        self, mock_db, make_update
+    ):
+        """After successful auto-rollback, history.status should not be overwritten to 'failed'."""
+        container = Container(
+            id=1,
+            name="sonarr",
+            image="lscr.io/linuxserver/sonarr",
+            current_tag="4.0.0",
+            registry="lscr.io",
+            compose_file="/compose/media/sonarr.yml",
+            service_name="sonarr",
+        )
+
+        update = make_update(
+            id=1,
+            container_id=1,
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            status="approved",
+            retry_count=2,
+            max_retries=3,
+            version=1,
+            backoff_multiplier=3,
+        )
+
+        history = UpdateHistory(
+            id=10,
+            container_id=1,
+            container_name="sonarr",
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            update_id=1,
+            update_type="manual",
+            status="in_progress",
+            backup_path="/data/backups/sonarr.yml.backup",
+            triggered_by="system",
+        )
+
+        async def mock_rollback(db, history_id):  # noqa: ARG001
+            # Simulate what real rollback_update does on success
+            history.status = "rolled_back"
+            history.rolled_back_at = datetime.now(UTC)
+            return {"success": True}
+
+        with (
+            patch.object(
+                UpdateEngine,
+                "rollback_update",
+                side_effect=mock_rollback,
+            ),
+            patch.object(
+                UpdateEngine,
+                "_restore_compose_file",
+                AsyncMock(),
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher.notify_update_applied",
+                AsyncMock(),
+            ),
+        ):
+            await UpdateEngine._handle_update_failure(
+                mock_db, update, container, history, RuntimeError("deploy failed")
+            )
+
+        # After successful rollback, status should remain "rolled_back", not overwritten to "failed"
+        assert history.status == "rolled_back"
+        assert history.rolled_back_at is not None
+        assert update.status == "rolled_back"
+
+
+class TestRestoreCommandFailureSemantics:
+    """Regression tests for restore shell command failure detection."""
+
+    @pytest.mark.asyncio
+    async def test_restore_mount_fails_on_nonzero_exit(self):
+        """Verify _restore_mount raises on non-zero exit code from helper container."""
+        from app.services.data_backup_service import DataBackupService
+
+        service = DataBackupService.__new__(DataBackupService)
+        service.client = MagicMock()
+
+        # Mock a helper container that exits with error (simulating staging verification failure)
+        mock_helper = MagicMock()
+        mock_helper.wait = MagicMock(return_value={"StatusCode": 1})
+        mock_helper.logs = MagicMock(
+            return_value=b"ERROR: staging dir still exists after restore"
+        )
+        mock_helper.remove = MagicMock()
+
+        service.client.containers.run = MagicMock(return_value=mock_helper)
+
+        with pytest.raises(RuntimeError, match="Restore container exited with 1"):
+            await service._restore_mount(
+                tar_filename="bind-config.tar.gz",
+                mount_type="bind",
+                source="/srv/raid0/docker/config/sonarr",
+                volume_name="",
+                container_name="sonarr",
+                backup_id="20260206-120000-abc123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_restore_mount_succeeds_on_zero_exit(self):
+        """Verify _restore_mount does not raise on successful restore (exit 0)."""
+        from app.services.data_backup_service import DataBackupService
+
+        service = DataBackupService.__new__(DataBackupService)
+        service.client = MagicMock()
+
+        mock_helper = MagicMock()
+        mock_helper.wait = MagicMock(return_value={"StatusCode": 0})
+        mock_helper.remove = MagicMock()
+
+        service.client.containers.run = MagicMock(return_value=mock_helper)
+
+        # Should not raise
+        await service._restore_mount(
+            tar_filename="bind-config.tar.gz",
+            mount_type="bind",
+            source="/srv/raid0/docker/config/sonarr",
+            volume_name="",
+            container_name="sonarr",
+            backup_id="20260206-120000-abc123",
+        )

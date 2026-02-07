@@ -10,7 +10,6 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
@@ -134,6 +133,21 @@ class UpdateEngine:
         if not container:
             raise ValueError(f"Container {update.container_id} not found")
 
+        # Concurrency guard: prevent overlapping operations on same container
+        in_progress = await db.execute(
+            select(UpdateHistory)
+            .where(
+                UpdateHistory.container_id == container.id,
+                UpdateHistory.status == "in_progress",
+            )
+            .limit(1)
+        )
+        if in_progress.scalar_one_or_none():
+            return {
+                "success": False,
+                "message": f"Another operation is already in progress for {container.name}",
+            }
+
         # Ensure compose_project is populated from Docker labels
         await UpdateEngine._ensure_compose_project(db, container)
 
@@ -217,11 +231,59 @@ class UpdateEngine:
                     "container_name": container.name,
                     "history_id": history.id,
                     "phase": "backup",
-                    "progress": 0.2,
+                    "progress": 0.1,
                     "status": "in_progress",
                     "message": "Compose file backup created",
                 }
             )
+
+            # Step 1.5: Pre-update data backup (best-effort, non-blocking)
+            try:
+                from app.services.data_backup_service import DataBackupService
+
+                backup_service = DataBackupService()
+                data_backup_result = await backup_service.create_backup(
+                    container.name, timeout_seconds=300
+                )
+                history.data_backup_id = data_backup_result.backup_id
+                history.data_backup_status = data_backup_result.status
+                await db.commit()
+
+                await event_bus.publish(
+                    {
+                        "type": "update-progress",
+                        "container_id": container.id,
+                        "container_name": container.name,
+                        "history_id": history.id,
+                        "phase": "data-backup",
+                        "progress": 0.2,
+                        "status": "in_progress",
+                        "step_id": "data_backup",
+                        "duration_ms": int(data_backup_result.duration_seconds * 1000),
+                        "error_code": (
+                            "BACKUP_FAILED" if data_backup_result.status == "failed" else None
+                        ),
+                        "message": (
+                            f"Data backup: {data_backup_result.status} "
+                            f"({data_backup_result.mounts_backed_up} mounts)"
+                        ),
+                    }
+                )
+
+                if data_backup_result.status == "failed":
+                    logger.warning(
+                        "Data backup failed for %s: %s. Continuing with update.",
+                        container.name,
+                        data_backup_result.error,
+                    )
+            except Exception as backup_err:
+                logger.warning(
+                    "Data backup exception for %s: %s. Continuing with update.",
+                    container.name,
+                    backup_err,
+                )
+                history.data_backup_status = "failed"
+                await db.commit()
 
             # Step 2: Update compose file
             success = await ComposeParser.update_compose_file(
@@ -392,6 +454,19 @@ class UpdateEngine:
 
             logger.info(f"Successfully updated {container.name} to {update.to_tag}")
 
+            # Prune old backups (keep 3 most recent, fire-and-forget)
+            try:
+                from app.services.data_backup_service import DataBackupService
+
+                backup_service = DataBackupService()
+                pruned = await asyncio.to_thread(
+                    backup_service.prune_backups, container.name, 3
+                )
+                if pruned:
+                    logger.info("Pruned %d old backup(s) for %s", pruned, container.name)
+            except Exception as prune_err:
+                logger.debug("Backup pruning failed for %s: %s", container.name, prune_err)
+
             await event_bus.publish(
                 {
                     "type": "update-complete",
@@ -410,194 +485,164 @@ class UpdateEngine:
                 "history_id": history.id,
             }
 
-        except (ValidationError, ValueError) as e:
-            logger.error(f"Validation error during update: {e}")
-
-            # Rollback compose file if backup exists
-            if history.backup_path:
-                try:
-                    await UpdateEngine._restore_compose_file(
-                        container.compose_file, history.backup_path
-                    )
-                except (OSError, PermissionError) as restore_error:
-                    logger.error(f"File system error restoring backup: {restore_error}")
-            # Re-raise to hit catch-all handler for database state update
-            raise
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Docker compose command failed (exit code {e.returncode}): {e}")
-
-            # Rollback compose file if backup exists
-            if history.backup_path:
-                try:
-                    await UpdateEngine._restore_compose_file(
-                        container.compose_file, history.backup_path
-                    )
-                except (OSError, PermissionError) as restore_error:
-                    logger.error(f"File system error restoring backup: {restore_error}")
-            # Re-raise to hit catch-all handler for database state update
-            raise
-
-        except TimeoutError as e:
-            logger.error(f"Health check timeout during update: {e}")
-
-            # Rollback compose file if backup exists
-            if history.backup_path:
-                try:
-                    await UpdateEngine._restore_compose_file(
-                        container.compose_file, history.backup_path
-                    )
-                except (OSError, PermissionError) as restore_error:
-                    logger.error(f"File system error restoring backup: {restore_error}")
-            # Re-raise to hit catch-all handler for database state update
-            raise
-
-        except (OSError, PermissionError) as e:
-            logger.error(f"File system error during update: {e}")
-
-            # Rollback compose file if backup exists
-            if history.backup_path:
-                try:
-                    await UpdateEngine._restore_compose_file(
-                        container.compose_file, history.backup_path
-                    )
-                except (OSError, PermissionError) as restore_error:
-                    logger.error(f"File system error restoring backup: {restore_error}")
-            # Re-raise to hit catch-all handler for database state update
-            raise
-
-        except (OperationalError, Exception) as e:
-            # Catch-all for database errors and any other unexpected exceptions
+        except Exception as e:
             error_type = type(e).__name__
-            logger.error(f"{error_type} during update: {e}")
+            logger.error(f"{error_type} during update of {container.name}: {e}")
+            return await UpdateEngine._handle_update_failure(db, update, container, history, e)
 
-            # Rollback compose file if backup exists
-            if history.backup_path:
-                try:
-                    await UpdateEngine._restore_compose_file(
-                        container.compose_file, history.backup_path
-                    )
-                except (OSError, PermissionError) as restore_error:
-                    logger.error(f"File system error restoring backup: {restore_error}")
+    @staticmethod
+    async def _handle_update_failure(
+        db: AsyncSession,
+        update: Update,
+        container: Container,
+        history: UpdateHistory,
+        error: Exception,
+    ) -> dict:
+        """Handle update failure: restore compose, manage retries, and notify.
 
-            # Update retry logic - wrap in transaction for atomicity
-            async with db.begin_nested():
-                update.last_error = str(e)
-                update.retry_count = (update.retry_count or 0) + 1
-                update.version += 1  # Increment version for optimistic locking
+        Centralizes all error handling for apply_update() to eliminate
+        duplication across exception types.
 
-                # Calculate next retry time using exponential backoff
-                if update.retry_count < (update.max_retries or 3):
-                    # Backoff schedule: 5min, 15min, 1hr, 4hrs
-                    backoff_multiplier = update.backoff_multiplier or 3
-                    if update.retry_count == 1:
-                        delay_minutes = 5
-                    elif update.retry_count == 2:
-                        delay_minutes = 15
-                    elif update.retry_count == 3:
-                        delay_minutes = 60
-                    else:
-                        delay_minutes = 60 * int(backoff_multiplier) ** (
-                            int(update.retry_count) - 3
-                        )
+        Args:
+            db: Database session
+            update: The update record
+            container: The container being updated
+            history: The update history record
+            error: The exception that caused the failure
 
-                    from datetime import timedelta
+        Returns:
+            Failure result dict
+        """
+        # Restore compose file from backup (single attempt, no double-restore)
+        if history.backup_path:
+            try:
+                await UpdateEngine._restore_compose_file(
+                    container.compose_file, history.backup_path
+                )
+            except (OSError, PermissionError) as restore_error:
+                logger.error(f"Failed to restore compose backup: {restore_error}")
 
-                    update.next_retry_at = datetime.now(UTC) + timedelta(minutes=delay_minutes)
-                    update.status = "pending_retry"  # New status for automatic retry
+        # Update retry logic - wrap in transaction for atomicity
+        async with db.begin_nested():
+            update.last_error = str(error)
+            update.retry_count = (update.retry_count or 0) + 1
+            update.version += 1  # Increment version for optimistic locking
 
-                    logger.info(
-                        f"Update will be retried in {delay_minutes} minutes "
-                        f"(attempt {update.retry_count + 1}/{update.max_retries or 3})"
-                    )
+            # Calculate next retry time using exponential backoff
+            if update.retry_count < (update.max_retries or 3):
+                # Backoff schedule: 5min, 15min, 1hr, 4hrs
+                backoff_multiplier = update.backoff_multiplier or 3
+                if update.retry_count == 1:
+                    delay_minutes = 5
+                elif update.retry_count == 2:
+                    delay_minutes = 15
+                elif update.retry_count == 3:
+                    delay_minutes = 60
                 else:
-                    # Max retries reached - attempt automatic rollback
-                    update.next_retry_at = None
-                    logger.warning(
-                        f"Max retries ({update.max_retries or 3}) reached for update {update.id}, "
-                        f"initiating automatic rollback"
-                    )
+                    delay_minutes = 60 * int(backoff_multiplier) ** (int(update.retry_count) - 3)
 
-                    # Attempt to rollback automatically if backup exists
-                    if history.backup_path:
-                        try:
-                            logger.info(f"Attempting automatic rollback for update {update.id}")
-                            rollback_result = await UpdateEngine.rollback_update(db, history.id)
-                            if rollback_result["success"]:
-                                update.status = "rolled_back"
-                                update.last_error = f"Auto-rolled back after {update.retry_count} failed retry attempts"
-                                logger.info(f"Successfully auto-rolled back update {update.id}")
-                            else:
-                                update.status = "failed"
-                                update.last_error = f"Max retries reached. Auto-rollback failed: {rollback_result.get('message', 'Unknown error')}"
-                                logger.error(
-                                    f"Auto-rollback failed for update {update.id}: {rollback_result.get('message')}"
-                                )
-                        except (OSError, PermissionError) as rollback_error:
-                            update.status = "failed"
-                            update.last_error = f"Max retries reached. Auto-rollback file system error: {str(rollback_error)}"
-                            logger.error(
-                                f"Auto-rollback file system error for update {update.id}: {rollback_error}"
+                from datetime import timedelta
+
+                update.next_retry_at = datetime.now(UTC) + timedelta(minutes=delay_minutes)
+                update.status = "pending_retry"
+
+                logger.info(
+                    f"Update will be retried in {delay_minutes} minutes "
+                    f"(attempt {update.retry_count + 1}/{update.max_retries or 3})"
+                )
+            else:
+                # Max retries reached - attempt automatic rollback
+                update.next_retry_at = None
+                logger.warning(
+                    f"Max retries ({update.max_retries or 3}) reached for "
+                    f"update {update.id}, initiating automatic rollback"
+                )
+
+                if history.backup_path:
+                    try:
+                        # Mark history as failed BEFORE rollback attempt so the
+                        # concurrency guard (checks for in_progress) and status
+                        # check (requires success|failed) in rollback_update() pass.
+                        history.status = "failed"
+                        history.error_message = str(error)
+                        history.completed_at = datetime.now(UTC)
+                        history.can_rollback = True
+                        await db.flush()
+
+                        logger.info(f"Attempting automatic rollback for update {update.id}")
+                        rollback_result = await UpdateEngine.rollback_update(db, history.id)
+                        if rollback_result["success"]:
+                            update.status = "rolled_back"
+                            update.last_error = (
+                                f"Auto-rolled back after {update.retry_count} failed retry attempts"
                             )
-                        except subprocess.CalledProcessError as rollback_error:
+                            logger.info(f"Successfully auto-rolled back update {update.id}")
+                        else:
                             update.status = "failed"
-                            update.last_error = f"Max retries reached. Auto-rollback command failed: {str(rollback_error)}"
-                            logger.error(
-                                f"Auto-rollback command error for update {update.id}: {rollback_error}"
+                            update.last_error = (
+                                f"Max retries reached. Auto-rollback failed: "
+                                f"{rollback_result.get('message', 'Unknown error')}"
                             )
-                        except (ValidationError, ValueError) as rollback_error:
-                            update.status = "failed"
-                            update.last_error = f"Max retries reached. Auto-rollback validation error: {str(rollback_error)}"
                             logger.error(
-                                f"Auto-rollback validation error for update {update.id}: {rollback_error}"
+                                f"Auto-rollback failed for update {update.id}: "
+                                f"{rollback_result.get('message')}"
                             )
-                    else:
+                    except Exception as rollback_error:
                         update.status = "failed"
-                        update.last_error = f"Max retries ({update.retry_count}) reached. No backup available for auto-rollback."
-                        logger.warning(
-                            f"No backup available for auto-rollback of update {update.id}"
+                        update.last_error = (
+                            f"Max retries reached. Auto-rollback failed: {rollback_error}"
                         )
+                        logger.error(
+                            f"Auto-rollback exception for update {update.id}: {rollback_error}"
+                        )
+                else:
+                    update.status = "failed"
+                    update.last_error = (
+                        f"Max retries ({update.retry_count}) reached. "
+                        f"No backup available for auto-rollback."
+                    )
+                    logger.warning(f"No backup available for auto-rollback of update {update.id}")
 
-                # Update history record
+            # Update history record (skip if already set by successful auto-rollback)
+            if history.status != "rolled_back":
                 history.status = "failed"
-                history.error_message = str(e)
+                history.error_message = str(error)
                 history.completed_at = datetime.now(UTC)
-                # Allow rollback for failed updates if backup exists
                 history.can_rollback = bool(history.backup_path)
 
-            await db.commit()
+        await db.commit()
 
-            await event_bus.publish(
-                {
-                    "type": "update-complete",
-                    "container_id": container.id,
-                    "container_name": container.name,
-                    "history_id": history.id,
-                    "status": "failed",
-                    "message": str(e),
-                    "from_tag": update.from_tag,
-                    "to_tag": update.to_tag,
-                }
-            )
-
-            # Send notifications via dispatcher (handles all enabled services)
-            from app.services.notifications.dispatcher import NotificationDispatcher
-
-            dispatcher = NotificationDispatcher(db)
-            await dispatcher.notify_update_applied(
-                container.name,
-                update.to_tag,
-                success=False,
-                reason_type=update.reason_type,
-                reason_summary=update.reason_summary,
-            )
-
-            return {
-                "success": False,
-                "message": f"Failed to update {container.name}: {str(e)}",
-                "error": str(e),
+        await event_bus.publish(
+            {
+                "type": "update-complete",
+                "container_id": container.id,
+                "container_name": container.name,
                 "history_id": history.id,
+                "status": "failed",
+                "message": str(error),
+                "from_tag": update.from_tag,
+                "to_tag": update.to_tag,
             }
+        )
+
+        # Send failure notification
+        from app.services.notifications.dispatcher import NotificationDispatcher
+
+        dispatcher = NotificationDispatcher(db)
+        await dispatcher.notify_update_applied(
+            container.name,
+            update.to_tag,
+            success=False,
+            reason_type=update.reason_type,
+            reason_summary=update.reason_summary,
+        )
+
+        return {
+            "success": False,
+            "message": f"Failed to update {container.name}: {error}",
+            "error": str(error),
+            "history_id": history.id,
+        }
 
     @staticmethod
     async def rollback_update(db: AsyncSession, history_id: int) -> dict:
@@ -636,6 +681,21 @@ class UpdateEngine:
         if not container:
             raise ValueError(f"Container {history.container_id} not found")
 
+        # Concurrency guard: prevent overlapping operations on same container
+        in_progress = await db.execute(
+            select(UpdateHistory)
+            .where(
+                UpdateHistory.container_id == container.id,
+                UpdateHistory.status == "in_progress",
+            )
+            .limit(1)
+        )
+        if in_progress.scalar_one_or_none():
+            return {
+                "success": False,
+                "message": f"Another operation is already in progress for {container.name}",
+            }
+
         # Verify the container is still at the expected version
         if container.current_tag != history.to_tag:
             raise ValueError(
@@ -665,7 +725,77 @@ class UpdateEngine:
             if not success:
                 raise Exception("Failed to update compose file")
 
-            # Step 2: Execute docker compose
+            # Step 1.5: Stop container, then restore data from backup
+            data_restore_status = None
+            if history.data_backup_id and history.data_backup_status == "success":
+                # Stop the container BEFORE restoring data to avoid corruption
+                try:
+                    import docker
+
+                    docker_socket = (
+                        await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
+                    )
+                    docker_client = docker.DockerClient(base_url=docker_socket)
+                    try:
+                        target = await asyncio.to_thread(
+                            docker_client.containers.get, container.name
+                        )
+                        await asyncio.to_thread(target.stop, timeout=30)
+                        logger.info("Stopped %s before data restore", container.name)
+                    except docker.errors.NotFound:
+                        logger.debug("Container %s not found (may not be running)", container.name)
+                    except Exception as stop_err:
+                        logger.warning(
+                            "Failed to stop %s before data restore: %s. "
+                            "Proceeding anyway.",
+                            container.name,
+                            stop_err,
+                        )
+                    finally:
+                        docker_client.close()
+                except Exception as docker_err:
+                    logger.warning("Docker client error during pre-restore stop: %s", docker_err)
+
+                # Now restore data with the container stopped
+                try:
+                    from app.services.data_backup_service import DataBackupService
+
+                    backup_service = DataBackupService()
+                    restore_result = await backup_service.restore_backup(
+                        container.name, history.data_backup_id
+                    )
+                    data_restore_status = restore_result.status
+                    if restore_result.status == "success":
+                        logger.info(
+                            "Data restore completed for %s (backup %s): %d mounts restored",
+                            container.name,
+                            history.data_backup_id,
+                            restore_result.mounts_restored,
+                        )
+                    else:
+                        logger.warning(
+                            "Data restore %s for %s: %s. Continuing with image-only rollback.",
+                            restore_result.status,
+                            container.name,
+                            restore_result.error,
+                        )
+                except Exception as restore_err:
+                    data_restore_status = "failed"
+                    logger.warning(
+                        "Data restore exception for %s: %s. Continuing with image-only rollback.",
+                        container.name,
+                        restore_err,
+                    )
+            else:
+                logger.info(
+                    "No data backup available for %s rollback "
+                    "(backup_id=%s, status=%s). Proceeding with image-only rollback.",
+                    container.name,
+                    history.data_backup_id,
+                    history.data_backup_status,
+                )
+
+            # Step 2: Execute docker compose (stop + up -d)
             docker_socket = await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
             docker_compose_cmd = (
                 await SettingsService.get(db, "docker_compose_command", "docker compose")
@@ -680,6 +810,28 @@ class UpdateEngine:
             )
             if not result["success"]:
                 raise Exception(f"Docker compose failed: {result['error']}")
+
+            # Step 2.5: Post-compose-up PostgreSQL restore (if applicable)
+            # DB needs to be running, so this happens after compose up
+            if data_restore_status == "success" and history.data_backup_id:
+                try:
+                    from app.services.data_backup_service import DataBackupService
+
+                    backup_service = DataBackupService()
+                    pg_restored = await backup_service.restore_postgresql(
+                        container.name, history.data_backup_id
+                    )
+                    if pg_restored:
+                        logger.info(
+                            "PostgreSQL database restored for %s",
+                            container.name,
+                        )
+                except Exception as pg_err:
+                    logger.warning(
+                        "PostgreSQL post-up restore exception for %s: %s",
+                        container.name,
+                        pg_err,
+                    )
 
             # Success! Wrap status updates in transaction for atomicity
             async with db.begin_nested():
@@ -715,61 +867,9 @@ class UpdateEngine:
                 "message": f"Rolled back {container.name} to {history.from_tag}",
             }
 
-        except (ValidationError, ValueError) as e:
-            logger.error(f"Validation error during rollback: {e}")
-            await event_bus.publish(
-                {
-                    "type": "rollback-complete",
-                    "container_id": container.id,
-                    "container_name": container.name,
-                    "history_id": history.id,
-                    "status": "failed",
-                    "message": str(e),
-                }
-            )
-            return {
-                "success": False,
-                "message": f"Failed to rollback {container.name}: {str(e)}",
-                "error": str(e),
-            }
-        except subprocess.CalledProcessError as e:
-            logger.error(
-                f"Docker compose command failed during rollback (exit code {e.returncode}): {e}"
-            )
-            await event_bus.publish(
-                {
-                    "type": "rollback-complete",
-                    "container_id": container.id,
-                    "container_name": container.name,
-                    "history_id": history.id,
-                    "status": "failed",
-                    "message": str(e),
-                }
-            )
-            return {
-                "success": False,
-                "message": f"Failed to rollback {container.name}: {str(e)}",
-                "error": str(e),
-            }
-        except (OSError, PermissionError) as e:
-            logger.error(f"File system error during rollback: {e}")
-            await event_bus.publish(
-                {
-                    "type": "rollback-complete",
-                    "container_id": container.id,
-                    "container_name": container.name,
-                    "history_id": history.id,
-                    "status": "failed",
-                    "message": str(e),
-                }
-            )
-            return {
-                "success": False,
-                "message": f"Failed to rollback {container.name}: {str(e)}",
-                "error": str(e),
-            }
-        except OperationalError as e:
-            logger.error(f"Database error during rollback: {e}")
+        except Exception as e:
+            error_type = type(e).__name__
+            logger.error(f"{error_type} during rollback of {container.name}: {e}")
             await event_bus.publish(
                 {
                     "type": "rollback-complete",

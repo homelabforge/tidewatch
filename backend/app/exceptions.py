@@ -17,7 +17,7 @@ class SSRFProtectionError(Exception):
     pass
 
 
-class PendingLinkRequiredException(Exception):
+class PendingLinkRequiredError(Exception):
     """Raised when OIDC linking requires password verification for admin account.
 
     This exception is raised during OIDC authentication when:

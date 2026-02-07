@@ -248,13 +248,13 @@ class ComposeParser:
             # Extract TideWatch-specific labels
             policy_label = labels.get("tidewatch.policy")
             # Backward compat: map old policy values to new
-            _OLD_POLICY_MAP = {
+            old_policy_map = {
                 "patch-only": "auto",
                 "minor-and-patch": "auto",
                 "security": "auto",
                 "manual": "monitor",
             }
-            policy = _OLD_POLICY_MAP.get(policy_label, policy_label) if policy_label else "monitor"
+            policy = old_policy_map.get(policy_label, policy_label) if policy_label else "monitor"
             scope_label = labels.get("tidewatch.scope")
             scope = scope_label or "patch"
             vulnforge_label = labels.get("tidewatch.vulnforge")
@@ -413,12 +413,12 @@ class ComposeParser:
             return {}
 
         sanitized = {}
-        MAX_LABELS = 100  # Prevent DoS via too many labels
-        MAX_KEY_LENGTH = 255  # Docker limit for label keys
-        MAX_VALUE_LENGTH = 4096  # Reasonable limit for label values
+        max_labels = 100  # Prevent DoS via too many labels
+        max_key_length = 255  # Docker limit for label keys
+        max_value_length = 4096  # Reasonable limit for label values
 
         # Sort keys to ensure consistent processing
-        for key in sorted(labels.keys())[:MAX_LABELS]:
+        for key in sorted(labels.keys())[:max_labels]:
             # Validate key format (alphanumeric, dots, hyphens, underscores)
             if not isinstance(key, str):
                 logger.warning(f"Skipping non-string label key: {type(key)}")
@@ -428,9 +428,9 @@ class ComposeParser:
             original_key = key
 
             # Enforce key length limit
-            if len(key) > MAX_KEY_LENGTH:
+            if len(key) > max_key_length:
                 logger.warning(f"Label key too long ({len(key)} chars), truncating: {key[:50]}...")
-                key = key[:MAX_KEY_LENGTH]
+                key = key[:max_key_length]
 
             # Docker labels allow: [a-zA-Z0-9._-]
             # We'll be more permissive but log suspicious patterns
@@ -440,11 +440,11 @@ class ComposeParser:
 
             # Convert value to string and enforce length limit (use original key)
             value = str(labels[original_key])
-            if len(value) > MAX_VALUE_LENGTH:
+            if len(value) > max_value_length:
                 logger.warning(
                     f"Label value too long ({len(value)} chars), truncating for key: {key}"
                 )
-                value = value[:MAX_VALUE_LENGTH]
+                value = value[:max_value_length]
 
             # Filter control characters from value
             if any(char in value for char in ["\0", "\x00"]):
@@ -453,8 +453,8 @@ class ComposeParser:
 
             sanitized[key] = value
 
-        if len(labels) > MAX_LABELS:
-            logger.warning(f"Too many labels ({len(labels)}), only processing first {MAX_LABELS}")
+        if len(labels) > max_labels:
+            logger.warning(f"Too many labels ({len(labels)}), only processing first {max_labels}")
 
         return sanitized
 

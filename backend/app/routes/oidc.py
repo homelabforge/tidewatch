@@ -24,7 +24,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.exceptions import PendingLinkRequiredException
+from app.exceptions import PendingLinkRequiredError
 from app.schemas.auth import OIDCConfig, OIDCTestResult
 from app.services import oidc as oidc_service
 from app.services.auth import (
@@ -372,7 +372,7 @@ async def oidc_callback(
     # Link OIDC to admin account
     try:
         await oidc_service.link_oidc_to_admin(db, claims, userinfo, config)
-    except PendingLinkRequiredException as e:
+    except PendingLinkRequiredError as e:
         # Admin account requires password verification before linking
         logger.info("Pending link required for admin account")
 

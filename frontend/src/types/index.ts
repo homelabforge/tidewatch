@@ -97,6 +97,8 @@ export interface UpdateHistory {
   can_rollback: boolean;
   rollback_available?: boolean; // Alias for can_rollback in some contexts
   backup_path: string | null;
+  data_backup_id: string | null;
+  data_backup_status: string | null; // success, failed, skipped, timeout
   error_message: string | null;
   cves_fixed: string[];
   duration_seconds: number | null;
@@ -133,6 +135,8 @@ export interface UnifiedHistoryEvent {
   can_rollback?: boolean;
   rollback_available?: boolean;
   backup_path?: string | null;
+  data_backup_id?: string | null;
+  data_backup_status?: string | null;
   cves_fixed?: string[];
   rolled_back_at?: string | null;
 

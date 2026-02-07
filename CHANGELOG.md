@@ -8,8 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Self-healing rollback pipeline** - Complete data-aware rollback system that backs up container volumes/bind-mounts before updates and restores them on rollback, preventing the scenario where a breaking migration survives an image-only rollback
+- **Pre-update data backup service** (`DataBackupService`) - Docker-native backup using temporary alpine containers to tar bind mounts and named volumes into a shared `tidewatch_rollback_data` Docker volume
+  - Mount filtering (skips RO, sockets, shared infra, single files)
+  - PostgreSQL detection with `pg_dumpall` backup and version-checked restore
+  - Per-container `asyncio.Lock` concurrency control
+  - Space check before backup (500MB minimum)
+  - Per-mount and total timeout enforcement
+  - Staged restore with crash-safe `.restore-staging/` pattern and post-restore verification
+  - Automatic pruning (keeps last 3 backups per container)
+- **`rollback_on_health_fail` wiring** - The existing UI toggle now actually triggers automatic rollback when a container's health check fails after an update, with a configurable time window (default 24h) to prevent stale rollbacks
+- **Concurrency guard for update/rollback operations** - DB-level check prevents overlapping `apply_update`/`rollback_update` operations on the same container
+- **Data backup status in UI** - Color-coded badge (success/failed/timeout/skipped) in history detail grids, context-aware rollback confirmation dialog showing whether data restore is available
 - **Pre-migration database backup** - Migration runner automatically snapshots the SQLite database before running any pending migrations, stored at `/data/backups/migrations/` with automatic pruning (keeps last 5)
 - **Savepoint wrapping for migrations** - New-style migrations (those accepting a `conn` parameter) are wrapped in SQLite savepoints for atomic rollback on failure
+- **Database migration 040** - Adds `data_backup_id` and `data_backup_status` columns to `update_history` table
 
 ### Changed
 - **Fail-fast on migration errors** - Migration failures now crash the container instead of silently continuing with a broken schema. A stopped container is visible in `dc ps`; a running container with corrupt schema is not.
@@ -17,17 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Segmented control UI for policy selection** - New teal-accented segmented control (Zap/Eye/PowerOff icons) replaces the old 2-column button grid, matching the app's existing tab styling patterns
 - **Scope and Pre-releases sections dim when policy is Off** - Visual feedback via `opacity-50 pointer-events-none` when update checking is disabled
 - **Removed security auto-reject policy** - VulnForge still enriches every update with CVE data; users now make their own decisions rather than having updates silently rejected
-- **Backward-compatible compose labels** - Old `tidewatch.policy` labels (`patch-only`, `minor-and-patch`, `security`, `manual`) are automatically mapped to new values via `_OLD_POLICY_MAP`
+- **Backward-compatible compose labels** - Old `tidewatch.policy` labels (`patch-only`, `minor-and-patch`, `security`, `manual`) are automatically mapped to new values
 - **Database migration 039** - Converts existing containers: `patch-only`/`minor-and-patch`/`security` → `auto`, `manual` → `monitor`
-
 - **Redesigned Updates page filter tabs** - Replaced the 7 status tabs (All/Pending/Approved/Retrying/Rejected/Stale/Applied) and Security filter with 4 focused tabs: **Needs Attention** (default, shows pending + approved + retrying), **Rejected**, **Stale**, and **Applied**. Default view now shows only actionable items — when nothing needs attention, displays "All containers are up to date" instead of lingering rejected cards.
 - **Removed Security filter tab from Updates page** - The Security/All toggle was orphaned after the security policy removal; CVE data is still visible on individual update cards via VulnForge
 - **Pending stat card now excludes stale items** - The Pending count in the stats row accurately reflects only non-stale pending updates, matching the separate Stale count
+- **Refactored update engine exception handling** - Collapsed 5 near-identical exception handlers in `apply_update()` and 4 in `rollback_update()` into single unified handlers via `_handle_update_failure()`, eliminating ~150 lines of duplication and fixing a double-restore bug
+- **Rollback flow stops container before data restore** - Explicit Docker stop before restoring volumes/bind-mounts prevents data corruption from writing to live mounts
 
 ### Fixed
 - **Duplicate update records for intermediate versions** - When a newer version was released (e.g., v3.10.1) while an older update (v3.10.0) was already pending/approved, TideWatch created separate update entries instead of superseding the old one. Now clears stale pending/approved updates before creating a new update record.
 - **Generic "Invalid request" error when applying already-applied updates** - Apply endpoint now returns descriptive error messages (e.g., "This update has already been applied") instead of a generic 400 when a race condition between the auto-apply scheduler and manual UI action occurs.
 - **Misleading "All (72)" count on Updates page** - The All tab showed total update count but filtered out applied updates from the display, creating a count/card mismatch. Tab counts now match exactly what's displayed.
+- **Max-retry auto-rollback was non-functional** - The auto-rollback path after max retries was blocked by the concurrency guard (history record still `in_progress`) and the status check (requires `success` or `failed`). History status is now set to `failed` and flushed before the rollback attempt, and successful auto-rollback status is preserved.
+- **Migration 023 fails in CI E2E tests** - `get_db_path()` now parses `DATABASE_URL` environment variable as a fallback, fixing E2E test failures where the migration opened a different database than the SQLAlchemy engine.
+- **Ruff lint errors** - Fixed 9 pre-existing ruff errors: N818 (exception naming), E402 (import ordering), N806 (uppercase locals), E712 (bool comparison with `==` instead of `.is_()`)
 
 ## [3.6.4] - 2026-02-06
 

@@ -416,7 +416,7 @@ describe('History', () => {
 
       await waitFor(() => {
         expect(window.confirm).toHaveBeenCalledWith(
-          'Are you sure you want to rollback this update? This will restore the previous version.'
+          'This will revert the container image only. Database/config changes from the update will remain. Continue?'
         )
       })
 

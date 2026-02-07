@@ -35,8 +35,11 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
     loadUpdateHistory();
   }, [loadUpdateHistory]);
 
-  const handleRollback = async (historyId: number) => {
-    if (!confirm('Are you sure you want to rollback to the previous version? This will restart the container.')) {
+  const handleRollback = async (historyId: number, dataBackupStatus?: string | null) => {
+    const confirmMessage = dataBackupStatus === 'success'
+      ? 'This will restore both the container image and data from the pre-update backup. Continue?'
+      : 'This will revert the container image only. Database/config changes from the update will remain. Continue?';
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -188,7 +191,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                     )}
                     {item.can_rollback && (item.status === 'completed' || item.status === 'success') && !item.rolled_back_at && !item.event_type?.includes('dependency') && (
                       <button
-                        onClick={() => handleRollback(item.id)}
+                        onClick={() => handleRollback(item.id, item.data_backup_status)}
                         className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg transition-colors text-xs"
                       >
                         <Undo2 className="w-3.5 h-3.5" />
@@ -251,6 +254,22 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                     <span className="text-tide-text-muted">Rolled back:</span>
                     <span className="text-yellow-400 ml-2">
                       {formatDistanceToNow(new Date(item.rolled_back_at), { addSuffix: true })}
+                    </span>
+                  </div>
+                )}
+                {item.data_backup_status && (
+                  <div>
+                    <span className="text-tide-text-muted">Data Backup:</span>
+                    <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                      item.data_backup_status === 'success'
+                        ? 'bg-green-500/20 text-green-400'
+                        : item.data_backup_status === 'failed'
+                          ? 'bg-red-500/20 text-red-400'
+                          : item.data_backup_status === 'timeout'
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {item.data_backup_status}
                     </span>
                   </div>
                 )}

@@ -32,6 +32,12 @@ class UpdateHistory(Base):
         String, nullable=True
     )  # Path to backup compose file
 
+    # Data backup support (volume/bind mount snapshots for full rollback)
+    data_backup_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    data_backup_status: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # success, failed, skipped, timeout
+
     # Execution details
     status: Mapped[str] = mapped_column(
         String, nullable=False, index=True

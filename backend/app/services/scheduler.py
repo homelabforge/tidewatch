@@ -509,8 +509,8 @@ class SchedulerService:
                     # Get all dependencies with updates, joined with Container for name
                     stmt = (
                         select(DockerfileDependency)
-                        .where(DockerfileDependency.update_available == True)
-                        .where(DockerfileDependency.ignored == False)
+                        .where(DockerfileDependency.update_available.is_(True))
+                        .where(DockerfileDependency.ignored.is_(False))
                         .options(joinedload(DockerfileDependency.container))
                     )
                     result = await db.execute(stmt)

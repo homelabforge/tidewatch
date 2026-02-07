@@ -24,6 +24,14 @@ def get_db_path() -> str:
     if db_path:
         return db_path
 
+    # Check DATABASE_URL (used by SQLAlchemy engine and E2E tests)
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url.startswith("sqlite"):
+        # Parse path from sqlite+aiosqlite:////data/tidewatch.db or sqlite:////data/tidewatch.db
+        path_part = database_url.split(":///", 1)[-1]
+        if path_part and path_part != ":memory:":
+            return path_part
+
     # Default path in production
     prod_path = "/data/tidewatch.db"
     if Path(prod_path).exists():

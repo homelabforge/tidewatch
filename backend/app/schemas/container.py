@@ -5,13 +5,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-# Valid update policy values
-VALID_POLICIES = {
-    "auto",
-    "monitor",
-    "disabled",
-}
-
 from app.schemas.dependency import (
     AppDependencySchema,
     DockerfileDependencySchema,
@@ -19,6 +12,13 @@ from app.schemas.dependency import (
 from app.schemas.dependency import (
     HttpServerSchema as HttpServerSchemaFromDependency,
 )
+
+# Valid update policy values
+VALID_POLICIES = {
+    "auto",
+    "monitor",
+    "disabled",
+}
 
 
 class ContainerSchema(BaseModel):

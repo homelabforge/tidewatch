@@ -350,6 +350,11 @@ class RestartService:
                     await db.commit()
 
                     logger.warning(f"Health check failed for {container.name} after restart")
+
+                    # Attempt auto-rollback if enabled and a recent update exists
+                    if state.rollback_on_health_fail:
+                        await RestartService._attempt_health_fail_rollback(db, container)
+
                     return {
                         "success": False,
                         "error": "Health check failed",
@@ -426,6 +431,89 @@ class RestartService:
             await db.commit()
 
             return {"success": False, "error": str(e)}
+
+    @staticmethod
+    async def _attempt_health_fail_rollback(
+        db: AsyncSession,
+        container: Container,
+    ) -> None:
+        """Attempt rollback to previous version when health check fails after restart.
+
+        Only considers updates completed within the rollback window (default 24h)
+        to avoid rolling back stable updates due to unrelated health failures.
+
+        This is a best-effort operation. If no rollbackable update exists or
+        rollback fails, the restart service continues normal failure handling.
+
+        Args:
+            db: Database session
+            container: Container that failed health check
+        """
+        from app.models.history import UpdateHistory
+
+        logger.info(
+            "rollback_on_health_fail enabled for %s, searching for recent rollbackable update",
+            container.name,
+        )
+
+        # Only consider updates within the configured time window
+        rollback_window_hours = await SettingsService.get_int(
+            db, "rollback_window_hours", default=24
+        )
+        window_cutoff = datetime.now(UTC) - timedelta(hours=rollback_window_hours)
+
+        result = await db.execute(
+            select(UpdateHistory)
+            .where(
+                UpdateHistory.container_id == container.id,
+                UpdateHistory.status == "success",
+                UpdateHistory.can_rollback.is_(True),
+                UpdateHistory.rolled_back_at.is_(None),
+                UpdateHistory.completed_at >= window_cutoff,
+            )
+            .order_by(UpdateHistory.created_at.desc())
+            .limit(1)
+        )
+        target = result.scalar_one_or_none()
+
+        if not target:
+            logger.info(
+                "No rollbackable update within %dh window for %s, skipping",
+                rollback_window_hours,
+                container.name,
+            )
+            return
+
+        logger.warning(
+            "Found rollbackable update %d for %s (%s -> %s, completed %s), "
+            "attempting auto-rollback",
+            target.id,
+            container.name,
+            target.from_tag,
+            target.to_tag,
+            target.completed_at,
+        )
+
+        try:
+            rollback_result = await UpdateEngine.rollback_update(db, target.id)
+            if rollback_result["success"]:
+                logger.info(
+                    "Auto-rollback on health fail succeeded for %s: reverted to %s",
+                    container.name,
+                    target.from_tag,
+                )
+            else:
+                logger.error(
+                    "Auto-rollback on health fail failed for %s: %s",
+                    container.name,
+                    rollback_result.get("message"),
+                )
+        except Exception as e:
+            logger.error(
+                "Exception during auto-rollback on health fail for %s: %s",
+                container.name,
+                e,
+            )
 
     @staticmethod
     async def _execute_docker_compose_restart(container: Container, db: AsyncSession) -> dict:
