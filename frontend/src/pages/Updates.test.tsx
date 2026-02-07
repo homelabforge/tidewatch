@@ -268,14 +268,12 @@ describe('Updates', () => {
     it('displays pending count (excludes stale)', async () => {
       render(<Updates />)
 
+      // Wait for data to load — stat cards render immediately but counts start at 0
       await waitFor(() => {
-        const pendingLabels = screen.getAllByText('Pending')
-        expect(pendingLabels.length).toBeGreaterThan(0)
+        // 2 pending updates excluding stale (nginx, apache - mongo is stale)
+        const twoElements = screen.getAllByText('2')
+        expect(twoElements.length).toBeGreaterThan(0)
       })
-
-      // 2 pending updates excluding stale (nginx, apache - mongo is stale)
-      const twoElements = screen.getAllByText('2')
-      expect(twoElements.length).toBeGreaterThan(0)
     })
 
     it('displays approved count', async () => {
@@ -284,11 +282,10 @@ describe('Updates', () => {
       await waitFor(() => {
         const approvedLabels = screen.getAllByText('Approved')
         expect(approvedLabels.length).toBeGreaterThan(0)
+        // 1 approved update (postgres)
+        const oneElements = screen.getAllByText('1')
+        expect(oneElements.length).toBeGreaterThan(0)
       })
-
-      // 1 approved update (postgres)
-      const oneElements = screen.getAllByText('1')
-      expect(oneElements.length).toBeGreaterThan(0)
     })
 
     it('displays rejected count', async () => {
@@ -297,11 +294,10 @@ describe('Updates', () => {
       await waitFor(() => {
         const rejectedLabels = screen.getAllByText('Rejected')
         expect(rejectedLabels.length).toBeGreaterThan(0)
+        // 1 rejected update (redis)
+        const oneElements = screen.getAllByText('1')
+        expect(oneElements.length).toBeGreaterThan(0)
       })
-
-      // 1 rejected update (redis)
-      const oneElements = screen.getAllByText('1')
-      expect(oneElements.length).toBeGreaterThan(0)
     })
 
     it('displays stale count', async () => {
@@ -310,11 +306,10 @@ describe('Updates', () => {
       await waitFor(() => {
         const staleLabels = screen.getAllByText('Stale')
         expect(staleLabels.length).toBeGreaterThan(0)
+        // 1 stale update (mongo)
+        const oneElements = screen.getAllByText('1')
+        expect(oneElements.length).toBeGreaterThan(0)
       })
-
-      // 1 stale update (mongo)
-      const oneElements = screen.getAllByText('1')
-      expect(oneElements.length).toBeGreaterThan(0)
     })
 
     it('displays applied count', async () => {
@@ -323,11 +318,10 @@ describe('Updates', () => {
       await waitFor(() => {
         const appliedLabels = screen.getAllByText('Applied')
         expect(appliedLabels.length).toBeGreaterThan(0)
+        // 1 applied update (mysql)
+        const oneElements = screen.getAllByText('1')
+        expect(oneElements.length).toBeGreaterThan(0)
       })
-
-      // 1 applied update (mysql)
-      const oneElements = screen.getAllByText('1')
-      expect(oneElements.length).toBeGreaterThan(0)
     })
   })
 
