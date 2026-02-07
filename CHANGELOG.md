@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-02-06
+
 ### Added
 - **Self-healing rollback pipeline** - Complete data-aware rollback system that backs up container volumes/bind-mounts before updates and restores them on rollback, preventing the scenario where a breaking migration survives an image-only rollback
 - **Pre-update data backup service** (`DataBackupService`) - Docker-native backup using temporary alpine containers to tar bind mounts and named volumes into a shared `tidewatch_rollback_data` Docker volume
