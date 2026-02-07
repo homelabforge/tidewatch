@@ -2,7 +2,7 @@
 
 Tests update discovery, auto-approval logic, and changelog classification:
 - Update detection for containers
-- Auto-approval policy enforcement (auto, manual, security, disabled)
+- Auto-approval policy enforcement (auto, monitor, disabled)
 - Changelog fetching and classification
 - VulnForge CVE enrichment
 - Digest tracking for 'latest' tags
@@ -71,8 +71,8 @@ class TestAutoApprovalLogic:
         assert "container policy is disabled" in reason
 
     @pytest.mark.asyncio
-    async def test_auto_approve_container_policy_manual(self, make_update):
-        """Test auto-approval disabled when container policy is manual."""
+    async def test_auto_approve_container_policy_monitor(self, make_update):
+        """Test auto-approval disabled when container policy is monitor."""
         container = Container(
             name="test",
             image="nginx",
@@ -80,7 +80,7 @@ class TestAutoApprovalLogic:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="test",
-            policy="manual",
+            policy="monitor",
         )
 
         update = make_update(
@@ -116,55 +116,7 @@ class TestAutoApprovalLogic:
         )
 
         assert should_approve is True
-        assert "allows all updates" in reason
-
-    @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_approves_security_updates(self, make_update):
-        """Test security policy approves security updates only."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="security",
-        )
-
-        security_update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="security"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, security_update, auto_update_enabled=True
-        )
-
-        assert should_approve is True
-        assert "approves security updates" in reason
-
-    @pytest.mark.asyncio
-    async def test_auto_approve_security_policy_rejects_feature_updates(self, make_update):
-        """Test security policy rejects non-security updates."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="security",
-        )
-
-        feature_update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, feature_update, auto_update_enabled=True
-        )
-
-        assert should_approve is False
-        assert "manual approval for non-security" in reason
+        assert "auto-approves updates" in reason
 
 
 class TestUpdateDetection:
@@ -199,7 +151,7 @@ class TestUpdateDetection:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             scope="patch",
             include_prereleases=False,
             vulnforge_enabled=False,
@@ -336,7 +288,7 @@ class TestUpdateDetection:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             scope="patch",
             vulnforge_enabled=False,
         )
@@ -379,7 +331,7 @@ class TestUpdateDetection:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             scope="patch",
             vulnforge_enabled=False,
         )
@@ -432,6 +384,141 @@ class TestUpdateDetection:
             assert "digest updated" in update.reason_summary.lower()
 
 
+class TestUpdateSuperseding:
+    """Test suite for update superseding logic.
+
+    When a newer version is released (e.g., v1.25.4) while an older update
+    (v1.25.3) is already pending/approved, the older update should be
+    superseded (deleted) and only the latest version shown.
+    """
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database session."""
+        db = AsyncMock()
+        db.execute = AsyncMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.add = MagicMock()
+        db.begin_nested = MagicMock()
+        db.begin_nested.return_value.__aenter__ = AsyncMock()
+        db.begin_nested.return_value.__aexit__ = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def mock_container(self):
+        """Create mock container."""
+        return Container(
+            id=1,
+            name="mealie",
+            image="ghcr.io/mealie-recipes/mealie",
+            current_tag="3.9.2",
+            registry="ghcr.io",
+            compose_file="/compose/smarthome.yml",
+            service_name="mealie",
+            policy="monitor",
+            scope="minor",
+            include_prereleases=False,
+            vulnforge_enabled=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_newer_version_supersedes_older_pending_updates(self, mock_db, mock_container):
+        """When v3.10.1 is found while v3.10.0 is approved, old updates are cleared."""
+        mock_client = AsyncMock()
+        mock_client.get_latest_tag = AsyncMock(return_value="3.10.1")
+        mock_client.close = AsyncMock()
+
+        # No existing update for the exact new to_tag
+        existing_result = MagicMock()
+        existing_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(return_value=existing_result)
+
+        mock_dispatcher_instance = AsyncMock()
+        mock_dispatcher_instance.notify_update_available = AsyncMock()
+
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_int",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher_instance,
+            ),
+            patch.object(
+                UpdateChecker,
+                "_clear_pending_updates",
+                new_callable=AsyncMock,
+            ) as mock_clear,
+        ):
+            update = await UpdateChecker.check_container(mock_db, mock_container)
+
+            # Should have cleared old pending/approved updates before creating new one
+            mock_clear.assert_called_once_with(mock_db, mock_container.id)
+
+            # Should create new update for latest version
+            assert update is not None
+            assert update.to_tag == "3.10.1"
+
+    @pytest.mark.asyncio
+    async def test_exact_duplicate_does_not_trigger_supersede(
+        self, mock_db, mock_container, make_update
+    ):
+        """When the same to_tag already exists, no supersede occurs."""
+        mock_client = AsyncMock()
+        mock_client.get_latest_tag = AsyncMock(return_value="3.10.0")
+        mock_client.close = AsyncMock()
+
+        # Existing update for the same to_tag
+        existing_update = make_update(
+            id=42,
+            container_id=1,
+            from_tag="3.9.2",
+            to_tag="3.10.0",
+            status="approved",
+            reason_type="feature",
+        )
+        existing_result = MagicMock()
+        existing_result.scalar_one_or_none = MagicMock(return_value=existing_update)
+        mock_db.execute = AsyncMock(return_value=existing_result)
+
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                return_value=False,
+            ),
+            patch("app.services.update_checker.event_bus.publish", return_value=None),
+            patch.object(
+                UpdateChecker,
+                "_clear_pending_updates",
+                new_callable=AsyncMock,
+            ) as mock_clear,
+        ):
+            update = await UpdateChecker.check_container(mock_db, mock_container)
+
+            # Should return existing update without clearing
+            assert update is existing_update
+            mock_clear.assert_not_called()
+
+
 class TestCheckAllContainers:
     """Test suite for checking all containers."""
 
@@ -457,7 +544,7 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual",
+                policy="monitor",
             ),
             Container(
                 id=2,
@@ -497,7 +584,7 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual",
+                policy="monitor",
             )
         ]
 
@@ -527,7 +614,7 @@ class TestCheckAllContainers:
                 registry="docker.io",
                 compose_file="/compose/nginx.yml",
                 service_name="nginx",
-                policy="manual",
+                policy="monitor",
             )
         ]
 
@@ -649,7 +736,7 @@ class TestEventBusNotifications:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
         )
 
@@ -696,7 +783,7 @@ class TestEventBusNotifications:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
         )
 
@@ -757,7 +844,7 @@ class TestEventBusNotifications:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
             include_prereleases=True,  # Set to True to avoid SettingsService call
         )
@@ -871,7 +958,7 @@ class TestErrorHandling:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
         )
 
@@ -908,7 +995,7 @@ class TestErrorHandling:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
         )
 
@@ -940,7 +1027,7 @@ class TestErrorHandling:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             vulnforge_enabled=False,
         )
 
@@ -959,151 +1046,6 @@ class TestErrorHandling:
 
             # Client should still be closed
             mock_client.close.assert_called_once()
-
-
-class TestSemverPolicies:
-    """Test suite for semver-aware auto-approval policies."""
-
-    @pytest.mark.asyncio
-    async def test_patch_only_policy_approves_patch_updates(self, make_update):
-        """Test patch-only policy approves patch version updates (1.0.0 -> 1.0.1)."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="patch-only",
-        )
-
-        update = make_update(container_id=1, from_tag="1.0.0", to_tag="1.0.1", reason_type="bugfix")
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is True
-        assert "patch-only policy approves patch updates" in reason
-
-    @pytest.mark.asyncio
-    async def test_patch_only_policy_rejects_minor_updates(self, make_update):
-        """Test patch-only policy rejects minor version updates (1.0.0 -> 1.1.0)."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="patch-only",
-        )
-
-        update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is False
-        assert "minor" in reason
-
-    @pytest.mark.asyncio
-    async def test_patch_only_policy_rejects_major_updates(self, make_update):
-        """Test patch-only policy rejects major version updates (1.0.0 -> 2.0.0)."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="patch-only",
-        )
-
-        update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="2.0.0", reason_type="feature"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is False
-        assert "major" in reason
-
-    @pytest.mark.asyncio
-    async def test_minor_and_patch_policy_approves_patch_updates(self, make_update):
-        """Test minor-and-patch policy approves patch updates."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="minor-and-patch",
-        )
-
-        update = make_update(container_id=1, from_tag="1.0.0", to_tag="1.0.1", reason_type="bugfix")
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is True
-        assert "minor-and-patch policy approves patch updates" in reason
-
-    @pytest.mark.asyncio
-    async def test_minor_and_patch_policy_approves_minor_updates(self, make_update):
-        """Test minor-and-patch policy approves minor updates."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="minor-and-patch",
-        )
-
-        update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="1.1.0", reason_type="feature"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is True
-        assert "minor-and-patch policy approves minor updates" in reason
-
-    @pytest.mark.asyncio
-    async def test_minor_and_patch_policy_rejects_major_updates(self, make_update):
-        """Test minor-and-patch policy rejects major updates (breaking changes)."""
-        container = Container(
-            name="test",
-            image="nginx",
-            current_tag="1.0.0",
-            registry="docker.io",
-            compose_file="/compose/test.yml",
-            service_name="test",
-            policy="minor-and-patch",
-        )
-
-        update = make_update(
-            container_id=1, from_tag="1.0.0", to_tag="2.0.0", reason_type="feature"
-        )
-
-        should_approve, reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled=True
-        )
-
-        assert should_approve is False
-        assert "major" in reason
-        assert "breaking changes" in reason
 
 
 class TestSecurityUpdatesQuery:
@@ -1225,7 +1167,7 @@ class TestPrereleaseHandling:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             scope="patch",
             vulnforge_enabled=False,
             include_prereleases=True,  # Container-specific setting
@@ -1267,7 +1209,7 @@ class TestPrereleaseHandling:
             registry="docker.io",
             compose_file="/compose/nginx.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
             scope="patch",
             vulnforge_enabled=False,
             include_prereleases=False,  # Container-specific is False, should check global

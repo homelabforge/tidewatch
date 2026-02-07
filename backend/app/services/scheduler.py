@@ -304,7 +304,7 @@ class SchedulerService:
                             and_(
                                 Update.status == "approved",
                                 Update.approved_by == "system",
-                                Container.policy.in_(["auto", "security"]),
+                                Container.policy == "auto",
                             ),
                             # Pending retries that are ready
                             and_(

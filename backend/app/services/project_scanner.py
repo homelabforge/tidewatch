@@ -262,7 +262,7 @@ class ProjectScanner:
                     registry="dockerhub",  # Default, will be updated by discovery
                     compose_file=compose_file_str,
                     service_name=service_name,
-                    policy="manual",  # Default policy for dev containers
+                    policy="monitor",  # Default policy for dev containers
                     scope="patch",
                     is_my_project=True,
                     vulnforge_enabled=True,

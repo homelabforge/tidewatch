@@ -33,8 +33,8 @@ class Container(Base):
 
     # Update policy (from labels or UI)
     policy: Mapped[str] = mapped_column(
-        String, default="manual", index=True
-    )  # auto, manual, disabled, security - indexed for filtering
+        String, default="monitor", index=True
+    )  # auto, monitor, disabled - indexed for filtering
     scope: Mapped[str] = mapped_column(String, default="patch")  # patch, minor, major
     include_prereleases: Mapped[bool] = mapped_column(
         Boolean, default=False

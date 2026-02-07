@@ -114,15 +114,11 @@ async def init_db():
 
             logger.info("SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout")
 
-    # Run pending migrations
-    try:
-        from app.migrations.runner import run_migrations
+    # Run pending migrations — fail-fast so we don't run with a broken schema
+    from app.migrations.runner import run_migrations
 
-        migrations_dir = Path(__file__).parent / "migrations"
-        await run_migrations(engine, migrations_dir)
-    except Exception as e:
-        logger.error(f"Migration error: {e}", exc_info=True)
-        # Don't fail startup - log error and continue
+    migrations_dir = Path(__file__).parent / "migrations"
+    await run_migrations(engine, migrations_dir)
 
     # Dispose of any leftover connections from initialization
     await engine.dispose()

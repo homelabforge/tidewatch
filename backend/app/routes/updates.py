@@ -559,8 +559,8 @@ async def apply_update(
             "history_id": result.get("history_id"),
         }
 
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid request")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except OperationalError as e:
         logger.error(f"Database error applying update: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Database error during update")

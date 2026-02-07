@@ -688,3 +688,95 @@ services:
             assert containers[0].scope == "major"
         finally:
             os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_parse_compose_file_backward_compat_policy_patch_only(self, mock_db):
+        """Test old 'patch-only' policy label maps to 'auto'."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write("""
+version: '3.8'
+services:
+  app:
+    image: myapp:1.0.0
+    labels:
+      tidewatch.policy: patch-only
+""")
+            f.flush()
+            path = f.name
+
+        try:
+            containers = await ComposeParser._parse_compose_file(path, mock_db)
+
+            assert len(containers) == 1
+            assert containers[0].policy == "auto"
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_parse_compose_file_backward_compat_policy_minor_and_patch(self, mock_db):
+        """Test old 'minor-and-patch' policy label maps to 'auto'."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write("""
+version: '3.8'
+services:
+  app:
+    image: myapp:1.0.0
+    labels:
+      tidewatch.policy: minor-and-patch
+""")
+            f.flush()
+            path = f.name
+
+        try:
+            containers = await ComposeParser._parse_compose_file(path, mock_db)
+
+            assert len(containers) == 1
+            assert containers[0].policy == "auto"
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_parse_compose_file_backward_compat_policy_security(self, mock_db):
+        """Test old 'security' policy label maps to 'auto'."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write("""
+version: '3.8'
+services:
+  app:
+    image: myapp:1.0.0
+    labels:
+      tidewatch.policy: security
+""")
+            f.flush()
+            path = f.name
+
+        try:
+            containers = await ComposeParser._parse_compose_file(path, mock_db)
+
+            assert len(containers) == 1
+            assert containers[0].policy == "auto"
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_parse_compose_file_backward_compat_policy_manual(self, mock_db):
+        """Test old 'manual' policy label maps to 'monitor'."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            f.write("""
+version: '3.8'
+services:
+  app:
+    image: myapp:1.0.0
+    labels:
+      tidewatch.policy: manual
+""")
+            f.flush()
+            path = f.name
+
+        try:
+            containers = await ComposeParser._parse_compose_file(path, mock_db)
+
+            assert len(containers) == 1
+            assert containers[0].policy == "monitor"
+        finally:
+            os.unlink(path)

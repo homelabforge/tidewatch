@@ -3,6 +3,8 @@
 import importlib.util
 import inspect
 import logging
+import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import text
@@ -68,6 +70,61 @@ class MigrationRunner:
             )
             logger.debug(f"Marked migration '{name}' as applied")
 
+    async def _backup_database(self, pending_count: int) -> Path | None:
+        """Create a pre-migration backup of the SQLite database.
+
+        Args:
+            pending_count: Number of pending migrations (for log context).
+
+        Returns:
+            Path to backup file, or None if backup failed/skipped.
+        """
+        url_str = str(self.engine.url)
+        if "sqlite" not in url_str or ":memory:" in url_str:
+            logger.info("Skipping pre-migration backup (non-file database)")
+            return None
+
+        # Parse path from sqlite+aiosqlite:////data/tidewatch.db
+        db_path = Path(url_str.replace("sqlite+aiosqlite:///", ""))
+        if not db_path.exists():
+            logger.warning("Database file not found at %s, skipping backup", db_path)
+            return None
+
+        backup_dir = db_path.parent / "backups" / "migrations"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        backup_name = f"pre-migration-{timestamp}-{pending_count}pending.db"
+        backup_path = backup_dir / backup_name
+
+        try:
+            # Checkpoint WAL to flush all data into main DB file
+            async with self.engine.begin() as conn:
+                await conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+
+            shutil.copy2(str(db_path), str(backup_path))
+            backup_size = backup_path.stat().st_size / (1024 * 1024)
+            logger.info("Pre-migration backup created: %s (%.1f MB)", backup_path, backup_size)
+
+            self._prune_old_backups(backup_dir, keep=5)
+            return backup_path
+
+        except Exception:
+            logger.exception("Failed to create pre-migration backup")
+            # Don't block migrations because backup failed
+            return None
+
+    def _prune_old_backups(self, backup_dir: Path, keep: int = 5) -> None:
+        """Remove old migration backups, keeping the most recent N."""
+        backups = sorted(
+            backup_dir.glob("pre-migration-*.db"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old_backup in backups[keep:]:
+            old_backup.unlink()
+            logger.info("Pruned old migration backup: %s", old_backup.name)
+
     def _discover_migrations(self) -> list[tuple[str, Path]]:
         """
         Find all migration files and return sorted list.
@@ -124,15 +181,22 @@ class MigrationRunner:
         if migration_func is None:
             raise AttributeError(f"Migration {name} missing upgrade(), migrate(), or up() function")
 
-        logger.info(f"Running migration: {name}")
+        logger.info("Running migration: %s", name)
         # Check if function expects a db parameter
         sig = inspect.signature(migration_func)
         if len(sig.parameters) > 0:
-            # New-style migration - pass connection
+            # New-style migration — wrap in savepoint for automatic rollback on failure
             async with self.engine.begin() as conn:
-                await migration_func(conn)
+                await conn.execute(text("SAVEPOINT migration_savepoint"))
+                try:
+                    await migration_func(conn)
+                    await conn.execute(text("RELEASE SAVEPOINT migration_savepoint"))
+                except Exception:
+                    await conn.execute(text("ROLLBACK TO SAVEPOINT migration_savepoint"))
+                    raise
         else:
-            # Old-style migration - no parameters
+            # Old-style migration — manages its own connection/transaction.
+            # Cannot wrap in savepoint; pre-migration backup covers this case.
             await migration_func()
 
     async def run_pending_migrations(self) -> None:
@@ -164,7 +228,10 @@ class MigrationRunner:
             logger.info("No pending migrations")
             return
 
-        logger.info(f"Found {len(pending)} pending migration(s)")
+        logger.info("Found %d pending migration(s)", len(pending))
+
+        # Create pre-migration backup before touching anything
+        backup_path = await self._backup_database(len(pending))
 
         # Run each pending migration
         successful = 0
@@ -174,11 +241,13 @@ class MigrationRunner:
                 await self._mark_migration_applied(name)
                 successful += 1
             except Exception as e:
-                logger.error(f"Migration '{name}' failed: {e}")
+                logger.error("Migration '%s' failed: %s", name, e)
+                if backup_path:
+                    logger.error("ROLLBACK: Restore database from backup: %s", backup_path)
                 logger.error("Stopping migration run - fix errors and restart")
                 raise
 
-        logger.info(f"✓ All {successful} migration(s) applied successfully")
+        logger.info("All %d migration(s) applied successfully", successful)
 
 
 async def run_migrations(engine: AsyncEngine, migrations_dir: Path) -> None:

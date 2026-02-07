@@ -406,7 +406,7 @@ export default function About() {
             TideWatch integrates seamlessly with VulnForge to provide vulnerability intelligence for every update decision. When an update is detected, TideWatch queries VulnForge to compare vulnerability counts, identify CVEs fixed or introduced, and generate security recommendations.
           </p>
           <p className="text-tide-text leading-relaxed">
-            This integration enables the security policy enforcement that makes TideWatch unique: containers with a "security" policy will automatically reject updates that increase vulnerability counts, ensuring your security posture never degrades.
+            This integration gives you full visibility into the security impact of every update. VulnForge enrichment shows CVEs fixed or introduced, so you can make informed decisions about which updates to apply.
           </p>
         </div>
       </div>

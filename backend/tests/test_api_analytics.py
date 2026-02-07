@@ -66,7 +66,7 @@ class TestAnalyticsSummaryEndpoint:
                 registry="docker.io",
                 compose_file="/compose/test.yml",
                 service_name="redis",
-                policy="manual",
+                policy="monitor",
             ),
         ]
         db.add_all(containers)

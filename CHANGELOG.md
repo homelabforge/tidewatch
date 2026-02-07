@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Pre-migration database backup** - Migration runner automatically snapshots the SQLite database before running any pending migrations, stored at `/data/backups/migrations/` with automatic pruning (keeps last 5)
+- **Savepoint wrapping for migrations** - New-style migrations (those accepting a `conn` parameter) are wrapped in SQLite savepoints for atomic rollback on failure
+
+### Changed
+- **Fail-fast on migration errors** - Migration failures now crash the container instead of silently continuing with a broken schema. A stopped container is visible in `dc ps`; a running container with corrupt schema is not.
+- **Simplified Update Policy from 6 options to 3** - Replaced the confusing 6-option policy grid (`patch-only`, `minor-and-patch`, `auto`, `security`, `manual`, `disabled`) with a clean 3-state segmented control: **Auto** (apply updates within scope), **Monitor** (detect and show, require approval), and **Off** (disable checking). Version Scope is now the sole mechanism controlling version granularity.
+- **Segmented control UI for policy selection** - New teal-accented segmented control (Zap/Eye/PowerOff icons) replaces the old 2-column button grid, matching the app's existing tab styling patterns
+- **Scope and Pre-releases sections dim when policy is Off** - Visual feedback via `opacity-50 pointer-events-none` when update checking is disabled
+- **Removed security auto-reject policy** - VulnForge still enriches every update with CVE data; users now make their own decisions rather than having updates silently rejected
+- **Backward-compatible compose labels** - Old `tidewatch.policy` labels (`patch-only`, `minor-and-patch`, `security`, `manual`) are automatically mapped to new values via `_OLD_POLICY_MAP`
+- **Database migration 039** - Converts existing containers: `patch-only`/`minor-and-patch`/`security` → `auto`, `manual` → `monitor`
+
+- **Redesigned Updates page filter tabs** - Replaced the 7 status tabs (All/Pending/Approved/Retrying/Rejected/Stale/Applied) and Security filter with 4 focused tabs: **Needs Attention** (default, shows pending + approved + retrying), **Rejected**, **Stale**, and **Applied**. Default view now shows only actionable items — when nothing needs attention, displays "All containers are up to date" instead of lingering rejected cards.
+- **Removed Security filter tab from Updates page** - The Security/All toggle was orphaned after the security policy removal; CVE data is still visible on individual update cards via VulnForge
+- **Pending stat card now excludes stale items** - The Pending count in the stats row accurately reflects only non-stale pending updates, matching the separate Stale count
+
+### Fixed
+- **Duplicate update records for intermediate versions** - When a newer version was released (e.g., v3.10.1) while an older update (v3.10.0) was already pending/approved, TideWatch created separate update entries instead of superseding the old one. Now clears stale pending/approved updates before creating a new update record.
+- **Generic "Invalid request" error when applying already-applied updates** - Apply endpoint now returns descriptive error messages (e.g., "This update has already been applied") instead of a generic 400 when a race condition between the auto-apply scheduler and manual UI action occurs.
+- **Misleading "All (72)" count on Updates page** - The All tab showed total update count but filtered out applied updates from the display, creating a count/card mismatch. Tab counts now match exactly what's displayed.
+
 ## [3.6.4] - 2026-02-06
 
 ### Added

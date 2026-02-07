@@ -54,7 +54,7 @@ async def list_containers(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
     policy: str | None = Query(
         None,
-        description="Filter by update policy (patch-only, minor-and-patch, auto, security, manual, disabled)",
+        description="Filter by update policy (auto, monitor, disabled)",
     ),
     name: str | None = Query(None, description="Search by container name (partial match)"),
     image: str | None = Query(None, description="Search by image name (partial match)"),
@@ -384,9 +384,9 @@ async def include_container(
     Returns:
         Updated container
     """
-    # Set to manual policy (conservative default)
+    # Set to monitor policy (conservative default)
     if container.policy == "disabled":
-        container.policy = "manual"
+        container.policy = "monitor"
         await db.commit()
         await db.refresh(container)
 

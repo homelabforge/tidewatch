@@ -122,6 +122,8 @@ class UpdateEngine:
         if not update:
             raise ValueError(f"Update {update_id} not found")
 
+        if update.status == "applied":
+            raise ValueError("This update has already been applied")
         if update.status != "approved":
             raise ValueError(f"Update must be approved first (status: {update.status})")
 

@@ -128,7 +128,7 @@ def sample_container_data():
         "compose_file": "/compose/test.yml",
         "service_name": "test-service",
         "registry": "docker.io",
-        "policy": "manual",
+        "policy": "monitor",
     }
 
 

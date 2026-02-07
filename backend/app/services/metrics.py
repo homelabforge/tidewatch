@@ -133,7 +133,7 @@ async def collect_metrics(db: AsyncSession) -> None:
     result = await db.execute(
         select(Container.policy, func.count(Container.id)).group_by(Container.policy)
     )
-    policy_counts = {policy: 0 for policy in ["auto", "manual", "disabled", "security"]}
+    policy_counts = {policy: 0 for policy in ["auto", "monitor", "disabled"]}
     for policy, count in result.fetchall():
         policy_counts[policy] = count
     for policy, count in policy_counts.items():

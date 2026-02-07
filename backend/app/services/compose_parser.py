@@ -247,7 +247,14 @@ class ComposeParser:
 
             # Extract TideWatch-specific labels
             policy_label = labels.get("tidewatch.policy")
-            policy = policy_label or "manual"
+            # Backward compat: map old policy values to new
+            _OLD_POLICY_MAP = {
+                "patch-only": "auto",
+                "minor-and-patch": "auto",
+                "security": "auto",
+                "manual": "monitor",
+            }
+            policy = _OLD_POLICY_MAP.get(policy_label, policy_label) if policy_label else "monitor"
             scope_label = labels.get("tidewatch.scope")
             scope = scope_label or "patch"
             vulnforge_label = labels.get("tidewatch.vulnforge")

@@ -140,7 +140,7 @@ class TestContainerFilteringEndpoint:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="redis",
-            policy="manual",
+            policy="monitor",
         )
         container3 = make_container(
             name=f"disabled-container-{id(self)}",
@@ -347,7 +347,7 @@ class TestContainerPolicyManagement:
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
             current_tag="1.20",
-            policy="manual",
+            policy="monitor",
         )
         db.add(container)
         await db.commit()
@@ -361,8 +361,8 @@ class TestContainerPolicyManagement:
         data = response.json()
         assert data["policy"] == "auto"
 
-    async def test_update_policy_to_manual(self, authenticated_client, db, make_container):
-        """Test updating policy to manual."""
+    async def test_update_policy_to_monitor(self, authenticated_client, db, make_container):
+        """Test updating policy to monitor."""
         container = make_container(
             name=f"test-container-{id(self)}",
             image="nginx:1.20",
@@ -374,12 +374,12 @@ class TestContainerPolicyManagement:
         await db.refresh(container)
 
         response = await authenticated_client.put(
-            f"/api/v1/containers/{container.id}/policy", json={"policy": "manual"}
+            f"/api/v1/containers/{container.id}/policy", json={"policy": "monitor"}
         )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["policy"] == "manual"
+        assert data["policy"] == "monitor"
 
     async def test_update_policy_to_disabled(self, authenticated_client, db, make_container):
         """Test updating policy to disabled."""
@@ -431,7 +431,7 @@ class TestContainerExclusion:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="nginx",
-            policy="manual",
+            policy="monitor",
         )
         db.add(container)
         await db.commit()
@@ -469,11 +469,11 @@ class TestContainerExclusion:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["success"] is True
-        assert data["container"]["policy"] == "manual"
+        assert data["container"]["policy"] == "monitor"
 
         # Verify in database
         await db.refresh(container)
-        assert container.policy == "manual"
+        assert container.policy == "monitor"
 
     async def test_list_excluded_containers(self, authenticated_client, db, make_container):
         """Test listing all excluded containers."""
@@ -494,7 +494,7 @@ class TestContainerExclusion:
             registry="docker.io",
             compose_file="/compose/test.yml",
             service_name="redis",
-            policy="manual",
+            policy="monitor",
         )
         container3 = make_container(
             name=f"excluded2-{id(self)}",

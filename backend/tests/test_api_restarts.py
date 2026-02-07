@@ -21,7 +21,7 @@ class TestGetRestartStateEndpoint:
         """Test returns restart state for existing container."""
         # Arrange - Create container
         container = make_container(
-            name="test-container", image="nginx", current_tag="1.20", policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="monitor"
         )
         db.add(container)
         await db.commit()
@@ -66,7 +66,7 @@ class TestManualRestartEndpoint:
         """Test manually triggers container restart."""
         # Arrange - Create container
         container = make_container(
-            name="test-container", image="nginx", current_tag="1.20", policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="monitor"
         )
         db.add(container)
         await db.commit()
@@ -98,7 +98,7 @@ class TestManualRestartEndpoint:
         """Test manual restart can skip backoff."""
         # Arrange - Create container
         container = make_container(
-            name="test-container", image="nginx", current_tag="1.20", policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="monitor"
         )
         db.add(container)
         await db.commit()
@@ -128,7 +128,7 @@ class TestManualRestartEndpoint:
         """Test handles restart failure."""
         # Arrange - Create container
         container = make_container(
-            name="test-container", image="nginx", current_tag="1.20", policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="monitor"
         )
         db.add(container)
         await db.commit()
@@ -185,7 +185,7 @@ class TestResetRestartStateEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual",
+            policy="monitor",
         )
         db.add(container)
         await db.commit()
@@ -219,7 +219,7 @@ class TestResetRestartStateEndpoint:
         """Test returns 404 if restart state doesn't exist."""
         # Arrange - Create container without restart state
         container = make_container(
-            name="test-container", image="nginx", current_tag="1.20", policy="manual"
+            name="test-container", image="nginx", current_tag="1.20", policy="monitor"
         )
         db.add(container)
         await db.commit()
@@ -260,7 +260,7 @@ class TestPauseRestartEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual",
+            policy="monitor",
         )
         db.add(container)
         await db.commit()
@@ -317,7 +317,7 @@ class TestResumeRestartEndpoint:
             image="nginx",
             current_tag="1.20",
             registry="docker.io",
-            policy="manual",
+            policy="monitor",
         )
         db.add(container)
         await db.commit()
@@ -372,7 +372,7 @@ class TestRestartStatsEndpoint:
                 image="nginx",
                 current_tag="1.20",
                 registry="docker.io",
-                policy="manual",
+                policy="monitor",
             )
             db.add(container)
             await db.commit()

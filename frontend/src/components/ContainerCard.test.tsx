@@ -98,23 +98,33 @@ describe('ContainerCard', () => {
   })
 
   describe('Policy display', () => {
-    it('renders auto-update policy with correct icon and text', () => {
+    it('renders auto policy with correct icon and text', () => {
       const container = { ...defaultContainer, policy: 'auto' }
       const { container: elem } = render(<ContainerCard container={container} onClick={defaultOnClick} />)
 
-      expect(screen.getByText('Auto (All)')).toBeInTheDocument()
-      // AlertTriangle icon has text-orange-400 class
-      const icon = elem.querySelector('.text-orange-400')
+      expect(screen.getByText('Auto')).toBeInTheDocument()
+      // Zap icon has text-teal-400 class
+      const icon = elem.querySelector('.text-teal-400')
       expect(icon).toBeInTheDocument()
     })
 
-    it('renders manual policy with correct icon and text', () => {
-      const container = { ...defaultContainer, policy: 'manual' }
+    it('renders monitor policy with correct icon and text', () => {
+      const container = { ...defaultContainer, policy: 'monitor' }
       const { container: elem } = render(<ContainerCard container={container} onClick={defaultOnClick} />)
 
-      expect(screen.getByText('Manual')).toBeInTheDocument()
-      // ToggleLeft icon has text-tide-text-muted class
+      expect(screen.getByText('Monitor')).toBeInTheDocument()
+      // Eye icon has text-tide-text-muted class
       const icon = elem.querySelector('.text-tide-text-muted')
+      expect(icon).toBeInTheDocument()
+    })
+
+    it('renders disabled policy with correct icon and text', () => {
+      const container = { ...defaultContainer, policy: 'disabled' }
+      const { container: elem } = render(<ContainerCard container={container} onClick={defaultOnClick} />)
+
+      expect(screen.getByText('Off')).toBeInTheDocument()
+      // PowerOff icon has text-red-400 class
+      const icon = elem.querySelector('.text-red-400')
       expect(icon).toBeInTheDocument()
     })
   })

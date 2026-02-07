@@ -1,5 +1,5 @@
 import { Container } from '../types';
-import { Package, Calendar, ToggleLeft, Shield, ShieldAlert, AlertTriangle, RotateCw, CheckCircle2, TrendingUp, Ban } from 'lucide-react';
+import { Package, Calendar, Shield, ShieldAlert, AlertTriangle, RotateCw, Zap, Eye, PowerOff } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -83,33 +83,18 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
         <div className="flex items-center gap-2 text-tide-text">
           {container.policy === 'auto' ? (
             <>
-              <AlertTriangle size={14} className="text-orange-400" />
-              <span className="text-orange-400">Auto (All)</span>
-            </>
-          ) : container.policy === 'patch-only' ? (
-            <>
-              <CheckCircle2 size={14} className="text-green-400" />
-              <span>Patch Only</span>
-            </>
-          ) : container.policy === 'minor-and-patch' ? (
-            <>
-              <TrendingUp size={14} className="text-primary" />
-              <span>Minor + Patch</span>
-            </>
-          ) : container.policy === 'security' ? (
-            <>
-              <Shield size={14} className="text-yellow-400" />
-              <span>Security</span>
+              <Zap size={14} className="text-teal-400" />
+              <span className="text-teal-400">Auto</span>
             </>
           ) : container.policy === 'disabled' ? (
             <>
-              <Ban size={14} className="text-red-400" />
-              <span className="text-red-400">Disabled</span>
+              <PowerOff size={14} className="text-red-400" />
+              <span className="text-red-400">Off</span>
             </>
           ) : (
             <>
-              <ToggleLeft size={14} className="text-tide-text-muted" />
-              <span>Manual</span>
+              <Eye size={14} className="text-tide-text-muted" />
+              <span>Monitor</span>
             </>
           )}
         </div>

@@ -7,11 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 
 # Valid update policy values
 VALID_POLICIES = {
-    "patch-only",
-    "minor-and-patch",
     "auto",
-    "security",
-    "manual",
+    "monitor",
     "disabled",
 }
 

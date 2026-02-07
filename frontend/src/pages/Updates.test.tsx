@@ -8,7 +8,6 @@ vi.mock('../services/api', () => ({
   api: {
     updates: {
       getAll: vi.fn(),
-      getSecurity: vi.fn(),
       get: vi.fn(),
       approve: vi.fn(),
       reject: vi.fn(),
@@ -217,9 +216,6 @@ describe('Updates', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(api.updates.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(mockUpdates)
-    ;(api.updates.getSecurity as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockUpdates.filter((u) => u.cves_fixed && u.cves_fixed.length > 0)
-    )
     ;(api.containers.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([])
   })
 
@@ -239,15 +235,21 @@ describe('Updates', () => {
       expect(loadingText).toBeInTheDocument()
     })
 
-    it('displays updates after loading', async () => {
+    it('displays actionable updates after loading', async () => {
       render(<Updates />)
 
       await waitFor(() => {
+        // Default "Needs Attention" shows pending (non-stale) + approved + retrying
         expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
-      expect(screen.getByText(/Update for redis/)).toBeInTheDocument()
+      expect(screen.getByText(/Update for rabbitmq/)).toBeInTheDocument()
+      expect(screen.getByText(/Update for apache/)).toBeInTheDocument()
+      // Rejected, applied, and stale should NOT be in default view
+      expect(screen.queryByText(/Update for redis/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for mysql/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for mongo/)).not.toBeInTheDocument()
     })
 
     it('handles API error gracefully', async () => {
@@ -263,7 +265,7 @@ describe('Updates', () => {
   })
 
   describe('Statistics display', () => {
-    it('displays pending count', async () => {
+    it('displays pending count (excludes stale)', async () => {
       render(<Updates />)
 
       await waitFor(() => {
@@ -271,9 +273,9 @@ describe('Updates', () => {
         expect(pendingLabels.length).toBeGreaterThan(0)
       })
 
-      // 3 pending updates (nginx, mongo, apache)
-      const threeElements = screen.getAllByText('3')
-      expect(threeElements.length).toBeGreaterThan(0)
+      // 2 pending updates excluding stale (nginx, apache - mongo is stale)
+      const twoElements = screen.getAllByText('2')
+      expect(twoElements.length).toBeGreaterThan(0)
     })
 
     it('displays approved count', async () => {
@@ -327,110 +329,24 @@ describe('Updates', () => {
       const oneElements = screen.getAllByText('1')
       expect(oneElements.length).toBeGreaterThan(0)
     })
-
-    it('displays security count from allUpdates', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        // Security count shows 3 (nginx, mysql, apache have CVEs)
-        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Filter type switching', () => {
-    it('shows all updates by default', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
-    })
-
-    it('switches to security updates filter', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      const securityButton = screen.getByText(/Security \(3\)/)
-      fireEvent.click(securityButton)
-
-      await waitFor(() => {
-        expect(api.updates.getSecurity).toHaveBeenCalled()
-      })
-    })
-
-    it('highlights active filter type button', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      const allButton = screen.getByText('All Updates')
-      expect(allButton).toHaveClass('bg-primary')
-
-      const securityButton = screen.getByText(/Security \(3\)/)
-      fireEvent.click(securityButton)
-
-      await waitFor(() => {
-        expect(securityButton).toHaveClass('bg-primary')
-      })
-    })
   })
 
   describe('Status filtering', () => {
-    it('shows all non-applied updates by default', async () => {
+    it('shows actionable updates by default (Needs Attention)', async () => {
       render(<Updates />)
 
       await waitFor(() => {
         expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      // All updates except mysql (which is applied)
+      // Pending (non-stale) + approved + retrying
       expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
-      expect(screen.getByText(/Update for redis/)).toBeInTheDocument()
-      expect(screen.queryByText(/Update for mysql/)).not.toBeInTheDocument()
-    })
-
-    it('filters to pending updates only', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      const pendingButton = screen.getByText(/Pending \(3\)/)
-      fireEvent.click(pendingButton)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      expect(screen.getByText(/Update for mongo/)).toBeInTheDocument()
+      expect(screen.getByText(/Update for rabbitmq/)).toBeInTheDocument()
       expect(screen.getByText(/Update for apache/)).toBeInTheDocument()
-      expect(screen.queryByText(/Update for postgres/)).not.toBeInTheDocument()
-    })
-
-    it('filters to approved updates only', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      const approvedButton = screen.getByText(/Approved \(1\)/)
-      fireEvent.click(approvedButton)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for postgres/)).toBeInTheDocument()
-      })
-
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
+      // Excluded: rejected, applied, stale
+      expect(screen.queryByText(/Update for redis/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for mysql/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Update for mongo/)).not.toBeInTheDocument()
     })
 
     it('filters to rejected updates only', async () => {
@@ -467,23 +383,6 @@ describe('Updates', () => {
       expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
     })
 
-    it('filters to retrying updates only', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
-      })
-
-      const retryingButton = screen.getByText(/Retrying \(1\)/)
-      fireEvent.click(retryingButton)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Update for rabbitmq/)).toBeInTheDocument()
-      })
-
-      expect(screen.queryByText(/Update for nginx/)).not.toBeInTheDocument()
-    })
-
     it('filters to applied updates only', async () => {
       render(<Updates />)
 
@@ -508,11 +407,25 @@ describe('Updates', () => {
         expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      const pendingButton = screen.getByText(/Pending \(3\)/)
-      fireEvent.click(pendingButton)
+      // Default tab should be highlighted
+      const needsAttentionButton = screen.getByText(/Needs Attention \(4\)/)
+      expect(needsAttentionButton).toHaveClass('bg-primary')
+
+      // Switch to rejected
+      const rejectedButton = screen.getByText(/Rejected \(1\)/)
+      fireEvent.click(rejectedButton)
 
       await waitFor(() => {
-        expect(pendingButton).toHaveClass('bg-primary')
+        expect(rejectedButton).toHaveClass('bg-primary')
+      })
+    })
+
+    it('shows correct needs attention count', async () => {
+      render(<Updates />)
+
+      await waitFor(() => {
+        // 2 pending (non-stale) + 1 approved + 1 retrying = 4
+        expect(screen.getByText(/Needs Attention \(4\)/)).toBeInTheDocument()
       })
     })
   })
@@ -995,17 +908,21 @@ describe('Updates', () => {
   })
 
   describe('Empty state', () => {
-    it('shows empty state when no updates available', async () => {
-      ;(api.updates.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    it('shows up-to-date message when no actionable updates', async () => {
+      // Only applied and rejected updates - nothing needs attention
+      ;(api.updates.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { ...mockUpdates[3] }, // applied
+        { ...mockUpdates[2] }, // rejected
+      ])
 
       render(<Updates />)
 
       await waitFor(() => {
-        expect(screen.getByText('No updates found')).toBeInTheDocument()
+        expect(screen.getByText('All containers are up to date')).toBeInTheDocument()
       })
     })
 
-    it('shows check for updates button in empty state', async () => {
+    it('shows check for updates button in empty needs attention state', async () => {
       ;(api.updates.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([])
 
       render(<Updates />)
@@ -1016,28 +933,23 @@ describe('Updates', () => {
       })
     })
 
-    it('shows empty state when filter has no matches', async () => {
+    it('shows generic empty message for other filter tabs', async () => {
+      ;(api.updates.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { ...mockUpdates[0] }, // pending nginx
+      ])
+
       render(<Updates />)
 
       await waitFor(() => {
         expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
       })
 
-      // Filter to a status with no updates
-      const rejectedButton = screen.getByText(/Rejected \(1\)/)
+      // Switch to rejected tab - no rejected updates
+      const rejectedButton = screen.getByText(/Rejected \(0\)/)
       fireEvent.click(rejectedButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Update for redis/)).toBeInTheDocument()
-      })
-
-      // Then filter to security which should have no rejected updates
-      const securityButton = screen.getByText(/Security \(3\)/)
-      fireEvent.click(securityButton)
-
-      await waitFor(() => {
-        // After switching to security view with rejected filter, should show empty
-        expect(api.updates.getSecurity).toHaveBeenCalled()
+        expect(screen.getByText('No rejected updates')).toBeInTheDocument()
       })
     })
   })
@@ -1066,23 +978,6 @@ describe('Updates', () => {
       // nginx has 1 CVE, visible in default filter
       const nginxCard = screen.getByTestId('update-card-1')
       expect(nginxCard.textContent).toContain('Security: 1 CVEs')
-    })
-
-    it('maintains security count across filter switches', async () => {
-      render(<Updates />)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
-      })
-
-      // Switch to pending filter
-      const pendingButton = screen.getByText(/Pending \(3\)/)
-      fireEvent.click(pendingButton)
-
-      await waitFor(() => {
-        // Security count should still be 3
-        expect(screen.getByText(/Security \(3\)/)).toBeInTheDocument()
-      })
     })
   })
 })

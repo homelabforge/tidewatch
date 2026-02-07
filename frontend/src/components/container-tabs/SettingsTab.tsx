@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, RefreshCw, CheckCircle2, AlertCircle, TrendingUp, Power, Shield, Ban, Wand2, RotateCw, Pause, Play, Network, Calendar, Star } from 'lucide-react';
+import { X, RefreshCw, Zap, Eye, PowerOff, Wand2, RotateCw, Pause, Play, Network, Calendar, Star } from 'lucide-react';
 import { Container, RestartState, EnableRestartConfig } from '../../types';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
@@ -128,15 +128,12 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   };
 
   const handlePolicyChange = async (newPolicy: string) => {
-    if (newPolicy === 'auto') {
+    if (newPolicy === 'auto' && scope === 'major') {
       const confirmed = window.confirm(
-        '\u26A0\uFE0F Warning: Auto Policy\n\n' +
-        'The "Auto" policy will automatically apply ALL updates, including MAJOR version updates that may contain breaking changes.\n\n' +
-        'Consider using:\n' +
-        '\u2022 "Patch Only" - Only patch updates (safest)\n' +
-        '\u2022 "Minor + Patch" - Minor and patch updates (no breaking changes)\n' +
-        '\u2022 "Security Only" - Only security updates\n\n' +
-        'Are you sure you want to enable the Auto policy?'
+        '\u26A0\uFE0F Warning: Auto + Major Scope\n\n' +
+        'This combination will automatically apply ALL updates, including MAJOR version updates that may contain breaking changes.\n\n' +
+        'Consider setting scope to "Minor" or "Patch" for safer auto-updates.\n\n' +
+        'Are you sure?'
       );
 
       if (!confirmed) return;
@@ -599,40 +596,45 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
         </div>
 
         {/* Update Policy */}
-        <div className="bg-tide-surface/50 rounded-lg p-6">
+        <div className="bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border">
           <h4 className="text-base font-semibold text-tide-text mb-3">Update Policy</h4>
           <p className="text-sm text-tide-text-muted mb-4">Choose how updates should be handled for this container.</p>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* Segmented Control */}
+          <div className="flex gap-1 p-1 bg-tide-surface/50 rounded-lg border border-tide-border">
             {[
-              { value: 'patch-only', label: 'Patch Only', desc: 'Auto-apply patch updates (1.2.3 \u2192 1.2.4)', icon: CheckCircle2 },
-              { value: 'minor-and-patch', label: 'Minor + Patch', desc: 'Auto-apply minor/patch (no breaking)', icon: TrendingUp },
-              { value: 'auto', label: 'Auto (\u26A0\uFE0F All)', desc: 'ALL updates (including breaking)', icon: AlertCircle },
-              { value: 'security', label: 'Security Only', desc: 'Auto-apply security updates', icon: Shield },
-              { value: 'manual', label: 'Manual', desc: 'Require manual approval', icon: Power },
-              { value: 'disabled', label: 'Disabled', desc: 'No automatic checks', icon: Ban }
+              { value: 'auto', label: 'Auto', icon: Zap },
+              { value: 'monitor', label: 'Monitor', icon: Eye },
+              { value: 'disabled', label: 'Off', icon: PowerOff },
             ].map((item) => (
               <button
                 key={item.value}
                 onClick={() => handlePolicyChange(item.value)}
                 disabled={savingSettings}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-all ${
                   policy === item.value
-                    ? 'border-primary bg-primary/10'
-                    : 'border-tide-border bg-tide-surface hover:border-tide-border-light'
-                }`}
+                    ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30 rounded-md'
+                    : 'text-tide-text-muted hover:text-tide-text hover:bg-tide-surface rounded-md border border-transparent'
+                } disabled:opacity-50`}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <item.icon className={`w-5 h-5 ${policy === item.value ? 'text-primary' : 'text-tide-text-muted'}`} />
-                  <span className={`font-medium ${policy === item.value ? 'text-tide-text' : 'text-tide-text'}`}>{item.label}</span>
-                </div>
-                <p className="text-xs text-tide-text-muted">{item.desc}</p>
+                <item.icon size={16} />
+                {item.label}
               </button>
             ))}
           </div>
+
+          {/* Dynamic Description */}
+          <p className="text-xs text-tide-text-muted mt-3">
+            {policy === 'auto'
+              ? 'Updates within the configured scope will be automatically applied.'
+              : policy === 'monitor'
+                ? 'Updates are detected and shown, but require manual approval before applying.'
+                : 'Update checking is disabled for this container.'}
+          </p>
         </div>
 
         {/* Version Scope */}
-        <div className="bg-tide-surface/50 rounded-lg p-6">
+        <div className={`bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border transition-opacity ${policy === 'disabled' ? 'opacity-50 pointer-events-none' : ''}`}>
           <h4 className="text-base font-semibold text-tide-text mb-3">Version Scope</h4>
           <p className="text-sm text-tide-text-muted mb-4">Control which version changes are allowed during updates.</p>
           <div className="grid grid-cols-3 gap-3">
@@ -661,7 +663,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
         </div>
 
         {/* Pre-releases */}
-        <div className="bg-tide-surface/50 rounded-lg p-6">
+        <div className={`bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border transition-opacity ${policy === 'disabled' ? 'opacity-50 pointer-events-none' : ''}`}>
           <h4 className="text-base font-semibold text-tide-text mb-3">Pre-release Versions</h4>
           <p className="text-sm text-tide-text-muted mb-4">Control whether to include pre-release tags when checking for updates.</p>
           <div className="flex items-center justify-between">

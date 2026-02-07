@@ -249,7 +249,7 @@ export default function Dashboard() {
   // Memoize policy distribution calculation
   const policyStats = useMemo(() => {
     return containers.reduce((acc, c) => {
-      const policy = c.policy || 'manual';
+      const policy = c.policy || 'monitor';
       acc[policy] = (acc[policy] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -257,8 +257,7 @@ export default function Dashboard() {
 
   const policyColors: Record<string, string> = {
     auto: 'bg-primary',
-    manual: 'bg-accent',
-    security: 'bg-yellow-500',
+    monitor: 'bg-accent',
     disabled: 'bg-tide-surface-light',
   };
 

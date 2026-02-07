@@ -63,49 +63,11 @@ class UpdateChecker:
         if container.policy == "disabled":
             return False, "container policy is disabled"
 
-        if container.policy == "manual":
+        if container.policy == "monitor":
             return False, "container policy requires manual approval"
 
         if container.policy == "auto":
-            return (
-                True,
-                "container policy allows all updates (including breaking changes)",
-            )
-
-        if container.policy == "security":
-            if update.reason_type == "security":
-                return True, "security policy approves security updates"
-            else:
-                return (
-                    False,
-                    "security policy requires manual approval for non-security updates",
-                )
-
-        # Semver-aware policies
-        if container.policy == "patch-only":
-            change_type = get_version_change_type(update.from_tag, update.to_tag)
-            if change_type == "patch":
-                return True, "patch-only policy approves patch updates"
-            else:
-                return (
-                    False,
-                    f"patch-only policy requires manual approval for {change_type or 'unknown'} updates",
-                )
-
-        if container.policy == "minor-and-patch":
-            change_type = get_version_change_type(update.from_tag, update.to_tag)
-            if change_type in ["minor", "patch"]:
-                return True, f"minor-and-patch policy approves {change_type} updates"
-            elif change_type == "major":
-                return (
-                    False,
-                    "minor-and-patch policy requires manual approval for major updates (breaking changes)",
-                )
-            else:
-                return (
-                    False,
-                    "minor-and-patch policy requires manual approval for unknown version changes",
-                )
+            return True, "container policy auto-approves updates within scope"
 
         return False, "unknown policy"
 
@@ -288,6 +250,10 @@ class UpdateChecker:
                     previous_digest,
                     new_digest,
                 )
+
+            # Supersede any older pending/approved updates for this container
+            # (e.g., v3.10.0 approved while v3.10.1 just arrived)
+            await UpdateChecker._clear_pending_updates(db, container.id)
 
             # Create new update record
             update = await UpdateChecker._create_update_record(
@@ -1373,17 +1339,6 @@ class UpdateChecker:
 
                 # Store recommendation from VulnForge analysis
                 update.recommendation = comparison.get("recommendation", "Optional")
-
-                # Check if update should be blocked
-                if container.policy == "security" and not comparison["is_safe"]:
-                    logger.warning(
-                        f"Blocking update for {container.name}: "
-                        f"introduces {comparison['delta']['total']} vulnerabilities"
-                    )
-                    update.status = "rejected"
-                    update.reason_summary = (
-                        f"Auto-rejected: {comparison['summary']} (security policy)"
-                    )
 
                 # Update container vulnerability count
                 if comparison["current"]:

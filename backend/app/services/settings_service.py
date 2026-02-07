@@ -398,9 +398,9 @@ class SettingsService:
         },
         # Update policies (defaults)
         "default_policy": {
-            "value": "manual",
+            "value": "monitor",
             "category": "policies",
-            "description": "Default update policy (auto, manual, disabled, security)",
+            "description": "Default update policy (auto, monitor, disabled)",
         },
         "default_scope": {
             "value": "patch",

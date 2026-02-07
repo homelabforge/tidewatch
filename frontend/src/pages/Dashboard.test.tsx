@@ -90,7 +90,7 @@ describe('Dashboard', () => {
       registry: 'docker.io',
       compose_file: '/docker/compose.yml',
       service_name: 'postgres',
-      policy: 'manual',
+      policy: 'monitor',
       scope: 'patch',
       include_prereleases: false,
       vulnforge_enabled: false,
@@ -341,10 +341,10 @@ describe('Dashboard', () => {
         expect(screen.getByText('Policy Distribution')).toBeInTheDocument()
         const autoElements = screen.getAllByText('auto')
         expect(autoElements.length).toBeGreaterThan(0)
-        const manualElements = screen.getAllByText('manual')
-        expect(manualElements.length).toBeGreaterThan(0)
+        const monitorElements = screen.getAllByText('monitor')
+        expect(monitorElements.length).toBeGreaterThan(0)
         const percentageElements = screen.getAllByText('1 (50%)')
-        expect(percentageElements.length).toBe(2) // 1 auto, 1 manual = 50% each, appears twice
+        expect(percentageElements.length).toBe(2) // 1 auto, 1 monitor = 50% each, appears twice
       })
     })
   })
@@ -690,8 +690,8 @@ describe('Dashboard', () => {
       render(<Dashboard />)
 
       await waitFor(() => {
-        // Should default to 'manual' policy
-        expect(screen.getByText('manual')).toBeInTheDocument()
+        // Should default to 'monitor' policy
+        expect(screen.getByText('monitor')).toBeInTheDocument()
       })
     })
   })
