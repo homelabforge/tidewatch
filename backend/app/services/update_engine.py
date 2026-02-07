@@ -731,6 +731,7 @@ class UpdateEngine:
                 # Stop the container BEFORE restoring data to avoid corruption
                 try:
                     import docker
+                    from docker.errors import NotFound as DockerNotFound
 
                     docker_socket = (
                         await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
@@ -742,7 +743,7 @@ class UpdateEngine:
                         )
                         await asyncio.to_thread(target.stop, timeout=30)
                         logger.info("Stopped %s before data restore", container.name)
-                    except docker.errors.NotFound:
+                    except DockerNotFound:
                         logger.debug("Container %s not found (may not be running)", container.name)
                     except Exception as stop_err:
                         logger.warning(
