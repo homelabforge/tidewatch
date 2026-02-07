@@ -32,10 +32,10 @@ async def up(db):
         await db.execute(text("ALTER TABLE updates ADD COLUMN change_type TEXT DEFAULT NULL"))
         await db.execute(text("CREATE INDEX IF NOT EXISTS idx_change_type ON updates(change_type)"))
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
-async def down(db):
+async def down(db):  # noqa: ARG001
     """Remove decision traceability fields from updates table."""
     # SQLite doesn't support DROP COLUMN directly in older versions
     # For now, just document this limitation

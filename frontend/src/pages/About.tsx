@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Shield, CircleCheckBig, Code, Layers, RefreshCw, RotateCw, Package, Activity, ChartColumn, Database, Waves, Sparkles } from 'lucide-react';
+import { Shield, CircleCheckBig, Code, Layers, RefreshCw, RotateCw, Package, Activity, ChartColumn, Database, Waves, Sparkles, HardDriveDownload } from 'lucide-react';
 
 export default function About() {
   const [version, setVersion] = useState({ version: 'Loading...', docker_version: 'Loading...' });
@@ -64,8 +64,8 @@ export default function About() {
             <div className="flex items-start gap-3">
               <RefreshCw className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
-                <p className="font-semibold">Health-Gated Rollbacks</p>
-                <p className="text-sm text-tide-text-muted">Post-update health checks gate releases and roll back automatically if containers falter.</p>
+                <p className="font-semibold">Self-Healing Rollback</p>
+                <p className="text-sm text-tide-text-muted">Pre-update data backup with full volume/mount restore on rollback. Health checks gate releases and trigger automatic rollback if containers falter.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -161,6 +161,38 @@ export default function About() {
             <details className="group border border-tide-border rounded-lg bg-tide-surface">
               <summary className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-4 cursor-pointer select-none">
                 <span className="flex items-center gap-3 text-tide-text font-semibold">
+                  <HardDriveDownload className="w-5 h-5 text-primary" />
+                  Self-Healing Rollback
+                </span>
+                <span className="text-sm text-tide-text-muted md:text-right">Pre-update data backup with full volume and mount restore on rollback.</span>
+              </summary>
+              <ul className="px-6 pb-5 space-y-3 text-sm text-tide-text">
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Docker-native backup using temporary alpine containers to tar bind mounts and named volumes before every update.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Crash-safe staged restore with verification prevents data loss even if the restore process is interrupted.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>PostgreSQL-aware: pg_dumpall backup with version-checked restore prevents cross-version corruption.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Automatic rollback on health check failure with configurable time window guard (default 24h) to prevent stale rollbacks.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Smart mount filtering skips read-only mounts, sockets, shared infrastructure, and NAS paths automatically.</span>
+                </li>
+              </ul>
+            </details>
+
+            <details className="group border border-tide-border rounded-lg bg-tide-surface">
+              <summary className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-4 cursor-pointer select-none">
+                <span className="flex items-center gap-3 text-tide-text font-semibold">
                   <Package className="w-5 h-5 text-primary" />
                   Compose-Aware Automation
                 </span>
@@ -197,15 +229,15 @@ export default function About() {
               <ul className="px-6 pb-5 space-y-3 text-sm text-tide-text">
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Auto policy: zero-touch updates coordinated by the scheduler.</span>
+                  <span>Auto: zero-touch updates within configured version scope, coordinated by the scheduler.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Security policy: only ship updates that reduce vulnerability counts.</span>
+                  <span>Monitor: detect and display available updates with CVE enrichment, require manual approval to apply.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Manual policy: review dashboards backed by reasoning, CVEs, and ntfy notifications.</span>
+                  <span>Off: disable update checking entirely for containers that should never be updated automatically.</span>
                 </li>
               </ul>
             </details>
@@ -221,7 +253,7 @@ export default function About() {
               <ul className="px-6 pb-5 space-y-3 text-sm text-tide-text">
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Post-update health checks gate promotions and trigger automatic rollback on failure.</span>
+                  <span>Post-update health checks gate promotions and trigger automatic rollback (image + data) on failure.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
@@ -242,6 +274,10 @@ export default function About() {
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                   <span>Dependency-ordered updates ensure databases update before apps, preventing out-of-order breakage.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Concurrency guards prevent overlapping update/rollback operations on the same container.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
@@ -292,6 +328,10 @@ export default function About() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CircleCheckBig className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                  <span>Docker-native data backup service with staged restore, PostgreSQL support, and mount filtering</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CircleCheckBig className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                   <span>Exponential backoff retry engine with update window validation</span>
                 </li>
               </ul>
@@ -338,7 +378,7 @@ export default function About() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-tide-text">Total Lines of Code</p>
-                <p className="text-2xl font-bold text-primary mt-1">~32,300</p>
+                <p className="text-2xl font-bold text-primary mt-1">~81,000</p>
               </div>
             </div>
             <div className="bg-tide-surface border border-tide-border rounded-lg p-4 flex items-start gap-4">
@@ -347,7 +387,7 @@ export default function About() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-tide-text">Python Backend</p>
-                <p className="text-2xl font-bold text-primary mt-1">~22,600</p>
+                <p className="text-2xl font-bold text-primary mt-1">~61,400</p>
               </div>
             </div>
             <div className="bg-tide-surface border border-tide-border rounded-lg p-4 flex items-start gap-4">
@@ -356,7 +396,7 @@ export default function About() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-tide-text">TypeScript Frontend</p>
-                <p className="text-2xl font-bold text-primary mt-1">~9,700</p>
+                <p className="text-2xl font-bold text-primary mt-1">~19,600</p>
               </div>
             </div>
             <div className="bg-tide-surface border border-tide-border rounded-lg p-4 flex items-start gap-4">
@@ -365,7 +405,7 @@ export default function About() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-tide-text">Interactive Pages</p>
-                <p className="text-2xl font-bold text-primary mt-1">5</p>
+                <p className="text-2xl font-bold text-primary mt-1">12</p>
               </div>
             </div>
           </div>
@@ -378,12 +418,12 @@ export default function About() {
             Built with AI
           </h2>
           <p className="text-tide-text leading-relaxed mb-4">
-            TideWatch is built by a collaborative crew blending human expertise with AI copilots. We pair Claude (Sonnet 4.5) and Codex (GPT-5) on architecture, security, and release polish, while Operator steers product vision and deployment strategy.
+            TideWatch is built by a collaborative crew blending human expertise with AI copilots. We pair Claude (Opus 4.6) and Codex (GPT-5) on architecture, security, and release polish, while Operator steers product vision and deployment strategy.
           </p>
           <ul className="space-y-2 text-tide-text text-sm">
             <li className="flex items-start gap-2">
               <CircleCheckBig className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-              <span><strong>Claude (Sonnet 4.5)</strong> – Full-stack architecture, security integration, and production-ready code delivery across all phases.</span>
+              <span><strong>Claude (Opus 4.6)</strong> – Full-stack architecture, security integration, and production-ready code delivery across all phases.</span>
             </li>
             <li className="flex items-start gap-2">
               <CircleCheckBig className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />

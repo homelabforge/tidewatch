@@ -22,7 +22,7 @@ async def up(db):
             text("ALTER TABLE containers ADD COLUMN compose_project TEXT DEFAULT NULL")
         )
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
 async def down(db):  # noqa: ARG001

@@ -51,11 +51,11 @@ async def up(db):
             text("ALTER TABLE app_dependencies ADD COLUMN ignored_version_prefix VARCHAR(50)")
         )
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
-async def down(db):
+async def down(db):  # noqa: ARG001
     """Remove ignored_version_prefix columns (limited by SQLite)."""
     # SQLite doesn't support DROP COLUMN directly
     # These columns will remain but be unused if downgrade is performed
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it

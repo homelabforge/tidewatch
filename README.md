@@ -24,6 +24,7 @@ Intelligent Docker Container Update Management
 
 - **Real-time Container Monitoring** - Live status updates with Server-Sent Events
 - **Intelligent Update Management** - Schedule updates with dependency ordering
+- **Self-Healing Rollback** - Pre-update data backup with full volume/mount restore on rollback
 - **Auto-Restart with Backoff** - Exponential backoff for failed containers
 - **Dependency Tracking** - Monitor npm, PyPI, Composer, Cargo, and Go modules
 - **7 Notification Services** - Gotify, Pushover, Slack, Discord, Telegram, Email, ntfy

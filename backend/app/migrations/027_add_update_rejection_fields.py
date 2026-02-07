@@ -23,10 +23,10 @@ async def up(db):
         await db.execute(text("ALTER TABLE updates ADD COLUMN rejected_at DATETIME"))
     if "rejection_reason" not in columns:
         await db.execute(text("ALTER TABLE updates ADD COLUMN rejection_reason TEXT"))
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
-async def down(db):
+async def down(db):  # noqa: ARG001
     """Remove rejection fields from updates table."""
     # SQLite doesn't support DROP COLUMN directly, so we'd need to recreate the table
     # For now, just document this limitation

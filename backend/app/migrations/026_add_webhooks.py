@@ -40,7 +40,7 @@ async def upgrade(db):
     """)
     )
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
 async def downgrade(db):
@@ -48,4 +48,4 @@ async def downgrade(db):
     await db.execute(text("DROP INDEX IF EXISTS idx_webhooks_enabled"))
     await db.execute(text("DROP INDEX IF EXISTS idx_webhooks_name"))
     await db.execute(text("DROP TABLE IF EXISTS webhooks"))
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it

@@ -210,7 +210,7 @@ async def up(db):
         )
     )
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
 async def down(db):
@@ -225,4 +225,4 @@ async def down(db):
     # Note: Cannot remove columns from dockerfile_dependencies and update_history without table recreation
     # Those columns will remain but be unused if downgrade is performed
 
-    await db.commit()
+    # No explicit commit needed — runner's engine.begin() handles it
