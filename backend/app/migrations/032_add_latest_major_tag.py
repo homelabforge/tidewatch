@@ -7,25 +7,21 @@ Description: Add latest_major_tag column to track major version updates that exi
              to see major updates as informational indicators even when scope blocks them.
 """
 
-import sys
-from pathlib import Path
-
 from sqlalchemy import text
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.database import engine
-
-
-async def upgrade():
+async def upgrade(db):
     """Add latest_major_tag column to containers table."""
-    async with engine.begin() as conn:
-        # Add column for storing major version updates (nullable, no default)
-        await conn.execute(text("ALTER TABLE containers ADD COLUMN latest_major_tag TEXT NULL"))
+    result = await db.execute(text("PRAGMA table_info(containers)"))
+    columns = {row[1] for row in result.fetchall()}
+
+    if "latest_major_tag" not in columns:
+        await db.execute(text("ALTER TABLE containers ADD COLUMN latest_major_tag TEXT NULL"))
+
+    # No explicit commit needed — runner's engine.begin() handles it
 
 
-async def downgrade():
+async def downgrade(db):  # noqa: ARG001
     """Remove latest_major_tag column from containers table."""
-    async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE containers DROP COLUMN latest_major_tag"))
+    # SQLite doesn't support DROP COLUMN directly in older versions
+    raise NotImplementedError("Downgrade not supported for SQLite ALTER TABLE ADD COLUMN")

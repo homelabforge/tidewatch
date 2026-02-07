@@ -7,27 +7,23 @@ Description: Add scope_violation column to track major version updates that are
              appear in history with special indicators and "Apply Anyway" actions.
 """
 
-import sys
-from pathlib import Path
-
 from sqlalchemy import text
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.database import engine
-
-
-async def upgrade():
+async def upgrade(db):
     """Add scope_violation column to updates table."""
-    async with engine.begin() as conn:
-        # Add column with default 0 (not a scope violation)
-        await conn.execute(
+    result = await db.execute(text("PRAGMA table_info(updates)"))
+    columns = {row[1] for row in result.fetchall()}
+
+    if "scope_violation" not in columns:
+        await db.execute(
             text("ALTER TABLE updates ADD COLUMN scope_violation INTEGER DEFAULT 0 NOT NULL")
         )
 
+    # No explicit commit needed — runner's engine.begin() handles it
 
-async def downgrade():
+
+async def downgrade(db):  # noqa: ARG001
     """Remove scope_violation column from updates table."""
-    async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE updates DROP COLUMN scope_violation"))
+    # SQLite doesn't support DROP COLUMN directly in older versions
+    raise NotImplementedError("Downgrade not supported for SQLite ALTER TABLE ADD COLUMN")
