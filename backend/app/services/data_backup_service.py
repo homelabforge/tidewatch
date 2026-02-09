@@ -733,10 +733,10 @@ class DataBackupService:
             "mv /target/.restore-staging/.* /target/ 2>/dev/null || true && "
             "rmdir /target/.restore-staging 2>/dev/null || true && "
             # Verify: staging dir should be gone and target should have content
-            'test ! -d /target/.restore-staging || '
-            '  (echo \"ERROR: staging dir still exists after restore\" >&2 && exit 1) && '
+            "test ! -d /target/.restore-staging || "
+            '  (echo "ERROR: staging dir still exists after restore" >&2 && exit 1) && '
             'test "$(ls -A /target)" || '
-            '  (echo \"ERROR: target dir empty after restore\" >&2 && exit 1)'
+            '  (echo "ERROR: target dir empty after restore" >&2 && exit 1)'
             "'"
         )
 

@@ -124,7 +124,7 @@ def validate_filename(filename: str) -> Path:
 
 
 @router.get("/stats")
-async def get_stats(admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
+async def get_stats(_admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
     """Get database and backup statistics.
 
     Returns:
@@ -155,7 +155,7 @@ async def get_stats(admin: dict | None = Depends(require_auth)) -> dict[str, Any
 
 
 @router.get("/list")
-async def list_backups(admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
+async def list_backups(_admin: dict | None = Depends(require_auth)) -> dict[str, Any]:
     """List all available backup files with database stats.
 
     Returns:
@@ -192,7 +192,7 @@ async def list_backups(admin: dict | None = Depends(require_auth)) -> dict[str, 
 
 @router.post("/create")
 async def create_backup(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Create a new backup of all settings.
 
@@ -254,7 +254,7 @@ async def create_backup(
 
 
 @router.get("/download/{filename}")
-async def download_backup(filename: str, admin: dict | None = Depends(require_auth)):
+async def download_backup(filename: str, _admin: dict | None = Depends(require_auth)):
     """Download a specific backup file.
 
     Args:
@@ -288,7 +288,7 @@ async def download_backup(filename: str, admin: dict | None = Depends(require_au
 @router.post("/restore/{filename}")
 async def restore_backup(
     filename: str,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Restore settings from a backup file.
@@ -404,7 +404,7 @@ async def restore_backup(
 
 @router.post("/upload")
 async def upload_backup(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -476,7 +476,7 @@ async def upload_backup(
 
 @router.delete("/{filename}")
 async def delete_backup(
-    filename: str, admin: dict | None = Depends(require_auth)
+    filename: str, _admin: dict | None = Depends(require_auth)
 ) -> dict[str, Any]:
     """Delete a backup file.
 
@@ -519,7 +519,7 @@ async def delete_backup(
 
 @router.get("/download")
 async def download_backup_legacy(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ):
     """Legacy endpoint: Download current settings as backup file.
 
@@ -564,7 +564,7 @@ async def download_backup_legacy(
 
 @router.post("/restore")
 async def restore_backup_legacy(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:

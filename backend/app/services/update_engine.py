@@ -459,9 +459,7 @@ class UpdateEngine:
                 from app.services.data_backup_service import DataBackupService
 
                 backup_service = DataBackupService()
-                pruned = await asyncio.to_thread(
-                    backup_service.prune_backups, container.name, 3
-                )
+                pruned = await asyncio.to_thread(backup_service.prune_backups, container.name, 3)
                 if pruned:
                     logger.info("Pruned %d old backup(s) for %s", pruned, container.name)
             except Exception as prune_err:
@@ -747,8 +745,7 @@ class UpdateEngine:
                         logger.debug("Container %s not found (may not be running)", container.name)
                     except Exception as stop_err:
                         logger.warning(
-                            "Failed to stop %s before data restore: %s. "
-                            "Proceeding anyway.",
+                            "Failed to stop %s before data restore: %s. Proceeding anyway.",
                             container.name,
                             stop_err,
                         )

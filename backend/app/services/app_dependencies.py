@@ -1,10 +1,11 @@
 """Service for scanning and tracking application dependencies."""
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -84,47 +85,47 @@ class AppDependency:
 class DependencyScanner:
     """Scanner for detecting and analyzing application dependencies."""
 
-    # Allowed base path for file updates (must match dependency_update_service.py)
-    ALLOWED_BASE_PATH = Path("/srv/raid0/docker/build")
-
     def __init__(self, projects_directory: str = "/projects"):
         self.timeout = httpx.Timeout(10.0)
         self.projects_directory = Path(projects_directory)
+        self._client: httpx.AsyncClient | None = None
+        self._semaphore = asyncio.Semaphore(10)
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create shared HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close shared HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     def _normalize_manifest_path(self, file_path: Path) -> str:
         """
-        Normalize manifest file path to be relative to ALLOWED_BASE_PATH.
+        Normalize manifest file path to be relative to projects_directory.
 
-        Converts /projects/... to relative path from /srv/raid0/docker/build.
+        Converts absolute paths to project-relative paths for storage.
         For example:
         - /projects/tidewatch/frontend/package.json -> tidewatch/frontend/package.json
-        - /srv/raid0/docker/build/tidewatch/backend/pyproject.toml -> tidewatch/backend/pyproject.toml
 
         Args:
             file_path: Absolute path to manifest file
 
         Returns:
-            Relative path string from ALLOWED_BASE_PATH
+            Relative path string from projects_directory
         """
         try:
-            # Convert to absolute path
             abs_path = file_path.resolve()
-
-            # Replace /projects with ALLOWED_BASE_PATH if necessary
-            path_str = str(abs_path)
-            if path_str.startswith("/projects/"):
-                # Convert /projects/foo to /srv/raid0/docker/build/foo
-                relative_part = path_str[len("/projects/") :]
-                return relative_part
-            elif path_str.startswith(str(self.ALLOWED_BASE_PATH)):
-                # Already under ALLOWED_BASE_PATH, get relative part
-                return str(abs_path.relative_to(self.ALLOWED_BASE_PATH))
-            else:
-                # Fallback - return the path as-is
-                logger.warning(
-                    f"Manifest path {sanitize_log_message(str(file_path))} not under /projects or {sanitize_log_message(str(self.ALLOWED_BASE_PATH))}"
-                )
-                return str(file_path)
+            return str(abs_path.relative_to(self.projects_directory))
+        except ValueError:
+            logger.warning(
+                f"Manifest path {sanitize_log_message(str(file_path))} "
+                f"not under {sanitize_log_message(str(self.projects_directory))}"
+            )
+            return str(file_path)
         except Exception as e:
             logger.error(
                 f"Error normalizing manifest path {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}"
@@ -339,12 +340,25 @@ class DependencyScanner:
                 ("peerDependencies", "peer"),
             ]
 
+            # First pass: collect all deps to fetch versions in parallel
+            parsed_deps: list[tuple[str, str, str]] = []  # (name, clean_version, dep_type)
             for dep_key, dep_type in dep_types:
                 deps_dict = data.get(dep_key, {})
                 for name, version in deps_dict.items():
                     clean_version = self._clean_version(version)
-                    latest = await self._get_npm_latest(name)
+                    parsed_deps.append((name, clean_version, dep_type))
 
+            # Batch fetch latest versions in parallel
+            if parsed_deps:
+                latest_versions = await asyncio.gather(
+                    *[self._get_npm_latest(name) for name, _, _ in parsed_deps],
+                    return_exceptions=True,
+                )
+
+                for (name, clean_version, dep_type), latest_result in zip(
+                    parsed_deps, latest_versions
+                ):
+                    latest: str | None = latest_result if isinstance(latest_result, str) else None
                     dep = AppDependency(
                         name=name,
                         ecosystem="npm",
@@ -353,7 +367,7 @@ class DependencyScanner:
                         update_available=latest is not None and latest != clean_version,
                         dependency_type=dep_type,
                         manifest_file=manifest_file,
-                        last_checked=datetime.utcnow(),
+                        last_checked=datetime.now(UTC),
                     )
                     dep.severity = self._calculate_severity(
                         clean_version, latest, dep.update_available
@@ -373,7 +387,7 @@ class DependencyScanner:
                     update_available=False,
                     dependency_type="production",
                     manifest_file=manifest_file,
-                    last_checked=datetime.utcnow(),
+                    last_checked=datetime.now(UTC),
                 )
                 dependencies.append(dep)
 
@@ -392,7 +406,7 @@ class DependencyScanner:
                         update_available=False,
                         dependency_type="production",
                         manifest_file=manifest_file,
-                        last_checked=datetime.utcnow(),
+                        last_checked=datetime.now(UTC),
                     )
                     dependencies.append(dep)
 
@@ -408,41 +422,51 @@ class DependencyScanner:
         self, section_content: str, dep_type: str, manifest_file: str
     ) -> list[AppDependency]:
         """Parse TOML dependency section and return list of dependencies."""
-        dependencies = []
+        # First pass: parse all package names and versions
+        parsed: list[tuple[str, str]] = []  # (name, clean_version)
         for line in section_content.split("\n"):
             line = line.strip().rstrip(",")  # Remove trailing comma
             if not line or line.startswith("#") or line == "python":
                 continue
 
             # Parse: package = "^1.0.0" or "package>=1.0.0"
-            match = re.match(r'^([a-zA-Z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', line)
+            match = re.match(r'^([a-zA-Z0-9._-]+)\s*=\s*["\']([^"\']+)["\']', line)
             if match:
                 name, version = match.groups()
-            elif re.match(r'^"([^"]+)([><=]+)([^"]+)"', line):
-                # Handle: "package>=1.0.0" or "package>=1.0.0",
-                match = re.match(r'^"([a-zA-Z0-9_-]+)([><=]+)([^"]+)"', line)
+            elif re.match(r'^"([^"]+)([><=~!]+)([^"]+)"', line):
+                # Handle: "package>=1.0.0" or "package~=1.0.0",
+                match = re.match(r'^"([a-zA-Z0-9._-]+)([><=~!]+)([^"]+)"', line)
                 if match:
-                    name, operator, version = match.groups()
+                    name, _operator, version = match.groups()
                 else:
                     continue
             else:
                 continue
 
-            clean_version = self._clean_version(version)
-            latest = await self._get_pypi_latest(name)
+            parsed.append((name, self._clean_version(version)))
 
-            dep = AppDependency(
-                name=name,
-                ecosystem="pypi",
-                current_version=clean_version,
-                latest_version=latest,
-                update_available=latest is not None and latest != clean_version,
-                dependency_type=dep_type,
-                manifest_file=manifest_file,
-                last_checked=datetime.utcnow(),
+        # Batch fetch latest versions in parallel
+        dependencies: list[AppDependency] = []
+        if parsed:
+            latest_versions = await asyncio.gather(
+                *[self._get_pypi_latest(name) for name, _ in parsed],
+                return_exceptions=True,
             )
-            dep.severity = self._calculate_severity(clean_version, latest, dep.update_available)
-            dependencies.append(dep)
+
+            for (name, clean_version), latest_result in zip(parsed, latest_versions):
+                latest: str | None = latest_result if isinstance(latest_result, str) else None
+                dep = AppDependency(
+                    name=name,
+                    ecosystem="pypi",
+                    current_version=clean_version,
+                    latest_version=latest,
+                    update_available=latest is not None and latest != clean_version,
+                    dependency_type=dep_type,
+                    manifest_file=manifest_file,
+                    last_checked=datetime.now(UTC),
+                )
+                dep.severity = self._calculate_severity(clean_version, latest, dep.update_available)
+                dependencies.append(dep)
 
         return dependencies
 
@@ -548,31 +572,43 @@ class DependencyScanner:
             # Normalize the manifest file path
             manifest_file = self._normalize_manifest_path(file_path)
 
+            # First pass: parse all package names and versions
+            parsed: list[tuple[str, str]] = []  # (name, clean_version)
             for line in content.split("\n"):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
 
                 # Parse package==version or package>=version
-                match = re.match(r"^([a-zA-Z0-9_-]+)([=<>!]+)(.+)$", line)
+                match = re.match(r"^([a-zA-Z0-9._-]+)([=<>!~]+)(.+)$", line)
                 if not match:
                     continue
 
-                name, operator, version = match.groups()
-                clean_version = self._clean_version(version)
-                latest = await self._get_pypi_latest(name)
+                name, _operator, version = match.groups()
+                parsed.append((name, self._clean_version(version)))
 
-                dep = AppDependency(
-                    name=name,
-                    ecosystem="pypi",
-                    current_version=clean_version,
-                    latest_version=latest,
-                    update_available=latest is not None and latest != clean_version,
-                    manifest_file=manifest_file,
-                    last_checked=datetime.utcnow(),
+            # Batch fetch latest versions in parallel
+            if parsed:
+                latest_versions = await asyncio.gather(
+                    *[self._get_pypi_latest(name) for name, _ in parsed],
+                    return_exceptions=True,
                 )
-                dep.severity = self._calculate_severity(clean_version, latest, dep.update_available)
-                dependencies.append(dep)
+
+                for (name, clean_version), latest_result in zip(parsed, latest_versions):
+                    latest: str | None = latest_result if isinstance(latest_result, str) else None
+                    dep = AppDependency(
+                        name=name,
+                        ecosystem="pypi",
+                        current_version=clean_version,
+                        latest_version=latest,
+                        update_available=latest is not None and latest != clean_version,
+                        manifest_file=manifest_file,
+                        last_checked=datetime.now(UTC),
+                    )
+                    dep.severity = self._calculate_severity(
+                        clean_version, latest, dep.update_available
+                    )
+                    dependencies.append(dep)
 
             return dependencies
         except (ValueError, AttributeError) as e:
@@ -594,15 +630,24 @@ class DependencyScanner:
                 ("require-dev", "development"),
             ]
 
+            # First pass: collect all deps
+            parsed: list[tuple[str, str, str]] = []  # (name, clean_version, dep_type)
             for dep_key, dep_type in dep_types:
                 deps_dict = data.get(dep_key, {})
                 for name, version in deps_dict.items():
                     if name == "php":
                         continue
+                    parsed.append((name, self._clean_version(version), dep_type))
 
-                    clean_version = self._clean_version(version)
-                    latest = await self._get_packagist_latest(name)
+            # Batch fetch latest versions in parallel
+            if parsed:
+                latest_versions = await asyncio.gather(
+                    *[self._get_packagist_latest(name) for name, _, _ in parsed],
+                    return_exceptions=True,
+                )
 
+                for (name, clean_version, dep_type), latest_result in zip(parsed, latest_versions):
+                    latest: str | None = latest_result if isinstance(latest_result, str) else None
                     dep = AppDependency(
                         name=name,
                         ecosystem="composer",
@@ -611,7 +656,7 @@ class DependencyScanner:
                         update_available=latest is not None and latest != clean_version,
                         dependency_type=dep_type,
                         manifest_file=manifest_file,
-                        last_checked=datetime.utcnow(),
+                        last_checked=datetime.now(UTC),
                     )
                     dep.severity = self._calculate_severity(
                         clean_version, latest, dep.update_available
@@ -634,6 +679,8 @@ class DependencyScanner:
             # Normalize the manifest file path
             manifest_file = self._normalize_manifest_path(file_path)
 
+            # First pass: parse all module names and versions
+            parsed: list[tuple[str, str]] = []  # (name, clean_version)
             require_match = re.search(r"require\s*\((.*?)\)", content, re.DOTALL)
             if require_match:
                 for line in require_match.group(1).split("\n"):
@@ -643,23 +690,30 @@ class DependencyScanner:
 
                     parts = line.split()
                     if len(parts) >= 2:
-                        name, version = parts[0], parts[1]
-                        clean_version = self._clean_version(version)
-                        latest = await self._get_go_latest(name)
+                        parsed.append((parts[0], self._clean_version(parts[1])))
 
-                        dep = AppDependency(
-                            name=name,
-                            ecosystem="go",
-                            current_version=clean_version,
-                            latest_version=latest,
-                            update_available=latest is not None and latest != clean_version,
-                            manifest_file=manifest_file,
-                            last_checked=datetime.utcnow(),
-                        )
-                        dep.severity = self._calculate_severity(
-                            clean_version, latest, dep.update_available
-                        )
-                        dependencies.append(dep)
+            # Batch fetch latest versions in parallel
+            if parsed:
+                latest_versions = await asyncio.gather(
+                    *[self._get_go_latest(name) for name, _ in parsed],
+                    return_exceptions=True,
+                )
+
+                for (name, clean_version), latest_result in zip(parsed, latest_versions):
+                    latest: str | None = latest_result if isinstance(latest_result, str) else None
+                    dep = AppDependency(
+                        name=name,
+                        ecosystem="go",
+                        current_version=clean_version,
+                        latest_version=latest,
+                        update_available=latest is not None and latest != clean_version,
+                        manifest_file=manifest_file,
+                        last_checked=datetime.now(UTC),
+                    )
+                    dep.severity = self._calculate_severity(
+                        clean_version, latest, dep.update_available
+                    )
+                    dependencies.append(dep)
 
             return dependencies
         except (ValueError, AttributeError, IndexError) as e:
@@ -674,6 +728,8 @@ class DependencyScanner:
             # Normalize the manifest file path
             manifest_file = self._normalize_manifest_path(file_path)
 
+            # First pass: parse all crate names and versions
+            parsed: list[tuple[str, str]] = []  # (name, clean_version)
             dep_section = re.search(r"\[dependencies\](.*?)(?=\[|$)", content, re.DOTALL)
 
             if dep_section:
@@ -693,9 +749,17 @@ class DependencyScanner:
                         continue
 
                     name, version = match.groups()
-                    clean_version = self._clean_version(version)
-                    latest = await self._get_crates_latest(name)
+                    parsed.append((name, self._clean_version(version)))
 
+            # Batch fetch latest versions in parallel
+            if parsed:
+                latest_versions = await asyncio.gather(
+                    *[self._get_crates_latest(name) for name, _ in parsed],
+                    return_exceptions=True,
+                )
+
+                for (name, clean_version), latest_result in zip(parsed, latest_versions):
+                    latest: str | None = latest_result if isinstance(latest_result, str) else None
                     dep = AppDependency(
                         name=name,
                         ecosystem="cargo",
@@ -703,7 +767,7 @@ class DependencyScanner:
                         latest_version=latest,
                         update_available=latest is not None and latest != clean_version,
                         manifest_file=manifest_file,
-                        last_checked=datetime.utcnow(),
+                        last_checked=datetime.now(UTC),
                     )
                     dep.severity = self._calculate_severity(
                         clean_version, latest, dep.update_available
@@ -754,7 +818,8 @@ class DependencyScanner:
     async def _get_npm_latest(self, package: str) -> str | None:
         """Fetch latest version from npm registry."""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._semaphore:
+                client = await self._get_client()
                 response = await client.get(f"https://registry.npmjs.org/{package}/latest")
                 if response.status_code == 200:
                     data = response.json()
@@ -780,7 +845,8 @@ class DependencyScanner:
     async def _get_pypi_latest(self, package: str) -> str | None:
         """Fetch latest version from PyPI."""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._semaphore:
+                client = await self._get_client()
                 response = await client.get(f"https://pypi.org/pypi/{package}/json")
                 if response.status_code == 200:
                     data = response.json()
@@ -806,7 +872,8 @@ class DependencyScanner:
     async def _get_packagist_latest(self, package: str) -> str | None:
         """Fetch latest version from Packagist."""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._semaphore:
+                client = await self._get_client()
                 response = await client.get(f"https://repo.packagist.org/p2/{package}.json")
                 if response.status_code == 200:
                     data = response.json()
@@ -839,7 +906,8 @@ class DependencyScanner:
     async def _get_crates_latest(self, package: str) -> str | None:
         """Fetch latest version from crates.io."""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._semaphore:
+                client = await self._get_client()
                 response = await client.get(
                     f"https://crates.io/api/v1/crates/{package}",
                     headers={"User-Agent": "TideWatch/2.6.0"},
@@ -869,7 +937,8 @@ class DependencyScanner:
     async def _get_go_latest(self, module: str) -> str | None:
         """Fetch latest version from Go proxy."""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._semaphore:
+                client = await self._get_client()
                 response = await client.get(f"https://proxy.golang.org/{module}/@latest")
                 if response.status_code == 200:
                     data = response.json()
@@ -946,7 +1015,7 @@ class DependencyScanner:
                     existing.dependency_type = new_dep.dependency_type
                     existing.security_advisories = new_dep.security_advisories
                     existing.socket_score = new_dep.socket_score
-                    existing.last_checked = datetime.utcnow()
+                    existing.last_checked = datetime.now(UTC)
 
                     # PRESERVE ignored fields - only reset ignore if version has moved past ignored version
                     if existing.ignored and existing.ignored_version_prefix:
@@ -999,7 +1068,7 @@ class DependencyScanner:
                         socket_score=new_dep.socket_score,
                         severity=new_dep.severity,
                         manifest_file=manifest_file,
-                        last_checked=datetime.utcnow(),
+                        last_checked=datetime.now(UTC),
                     )
                     db.add(db_dep)
                     logger.debug(
@@ -1079,5 +1148,9 @@ class DependencyScanner:
             raise
 
 
-# Global scanner instance
-scanner = DependencyScanner()
+async def get_scanner(db: AsyncSession) -> DependencyScanner:
+    """Factory to create a DependencyScanner with projects_directory from settings."""
+    from app.services.settings_service import SettingsService
+
+    projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+    return DependencyScanner(projects_directory=projects_dir)

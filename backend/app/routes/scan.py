@@ -24,7 +24,7 @@ router = APIRouter()
 )
 async def scan_container(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> ScanResultSchema:
     """Scan a single container for vulnerabilities.
@@ -67,7 +67,7 @@ async def scan_container(
 
 @router.post("/all", response_model=list[ScanResultSchema], status_code=status.HTTP_200_OK)
 async def scan_all_containers(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[ScanResultSchema]:
     """Scan all VulnForge-enabled containers.
 
@@ -95,7 +95,7 @@ async def scan_all_containers(
 )
 async def get_scan_results(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> ScanResultSchema:
     """Get cached vulnerability scan results for a container.
@@ -126,7 +126,7 @@ async def get_scan_results(
 
 @router.get("/summary", response_model=ScanSummarySchema, status_code=status.HTTP_200_OK)
 async def get_scan_summary(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> ScanSummarySchema:
     """Get vulnerability scan summary statistics.
 

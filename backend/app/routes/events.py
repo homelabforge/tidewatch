@@ -15,7 +15,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
 ) -> StreamingResponse:
     """Server-sent events stream for live update notifications."""
 

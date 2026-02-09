@@ -23,7 +23,7 @@ router = APIRouter()
 
 @router.get("/", response_model=list[WebhookSchema], status_code=status.HTTP_200_OK)
 async def list_webhooks(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[WebhookSchema]:
     """List all webhooks.
 
@@ -44,7 +44,7 @@ async def list_webhooks(
 @router.post("/", response_model=WebhookSchema, status_code=status.HTTP_201_CREATED)
 async def create_webhook(
     webhook: WebhookCreate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Create a new webhook.
@@ -82,7 +82,7 @@ async def create_webhook(
 @router.get("/{webhook_id}", response_model=WebhookSchema, status_code=status.HTTP_200_OK)
 async def get_webhook(
     webhook_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Get webhook by ID.
@@ -111,7 +111,7 @@ async def get_webhook(
 async def update_webhook(
     webhook_id: int,
     webhook: WebhookUpdate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookSchema:
     """Update an existing webhook.
@@ -149,7 +149,7 @@ async def update_webhook(
 @router.delete("/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_webhook(
     webhook_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a webhook.
@@ -177,7 +177,7 @@ async def delete_webhook(
 )
 async def test_webhook(
     webhook_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> WebhookTestResponse:
     """Send a test payload to a webhook.

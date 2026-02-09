@@ -49,7 +49,7 @@ router = APIRouter()
 
 @router.get("/", response_model=list[ContainerSchema])
 async def list_containers(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
     policy: str | None = Query(
@@ -93,7 +93,7 @@ async def list_containers(
 
 @router.get("/{container_id}", response_model=ContainerSchema)
 async def get_container(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> ContainerSchema:
     """Get basic container details by ID.
@@ -112,7 +112,7 @@ async def get_container(
 
 @router.get("/{container_id}/details", response_model=ContainerDetailsSchema)
 async def get_container_details(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerDetailsSchema:
@@ -185,7 +185,7 @@ async def get_container_details(
 
 @router.get("/{container_id}/history", response_model=list[HistoryItemSchema])
 async def get_container_history(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=500, description="Maximum number of records to return"),
@@ -224,7 +224,7 @@ async def get_container_history(
 @router.put("/{container_id}", response_model=ContainerSchema)
 async def update_container(
     update: ContainerUpdate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerSchema:
@@ -274,7 +274,7 @@ async def update_container(
 @router.put("/{container_id}/policy", response_model=ContainerSchema)
 async def update_container_policy(
     policy_update: PolicyUpdate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> ContainerSchema:
@@ -302,7 +302,7 @@ async def update_container_policy(
 
 @router.post("/sync")
 async def sync_containers(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Sync containers from compose files.
 
@@ -324,7 +324,7 @@ async def sync_containers(
 
 @router.delete("/{container_id}")
 async def delete_container(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -344,7 +344,7 @@ async def delete_container(
 
 @router.post("/{container_id}/exclude")
 async def exclude_container(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -372,7 +372,7 @@ async def exclude_container(
 
 @router.post("/{container_id}/include")
 async def include_container(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -399,7 +399,7 @@ async def include_container(
 
 @router.get("/excluded/list")
 async def list_excluded_containers(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[ContainerSchema]:
     """List all excluded containers (policy='disabled').
 
@@ -415,7 +415,7 @@ async def list_excluded_containers(
 
 @router.get("/{container_id}/dependencies")
 async def get_container_dependencies(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container dependencies and dependents.
@@ -453,7 +453,7 @@ async def get_container_dependencies(
 @router.put("/{container_id}/dependencies")
 async def update_container_dependencies(
     dependencies: list[str],
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -484,7 +484,7 @@ async def update_container_dependencies(
 
 @router.get("/{container_id}/update-window")
 async def get_container_update_window(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container update window configuration.
@@ -514,7 +514,7 @@ async def get_container_update_window(
 @router.put("/{container_id}/update-window")
 async def update_container_update_window(
     window_update: UpdateWindowUpdate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -548,7 +548,7 @@ async def update_container_update_window(
 
 @router.get("/{container_id}/metrics")
 async def get_container_metrics(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Get container resource metrics (CPU, memory, network, disk I/O).
@@ -579,7 +579,7 @@ async def get_container_metrics(
 
 @router.get("/{container_id}/metrics/history")
 async def get_container_metrics_history(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     period: str = Query(default="24h", pattern="^(1h|6h|24h|7d|30d)$"),
     db: AsyncSession = Depends(get_db),
@@ -643,7 +643,7 @@ async def get_container_metrics_history(
 
 @router.get("/{container_id}/detect-health-check")
 async def detect_health_check(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Detect health check URL from compose file.
@@ -671,7 +671,7 @@ async def detect_health_check(
 
 @router.get("/{container_id}/detect-release-source")
 async def detect_release_source(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, Any]:
     """Detect release source from image registry.
@@ -697,7 +697,7 @@ async def detect_release_source(
 
 @router.post("/{container_id}/restart")
 async def restart_container(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
 ) -> dict[str, str]:
     """Restart a container using docker compose.
@@ -761,7 +761,7 @@ async def restart_container(
 
 @router.post("/{container_id}/recheck-updates")
 async def recheck_updates(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -798,7 +798,7 @@ async def recheck_updates(
 
 @router.get("/{container_id}/logs")
 async def get_container_logs(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     tail: int = Query(default=100, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
@@ -857,7 +857,7 @@ async def get_container_logs(
 
 @router.get("/{container_id}/app-dependencies", response_model=AppDependenciesResponse)
 async def get_app_dependencies(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> AppDependenciesResponse:
@@ -874,7 +874,7 @@ async def get_app_dependencies(
     """
     from datetime import datetime
 
-    from app.services.app_dependencies import scanner
+    from app.services.app_dependencies import get_scanner
 
     if not container.is_my_project:
         raise HTTPException(
@@ -882,6 +882,7 @@ async def get_app_dependencies(
             detail="App dependency scanning is only available for My Projects",
         )
 
+    scanner = await get_scanner(db)
     try:
         # Try to fetch persisted dependencies first
         dependencies = await scanner.get_persisted_dependencies(db, container.id)
@@ -896,13 +897,10 @@ async def get_app_dependencies(
                 container.compose_file, container.service_name
             )
 
-            # Persist to database
-            if scanned_deps:
-                await scanner.persist_dependencies(db, container.id, scanned_deps)
-                # Fetch the persisted dependencies with IDs
-                dependencies = await scanner.get_persisted_dependencies(db, container.id)
-            else:
-                dependencies = []
+            # Persist to database (always call to clear stale records on empty result)
+            await scanner.persist_dependencies(db, container.id, scanned_deps)
+            # Fetch the persisted dependencies with IDs
+            dependencies = await scanner.get_persisted_dependencies(db, container.id)
 
         # Calculate stats
         total = len(dependencies)
@@ -910,7 +908,7 @@ async def get_app_dependencies(
         with_security = sum(1 for dep in dependencies if dep.security_advisories > 0)
 
         # Get last checked time from first dependency if available
-        last_scan = dependencies[0].last_checked if dependencies else datetime.utcnow()
+        last_scan = dependencies[0].last_checked if dependencies else datetime.now(UTC)
 
         return AppDependenciesResponse(
             dependencies=[AppDependencySchema.model_validate(dep) for dep in dependencies],
@@ -935,11 +933,13 @@ async def get_app_dependencies(
             f"Missing module scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dependency scanner not available")
+    finally:
+        await scanner.close()
 
 
 @router.post("/{container_id}/app-dependencies/scan")
 async def scan_app_dependencies(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -953,7 +953,7 @@ async def scan_app_dependencies(
     Returns:
         Status message
     """
-    from app.services.app_dependencies import scanner
+    from app.services.app_dependencies import get_scanner
 
     if not container.is_my_project:
         raise HTTPException(
@@ -961,15 +961,15 @@ async def scan_app_dependencies(
             detail="App dependency scanning is only available for My Projects",
         )
 
+    scanner = await get_scanner(db)
     try:
         # Trigger scan
         dependencies = await scanner.scan_container_dependencies(
             container.compose_file, container.service_name
         )
 
-        # Persist to database
-        if dependencies:
-            await scanner.persist_dependencies(db, container.id, dependencies)
+        # Persist to database (always call to clear stale records on empty result)
+        await scanner.persist_dependencies(db, container.id, dependencies)
 
         return {
             "message": "Dependency scan completed and persisted",
@@ -991,6 +991,8 @@ async def scan_app_dependencies(
             f"Missing module scanning dependencies for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dependency scanner not available")
+    finally:
+        await scanner.close()
 
 
 @router.get(
@@ -999,7 +1001,7 @@ async def scan_app_dependencies(
 )
 async def get_dockerfile_dependencies(
     include_ignored: bool = Query(True, description="Include ignored dependencies"),
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> DockerfileDependenciesResponse:
@@ -1010,9 +1012,11 @@ async def get_dockerfile_dependencies(
     """
     try:
         from app.services.dockerfile_parser import DockerfileParser
+        from app.services.settings_service import SettingsService
 
         # Get dependencies from database
-        parser = DockerfileParser()
+        projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+        parser = DockerfileParser(projects_directory=projects_dir)
         all_dependencies = await parser.get_container_dockerfile_dependencies(db, container.id)
 
         # Always include ignored dependencies (frontend handles display logic)
@@ -1050,7 +1054,7 @@ async def get_dockerfile_dependencies(
 
 @router.post("/{container_id}/dockerfile-dependencies/scan")
 async def scan_dockerfile_dependencies(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     manual_path: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -1069,9 +1073,11 @@ async def scan_dockerfile_dependencies(
     """
     try:
         from app.services.dockerfile_parser import DockerfileParser
+        from app.services.settings_service import SettingsService
 
         # Scan Dockerfile
-        parser = DockerfileParser()
+        projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+        parser = DockerfileParser(projects_directory=projects_dir)
         dependencies = await parser.scan_container_dockerfile(db, container, manual_path)
 
         return {
@@ -1108,7 +1114,7 @@ async def scan_dockerfile_dependencies(
 
 @router.post("/dockerfile-dependencies/check-updates")
 async def check_dockerfile_updates(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Check all Dockerfile dependencies for available updates.
 
@@ -1120,8 +1126,10 @@ async def check_dockerfile_updates(
     """
     try:
         from app.services.dockerfile_parser import DockerfileParser
+        from app.services.settings_service import SettingsService
 
-        parser = DockerfileParser()
+        projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+        parser = DockerfileParser(projects_directory=projects_dir)
         stats = await parser.check_all_for_updates(db)
 
         return {
@@ -1148,7 +1156,7 @@ async def check_dockerfile_updates(
 
 @router.post("/scan-my-projects")
 async def scan_my_projects(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Scan projects directory for dev containers and add them to Tidewatch.
 
@@ -1203,7 +1211,7 @@ async def scan_my_projects(
 
 @router.get("/{container_id}/http-servers", response_model=HttpServersResponse)
 async def get_http_servers(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> HttpServersResponse:
@@ -1285,7 +1293,7 @@ async def get_http_servers(
 
 @router.post("/{container_id}/http-servers/scan")
 async def scan_http_servers(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:

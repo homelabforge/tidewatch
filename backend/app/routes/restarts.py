@@ -35,7 +35,7 @@ router = APIRouter()
 @router.get("/{container_id}/state", response_model=RestartStateSchema)
 async def get_restart_state(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartStateSchema:
     """Get current restart state for a container.
@@ -84,7 +84,7 @@ async def get_restart_state(
 @router.get("/{container_id}/history", response_model=RestartHistoryResponse)
 async def get_restart_history(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -132,7 +132,7 @@ async def get_restart_history(
 async def enable_restart(
     container_id: int,
     request: EnableRestartRequest,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Enable auto-restart for a container.
@@ -194,7 +194,7 @@ async def enable_restart(
 async def disable_restart(
     container_id: int,
     request: DisableRestartRequest,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Disable auto-restart for a container.
@@ -241,7 +241,7 @@ async def disable_restart(
 async def reset_restart_state(
     container_id: int,
     request: ResetRestartStateRequest,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Reset restart state (clear failures and backoff).
@@ -296,7 +296,7 @@ async def reset_restart_state(
 async def pause_restart(
     container_id: int,
     request: PauseRestartRequest,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Temporarily pause auto-restart for a container.
@@ -344,7 +344,7 @@ async def pause_restart(
 @router.post("/{container_id}/resume", response_model=RestartActionResponse)
 async def resume_restart(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Resume auto-restart after pause.
@@ -391,7 +391,7 @@ async def resume_restart(
 async def manual_restart(
     container_id: int,
     request: ManualRestartRequest,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Manually trigger a restart (bypasses backoff if requested).
@@ -466,7 +466,7 @@ async def manual_restart(
 
 @router.get("/stats", response_model=RestartStatsResponse)
 async def get_restart_stats(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> RestartStatsResponse:
     """Get aggregate restart statistics across all containers.
 

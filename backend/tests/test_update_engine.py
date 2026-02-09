@@ -668,7 +668,9 @@ class TestApplyUpdateOrchestration:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -710,7 +712,9 @@ class TestApplyUpdateOrchestration:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         call_order = []
 
@@ -774,7 +778,9 @@ class TestApplyUpdateOrchestration:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -819,7 +825,9 @@ class TestApplyUpdateOrchestration:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         mock_backup = AsyncMock(return_value="/data/backups/sonarr.yml.backup")
         mock_compose_update = AsyncMock(return_value=True)
@@ -975,7 +983,9 @@ class TestRollbackUpdate:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
 
         with pytest.raises(ValueError) as exc_info:
             await UpdateEngine.rollback_update(mock_db, 1)
@@ -994,7 +1004,9 @@ class TestRollbackUpdate:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
 
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
@@ -1031,7 +1043,9 @@ class TestRollbackUpdate:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
 
         mock_compose_update = AsyncMock(return_value=True)
         mock_execute = AsyncMock(return_value={"success": True})
@@ -1065,7 +1079,9 @@ class TestRollbackUpdate:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[history_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
 
         with (
             patch(
@@ -1193,7 +1209,9 @@ class TestEventBusProgress:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         events = []
 
@@ -1263,7 +1281,9 @@ class TestEventBusProgress:
         no_in_progress_result = MagicMock()
         no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        mock_db.execute = AsyncMock(side_effect=[update_result, container_result, no_in_progress_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
 
         events = []
 
@@ -1499,9 +1519,7 @@ class TestRestoreCommandFailureSemantics:
         # Mock a helper container that exits with error (simulating staging verification failure)
         mock_helper = MagicMock()
         mock_helper.wait = MagicMock(return_value={"StatusCode": 1})
-        mock_helper.logs = MagicMock(
-            return_value=b"ERROR: staging dir still exists after restore"
-        )
+        mock_helper.logs = MagicMock(return_value=b"ERROR: staging dir still exists after restore")
         mock_helper.remove = MagicMock()
 
         service.client.containers.run = MagicMock(return_value=mock_helper)

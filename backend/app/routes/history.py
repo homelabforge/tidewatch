@@ -118,7 +118,7 @@ def transform_restart_to_event(
 
 @router.get("/", response_model=list[UnifiedHistoryEventSchema])
 async def list_history(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     container_id: int | None = None,
     status: str | None = Query(None, description="Filter by status (success, failed, rolled_back)"),
     start_date: str | None = Query(None, description="Filter by start date (ISO format)"),
@@ -203,7 +203,7 @@ async def list_history(
 
 @router.get("/stats")
 async def get_history_stats(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Get update history statistics.
 
@@ -271,7 +271,7 @@ async def get_history_stats(
 @router.get("/{history_id}", response_model=UpdateHistorySchema)
 async def get_history(
     history_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateHistorySchema:
     """Get history record details.
@@ -303,7 +303,7 @@ async def get_history(
 @router.post("/{history_id}/rollback")
 async def rollback_update(
     history_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Rollback an update.

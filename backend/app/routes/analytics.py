@@ -23,7 +23,7 @@ router = APIRouter()
 
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_analytics_summary(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> AnalyticsSummary:
     """Return aggregated analytics for the dashboard."""
     now = datetime.now(UTC)

@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=list[SettingSchema])
 async def get_all_settings(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     category: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -47,7 +47,7 @@ async def get_all_settings(
 
 @router.get("/categories", response_model=list[SettingCategory])
 async def get_settings_by_category(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[SettingCategory]:
     """Get settings grouped by category."""
@@ -74,7 +74,7 @@ async def get_settings_by_category(
 @router.get("/{key}", response_model=SettingSchema)
 async def get_setting(
     key: str,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> SettingSchema:
     """Get a specific setting by key."""
@@ -108,7 +108,7 @@ async def get_setting(
 async def update_setting(
     key: str,
     update: SettingUpdate,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> SettingSchema:
     """Update a setting value."""
@@ -119,7 +119,7 @@ async def update_setting(
 @router.post("/batch", response_model=list[SettingSchema])
 async def batch_update_settings(
     updates: list[dict[str, str]],
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[SettingSchema]:
     """Update multiple settings atomically.
@@ -158,7 +158,7 @@ async def batch_update_settings(
 
 @router.post("/reset")
 async def reset_to_defaults(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Reset all settings to defaults."""
@@ -168,7 +168,7 @@ async def reset_to_defaults(
 
 @router.post("/test/docker")
 async def test_docker_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Docker socket/API connection.
@@ -232,7 +232,7 @@ async def test_docker_connection(
 
 @router.post("/test/vulnforge")
 async def test_vulnforge_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test VulnForge API connection.
@@ -344,7 +344,7 @@ async def test_vulnforge_connection(
 
 @router.post("/test/ntfy")
 async def test_ntfy_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test ntfy server connection.
@@ -446,7 +446,7 @@ async def test_ntfy_connection(
 
 @router.post("/test/dockerhub")
 async def test_dockerhub_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Docker Hub registry authentication.
@@ -565,7 +565,7 @@ async def test_dockerhub_connection(
 
 @router.post("/test/gotify")
 async def test_gotify_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Gotify server connection.
@@ -661,7 +661,7 @@ async def test_gotify_connection(
 
 @router.post("/test/pushover")
 async def test_pushover_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Pushover API connection.
@@ -747,7 +747,7 @@ async def test_pushover_connection(
 
 @router.post("/test/slack")
 async def test_slack_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Slack webhook connection.
@@ -827,7 +827,7 @@ async def test_slack_connection(
 
 @router.post("/test/discord")
 async def test_discord_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Discord webhook connection.
@@ -912,7 +912,7 @@ async def test_discord_connection(
 
 @router.post("/test/telegram")
 async def test_telegram_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Telegram bot connection.
@@ -1007,7 +1007,7 @@ async def test_telegram_connection(
 
 @router.post("/test/email")
 async def test_email_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test Email SMTP connection.
@@ -1133,7 +1133,7 @@ async def test_email_connection(
 
 @router.post("/test/ghcr")
 async def test_ghcr_connection(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Test GitHub Container Registry (GHCR) authentication.

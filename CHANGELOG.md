@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Database migration 041** - Normalizes dependency paths by stripping `/projects/` prefix from `app_dependencies`, `dockerfile_dependencies`, and `http_servers` tables, with verification query
+- **31 new API dependency tests** across 8 test classes (`TestAppDependencyEndpoints`, `TestDockerfileDependencyEndpoints`, `TestHttpServerEndpoints`, `TestDependencyIgnoreEndpoints`, `TestDependencyTypeMapping`, `TestVersionParsing`, `TestNetworkPerformance`, `TestGetScannerFactory`) — 1191 tests pass, 40 skipped, 0 failures
+- **Factory fixtures for dependency testing** - `make_app_dependency`, `make_dockerfile_dependency`, `make_http_server` in `tests/conftest.py`
+
+### Changed
+- **Dependency scanner singleton replaced with `get_scanner(db)` factory** - Scanner now reads `projects_directory` from `SettingsService` instead of using a global singleton, ensuring correct base path resolution per-request
+- **HTTP server persistence rewritten** - Batch fetch, dedup (keep newest by `last_checked`), upsert from scan map, and stale record deletion replaces the previous append-only approach
+- **Dependency parsers parallelized** - All 6 parser methods now use `asyncio.gather` with a shared `httpx.AsyncClient` and `asyncio.Semaphore(10)` for controlled concurrent version lookups
+- **Out-of-root Dockerfiles explicitly unsupported** - Dockerfiles outside `projects_directory` are skipped during scanning with a warning log rather than stored with fallback paths
+- **`validate_file_path_for_update()` accepts `allowed_base` parameter** - Decouples path validation from hardcoded base, allowing callers to pass the settings-derived projects directory
+- **Migrated `datetime.utcnow()` to `datetime.now(UTC)`** across ~10 instances to resolve deprecation warnings
+- **Removed unused `admin` parameter** from ~20 route handler signatures that declared `admin: dict = Depends(require_auth)` without accessing the value
+- **Removed unused `operator` parameter** from 2 route handler signatures
+
+### Fixed
+- **Dependency paths stored as absolute instead of relative** - Paths were stored with `/projects/` prefix; now stored relative to `projects_directory` with migration 041 to normalize existing data
+- **Settings injection missing from dependency update methods** - `projects_directory` now read from `SettingsService.get(db, "projects_directory")` in all 3 update methods in `dependency_update_service.py`
+- **Stale dependency records not cleaned up** - Removed `if dependencies:` / `if scanned_deps:` guards that short-circuited on empty scan results, preventing removal of outdated records
+- **HTTP server duplicate records** - Dedup logic now sorts by `last_checked` (UTC-aware) and keeps newest, with stale removal for records not in current scan
+- **requirements.txt parser rejecting valid package names** - Character class updated to `[a-zA-Z0-9._-]` for names and `[=<>!~]` for operators
+- **pyproject.toml parser missing valid specifiers and dotted names** - Added `.` to package name patterns and `~!` to operator patterns for both key-value and inline dependency formats
+- **Package type-to-section mapping mismatches** - Explicit mappings added for package.json (`production` → `dependencies`, `development` → `devDependencies`, etc.), pyproject.toml (`production` → `dependencies`, `development` → `development`), and Cargo.toml (`production` → `dependencies`, `development` → `dev-dependencies`)
+- **`HttpServer.detection_method` type mismatch** - `.get()` was called on a string column instead of a dict
+
 ## [3.7.0] - 2026-02-06
 
 ### Added

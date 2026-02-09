@@ -65,7 +65,7 @@ async def get_docker_version() -> str:
 
 @router.get("/info")
 async def get_system_info(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ):
     """Get system information."""
     from sqlalchemy import func, select
@@ -94,7 +94,7 @@ async def get_system_info(
 
 
 @router.get("/version")
-async def get_version_info(admin: dict | None = Depends(require_auth)):
+async def get_version_info(_admin: dict | None = Depends(require_auth)):
     """Get version information."""
     return {
         "version": get_version(),

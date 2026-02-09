@@ -33,7 +33,7 @@ router = APIRouter()
 
 @router.get("/", response_model=list[UpdateSchema])
 async def list_updates(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     status: str | None = None,
     container_id: int | None = Query(None, description="Filter by container ID"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
@@ -72,7 +72,7 @@ async def list_updates(
 
 @router.get("/pending", response_model=list[UpdateSchema])
 async def get_pending_updates(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[Update]:
     """Get all pending updates."""
     return await UpdateChecker.get_pending_updates(db)
@@ -80,7 +80,7 @@ async def get_pending_updates(
 
 @router.get("/auto-approvable", response_model=list[UpdateSchema])
 async def get_auto_approvable_updates(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[Update]:
     """Get updates that can be auto-approved."""
     return await UpdateChecker.get_auto_approvable_updates(db)
@@ -88,7 +88,7 @@ async def get_auto_approvable_updates(
 
 @router.get("/security", response_model=list[UpdateSchema])
 async def get_security_updates(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> list[Update]:
     """Get security-related updates."""
     return await UpdateChecker.get_security_updates(db)
@@ -96,7 +96,7 @@ async def get_security_updates(
 
 @router.post("/check", response_model=CheckJobStartResponse)
 async def check_updates(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> CheckJobStartResponse:
     """Start a background check for all containers.
 
@@ -134,7 +134,7 @@ async def check_updates(
 
 @router.get("/check/history", response_model=list[CheckJobSummary])
 async def get_check_history(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     limit: int = Query(20, ge=1, le=100, description="Maximum number of jobs to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[CheckJobSummary]:
@@ -167,7 +167,7 @@ async def get_check_history(
 @router.get("/check/{job_id}", response_model=CheckJobResult)
 async def get_check_job(
     job_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> CheckJobResult:
     """Get status and progress of an update check job.
@@ -207,7 +207,7 @@ async def get_check_job(
 @router.post("/check/{job_id}/cancel", response_model=CheckJobCancelResponse)
 async def cancel_check_job(
     job_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> CheckJobCancelResponse:
     """Request cancellation of a running check job.
@@ -241,7 +241,7 @@ async def cancel_check_job(
 @router.post("/check/{container_id}")
 async def check_container_update(
     container_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Check a specific container for updates.
@@ -280,7 +280,7 @@ async def check_container_update(
 @router.post("/batch/approve")
 async def batch_approve_updates(
     update_ids: list[int] = Body(..., embed=True),
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Batch approve multiple updates.
@@ -364,7 +364,7 @@ async def batch_approve_updates(
 async def batch_reject_updates(
     update_ids: list[int] = Body(..., embed=True),
     reason: str | None = Body(None, embed=True),
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Batch reject multiple updates.
@@ -450,7 +450,7 @@ async def batch_reject_updates(
 @router.get("/{update_id}", response_model=UpdateSchema)
 async def get_update(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Get update details.
@@ -474,7 +474,7 @@ async def get_update(
 async def approve_update(
     update_id: int,
     approval: UpdateApproval,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Approve an update.
@@ -524,7 +524,7 @@ async def approve_update(
 @router.post("/{update_id}/apply")
 async def apply_update(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     request: UpdateApply = UpdateApply(),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -573,7 +573,7 @@ async def apply_update(
 async def reject_update(
     update_id: int,
     reason: str | None = Body(None, embed=True),
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Reject an update.
@@ -600,7 +600,7 @@ async def reject_update(
     async with db.begin_nested():
         update.status = "rejected"
         update.rejected_at = datetime.now(UTC)
-        update.rejected_by = admin.get("email") if admin else "system"
+        update.rejected_by = _admin.get("email") if _admin else "system"
         update.rejection_reason = reason
         update.version += 1  # Increment version for optimistic locking
 
@@ -622,7 +622,7 @@ async def reject_update(
 @router.post("/{update_id}/cancel-retry")
 async def cancel_retry(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateSchema:
     """Cancel a pending retry and reset update to pending status.
@@ -660,7 +660,7 @@ async def cancel_retry(
 @router.delete("/{update_id}")
 async def delete_update(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Delete an update record.
@@ -686,7 +686,7 @@ async def delete_update(
 @router.post("/{update_id}/snooze")
 async def snooze_update(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Snooze/dismiss a stale container notification.
@@ -730,7 +730,7 @@ async def snooze_update(
 @router.post("/{update_id}/remove-container")
 async def remove_container_from_db(
     update_id: int,
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Remove a stale container from the database entirely.
@@ -829,7 +829,7 @@ async def remove_container_from_db(
 
 @router.get("/scheduler/status")
 async def get_scheduler_status(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
 ) -> dict[str, Any]:
     """Get background scheduler status.
 
@@ -842,7 +842,7 @@ async def get_scheduler_status(
 
 @router.post("/scheduler/trigger")
 async def trigger_scheduler(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
 ) -> dict[str, Any]:
     """Manually trigger an update check outside the schedule.
 
@@ -862,7 +862,7 @@ async def trigger_scheduler(
 
 @router.post("/scheduler/reload")
 async def reload_scheduler(
-    admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
+    _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Reload scheduler configuration from settings.
 

@@ -51,12 +51,12 @@ class AtomicWriteError(FileOperationError):
     pass
 
 
-def validate_file_path_for_update(file_path: str) -> Path:
+def validate_file_path_for_update(file_path: str, allowed_base: Path | None = None) -> Path:
     """
     Validate file path for updates with strict security checks.
 
     Security rules:
-    - Must be within /projects (container mount point)
+    - Must be within allowed_base (defaults to /projects container mount point)
     - No path traversal attempts (.., //, symlinks)
     - File must exist and be a regular file
     - File size must be reasonable (<10MB)
@@ -64,6 +64,7 @@ def validate_file_path_for_update(file_path: str) -> Path:
 
     Args:
         file_path: Absolute or relative path to file
+        allowed_base: Base path to validate against (defaults to ALLOWED_BASE_PATH)
 
     Returns:
         Path: Validated, resolved absolute path
@@ -72,16 +73,16 @@ def validate_file_path_for_update(file_path: str) -> Path:
         PathValidationError: If validation fails
     """
     try:
+        base = allowed_base or ALLOWED_BASE_PATH
+
         # Convert to Path object and resolve
         path = Path(file_path).resolve()
 
         # Check if path is within allowed base path
         try:
-            path.relative_to(ALLOWED_BASE_PATH)
+            path.relative_to(base)
         except ValueError:
-            raise PathValidationError(
-                f"Path {file_path} is outside allowed directory {ALLOWED_BASE_PATH}"
-            )
+            raise PathValidationError(f"Path {file_path} is outside allowed directory {base}")
 
         # Check for path traversal attempts in original string
         if ".." in str(file_path) or "//" in str(file_path):

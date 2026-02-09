@@ -599,3 +599,78 @@ def mock_smtp_client():
 
     with patch("aiosmtplib.SMTP") as mock:
         yield mock
+
+
+@pytest.fixture
+def make_app_dependency():
+    """Factory fixture to create AppDependency instances.
+
+    Usage:
+        dep = make_app_dependency(container_id=1, name="express", ecosystem="npm")
+    """
+
+    def _make(**kwargs):
+        from app.models.app_dependency import AppDependency
+
+        defaults = {
+            "name": "test-package",
+            "ecosystem": "npm",
+            "current_version": "1.0.0",
+            "latest_version": "1.1.0",
+            "update_available": True,
+            "dependency_type": "production",
+            "severity": "low",
+            "manifest_file": "tidewatch/package.json",
+            "security_advisories": 0,
+        }
+        return AppDependency(**{**defaults, **kwargs})
+
+    return _make
+
+
+@pytest.fixture
+def make_dockerfile_dependency():
+    """Factory fixture to create DockerfileDependency instances.
+
+    Usage:
+        dep = make_dockerfile_dependency(container_id=1, image_name="node")
+    """
+
+    def _make(**kwargs):
+        from app.models.dockerfile_dependency import DockerfileDependency
+
+        defaults = {
+            "dependency_type": "base_image",
+            "image_name": "node",
+            "current_tag": "22-alpine",
+            "registry": "docker.io",
+            "full_image": "node:22-alpine",
+            "dockerfile_path": "tidewatch/Dockerfile",
+        }
+        return DockerfileDependency(**{**defaults, **kwargs})
+
+    return _make
+
+
+@pytest.fixture
+def make_http_server():
+    """Factory fixture to create HttpServer instances.
+
+    Usage:
+        server = make_http_server(container_id=1, name="nginx")
+    """
+
+    def _make(**kwargs):
+        from app.models.http_server import HttpServer
+
+        defaults = {
+            "name": "nginx",
+            "current_version": "1.25.0",
+            "latest_version": "1.27.0",
+            "update_available": True,
+            "severity": "medium",
+            "detection_method": "labels",
+        }
+        return HttpServer(**{**defaults, **kwargs})
+
+    return _make

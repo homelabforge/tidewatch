@@ -22,6 +22,7 @@ from app.models.http_server import HttpServer
 from app.services.changelog import ChangelogFetcher
 from app.services.changelog_updater import ChangelogUpdater
 from app.services.dockerfile_parser import DockerfileParser
+from app.services.settings_service import SettingsService
 from app.utils.file_operations import (
     FileOperationError,
     PathValidationError,
@@ -188,6 +189,7 @@ class DependencyUpdateService:
         """
         backup_path = None
         dependency = None
+        projects_base = Path("/projects")
         try:
             # Get dependency
             result = await db.execute(
@@ -210,6 +212,10 @@ class DependencyUpdateService:
             container = container_result.scalar_one_or_none()
             container_name = container.name if container else "unknown"
 
+            # Read projects directory from settings
+            projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+            projects_base = Path(projects_dir)
+
             # Validate new version
             try:
                 validate_version_string(new_version, ecosystem="docker")
@@ -221,14 +227,14 @@ class DependencyUpdateService:
                     "history_id": None,
                 }
 
-            # Construct full file path
-            # dependency.dockerfile_path is relative, need to make it absolute
-            # Inside container, files are mounted at /projects
-            file_path = Path("/projects") / dependency.dockerfile_path
+            # Construct full file path from project-relative path
+            file_path = projects_base / dependency.dockerfile_path
 
             # Validate file path
             try:
-                validated_path = validate_file_path_for_update(str(file_path))
+                validated_path = validate_file_path_for_update(
+                    str(file_path), allowed_base=projects_base
+                )
             except PathValidationError as e:
                 return {
                     "success": False,
@@ -330,7 +336,7 @@ class DependencyUpdateService:
             try:
                 project_root = ChangelogUpdater.extract_project_root(
                     dependency.dockerfile_path,
-                    base_path=Path("/projects"),
+                    base_path=projects_base,
                 )
                 if project_root:
                     ChangelogUpdater.update_changelog(
@@ -364,7 +370,7 @@ class DependencyUpdateService:
             # Try to restore backup
             if backup_path and Path(backup_path).exists() and dependency:
                 try:
-                    file_path = Path("/projects") / dependency.dockerfile_path
+                    file_path = projects_base / dependency.dockerfile_path
                     restore_from_backup(Path(backup_path), file_path)
                     logger.warning(
                         f"Restored backup after unexpected error: {sanitize_log_message(str(e))}"
@@ -392,6 +398,7 @@ class DependencyUpdateService:
         """
         backup_path = None
         server = None
+        projects_base = Path("/projects")
         try:
             # Get HTTP server
             result = await db.execute(select(HttpServer).where(HttpServer.id == server_id))
@@ -411,6 +418,10 @@ class DependencyUpdateService:
             )
             container = container_result.scalar_one_or_none()
             container_name = container.name if container else "unknown"
+
+            # Read projects directory from settings
+            projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+            projects_base = Path(projects_dir)
 
             # Validate new version (generic validation)
             try:
@@ -432,12 +443,14 @@ class DependencyUpdateService:
                     "history_id": None,
                 }
 
-            # Inside container, files are mounted at /projects
-            file_path = Path("/projects") / server.dockerfile_path
+            # Construct full file path from project-relative path
+            file_path = projects_base / server.dockerfile_path
 
             # Validate file path
             try:
-                validated_path = validate_file_path_for_update(str(file_path))
+                validated_path = validate_file_path_for_update(
+                    str(file_path), allowed_base=projects_base
+                )
             except PathValidationError as e:
                 return {
                     "success": False,
@@ -530,7 +543,7 @@ class DependencyUpdateService:
             try:
                 project_root = ChangelogUpdater.extract_project_root(
                     server.dockerfile_path,
-                    base_path=Path("/projects"),
+                    base_path=projects_base,
                 )
                 if project_root:
                     ChangelogUpdater.update_changelog(
@@ -563,7 +576,7 @@ class DependencyUpdateService:
 
             if backup_path and Path(backup_path).exists() and server:
                 try:
-                    file_path = Path("/projects") / (server.dockerfile_path or "")
+                    file_path = projects_base / (server.dockerfile_path or "")
                     restore_from_backup(Path(backup_path), file_path)
                 except Exception:
                     pass
@@ -589,6 +602,7 @@ class DependencyUpdateService:
         """
         backup_path = None
         dependency = None
+        projects_base = Path("/projects")
         try:
             # Get dependency
             result = await db.execute(
@@ -611,6 +625,10 @@ class DependencyUpdateService:
             container = container_result.scalar_one_or_none()
             container_name = container.name if container else "unknown"
 
+            # Read projects directory from settings
+            projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+            projects_base = Path(projects_dir)
+
             # Validate new version based on ecosystem
             try:
                 validate_version_string(new_version, ecosystem=dependency.ecosystem)
@@ -622,13 +640,14 @@ class DependencyUpdateService:
                     "history_id": None,
                 }
 
-            # Construct full file path
-            # Inside container, files are mounted at /projects
-            file_path = Path("/projects") / dependency.manifest_file
+            # Construct full file path from project-relative path
+            file_path = projects_base / dependency.manifest_file
 
             # Validate file path
             try:
-                validated_path = validate_file_path_for_update(str(file_path))
+                validated_path = validate_file_path_for_update(
+                    str(file_path), allowed_base=projects_base
+                )
             except PathValidationError as e:
                 return {
                     "success": False,
@@ -656,11 +675,13 @@ class DependencyUpdateService:
 
             if manifest_name == "package.json":
                 # Map dependency_type to package.json section names
-                section_name = (
-                    "dependencies"
-                    if dependency.dependency_type == "production"
-                    else "devDependencies"
-                )
+                pkg_type_map = {
+                    "production": "dependencies",
+                    "development": "devDependencies",
+                    "optional": "optionalDependencies",
+                    "peer": "peerDependencies",
+                }
+                section_name = pkg_type_map.get(dependency.dependency_type, "dependencies")
                 success, updated_content = update_package_json(
                     validated_path, dependency.name, new_version, section_name
                 )
@@ -670,9 +691,13 @@ class DependencyUpdateService:
                 )
             elif manifest_name == "pyproject.toml":
                 # Map dependency_type to pyproject.toml section
-                section = (
-                    "dependencies" if dependency.dependency_type == "production" else "development"
-                )
+                # Must match parser contract: "dependencies", "development", "optional"
+                pyproject_type_map = {
+                    "production": "dependencies",
+                    "development": "development",
+                    "optional": "optional",
+                }
+                section = pyproject_type_map.get(dependency.dependency_type, "dependencies")
                 success, updated_content = update_pyproject_toml(
                     validated_path, dependency.name, new_version, section
                 )
@@ -685,11 +710,11 @@ class DependencyUpdateService:
                 )
             elif manifest_name == "cargo.toml":
                 # Map dependency_type to Cargo.toml section
-                section = (
-                    "dependencies"
-                    if dependency.dependency_type == "production"
-                    else "dev-dependencies"
-                )
+                cargo_type_map = {
+                    "production": "dependencies",
+                    "development": "dev-dependencies",
+                }
+                section = cargo_type_map.get(dependency.dependency_type, "dependencies")
                 success, updated_content = update_cargo_toml(
                     validated_path, dependency.name, new_version, section
                 )
@@ -771,7 +796,7 @@ class DependencyUpdateService:
             try:
                 project_root = ChangelogUpdater.extract_project_root(
                     dependency.manifest_file,
-                    base_path=Path("/projects"),
+                    base_path=projects_base,
                 )
                 if project_root:
                     ChangelogUpdater.update_changelog(
@@ -805,7 +830,7 @@ class DependencyUpdateService:
 
             if backup_path and Path(backup_path).exists() and dependency:
                 try:
-                    file_path = Path("/projects") / dependency.manifest_file
+                    file_path = projects_base / dependency.manifest_file
                     restore_from_backup(Path(backup_path), file_path)
                 except Exception:
                     pass

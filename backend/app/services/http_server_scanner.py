@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -99,8 +99,18 @@ class HttpServerScanner:
         try:
             container = self.docker_client.containers.get(container_name)
 
+            # Read projects directory from settings for path reconstruction
+            if db:
+                from app.services.settings_service import SettingsService
+
+                projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
+            else:
+                projects_dir = "/projects"
+
             # Method 0: Check container labels (works even when stopped)
-            label_servers = await self._detect_from_labels(container, container_model, db)
+            label_servers = await self._detect_from_labels(
+                container, container_model, db, projects_dir=projects_dir
+            )
 
             # If container is not running, only use label detection
             if container.status != "running":
@@ -163,7 +173,10 @@ class HttpServerScanner:
                         server["line_number"] = line_number
 
                         # Read version from Dockerfile LABEL (source of truth)
-                        dockerfile_version = self._read_version_from_dockerfile(dockerfile_path)
+                        # dockerfile_path is now relative, reconstruct absolute for file read
+                        dockerfile_version = self._read_version_from_dockerfile(
+                            str(Path(projects_dir) / dockerfile_path)
+                        )
                         if dockerfile_version:
                             server["current_version"] = dockerfile_version
                             logger.info(
@@ -201,8 +214,6 @@ class HttpServerScanner:
         Returns:
             List of persisted HttpServer model instances with IDs
         """
-        from datetime import UTC, datetime
-
         from sqlalchemy import select
 
         from app.models.http_server import HttpServer
@@ -220,23 +231,43 @@ class HttpServerScanner:
                 return major
             return None
 
+        # Fetch ALL existing records for this container for reconciliation + dedup
+        all_existing_result = await db.execute(
+            select(HttpServer).where(HttpServer.container_id == container_id)
+        )
+        existing_by_name: dict[str, list[HttpServer]] = {}
+        for existing in all_existing_result.scalars().all():
+            existing_by_name.setdefault(existing.name, []).append(existing)
+
+        # Deduplicate: if multiple rows share (container_id, name), keep newest, delete rest
+        min_dt = datetime(1970, 1, 1, tzinfo=UTC)
+        for name, dupes in existing_by_name.items():
+            if len(dupes) > 1:
+                dupes.sort(key=lambda x: x.last_checked or min_dt, reverse=True)
+                for stale in dupes[1:]:
+                    logger.info(
+                        f"Removing duplicate HTTP server record: {name} for container {container_id}"
+                    )
+                    await db.delete(stale)
+                existing_by_name[name] = [dupes[0]]
+
+        # Upsert loop
         persisted = []
+        seen_names: set[str] = set()
         for server_data in servers:
-            # Check if exists (upsert based on container_id + name)
-            result = await db.execute(
-                select(HttpServer).where(
-                    HttpServer.container_id == container_id,
-                    HttpServer.name == server_data["name"],
-                )
-            )
-            server = result.scalar_one_or_none()
+            server_name = server_data["name"]
+            seen_names.add(server_name)
+
+            # Look up existing record from pre-fetched map
+            existing_list = existing_by_name.get(server_name)
+            server = existing_list[0] if existing_list else None
 
             if server:
                 # Update existing record
                 server.current_version = server_data.get("current_version")
                 server.latest_version = server_data.get("latest_version")
                 server.update_available = server_data.get("update_available", False)
-                server.detection_method = server_data.get("detection_method")
+                server.detection_method = server_data.get("detection_method", "unknown")
                 server.dockerfile_path = server_data.get("dockerfile_path")
                 server.line_number = server_data.get("line_number")
                 server.last_checked = datetime.now(UTC)
@@ -258,11 +289,11 @@ class HttpServerScanner:
                 # Create new record
                 server = HttpServer(
                     container_id=container_id,
-                    name=server_data["name"],
+                    name=server_name,
                     current_version=server_data.get("current_version"),
                     latest_version=server_data.get("latest_version"),
                     update_available=server_data.get("update_available", False),
-                    detection_method=server_data.get("detection_method"),
+                    detection_method=server_data.get("detection_method", "unknown"),
                     dockerfile_path=server_data.get("dockerfile_path"),
                     line_number=server_data.get("line_number"),
                     last_checked=datetime.now(UTC),
@@ -273,6 +304,13 @@ class HttpServerScanner:
                 )
 
             persisted.append(server)
+
+        # Remove stale records not in current scan results
+        for name, records in existing_by_name.items():
+            if name not in seen_names:
+                for record in records:
+                    logger.info(f"Removing stale HTTP server: {name} for container {container_id}")
+                    await db.delete(record)
 
         # Commit and refresh to get IDs
         await db.commit()
@@ -337,7 +375,7 @@ class HttpServerScanner:
                             "name": server_name,
                             "current_version": None,
                             "detection_method": "process",
-                            "last_checked": datetime.utcnow(),
+                            "last_checked": datetime.now(UTC),
                         }
                     )
                     logger.info(f"Detected {server_name} from process list in {container.name}")
@@ -377,7 +415,7 @@ class HttpServerScanner:
                                     "name": server_name,
                                     "current_version": version,
                                     "detection_method": "version_command",
-                                    "last_checked": datetime.utcnow(),
+                                    "last_checked": datetime.now(UTC),
                                 }
                             )
                             logger.info(f"Detected {server_name} v{version} in {container.name}")
@@ -482,7 +520,11 @@ class HttpServerScanner:
             return "info"
 
     async def _detect_from_labels(
-        self, container, container_model=None, db=None
+        self,
+        container,
+        container_model=None,
+        db=None,
+        projects_dir: str = "/projects",
     ) -> list[dict[str, Any]]:
         """Detect HTTP servers from container labels.
 
@@ -490,6 +532,7 @@ class HttpServerScanner:
             container: Docker container object
             container_model: Optional Container database model with is_my_project flag
             db: Optional database session for reading settings
+            projects_dir: Projects directory for path reconstruction
 
         Returns:
             List of server info dicts with dockerfile_path populated if available
@@ -506,7 +549,7 @@ class HttpServerScanner:
                     "name": server_name.lower(),
                     "current_version": labels.get("http.server.version"),
                     "detection_method": "labels",
-                    "last_checked": datetime.utcnow(),
+                    "last_checked": datetime.now(UTC),
                 }
 
                 # Detect Dockerfile path for "My Projects" containers
@@ -519,7 +562,7 @@ class HttpServerScanner:
                     # Read version from Dockerfile (source of truth) instead of
                     # container labels which may be stale from the built image
                     dockerfile_version = self._read_version_from_dockerfile(
-                        str(Path("/projects") / dockerfile_path)
+                        str(Path(projects_dir) / dockerfile_path)
                     )
                     if dockerfile_version:
                         server_info["current_version"] = dockerfile_version
@@ -589,7 +632,7 @@ class HttpServerScanner:
 
             # Get projects directory from settings (fallback to /projects)
             if db:
-                projects_dir = await SettingsService.get(db, "projects_directory")
+                projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
             else:
                 projects_dir = "/projects"  # Fallback if no db session
                 logger.warning(
@@ -600,32 +643,35 @@ class HttpServerScanner:
             # Examples: "familycircle-dev" -> "familycircle", "mygarage" -> "mygarage"
             project_name = container.name.split("-")[0]
 
-            # Construct Dockerfile path using setting
-            dockerfile_path = f"{projects_dir}/{project_name}/Dockerfile"
+            # Construct absolute Dockerfile path for filesystem access
+            abs_dockerfile = Path(projects_dir) / project_name / "Dockerfile"
 
             # Verify file exists
-            if not Path(dockerfile_path).exists():
+            if not abs_dockerfile.exists():
                 logger.warning(
-                    f"Expected Dockerfile not found at {dockerfile_path} for container {container.name}"
+                    f"Expected Dockerfile not found at {abs_dockerfile} for container {container.name}"
                 )
                 return None, None
 
             # Find line number of http.server.version label
             line_number = None
-            with open(dockerfile_path, encoding="utf-8") as f:
+            with open(abs_dockerfile, encoding="utf-8") as f:
                 for i, line in enumerate(f, start=1):
                     if "LABEL http.server.version=" in line:
                         line_number = i
                         break
 
+            # Store project-relative path (e.g. "tidewatch/Dockerfile")
+            rel_path = str(abs_dockerfile.relative_to(projects_dir))
+
             if line_number:
                 logger.info(
-                    f"Found Dockerfile at {dockerfile_path}:{line_number} for {container.name}"
+                    f"Found Dockerfile at {abs_dockerfile}:{line_number} for {container.name}"
                 )
             else:
-                logger.warning(f"Could not find http.server.version label in {dockerfile_path}")
+                logger.warning(f"Could not find http.server.version label in {abs_dockerfile}")
 
-            return dockerfile_path, line_number
+            return rel_path, line_number
 
         except OSError as e:
             logger.error(f"Error reading Dockerfile: {e}")
@@ -656,7 +702,7 @@ class HttpServerScanner:
                         "name": server_name,
                         "current_version": None,
                         "detection_method": "container_config",
-                        "last_checked": datetime.utcnow(),
+                        "last_checked": datetime.now(UTC),
                     }
 
                     # Try to extract version from command args (rare but possible)

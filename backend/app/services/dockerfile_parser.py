@@ -262,6 +262,16 @@ class DockerfileParser:
                     # Determine dependency type
                     dependency_type = "build_image" if stage_name else "base_image"
 
+                    # Compute project-relative path for storage
+                    try:
+                        rel_path = str(dockerfile_path.relative_to(self.projects_directory))
+                    except ValueError:
+                        logger.warning(
+                            f"Skipping Dockerfile outside projects_directory: "
+                            f"{sanitize_log_message(str(dockerfile_path))}"
+                        )
+                        continue
+
                     dep = DockerfileDependency(
                         container_id=container_id,
                         dependency_type=dependency_type,
@@ -269,9 +279,7 @@ class DockerfileParser:
                         current_tag=tag,
                         registry=registry,
                         full_image=full_image,
-                        dockerfile_path=str(
-                            dockerfile_path.relative_to(dockerfile_path.parent.parent)
-                        ),
+                        dockerfile_path=rel_path,
                         line_number=line_num,
                         stage_name=stage_name,
                         update_available=False,

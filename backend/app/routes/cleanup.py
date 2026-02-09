@@ -25,7 +25,7 @@ def _parse_exclude_patterns(patterns_str: str | None) -> list[str]:
 
 @router.get("/stats")
 async def get_disk_usage(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
 ) -> dict[str, Any]:
     """Get Docker disk usage statistics.
 
@@ -41,7 +41,7 @@ async def get_disk_usage(
 
 @router.get("/preview")
 async def preview_cleanup(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     mode: str | None = Query(None, description="Override cleanup mode"),
     days: int | None = Query(None, description="Override days threshold"),
     db: AsyncSession = Depends(get_db),
@@ -77,7 +77,7 @@ async def preview_cleanup(
 
 @router.post("/images")
 async def cleanup_images(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     dangling_only: bool = Query(True, description="Only remove dangling (untagged) images"),
     older_than_days: int | None = Query(None, description="Remove images older than X days"),
     db: AsyncSession = Depends(get_db),
@@ -117,7 +117,7 @@ async def cleanup_images(
 
 @router.post("/containers")
 async def cleanup_containers(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Clean up exited/dead containers.
@@ -145,7 +145,7 @@ async def cleanup_containers(
 
 @router.post("/all")
 async def cleanup_all(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     mode: str | None = Query(None, description="Override cleanup mode"),
     days: int | None = Query(None, description="Override days threshold"),
     db: AsyncSession = Depends(get_db),
@@ -180,7 +180,7 @@ async def cleanup_all(
 
 @router.post("/run-now")
 async def run_cleanup_now(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Trigger immediate cleanup using current settings.
@@ -217,7 +217,7 @@ async def run_cleanup_now(
 
 @router.get("/settings")
 async def get_cleanup_settings(
-    admin: dict | None = Depends(require_auth),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get current cleanup settings.
