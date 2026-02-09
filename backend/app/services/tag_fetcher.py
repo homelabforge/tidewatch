@@ -18,7 +18,7 @@ from app.services.check_run_context import (
     ImageCheckKey,
     TagFetchResult,
 )
-from app.services.registry_client import RegistryClientFactory
+from app.services.registry_client import RegistryClientFactory, is_non_semver_tag
 from app.services.registry_rate_limiter import RateLimitedRequest, RegistryRateLimiter
 from app.services.settings_service import SettingsService
 
@@ -173,6 +173,16 @@ class TagFetcher:
                 client = await RegistryClientFactory.get_client(request.registry, self._db)
 
                 try:
+                    is_non_semver = is_non_semver_tag(request.current_tag)
+
+                    # For registries that use TagCache (GHCR/LSCR/GCR/Quay),
+                    # pre-populate cache so get_latest_tag and get_latest_major_tag
+                    # avoid redundant API calls. Skip for Docker Hub (uses its own
+                    # optimized paginated fetch) and non-semver tags (only need digest).
+                    all_tags: list[str] = []
+                    if client.uses_tag_cache_for_latest and not is_non_semver:
+                        all_tags = await client.get_all_tags(request.image)
+
                     # Fetch latest tag within scope
                     latest_tag = await client.get_latest_tag(
                         request.image,
@@ -194,17 +204,23 @@ class TagFetcher:
                         except Exception as e:
                             logger.warning(f"Failed to fetch major tag for {request.image}: {e}")
 
-                    # Get all tags (may be cached in global 15-min cache)
-                    all_tags = await client.get_all_tags(request.image)
+                    # For Docker Hub with semver tags, fetch all_tags after
+                    # get_latest_tag (which already made optimized API calls).
+                    # For non-semver tags, all_tags is not needed.
+                    if not all_tags and not is_non_semver:
+                        all_tags = await client.get_all_tags(request.image)
 
-                    # Get metadata for 'latest' tag (digest tracking)
+                    # Get metadata for non-semver tags (digest tracking)
                     metadata = None
-                    if request.current_tag == "latest":
+                    if is_non_semver:
                         try:
-                            metadata = await client.get_tag_metadata(request.image, "latest")
+                            metadata = await client.get_tag_metadata(
+                                request.image, request.current_tag
+                            )
                         except Exception as e:
                             logger.warning(
-                                f"Failed to fetch metadata for {request.image}:latest: {e}"
+                                f"Failed to fetch metadata for "
+                                f"{request.image}:{request.current_tag}: {e}"
                             )
 
                     duration_ms = (time.monotonic() - start_time) * 1000
@@ -270,21 +286,24 @@ class TagFetcher:
         Returns:
             FetchTagsResponse with tags and metadata
         """
-        # Get effective include_prereleases setting
-        # Container setting takes precedence, fall back to global
-        include_prereleases: bool = container.include_prereleases or False  # type: ignore[attr-defined]
-        if not include_prereleases:
-            global_include_prereleases = await SettingsService.get_bool(
+        # Get effective include_prereleases setting (tri-state)
+        # None=inherit global, True=force include, False=force stable only
+        container_prereleases: bool | None = container.include_prereleases  # type: ignore[attr-defined]
+        if container_prereleases is not None:
+            include_prereleases: bool = container_prereleases
+        else:
+            include_prereleases = await SettingsService.get_bool(
                 self._db, "include_prereleases", default=False
             )
-            include_prereleases = global_include_prereleases
 
         # Build request from container attributes
         registry: str = str(container.registry)  # type: ignore[attr-defined]
         image: str = str(container.image)  # type: ignore[attr-defined]
         current_tag: str = str(container.current_tag)  # type: ignore[attr-defined]
         scope: str = str(container.scope)  # type: ignore[attr-defined]
-        current_digest: str | None = container.current_digest if current_tag == "latest" else None  # type: ignore[attr-defined]
+        current_digest: str | None = (
+            container.current_digest if is_non_semver_tag(current_tag) else None
+        )  # type: ignore[attr-defined]
 
         return await self.fetch_tags(
             FetchTagsRequest(

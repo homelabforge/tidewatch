@@ -158,6 +158,40 @@ def tags_have_matching_pattern(current_tag: str, candidate_tag: str) -> bool:
     return extract_tag_pattern(current_tag) == extract_tag_pattern(candidate_tag)
 
 
+def is_non_semver_tag(tag: str) -> bool:
+    """Check if a tag requires digest-based tracking (non-semantic version).
+
+    Non-semver tags like 'latest', 'lts', 'stable', 'alpine', 'edge' cannot
+    be compared using version logic and must use digest-based change detection.
+
+    Args:
+        tag: Tag to check
+
+    Returns:
+        True if tag cannot be parsed as a semantic version
+    """
+    version = tag.lstrip("v")
+    if version == "latest":
+        return True
+
+    if "+" in version:
+        version = version.split("+", 1)[0]
+
+    try:
+        Version(version)
+        return False
+    except InvalidVersion:
+        for sep in ("-", "_"):
+            if sep in version:
+                base = version.split(sep, 1)[0]
+                try:
+                    Version(base)
+                    return False
+                except InvalidVersion:
+                    continue
+        return True
+
+
 # Simple in-memory cache for registry tags with TTL
 class TagCache:
     """Thread-safe in-memory cache for registry tags with TTL."""
@@ -278,6 +312,12 @@ HOST_ARCH_CANONICAL = canonical_arch_suffix(platform.machine().lower())
 class RegistryClient(ABC):
     """Base class for registry clients."""
 
+    # Whether get_latest_tag() internally calls get_all_tags() and benefits
+    # from TagCache being pre-populated.  True for GHCR/LSCR/GCR/Quay;
+    # overridden to False for Docker Hub whose get_latest_tag uses a separate
+    # optimized paginated fetch (_get_semver_update) that does not use TagCache.
+    uses_tag_cache_for_latest: bool = True
+
     def __init__(self, username: str | None = None, token: str | None = None) -> None:
         """Initialize registry client.
 
@@ -312,7 +352,9 @@ class RegistryClient(ABC):
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self, _exc_type: type | None, _exc_val: BaseException | None, _exc_tb: object | None
+    ) -> bool:
         """Async context manager exit - ensures client is closed."""
         await self.close()
         return False
@@ -425,7 +467,9 @@ class RegistryClient(ABC):
         normalized_candidate = self._normalize_version(candidate)
 
         if not normalized_current or not normalized_candidate:
-            return candidate > current
+            # Cannot compare semantically — don't fall back to lexicographic
+            # comparison because e.g. "1.9.9" > "1.10.0" is True lexicographically
+            return False
 
         curr_major, curr_minor, curr_patch, curr_extra = normalized_current
         cand_major, cand_minor, cand_patch, cand_extra = normalized_candidate
@@ -481,6 +525,60 @@ class RegistryClient(ABC):
     def _parse_semver(self, version: str) -> tuple[int, int, int, tuple] | None:
         """Backward-compatible helper for existing version-parsing calls."""
         return self._normalize_version(version)
+
+    def _is_better_version(self, candidate: str, current_best: str) -> bool:
+        """Compare two version tags using semantic version ordering.
+
+        Uses packaging.Version for comparison instead of lexicographic
+        string comparison, which would incorrectly rank '1.9.9' above
+        '1.10.0'. Also correctly handles prerelease ordering (2.0.0 > 2.0.0rc1).
+
+        Falls back to string comparison only when neither version can be parsed.
+
+        Args:
+            candidate: Version tag to evaluate
+            current_best: Current best version tag
+
+        Returns:
+            True if candidate is a newer version than current_best
+        """
+        candidate_parsed = self._try_parse_version(candidate)
+        best_parsed = self._try_parse_version(current_best)
+
+        if candidate_parsed is not None and best_parsed is not None:
+            return candidate_parsed > best_parsed
+        # If only one parses, prefer the parseable one
+        if candidate_parsed is not None and best_parsed is None:
+            return True
+        if candidate_parsed is None and best_parsed is not None:
+            return False
+        # Neither parses — fall back to string comparison
+        return candidate > current_best
+
+    @staticmethod
+    def _try_parse_version(tag: str) -> Version | None:
+        """Try to parse a tag as a PEP 440 version.
+
+        Args:
+            tag: Version string (may have 'v' prefix or build metadata)
+
+        Returns:
+            Version object or None if unparseable
+        """
+        version = tag.lstrip("v")
+        if "+" in version:
+            version = version.split("+", 1)[0]
+        try:
+            return Version(version)
+        except InvalidVersion:
+            for sep in ("-", "_"):
+                if sep in version:
+                    base = version.split(sep, 1)[0]
+                    try:
+                        return Version(base)
+                    except InvalidVersion:
+                        continue
+            return None
 
     def _is_non_semver_tag(self, tag: str) -> bool:
         """Check if tag requires digest tracking (non-semantic version).
@@ -571,6 +669,7 @@ class DockerHubClient(RegistryClient):
     """Docker Hub registry client."""
 
     BASE_URL = "https://hub.docker.com/v2"
+    uses_tag_cache_for_latest: bool = False
 
     async def get_all_tags(self, image: str) -> list[str]:
         """Get all tags from Docker Hub with caching.
@@ -748,7 +847,7 @@ class DockerHubClient(RegistryClient):
 
         try:
             # Fetch up to 500 tags (5 pages) max
-            for page in range(5):
+            for _page in range(5):
                 response = await self.client.get(url)
                 response.raise_for_status()
                 data = response.json()
@@ -793,7 +892,7 @@ class DockerHubClient(RegistryClient):
 
                     # Check if this is a valid update
                     if self._compare_versions(current_tag, tag_name, scope):
-                        if best_tag is None or tag_name > best_tag:
+                        if best_tag is None or self._is_better_version(tag_name, best_tag):
                             best_tag = tag_name
 
                 # Early exit if we found a good update and current page has old versions
@@ -1018,16 +1117,16 @@ class GHCRClient(RegistryClient):
         Returns:
             New tag if update available, None otherwise
         """
-        # Special case: if current tag is 'latest', check digest
-        if current_tag == "latest" and current_digest is not None:
-            metadata = await self.get_tag_metadata(image, "latest")
+        # Non-semver tags (latest, lts, stable, alpine, edge, etc.) use digest tracking
+        if is_non_semver_tag(current_tag) and current_digest is not None:
+            metadata = await self.get_tag_metadata(image, current_tag)
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
                     logger.info(
-                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                        f"Digest changed for {image}:{current_tag}: {current_digest} -> {new_digest}"
                     )
-                    return "latest"
+                    return current_tag
             return None
 
         tags = await self.get_all_tags(image)
@@ -1072,7 +1171,7 @@ class GHCRClient(RegistryClient):
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(current_tag, tag, scope):
-                if best_tag is None or tag > best_tag:
+                if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
         return best_tag
@@ -1239,16 +1338,16 @@ class LSCRClient(RegistryClient):
         Returns:
             New tag if update available, None otherwise
         """
-        # Special case: if current tag is 'latest', check digest
-        if current_tag == "latest" and current_digest is not None:
-            metadata = await self.get_tag_metadata(image, "latest")
+        # Non-semver tags (latest, lts, stable, alpine, edge, etc.) use digest tracking
+        if is_non_semver_tag(current_tag) and current_digest is not None:
+            metadata = await self.get_tag_metadata(image, current_tag)
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
                     logger.info(
-                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                        f"Digest changed for {image}:{current_tag}: {current_digest} -> {new_digest}"
                     )
-                    return "latest"
+                    return current_tag
             return None
 
         tags = await self.get_all_tags(image)
@@ -1274,7 +1373,7 @@ class LSCRClient(RegistryClient):
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(current_tag, tag, scope):
-                if best_tag is None or tag > best_tag:
+                if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
         return best_tag
@@ -1387,16 +1486,16 @@ class GCRClient(RegistryClient):
         Returns:
             New tag if update available, None otherwise
         """
-        # Special case: if current tag is 'latest', check digest
-        if current_tag == "latest" and current_digest is not None:
-            metadata = await self.get_tag_metadata(image, "latest")
+        # Non-semver tags (latest, lts, stable, alpine, edge, etc.) use digest tracking
+        if is_non_semver_tag(current_tag) and current_digest is not None:
+            metadata = await self.get_tag_metadata(image, current_tag)
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
                     logger.info(
-                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                        f"Digest changed for {image}:{current_tag}: {current_digest} -> {new_digest}"
                     )
-                    return "latest"
+                    return current_tag
             return None
 
         tags = await self.get_all_tags(image)
@@ -1441,7 +1540,7 @@ class GCRClient(RegistryClient):
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(current_tag, tag, scope):
-                if best_tag is None or tag > best_tag:
+                if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
         return best_tag
@@ -1546,16 +1645,16 @@ class QuayClient(RegistryClient):
         Returns:
             New tag if update available, None otherwise
         """
-        # Special case: if current tag is 'latest', check digest
-        if current_tag == "latest" and current_digest is not None:
-            metadata = await self.get_tag_metadata(image, "latest")
+        # Non-semver tags (latest, lts, stable, alpine, edge, etc.) use digest tracking
+        if is_non_semver_tag(current_tag) and current_digest is not None:
+            metadata = await self.get_tag_metadata(image, current_tag)
             if metadata and metadata.get("digest"):
                 new_digest = metadata["digest"]
                 if new_digest != current_digest:
                     logger.info(
-                        f"Digest changed for {image}:latest: {current_digest} -> {new_digest}"
+                        f"Digest changed for {image}:{current_tag}: {current_digest} -> {new_digest}"
                     )
-                    return "latest"
+                    return current_tag
             return None
 
         tags = await self.get_all_tags(image)
@@ -1600,7 +1699,7 @@ class QuayClient(RegistryClient):
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(current_tag, tag, scope):
-                if best_tag is None or tag > best_tag:
+                if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
         return best_tag

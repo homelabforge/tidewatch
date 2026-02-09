@@ -34,7 +34,10 @@ class CheckJob(Base):
     updates_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    # Current container being processed (for live progress display)
+    # Per-container progress is sent via SSE only (no per-container DB commits).
+    # These columns remain for schema compatibility but are not actively written.
+    # DB-level progress uses checked_count/total_count above; real-time progress
+    # is delivered via SSE events from check_job_service.
     current_container_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_container_name: Mapped[str | None] = mapped_column(String, nullable=True)
 

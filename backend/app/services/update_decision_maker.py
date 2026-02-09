@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from app.services.registry_client import is_non_semver_tag
 from app.services.tag_fetcher import FetchTagsResponse
 from app.utils.version import get_version_change_type
 
@@ -154,6 +155,7 @@ class UpdateDecision:
     trace: UpdateDecisionTrace
     digest_changed: bool = False
     new_digest: str | None = None
+    digest_baseline_needed: bool = False
 
 
 class UpdateDecisionMaker:
@@ -242,10 +244,11 @@ class UpdateDecisionMaker:
         latest_tag = fetch_response.latest_tag
         latest_major_tag = fetch_response.latest_major_tag
 
-        # Check for digest-based update (for 'latest' tag)
+        # Check for digest-based update (non-semver tags: latest, lts, stable, etc.)
         digest_changed = False
+        digest_baseline_needed = False
         new_digest: str | None = None
-        if current_tag == "latest" and fetch_response.metadata:
+        if is_non_semver_tag(current_tag) and fetch_response.metadata:
             new_digest = fetch_response.metadata.get("digest")
             if new_digest and current_digest:
                 digest_changed = new_digest != current_digest
@@ -254,6 +257,10 @@ class UpdateDecisionMaker:
                     new_digest,
                     digest_changed,
                 )
+            elif new_digest and current_digest is None:
+                # First run: baseline needs to be stored but it's not an "update"
+                digest_baseline_needed = True
+                trace.set_digest_update(None, new_digest, False)
 
         # Determine if there's an in-scope update
         has_update = False
@@ -289,6 +296,7 @@ class UpdateDecisionMaker:
             trace=trace,
             digest_changed=digest_changed,
             new_digest=new_digest,
+            digest_baseline_needed=digest_baseline_needed,
         )
 
     def _extract_suffix(self, tag: str) -> str | None:

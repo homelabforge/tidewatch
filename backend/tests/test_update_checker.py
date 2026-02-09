@@ -163,6 +163,7 @@ class TestUpdateDetection:
         # Mock registry client
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         # Mock existing update query (no pending updates)
@@ -742,6 +743,7 @@ class TestEventBusNotifications:
 
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         existing_result = MagicMock()
@@ -942,7 +944,12 @@ class TestErrorHandling:
     def mock_db(self):
         """Create mock database session."""
         db = AsyncMock()
-        db.execute = AsyncMock()
+        # Return MagicMock from execute so sync methods (scalar_one_or_none)
+        # don't create unawaited coroutines
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none = MagicMock(return_value=None)
+        result_mock.scalars.return_value.all.return_value = []
+        db.execute = AsyncMock(return_value=result_mock)
         db.commit = AsyncMock()
         db.rollback = AsyncMock()
         return db
@@ -970,6 +977,7 @@ class TestErrorHandling:
                 "Not found", request=MagicMock(), response=MagicMock(status_code=404)
             )
         )
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         with (
@@ -1003,6 +1011,7 @@ class TestErrorHandling:
         import httpx
 
         mock_client.get_latest_tag = AsyncMock(side_effect=httpx.ConnectError("Connection failed"))
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         with (
@@ -1033,6 +1042,7 @@ class TestErrorHandling:
 
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(side_effect=ValueError("Test error"))
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         with (
@@ -1176,6 +1186,7 @@ class TestPrereleaseHandling:
         # Mock registry client
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         existing_result = MagicMock()
@@ -1197,10 +1208,8 @@ class TestPrereleaseHandling:
             assert call_kwargs["include_prereleases"] is True
 
     @pytest.mark.asyncio
-    async def test_check_container_uses_global_prerelease_setting_when_container_false(
-        self, mock_db
-    ):
-        """Test check_container falls back to global prerelease setting."""
+    async def test_check_container_uses_explicit_false_prerelease_over_global_true(self, mock_db):
+        """Test container prerelease=False overrides global=True (tri-state)."""
         container = Container(
             id=1,
             name="nginx",
@@ -1212,12 +1221,13 @@ class TestPrereleaseHandling:
             policy="monitor",
             scope="patch",
             vulnforge_enabled=False,
-            include_prereleases=False,  # Container-specific is False, should check global
+            include_prereleases=False,  # Explicitly stable-only
         )
 
         # Mock registry client
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value=None)
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.close = AsyncMock()
 
         existing_result = MagicMock()
@@ -1232,13 +1242,59 @@ class TestPrereleaseHandling:
             patch(
                 "app.services.update_checker.SettingsService.get_bool",
                 new_callable=AsyncMock,
-                return_value=True,
+                return_value=True,  # Global says include prereleases
             ),
             patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock),
         ):
             await UpdateChecker.check_container(mock_db, container)
 
-            # Should have called get_latest_tag with global prerelease=True
+            # Container explicitly False — should NOT inherit global True
+            mock_client.get_latest_tag.assert_called_once()
+            call_kwargs = mock_client.get_latest_tag.call_args.kwargs
+            assert call_kwargs["include_prereleases"] is False
+
+    @pytest.mark.asyncio
+    async def test_check_container_uses_global_prerelease_when_container_none(self, mock_db):
+        """Test container prerelease=None inherits global setting (tri-state)."""
+        container = Container(
+            id=1,
+            name="nginx",
+            image="nginx",
+            current_tag="1.0.0",
+            registry="docker.io",
+            compose_file="/compose/nginx.yml",
+            service_name="nginx",
+            policy="monitor",
+            scope="patch",
+            vulnforge_enabled=False,
+            include_prereleases=None,  # Inherit global
+        )
+
+        # Mock registry client
+        mock_client = AsyncMock()
+        mock_client.get_latest_tag = AsyncMock(return_value=None)
+        mock_client.get_latest_major_tag = AsyncMock(return_value=None)
+        mock_client.close = AsyncMock()
+
+        existing_result = MagicMock()
+        existing_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(return_value=existing_result)
+
+        with (
+            patch(
+                "app.services.update_checker.RegistryClientFactory.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "app.services.update_checker.SettingsService.get_bool",
+                new_callable=AsyncMock,
+                return_value=True,  # Global says include prereleases
+            ),
+            patch("app.services.update_checker.event_bus.publish", new_callable=AsyncMock),
+        ):
+            await UpdateChecker.check_container(mock_db, container)
+
+            # Container is None — should inherit global True
             mock_client.get_latest_tag.assert_called_once()
             call_kwargs = mock_client.get_latest_tag.call_args.kwargs
             assert call_kwargs["include_prereleases"] is True

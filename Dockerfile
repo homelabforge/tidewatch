@@ -6,7 +6,7 @@
 # ==============================================================================
 
 # Stage 1: Build frontend with Bun
-FROM oven/bun:1.3.8-alpine AS frontend-builder
+FROM oven/bun:1.3.9-alpine AS frontend-builder
 
 # Set working directory
 WORKDIR /app/frontend
@@ -68,7 +68,7 @@ LABEL org.opencontainers.image.description="Intelligent Docker container update 
 
 # HTTP server metadata
 LABEL http.server.name="granian"
-LABEL http.server.version="2.7.0"
+LABEL http.server.version="2.7.1"
 LABEL http.server.type="asgi"
 
 WORKDIR /app

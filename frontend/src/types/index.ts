@@ -10,7 +10,7 @@ export interface Container {
   service_name: string;
   policy: string;
   scope: string;
-  include_prereleases: boolean;
+  include_prereleases: boolean | null;
   vulnforge_enabled: boolean;
   current_vuln_count: number;
   is_my_project: boolean;

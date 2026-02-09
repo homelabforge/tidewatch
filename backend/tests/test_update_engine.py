@@ -340,7 +340,7 @@ class TestImagePulling:
         compose_file = "/compose/media/sonarr.yml"
         service_name = "sonarr"
 
-        mock_process = AsyncMock()
+        mock_process = MagicMock()
         mock_process.communicate = AsyncMock(return_value=(b"Pulling image...", b""))
         mock_process.returncode = 0
 
@@ -370,9 +370,14 @@ class TestImagePulling:
 
         mock_process = AsyncMock()
 
+        def mock_wait_for_timeout(coro, timeout=None):
+            """Simulate asyncio.wait_for timeout — close the coroutine like the real impl."""
+            coro.close()
+            raise TimeoutError()
+
         with (
             patch("asyncio.create_subprocess_exec", return_value=mock_process),
-            patch("asyncio.wait_for", side_effect=TimeoutError()),
+            patch("asyncio.wait_for", side_effect=mock_wait_for_timeout),
         ):
             result = await UpdateEngine._pull_docker_image(
                 compose_file, service_name, "/var/run/docker.sock", "docker compose"
@@ -1178,6 +1183,12 @@ class TestEventBusProgress:
     async def test_apply_update_publishes_starting_event(self, make_update):
         """Test apply_update publishes 'starting' progress event."""
         mock_db = AsyncMock()
+        # Sync methods must be MagicMock to avoid unawaited coroutine warnings
+        mock_db.add = MagicMock()
+        mock_nested = AsyncMock()
+        mock_nested.__aenter__ = AsyncMock()
+        mock_nested.__aexit__ = AsyncMock()
+        mock_db.begin_nested = MagicMock(return_value=mock_nested)
 
         update = make_update(
             id=1,

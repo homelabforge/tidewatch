@@ -20,6 +20,7 @@ from app.services.registry_client import (
     NON_PEP440_PRERELEASE_INDICATORS,
     TagCache,
     canonical_arch_suffix,
+    is_non_semver_tag,
     is_prerelease_tag,
 )
 
@@ -723,3 +724,79 @@ class TestVersionNormalizationEdgeCases:
 
         # Only first 3 components used in comparison
         assert normalized[0:3] == (1, 2, 3)
+
+
+class TestSemanticVersionComparison:
+    """Regression tests for semantic version comparison (Fix 4).
+
+    Ensures _is_better_version uses parsed tuples instead of
+    lexicographic string comparison, which would fail for
+    cases like '1.9.9' > '1.10.0' being True.
+    """
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock RegistryClient for testing comparison logic."""
+        client = MagicMock()
+        from app.services.registry_client import RegistryClient
+
+        client._normalize_version = RegistryClient._normalize_version.__get__(client)
+        client._try_parse_version = RegistryClient._try_parse_version
+        client._is_better_version = RegistryClient._is_better_version.__get__(client)
+        return client
+
+    def test_minor_rollover(self, mock_client):
+        """1.10.0 should be better than 1.9.9 (lexicographic would fail)."""
+        assert mock_client._is_better_version("1.10.0", "1.9.9") is True
+        assert mock_client._is_better_version("1.9.9", "1.10.0") is False
+
+    def test_prerelease_to_stable(self, mock_client):
+        """2.0.0 should be better than 2.0.0rc1."""
+        assert mock_client._is_better_version("2.0.0", "2.0.0rc1") is True
+
+    def test_v_prefix_comparison(self, mock_client):
+        """v1.2.4 should be better than v1.2.3."""
+        assert mock_client._is_better_version("v1.2.4", "v1.2.3") is True
+        assert mock_client._is_better_version("v1.2.3", "v1.2.4") is False
+
+    def test_same_version(self, mock_client):
+        """Same version should not be better."""
+        assert mock_client._is_better_version("1.0.0", "1.0.0") is False
+
+    def test_major_version_difference(self, mock_client):
+        """2.0.0 should be better than 1.999.999."""
+        assert mock_client._is_better_version("2.0.0", "1.999.999") is True
+
+    def test_unparseable_both(self, mock_client):
+        """When neither parses, fall back to string comparison."""
+        # Both unparseable — string comparison as fallback
+        assert mock_client._is_better_version("zyx", "abc") is True
+        assert mock_client._is_better_version("abc", "zyx") is False
+
+    def test_parseable_beats_unparseable(self, mock_client):
+        """A parseable version should always beat an unparseable one."""
+        assert mock_client._is_better_version("1.0.0", "latest") is True
+        assert mock_client._is_better_version("latest", "1.0.0") is False
+
+
+class TestIsNonSemverTag:
+    """Tests for is_non_semver_tag module-level function (Fix 9)."""
+
+    @pytest.mark.parametrize(
+        "tag,expected",
+        [
+            ("latest", True),
+            ("lts", True),
+            ("stable", True),
+            ("alpine", True),
+            ("edge", True),
+            ("1.0.0", False),
+            ("v2.1.3", False),
+            ("3.12-alpine", False),  # Base parses as semver
+            ("1.0.0-rc1", False),  # Pre-release but still semver
+            ("20240101", False),  # Calendar versioning parses as int
+        ],
+    )
+    def test_non_semver_detection(self, tag, expected):
+        """Correctly identify non-semver tags for digest tracking."""
+        assert is_non_semver_tag(tag) is expected

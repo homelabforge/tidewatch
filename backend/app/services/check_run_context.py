@@ -296,12 +296,8 @@ class CheckRunContext:
         for container in containers:
             # Access SQLAlchemy attributes (type: ignore for pyright)
             container_id: int = container.id  # type: ignore[attr-defined]
-            container_prereleases: bool = (
-                container.include_prereleases or False  # type: ignore[attr-defined]
-            )
-            include_prereleases = include_prereleases_lookup.get(
-                container_id, container_prereleases
-            )
+            # Use the pre-resolved lookup (tri-state already resolved in check_job_service)
+            include_prereleases = include_prereleases_lookup.get(container_id, False)
             key = ImageCheckKey.from_container(container, include_prereleases)
 
             if key not in groups:

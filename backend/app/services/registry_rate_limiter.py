@@ -204,6 +204,10 @@ class RegistryRateLimiter:
         Blocks until both global and per-registry limits allow the request.
         Implements sliding window rate limiting within the per-registry limit.
 
+        The rate-limit window is checked BEFORE acquiring semaphores so that
+        sleeping on a throttled registry (e.g. Docker Hub) does not hold a
+        global semaphore slot and starve requests to other registries.
+
         Args:
             registry: Registry name
 
@@ -219,48 +223,72 @@ class RegistryRateLimiter:
         # Track total requests
         self._total_requests[normalized] = self._total_requests.get(normalized, 0) + 1
 
-        # Acquire both global and per-registry semaphores
-        await self._global_semaphore.acquire()
-        await state.semaphore.acquire()
+        total_wait = 0.0
 
-        wait_time = 0.0
+        # Phase 1: Wait for rate-limit window BEFORE acquiring semaphores.
+        # This ensures no global/per-registry slots are held during sleep.
+        while True:
+            async with state.lock:
+                now = time.monotonic()
+                window_start = now - 60  # 1 minute window
+                state.request_times = [t for t in state.request_times if t > window_start]
 
-        # Sliding window rate limiting
-        async with state.lock:
-            now = time.monotonic()
-            window_start = now - 60  # 1 minute window
+                if len(state.request_times) < limits.requests_per_minute:
+                    break  # Within window, proceed to acquire semaphores
 
-            # Remove old request times outside the window
-            state.request_times = [t for t in state.request_times if t > window_start]
-
-            # Wait if we've exceeded the rate limit
-            if len(state.request_times) >= limits.requests_per_minute:
-                # Calculate how long to wait until oldest request falls out of window
+                # Calculate how long to wait until oldest request exits the window
                 oldest = min(state.request_times)
                 wait_needed = (oldest + 60) - now
 
-                if wait_needed > 0:
-                    logger.debug(
-                        f"Rate limiting {normalized}: waiting {wait_needed:.2f}s "
-                        f"({len(state.request_times)} requests in window)"
-                    )
-                    self._wait_count[normalized] = self._wait_count.get(normalized, 0) + 1
-                    await asyncio.sleep(wait_needed)
-                    wait_time = wait_needed
+            # Sleep WITHOUT holding any locks or semaphores
+            if wait_needed > 0:
+                logger.debug(
+                    f"Rate limiting {normalized}: waiting {wait_needed:.2f}s "
+                    f"({len(state.request_times)} requests in window)"
+                )
+                self._wait_count[normalized] = self._wait_count.get(normalized, 0) + 1
+                await asyncio.sleep(wait_needed)
+                total_wait += wait_needed
 
-                    # Re-clean after waiting
-                    now = time.monotonic()
-                    window_start = now - 60
-                    state.request_times = [t for t in state.request_times if t > window_start]
+        # Phase 2: Acquire both semaphores now that rate limit is clear
+        await self._global_semaphore.acquire()
+        await state.semaphore.acquire()
 
-            # Record this request
-            state.request_times.append(time.monotonic())
+        # Phase 3: Re-check window under lock after acquiring semaphores.
+        # Another task may have consumed the window during our acquire wait.
+        while True:
+            async with state.lock:
+                now = time.monotonic()
+                window_start = now - 60
+                state.request_times = [t for t in state.request_times if t > window_start]
 
-        total_wait = time.monotonic() - start_time
-        if total_wait > 0.1:
-            logger.debug(f"Acquired rate limit for {normalized} in {total_wait:.2f}s")
+                if len(state.request_times) < limits.requests_per_minute:
+                    # Window is clear — record this request and proceed
+                    state.request_times.append(time.monotonic())
+                    break
 
-        return wait_time
+                # Window exceeded after acquiring (race condition) — must retry
+                oldest = min(state.request_times)
+                wait_needed = (oldest + 60) - now
+
+            # Release both semaphores before sleeping to avoid starvation
+            state.semaphore.release()
+            self._global_semaphore.release()
+
+            if wait_needed > 0:
+                logger.debug(f"Rate limit race for {normalized}: re-waiting {wait_needed:.2f}s")
+                await asyncio.sleep(wait_needed)
+                total_wait += wait_needed
+
+            # Re-acquire semaphores for next attempt
+            await self._global_semaphore.acquire()
+            await state.semaphore.acquire()
+
+        elapsed = time.monotonic() - start_time
+        if elapsed > 0.1:
+            logger.debug(f"Acquired rate limit for {normalized} in {elapsed:.2f}s")
+
+        return total_wait
 
     async def release(self, registry: str) -> None:
         """Release rate limit slot.

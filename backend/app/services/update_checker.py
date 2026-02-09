@@ -23,6 +23,7 @@ from app.services.registry_client import (
     RegistryCheckError,
     RegistryClient,
     RegistryClientFactory,
+    is_non_semver_tag,
 )
 from app.services.settings_service import SettingsService
 
@@ -43,13 +44,13 @@ class UpdateChecker:
 
     @staticmethod
     async def _should_auto_approve(
-        container: Container, update: Update, auto_update_enabled: bool
+        container: Container, _update: Update, auto_update_enabled: bool
     ) -> tuple[bool, str]:
         """Determine if an update should be automatically approved.
 
         Args:
             container: Container being updated
-            update: Update record
+            _update: Update record (reserved for future severity-based rules)
             auto_update_enabled: Global auto-update setting
 
         Returns:
@@ -165,7 +166,7 @@ class UpdateChecker:
                 container.current_tag,
                 container.scope,
                 current_digest=container.current_digest
-                if container.current_tag == "latest"
+                if is_non_semver_tag(container.current_tag)
                 else None,
                 include_prereleases=include_prereleases,
             )
@@ -198,14 +199,16 @@ class UpdateChecker:
             # Update last_checked
             container.last_checked = datetime.now(UTC)
 
-            # Check digest for 'latest' tag
+            # Check digest for non-semver tags (latest, lts, stable, etc.)
             digest_changed, new_digest = await UpdateChecker._check_digest_update(client, container)
             digest_update = (
-                container.current_tag == "latest" and digest_changed and new_digest is not None
+                is_non_semver_tag(container.current_tag)
+                and digest_changed
+                and new_digest is not None
             )
 
             # Capture digest/tag info for trace
-            if container.current_tag == "latest":
+            if is_non_semver_tag(container.current_tag):
                 trace.set_digest_update(previous_digest, new_digest, digest_changed)
             if latest_tag and latest_tag != container.current_tag:
                 detected_change_type = get_version_change_type(container.current_tag, latest_tag)
@@ -357,7 +360,10 @@ class UpdateChecker:
     async def _resolve_prerelease_setting(db: AsyncSession, container: Container) -> bool:
         """Resolve the effective include_prereleases value.
 
-        Checks container-level setting first, then falls back to global setting.
+        Uses tri-state logic:
+        - None: inherit from global setting
+        - True: force include prereleases
+        - False: force stable only
 
         Args:
             db: Database session
@@ -366,12 +372,9 @@ class UpdateChecker:
         Returns:
             True if prereleases should be included
         """
-        include_prereleases = container.include_prereleases
-        if not include_prereleases:
-            include_prereleases = await SettingsService.get_bool(
-                db, "include_prereleases", default=False
-            )
-        return include_prereleases
+        if container.include_prereleases is not None:
+            return container.include_prereleases
+        return await SettingsService.get_bool(db, "include_prereleases", default=False)
 
     @staticmethod
     async def _check_major_update(
@@ -484,61 +487,9 @@ class UpdateChecker:
 
         # Check if there's a major update blocked by scope
         if container.latest_major_tag and container.latest_major_tag != container.current_tag:
-            # Create a scope-violation Update record for history visibility
-            result = await db.execute(
-                select(Update).where(
-                    Update.container_id == container.id,
-                    Update.from_tag == container.current_tag,
-                    Update.to_tag == container.latest_major_tag,
-                    Update.status.in_(["pending", "approved"]),
-                )
+            await UpdateChecker._create_scope_violation_update(
+                db, container, container.latest_major_tag, trace.to_json()
             )
-            existing_scope_violation = result.scalar_one_or_none()
-
-            if not existing_scope_violation:
-                max_retries = await SettingsService.get_int(
-                    db, "update_retry_max_attempts", default=3
-                )
-                backoff_multiplier = await SettingsService.get_int(
-                    db, "update_retry_backoff_multiplier", default=3
-                )
-
-                scope_change_type = get_version_change_type(
-                    container.current_tag, container.latest_major_tag
-                )
-
-                scope_update = Update(
-                    container_id=container.id,
-                    container_name=container.name,
-                    from_tag=container.current_tag,
-                    to_tag=container.latest_major_tag,
-                    registry=container.registry,
-                    reason_type="feature",
-                    reason_summary=f"Major version update available (blocked by scope={container.scope})",
-                    recommendation="Review required - change scope to major to apply",
-                    status="pending",
-                    scope_violation=1,
-                    max_retries=max_retries,
-                    backoff_multiplier=backoff_multiplier,
-                    decision_trace=trace.to_json(),
-                    update_kind="tag",
-                    change_type=scope_change_type,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
-                )
-
-                db.add(scope_update)
-                try:
-                    async with db.begin_nested():
-                        await db.flush()
-                    await db.refresh(scope_update)
-                    logger.info(
-                        f"Created scope-violation update for {container.name}: "
-                        f"{container.current_tag} -> {container.latest_major_tag} (scope={container.scope})"
-                    )
-                except IntegrityError:
-                    logger.debug(f"Scope-violation update already exists for {container.name}")
-                    await db.rollback()
 
         logger.info(f"No in-scope updates for {container.name}")
 
@@ -848,9 +799,16 @@ class UpdateChecker:
         else:
             container.latest_major_tag = None
 
+        # Capture previous digest BEFORE any mutations (for accurate summaries later)
+        previous_digest = container.current_digest
+
         # Handle digest update for 'latest' tag
         if decision.digest_changed and decision.new_digest:
             container.current_digest = decision.new_digest
+        elif decision.digest_baseline_needed and decision.new_digest:
+            # First run: store the baseline digest without treating it as an update
+            container.current_digest = decision.new_digest
+            logger.info(f"Stored initial digest for {container.name}: {decision.new_digest}")
 
         # Determine if we have an in-scope update
         is_digest_update = decision.update_kind == "digest"
@@ -862,7 +820,9 @@ class UpdateChecker:
 
             # Handle scope violation (major update blocked by scope)
             if decision.is_scope_violation and decision.latest_major_tag:
-                await UpdateChecker._create_scope_violation_update(db, container, decision)
+                await UpdateChecker._create_scope_violation_update(
+                    db, container, decision.latest_major_tag, decision.trace.to_json()
+                )
 
             logger.info(f"No in-scope updates for {container.name}")
 
@@ -917,7 +877,6 @@ class UpdateChecker:
 
         if existing_update:
             if is_digest_update and decision.new_digest:
-                previous_digest = container.current_digest
                 existing_update.reason_type = "maintenance"
                 summary = f"Image digest updated: {previous_digest[:12] if previous_digest else 'unknown'} -> {decision.new_digest[:12]}"
                 existing_update.reason_summary = summary
@@ -950,7 +909,6 @@ class UpdateChecker:
         changelog_payload: str | None = None
 
         if is_digest_update and decision.new_digest:
-            previous_digest = container.current_digest
             reason_type = "maintenance"
             if previous_digest:
                 reason_summary = (
@@ -1114,25 +1072,28 @@ class UpdateChecker:
     async def _create_scope_violation_update(
         db: AsyncSession,
         container: Container,
-        decision: UpdateDecision,
+        target_tag: str,
+        trace_json: str,
     ) -> None:
-        """Create an Update record for scope-violated major version.
+        """Create an Update record for a scope-violated major version.
+
+        Skips creation if a scope-violation record already exists for
+        this container + target tag (pending, approved, or rejected/dismissed).
 
         Args:
             db: Database session
             container: Container with blocked major update
-            decision: UpdateDecision with scope violation info
+            target_tag: The major version tag blocked by scope
+            trace_json: JSON string of the decision trace
         """
-        if not decision.latest_major_tag:
-            return
-
-        # Check if scope-violation update already exists
+        # Skip if scope-violation already exists (pending, approved, or dismissed)
         result = await db.execute(
             select(Update).where(
                 Update.container_id == container.id,
                 Update.from_tag == container.current_tag,
-                Update.to_tag == decision.latest_major_tag,
-                Update.status.in_(["pending", "approved"]),
+                Update.to_tag == target_tag,
+                Update.scope_violation == 1,
+                Update.status.in_(["pending", "approved", "rejected"]),
             )
         )
         existing = result.scalar_one_or_none()
@@ -1144,15 +1105,13 @@ class UpdateChecker:
             db, "update_retry_backoff_multiplier", default=3
         )
 
-        scope_change_type = get_version_change_type(
-            container.current_tag, decision.latest_major_tag
-        )
+        scope_change_type = get_version_change_type(container.current_tag, target_tag)
 
         scope_update = Update(
             container_id=container.id,
             container_name=container.name,
             from_tag=container.current_tag,
-            to_tag=decision.latest_major_tag,
+            to_tag=target_tag,
             registry=container.registry,
             reason_type="feature",
             reason_summary=f"Major version update available (blocked by scope={container.scope})",
@@ -1161,7 +1120,7 @@ class UpdateChecker:
             scope_violation=1,
             max_retries=max_retries,
             backoff_multiplier=backoff_multiplier,
-            decision_trace=decision.trace.to_json(),
+            decision_trace=trace_json,
             update_kind="tag",
             change_type=scope_change_type,
             created_at=datetime.now(UTC),
@@ -1175,7 +1134,7 @@ class UpdateChecker:
             await db.refresh(scope_update)
             logger.info(
                 f"Created scope-violation update for {container.name}: "
-                f"{container.current_tag} -> {decision.latest_major_tag} (scope={container.scope})"
+                f"{container.current_tag} -> {target_tag} (scope={container.scope})"
             )
         except IntegrityError:
             logger.debug(f"Scope-violation update already exists for {container.name}")
@@ -1364,11 +1323,16 @@ class UpdateChecker:
 
     @staticmethod
     async def _clear_pending_updates(db: AsyncSession, container_id: int) -> None:
-        """Remove stale pending/approved update records for a container."""
+        """Remove stale pending/approved update records for a container.
+
+        Preserves scope-violation records (scope_violation=1) since those
+        persist until the user explicitly dismisses them.
+        """
         await db.execute(
             delete(Update).where(
                 Update.container_id == container_id,
                 Update.status.in_(("pending", "approved")),
+                Update.scope_violation == 0,
             )
         )
 

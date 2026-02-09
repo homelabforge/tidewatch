@@ -7,10 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dev Dependencies
+- **@types/react**: 19.2.10 → 19.2.13
+- **@vitejs/plugin-react**: 5.1.2 → 5.1.3
+- **eslint**: 9.39.2 → 10.0.0
+- **globals**: 17.2.0 → 17.3.0
+- **jsdom**: 27.4.0 → 28.0.0
+- **ruff**: 0.14.14 → 0.15.0
+
+### App Dependencies
+- **authlib**: 1.6.6 → 1.6.7
+- **fastapi**: 0.128.2 → 0.128.5
+- **granian**: 2.7.0 → 2.7.1
+- **python-dateutil**: 2.9.0 → 2.9.0.post0
+
+### Dockerfile Dependencies
+- **oven/bun**: 1.3.8-alpine → 1.3.9-alpine
+
+### HTTP Servers
+- **granian**: 2.6.1 → 2.7.1
+
 ### Added
 - **Database migration 041** - Normalizes dependency paths by stripping `/projects/` prefix from `app_dependencies`, `dockerfile_dependencies`, and `http_servers` tables, with verification query
+- **Database migration 042** - Converts `include_prereleases=False` to `NULL` (inherit global setting), enabling tri-state prerelease override per container
 - **31 new API dependency tests** across 8 test classes (`TestAppDependencyEndpoints`, `TestDockerfileDependencyEndpoints`, `TestHttpServerEndpoints`, `TestDependencyIgnoreEndpoints`, `TestDependencyTypeMapping`, `TestVersionParsing`, `TestNetworkPerformance`, `TestGetScannerFactory`) — 1191 tests pass, 40 skipped, 0 failures
 - **Factory fixtures for dependency testing** - `make_app_dependency`, `make_dockerfile_dependency`, `make_http_server` in `tests/conftest.py`
+- **Concurrent path test suites** - `test_update_decision_maker.py` (6 tests), `test_tag_fetcher.py` (8 tests), `test_check_job_service.py` (7 tests) covering the check job pipeline end-to-end
+- **Regression tests for version comparison** - Semantic version comparison for edge cases (`1.9.9` vs `1.10.0`, `2.0.0-rc1` vs `2.0.0`, `v1.2.3` vs `1.2.4`) and scope-violation dismiss behavior
+- **`is_non_semver_tag()` module-level function** in `registry_client.py` - Extracted from instance method `_is_non_semver_tag()` for use across modules; supports `latest`, `lts`, `stable`, `edge`, `alpine`, `slim`, `bullseye`, `bookworm`, `jammy`, `noble`, `beta`
 
 ### Changed
 - **Dependency scanner singleton replaced with `get_scanner(db)` factory** - Scanner now reads `projects_directory` from `SettingsService` instead of using a global singleton, ensuring correct base path resolution per-request
@@ -21,8 +45,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migrated `datetime.utcnow()` to `datetime.now(UTC)`** across ~10 instances to resolve deprecation warnings
 - **Removed unused `admin` parameter** from ~20 route handler signatures that declared `admin: dict = Depends(require_auth)` without accessing the value
 - **Removed unused `operator` parameter** from 2 route handler signatures
+- **Prerelease setting is now tri-state** (`null`/`true`/`false`) - Container `include_prereleases` changed from `bool` to `bool | None`; `null` inherits the global setting, `false` explicitly overrides global `true`. Frontend SettingsTab updated from toggle to 3-option dropdown ("Use Global Setting" / "Stable Releases Only" / "Include Pre-releases")
+- **Rate limiter no longer holds global semaphore during sleep** - Restructured `acquire()` to check the rate-limit window before acquiring semaphores, preventing one throttled registry (e.g. Docker Hub) from starving requests to other registries
+- **Tag fetcher optimized per registry** - GHCR/LSCR/GCR/Quay call `get_all_tags` first to populate TagCache (saves 2 API round-trips); Docker Hub skips eager `get_all_tags` (uses its own optimized paginated fetch); non-semver tags skip `get_all_tags` entirely
+- **Scope-violation creation centralized** - Sequential path now delegates to `_create_scope_violation_update()` instead of duplicating the logic inline
+- **Non-semver digest tracking expanded** - All registry clients (GHCR, LSCR, GCR, Quay) now use `is_non_semver_tag()` for digest comparison instead of hardcoding `== "latest"`, enabling digest tracking for `lts`, `stable`, `alpine`, `edge`, etc.
 
 ### Fixed
+- **Scope-violation updates deleted immediately after creation** - `_clear_pending_updates` now excludes `scope_violation=1` records, preventing scope-violation notifications from being silently destroyed
+- **Dismissed scope-violations recreated on every check** - Scope-violation creation now checks for existing `rejected` records with the same `to_tag`, preventing dismissed violations from reappearing until a newer version is detected
+- **Digest baseline never stored on first run (concurrent path)** - Added `digest_baseline_needed` flag to `UpdateDecision` so the concurrent path stores the initial digest on first check, matching the sequential path behavior
+- **Digest summaries showing "X → X"** - `apply_decision` now captures `previous_digest` before mutating `container.current_digest`, preventing identical from/to values in update summaries and changelogs
+- **Lexicographic tag comparison instead of semantic version** - Five locations in `registry_client.py` replaced string comparison (`tag > best_tag`) with `_is_better_version()` using `_normalize_version()` tuples; `"1.9.9" > "1.10.0"` no longer evaluates as `True`
+- **Container prerelease=False could not override global=True** - Three locations treated `False` as "unset" via `if not include_prereleases:` pattern; now uses explicit `None` check
 - **Dependency paths stored as absolute instead of relative** - Paths were stored with `/projects/` prefix; now stored relative to `projects_directory` with migration 041 to normalize existing data
 - **Settings injection missing from dependency update methods** - `projects_directory` now read from `SettingsService.get(db, "projects_directory")` in all 3 update methods in `dependency_update_service.py`
 - **Stale dependency records not cleaned up** - Removed `if dependencies:` / `if scanned_deps:` guards that short-circuited on empty scan results, preventing removal of outdated records
@@ -31,6 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **pyproject.toml parser missing valid specifiers and dotted names** - Added `.` to package name patterns and `~!` to operator patterns for both key-value and inline dependency formats
 - **Package type-to-section mapping mismatches** - Explicit mappings added for package.json (`production` → `dependencies`, `development` → `devDependencies`, etc.), pyproject.toml (`production` → `dependencies`, `development` → `development`), and Cargo.toml (`production` → `dependencies`, `development` → `dev-dependencies`)
 - **`HttpServer.detection_method` type mismatch** - `.get()` was called on a string column instead of a dict
+- **12 `RuntimeWarning: coroutine never awaited` warnings in tests** - Fixed `AsyncMock` vs `MagicMock` usage for sync method calls (`db.add`, `result.scalar_one_or_none`, `db.begin_nested`), properly closed coroutines in timeout mocks, and added missing `get_latest_major_tag` return values to prevent auto-AsyncMock cascades
+- **3 Pyright warnings for unused parameters** - Prefixed intentionally unused parameters with `_` (`_update` in `_should_auto_approve`, `_exc_type`/`_exc_val`/`_exc_tb` in `__aexit__`, `_page` in `_get_semver_update`)
 
 ## [3.7.0] - 2026-02-06
 

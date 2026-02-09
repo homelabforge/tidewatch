@@ -22,6 +22,7 @@ from app.models.check_job import CheckJob
 from app.models.container import Container
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
 from app.services.event_bus import event_bus
+from app.services.registry_client import is_non_semver_tag
 from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.settings_service import SettingsService
 from app.services.tag_fetcher import TagFetcher
@@ -233,17 +234,16 @@ class CheckJobService:
                 rate_limiter = RegistryRateLimiter(global_concurrency=concurrency_limit)
                 run_context = CheckRunContext(job_id=job_id)
 
-                # Build include_prereleases lookup for each container
+                # Build include_prereleases lookup for each container (tri-state)
+                # None=inherit global, True=force include, False=force stable only
                 include_prereleases_lookup: dict[int, bool] = {}
                 for container in containers:
                     container_id: int = container.id  # type: ignore[attr-defined]
-                    container_prereleases: bool = (
-                        container.include_prereleases or False  # type: ignore[attr-defined]
-                    )
-                    # Container setting takes precedence, then global
-                    include_prereleases_lookup[container_id] = (
-                        container_prereleases or global_include_prereleases
-                    )
+                    container_prereleases: bool | None = container.include_prereleases  # type: ignore[attr-defined]
+                    if container_prereleases is not None:
+                        include_prereleases_lookup[container_id] = container_prereleases
+                    else:
+                        include_prereleases_lookup[container_id] = global_include_prereleases
 
                 # Group containers for deduplication (if enabled)
                 if deduplication_enabled:
@@ -312,7 +312,7 @@ class CheckJobService:
                                     key,
                                     current_digest=(
                                         fresh_representative.current_digest  # type: ignore[attr-defined]
-                                        if key.current_tag == "latest"
+                                        if is_non_semver_tag(key.current_tag)
                                         else None
                                     ),
                                 )

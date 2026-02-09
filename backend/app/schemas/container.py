@@ -34,7 +34,7 @@ class ContainerSchema(BaseModel):
     service_name: str
     policy: str
     scope: str
-    include_prereleases: bool
+    include_prereleases: bool | None = None
     vulnforge_enabled: bool
     current_vuln_count: int
     is_my_project: bool = False

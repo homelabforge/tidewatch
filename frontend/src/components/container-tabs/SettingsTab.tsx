@@ -12,7 +12,7 @@ interface SettingsTabProps {
 export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const [policy, setPolicy] = useState(container.policy);
   const [scope, setScope] = useState(container.scope);
-  const [includePrereleases, setIncludePrereleases] = useState(container.include_prereleases);
+  const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases);
   const [vulnforgeEnabled] = useState(container.vulnforge_enabled);
   const [healthCheckMethod, setHealthCheckMethod] = useState(container.health_check_method);
   const [healthCheckUrl, setHealthCheckUrl] = useState(container.health_check_url || '');
@@ -160,8 +160,8 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     }
   };
 
-  const handlePrereleasesToggle = async () => {
-    const newValue = !includePrereleases;
+  const handlePrereleasesChange = async (value: string) => {
+    const newValue: boolean | null = value === 'null' ? null : value === 'true';
     setIncludePrereleases(newValue);
     await saveSettings({ include_prereleases: newValue });
   };
@@ -668,20 +668,25 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
           <p className="text-sm text-tide-text-muted mb-4">Control whether to include pre-release tags when checking for updates.</p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-tide-text">Include Pre-releases</p>
-              <p className="text-xs text-tide-text-muted mt-1">{includePrereleases ? 'Including pre-releases' : 'Stable releases only'}</p>
+              <p className="text-sm text-tide-text">Pre-release Policy</p>
+              <p className="text-xs text-tide-text-muted mt-1">
+                {includePrereleases === null
+                  ? 'Using global setting'
+                  : includePrereleases
+                    ? 'Including pre-releases'
+                    : 'Stable releases only'}
+              </p>
             </div>
-            <button
-              onClick={handlePrereleasesToggle}
+            <select
+              value={includePrereleases === null ? 'null' : String(includePrereleases)}
+              onChange={(e) => handlePrereleasesChange(e.target.value)}
               disabled={savingSettings}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                includePrereleases ? 'bg-primary' : 'bg-tide-surface-light'
-              }`}
+              className="bg-tide-surface border border-tide-border rounded-md px-3 py-1.5 text-sm text-tide-text focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                includePrereleases ? 'translate-x-6' : 'translate-x-1'
-              }`} />
-            </button>
+              <option value="null">Use Global Setting</option>
+              <option value="false">Stable Releases Only</option>
+              <option value="true">Include Pre-releases</option>
+            </select>
           </div>
         </div>
 

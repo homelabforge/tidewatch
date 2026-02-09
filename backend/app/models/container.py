@@ -36,9 +36,9 @@ class Container(Base):
         String, default="monitor", index=True
     )  # auto, monitor, disabled - indexed for filtering
     scope: Mapped[str] = mapped_column(String, default="patch")  # patch, minor, major
-    include_prereleases: Mapped[bool] = mapped_column(
-        Boolean, default=False
-    )  # Include nightly, dev, alpha, beta, rc tags
+    include_prereleases: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )  # None=inherit global, True=include prereleases, False=stable only
 
     # VulnForge integration
     vulnforge_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
