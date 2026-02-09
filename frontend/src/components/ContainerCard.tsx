@@ -32,10 +32,9 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
   // Determine update badge properties
   let updateBadgeColor = '';
   let updateBadgeText = '';
-  let updateSeverity: 'patch' | 'minor' | 'major' | null = null;
 
   if (hasUpdate && container.latest_tag) {
-    updateSeverity = getUpdateSeverity(container.current_tag, container.latest_tag);
+    const updateSeverity = getUpdateSeverity(container.current_tag, container.latest_tag);
     updateBadgeText = `Update Available → ${container.latest_tag}`;
 
     if (updateSeverity === 'patch') {
