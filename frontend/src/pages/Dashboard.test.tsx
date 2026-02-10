@@ -10,10 +10,17 @@ vi.mock('../services/api', () => ({
     containers: {
       getAll: vi.fn(),
       sync: vi.fn(),
+      getDependencySummary: vi.fn(),
+      scanMyProjects: vi.fn(),
+      scanAllProjectDependencies: vi.fn(),
+      getDependencyScanStatus: vi.fn(),
+      cancelDependencyScan: vi.fn(),
     },
     updates: {
       getAll: vi.fn(),
       checkAll: vi.fn(),
+      getCheckJob: vi.fn(),
+      cancelCheckJob: vi.fn(),
     },
     analytics: {
       getSummary: vi.fn(),
@@ -22,6 +29,11 @@ vi.mock('../services/api', () => ({
       getAll: vi.fn(),
     },
   },
+}))
+
+// Mock useEventStream to prevent real SSE connections in tests
+vi.mock('../hooks/useEventStream', () => ({
+  useEventStream: vi.fn(),
 }))
 
 // Mock sonner toast
@@ -168,8 +180,11 @@ describe('Dashboard', () => {
     updates_with_cves: 5,
   }
 
+  const mockSettingBase = { category: 'integration', description: null, encrypted: false, created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' }
+
   const mockSettings = [
-    { key: 'vulnforge_enabled', value: 'true', category: 'integration', description: null, encrypted: false, created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' },
+    { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
+    { ...mockSettingBase, key: 'my_projects_enabled', value: 'true' },
   ]
 
   beforeEach(() => {
@@ -179,10 +194,17 @@ describe('Dashboard', () => {
     vi.mocked(api.updates.getAll).mockResolvedValue(mockUpdates)
     vi.mocked(api.analytics.getSummary).mockResolvedValue(mockAnalytics)
     vi.mocked(api.settings.getAll).mockResolvedValue(mockSettings)
+    vi.mocked(api.containers.getDependencySummary).mockResolvedValue({ summaries: {} })
   })
 
   describe('Data loading', () => {
     it('shows loading state initially', () => {
+      // Override with never-resolving promises so loading state persists through act()
+      vi.mocked(api.containers.getAll).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.updates.getAll).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.analytics.getSummary).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.settings.getAll).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.containers.getDependencySummary).mockReturnValue(new Promise(() => {}))
       render(<Dashboard />)
       expect(screen.getByText('Loading containers...')).toBeInTheDocument()
     })
@@ -558,9 +580,12 @@ describe('Dashboard', () => {
       })
     })
 
-    it('does not show section headers when only community containers', async () => {
+    it('does not show section headers when my_projects disabled', async () => {
       const communityOnly = mockContainers.map(c => ({ ...c, is_my_project: false }))
       vi.mocked(api.containers.getAll).mockResolvedValue(communityOnly)
+      vi.mocked(api.settings.getAll).mockResolvedValue([
+        { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
+      ])
 
       render(<Dashboard />)
 
@@ -581,8 +606,11 @@ describe('Dashboard', () => {
   })
 
   describe('Empty states', () => {
-    it('shows empty state when no containers', async () => {
+    it('shows empty state when no containers and my_projects disabled', async () => {
       vi.mocked(api.containers.getAll).mockResolvedValue([])
+      vi.mocked(api.settings.getAll).mockResolvedValue([
+        { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
+      ])
 
       render(<Dashboard />)
 
@@ -591,7 +619,23 @@ describe('Dashboard', () => {
       })
     })
 
+    it('shows my projects empty state when no containers', async () => {
+      vi.mocked(api.containers.getAll).mockResolvedValue([])
+
+      render(<Dashboard />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/No projects discovered yet/)).toBeInTheDocument()
+      })
+    })
+
     it('shows empty state when all containers filtered out', async () => {
+      const allCommunity = mockContainers.map(c => ({ ...c, is_my_project: false }))
+      vi.mocked(api.containers.getAll).mockResolvedValue(allCommunity)
+      vi.mocked(api.settings.getAll).mockResolvedValue([
+        { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
+      ])
+
       render(<Dashboard />)
 
       await waitFor(() => {
@@ -675,6 +719,9 @@ describe('Dashboard', () => {
 
     it('handles empty policy stats', async () => {
       vi.mocked(api.containers.getAll).mockResolvedValue([])
+      vi.mocked(api.settings.getAll).mockResolvedValue([
+        { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
+      ])
 
       render(<Dashboard />)
 
