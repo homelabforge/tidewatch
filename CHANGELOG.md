@@ -23,7 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`trigger_container_discovery()` client method** — New method on `VulnForgeClient` for triggering VulnForge's container discovery endpoint
 - **Migration 046** — Adds `trigger_attempt_count` and `last_trigger_attempt_at` columns to `pending_scan_jobs` table for retry tracking
 - **37 integration tests** in `test_vulnforge_scan_integration.py` — PendingScanJob lifecycle, CVE delta writer, scan worker, crash recovery, VulnForge client name-based lookup, image-based container lookup, trigger retry with discovery (first failure retries, retries exhaust then fails, discovery triggered on later attempts, not on early attempts, backoff skips cycle, full retry lifecycle, discovery client tests)
-
+- **My Projects: Filesystem HTTP server detection** — 3-method detection (FROM images, dependency files, RUN commands) that works without running containers; shared `project_resolver.py` and parse-only `manifest_reader.py` utilities
+- **My Projects: Background dependency scan** — `DependencyScanJob` model, `DependencyScanService` with bounded concurrency (`Semaphore(3)`), SSE progress events (`dependency-scan-*`), and cancellation support; mirrors the CheckJob pattern
+- **My Projects: Dependency summary endpoint** — `GET /my-projects/dependency-summary` returns per-container counts of HTTP server, Dockerfile, prod, and dev dependency updates (non-ignored only)
+- **My Projects: Scan Dependencies button** — Purple "Scan Deps" button in dashboard My Projects header with `DepScanProgressBar` showing real-time scan progress via SSE
+- **My Projects: Dependency update badges** — `ContainerCard` shows color-coded badges: purple (Server), amber (Base Image), teal (Prod Deps), gray (Dev Deps) when updates are available
+- **My Projects: Dashboard empty state** — My Projects section always renders when `my_projects_enabled=true`, with "Scan Projects" button and helpful empty state even when no projects are discovered yet
+- **Database migration 043** — Creates `dependency_scan_jobs` table with status and created_at indexes
+- **33 new filesystem HTTP server detection tests** — Covers all 3 detection methods, precedence rules, E2E scanning, and server pattern validation
+- 
 ### Changed
 - **VulnForge client factory extracted** — `create_vulnforge_client()` moved from `UpdateEngine` to module-level async factory in `vulnforge_client.py`, used by both `scan_service.py` and the scan worker
 - **Settings key fixed** — `vulnforge_api_url` → `vulnforge_url` in `scan_service.py`
@@ -31,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auth passthrough fixed** — `scan_service.py` uses shared `create_vulnforge_client()` factory ensuring auth settings are always passed
 - **`basic_auth` removed** — Removed dead `basic_auth` branch from VulnForge client; auto-migrates existing `basic_auth` config to `none` with warning log
 - **Scan service exception handling split** — Transport errors (`ConnectError`, `TimeoutException`) no longer create noisy "failed scan" records; HTTP errors and domain errors handled separately
+- **Removed custom `http.server.*` Dockerfile labels** — HTTP server detection is now fully automatic via filesystem scanning (FROM lines, dependency files, RUN commands). Custom labels removed from all 5 project Dockerfiles. Community container label detection retained for third-party images.
+- **Global history excludes dependency events** — `dependency_update`, `dependency_ignore`, `dependency_unignore` events filtered from global timeline; still visible in per-container history
+- **HTTP server scan dispatches by project type** — `scan_http_servers` route uses filesystem scanning for `is_my_project=True` containers, Docker exec for community containers
+- **Dashboard render logic restructured** — My Projects section renders independently of `filteredContainers.length`, preventing the empty-state short-circuit from hiding it
 
 ### Fixed
 - **PendingScanJob atomicity** — Scan job row created inside `begin_nested()` block, committed atomically with update status change. No orphaned jobs possible on crash
@@ -42,21 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead settings cleanup** — Migration 045 removes orphaned `vulnforge_username`/`vulnforge_password` settings from the database
 - **Scan trigger race condition** — VulnForge scan requests no longer hard-fail when the container hasn't been discovered yet (e.g., after TideWatch force-recreates a container during an update). Previously, `_handle_pending` would immediately mark the PendingScanJob as failed on the first 404; now it retries with backoff and triggers VulnForge discovery
 
-### Added
-- **My Projects: Filesystem HTTP server detection** — 3-method detection (FROM images, dependency files, RUN commands) that works without running containers; shared `project_resolver.py` and parse-only `manifest_reader.py` utilities
-- **My Projects: Background dependency scan** — `DependencyScanJob` model, `DependencyScanService` with bounded concurrency (`Semaphore(3)`), SSE progress events (`dependency-scan-*`), and cancellation support; mirrors the CheckJob pattern
-- **My Projects: Dependency summary endpoint** — `GET /my-projects/dependency-summary` returns per-container counts of HTTP server, Dockerfile, prod, and dev dependency updates (non-ignored only)
-- **My Projects: Scan Dependencies button** — Purple "Scan Deps" button in dashboard My Projects header with `DepScanProgressBar` showing real-time scan progress via SSE
-- **My Projects: Dependency update badges** — `ContainerCard` shows color-coded badges: purple (Server), amber (Base Image), teal (Prod Deps), gray (Dev Deps) when updates are available
-- **My Projects: Dashboard empty state** — My Projects section always renders when `my_projects_enabled=true`, with "Scan Projects" button and helpful empty state even when no projects are discovered yet
-- **Database migration 043** — Creates `dependency_scan_jobs` table with status and created_at indexes
-- **33 new filesystem HTTP server detection tests** — Covers all 3 detection methods, precedence rules, E2E scanning, and server pattern validation
-
-### Changed
-- **Removed custom `http.server.*` Dockerfile labels** — HTTP server detection is now fully automatic via filesystem scanning (FROM lines, dependency files, RUN commands). Custom labels removed from all 5 project Dockerfiles. Community container label detection retained for third-party images.
-- **Global history excludes dependency events** — `dependency_update`, `dependency_ignore`, `dependency_unignore` events filtered from global timeline; still visible in per-container history
-- **HTTP server scan dispatches by project type** — `scan_http_servers` route uses filesystem scanning for `is_my_project=True` containers, Docker exec for community containers
-- **Dashboard render logic restructured** — My Projects section renders independently of `filteredContainers.length`, preventing the empty-state short-circuit from hiding it
 
 ### Dev Dependencies
 - **@types/react**: 19.2.10 → 19.2.13
