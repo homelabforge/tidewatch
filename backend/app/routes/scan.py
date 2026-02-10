@@ -52,12 +52,14 @@ async def scan_container(
         )
         return result
     except ValueError as e:
-        logger.error(f"ValueError in scan_container: {sanitize_log_message(str(e))}")
         error_detail = str(e)
-        logger.error(
-            f"Raising HTTPException 404 with detail: {sanitize_log_message(str(error_detail))}"
-        )
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_detail)
+        # "not found" → 404, everything else (disabled, not configured) → 400
+        if "not found" in error_detail.lower():
+            logger.error(f"Container not found: {sanitize_log_message(error_detail)}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_detail)
+        else:
+            logger.error(f"Scan precondition failed: {sanitize_log_message(error_detail)}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_detail)
     except Exception as e:
         logger.error(
             f"Unexpected exception in scan_container: {sanitize_log_message(str(type(e).__name__))}: {sanitize_log_message(str(e))}"

@@ -1,12 +1,55 @@
 """VulnForge API client for vulnerability data."""
 
-import base64
 import logging
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+async def create_vulnforge_client(db: AsyncSession) -> "VulnForgeClient | None":
+    """Create a VulnForge client from database settings.
+
+    Shared factory used by scan_service and update_engine. Checks that
+    VulnForge integration is enabled and URL is configured, then builds
+    a client with the correct auth settings.
+
+    Args:
+        db: Database session for reading settings
+
+    Returns:
+        VulnForgeClient instance or None if disabled/not configured
+    """
+    from app.services.settings_service import SettingsService
+
+    vulnforge_enabled = await SettingsService.get_bool(db, "vulnforge_enabled")
+    if not vulnforge_enabled:
+        return None
+
+    vulnforge_url = await SettingsService.get(db, "vulnforge_url")
+    if not vulnforge_url:
+        logger.warning("VulnForge URL not configured")
+        return None
+
+    auth_type = await SettingsService.get(db, "vulnforge_auth_type", "none")
+    api_key = await SettingsService.get(db, "vulnforge_api_key")
+
+    # Auto-migrate stale basic_auth config
+    if auth_type == "basic_auth":
+        logger.warning(
+            "VulnForge auth_type 'basic_auth' is no longer supported. "
+            "VulnForge only accepts X-API-Key authentication. "
+            "Falling back to auth_type='none'. Update your settings."
+        )
+        auth_type = "none"
+
+    return VulnForgeClient(
+        base_url=vulnforge_url,
+        auth_type=auth_type or "none",
+        api_key=api_key,
+    )
 
 
 class VulnForgeClient:
@@ -17,32 +60,20 @@ class VulnForgeClient:
         base_url: str,
         auth_type: str = "none",
         api_key: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
     ):
         """Initialize VulnForge client.
 
         Args:
             base_url: VulnForge API base URL (e.g., http://vulnforge:8787)
-            auth_type: Authentication type (none, api_key, basic_auth)
-            api_key: API key for Bearer token authentication
-            username: Username for basic authentication
-            password: Password for basic authentication
+            auth_type: Authentication type (none or api_key)
+            api_key: API key for X-API-Key header authentication
         """
         self.base_url = base_url.rstrip("/")
         self.auth_type = auth_type
         headers = {}
 
-        # Configure authentication based on type
         if auth_type == "api_key" and api_key:
-            # VulnForge uses X-API-Key header for API key authentication
             headers["X-API-Key"] = api_key
-        elif auth_type == "basic_auth" and username and password:
-            # HTTP Basic authentication
-            credentials = f"{username}:{password}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        # auth_type == "none" requires no headers
 
         self.client = httpx.AsyncClient(timeout=30.0, headers=headers)
 
@@ -155,6 +186,93 @@ class VulnForgeClient:
     async def close(self):
         """Close HTTP client."""
         await self.client.aclose()
+
+    async def get_containers_by_image(
+        self, image: str, tag: str | None = None
+    ) -> list[dict] | None:
+        """Find VulnForge containers matching an image name and optional tag.
+
+        Tries the server-side ``/by-image`` endpoint first (O(1) indexed
+        lookup).  Falls back to listing all containers and matching
+        client-side when talking to an older VulnForge that lacks the
+        endpoint.
+
+        Args:
+            image: Image repository name (e.g. "nginx", "ghcr.io/org/app").
+            tag: Optional image tag filter. If None, returns all tags.
+
+        Returns:
+            List of matching container dicts, or None on connection error.
+        """
+        # --- fast path: server-side lookup ---
+        try:
+            params: dict[str, str] = {"image": image}
+            if tag:
+                params["tag"] = tag
+            url = f"{self.base_url}/api/v1/containers/by-image"
+            response = await self.client.get(url, params=params)
+
+            if response.status_code == 200:
+                return response.json()  # list[ContainerSchema]
+            if response.status_code == 404:
+                return []
+            if response.status_code == 405:
+                pass  # endpoint doesn't exist on old VulnForge; fall through
+            else:
+                response.raise_for_status()  # unexpected status → log & bail
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"VulnForge connection error looking up image: {e}")
+            return None
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"VulnForge /by-image returned {e.response.status_code}, falling back")
+        except (ValueError, KeyError, AttributeError):
+            pass  # malformed response → fall through to list-all
+
+        # --- slow path: list all + client-side matching ---
+        try:
+            target_tag = tag or ""
+            target_repo = image
+            target_registry, target_name, target_registry_explicit = self._parse_image_repo(
+                target_repo
+            )
+
+            url = f"{self.base_url}/api/v1/containers/"
+            response = await self.client.get(url)
+            response.raise_for_status()
+            containers = response.json().get("containers", [])
+
+            matches = []
+            for container in containers:
+                # When no tag filter, match any tag
+                if not tag:
+                    c_registry, c_name, c_explicit = self._parse_image_repo(
+                        container.get("image", "")
+                    )
+                    if c_name == target_name and (
+                        c_registry == target_registry
+                        or not (c_explicit and target_registry_explicit)
+                    ):
+                        matches.append(container)
+                elif self._container_matches(
+                    container,
+                    target_registry,
+                    target_name,
+                    target_tag,
+                    target_registry_explicit,
+                ):
+                    matches.append(container)
+
+            return matches
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"VulnForge connection error during fallback image lookup: {e}")
+            return None
+        except httpx.HTTPStatusError as e:
+            logger.error(f"VulnForge API error during fallback image lookup: {e}")
+            return None
+        except (ValueError, KeyError, AttributeError) as e:
+            logger.error(f"Invalid VulnForge response during fallback image lookup: {e}")
+            return None
 
     async def get_image_vulnerabilities(
         self, image: str, tag: str, registry: str = "dockerhub"
@@ -387,14 +505,45 @@ class VulnForgeClient:
 
         return "Review required"
 
-    async def trigger_scan(self, container_id: int) -> bool:
+    async def trigger_container_discovery(self) -> dict | None:
+        """Trigger VulnForge container discovery.
+
+        Asks VulnForge to re-scan the Docker daemon for new/removed
+        containers.  Used when a container has been recreated and VulnForge
+        may not know about it yet.
+
+        Returns:
+            Discovery result dict (total, discovered, removed, message),
+            or None on error.
+        """
+        try:
+            url = f"{self.base_url}/api/v1/containers/discover"
+            logger.info("Triggering VulnForge container discovery")
+            response = await self.client.post(url)
+            response.raise_for_status()
+            data = response.json()
+            discovered = data.get("discovered", [])
+            if discovered:
+                logger.info(f"VulnForge discovered new containers: {discovered}")
+            return data
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"VulnForge discovery returned {e.response.status_code}: {e}")
+            return None
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"VulnForge connection error during discovery: {e}")
+            return None
+        except (ValueError, KeyError) as e:
+            logger.error(f"Invalid response from VulnForge discovery: {e}")
+            return None
+
+    async def trigger_scan(self, container_id: int) -> dict | None:
         """Trigger a vulnerability scan for a container in VulnForge.
 
         Args:
             container_id: VulnForge container ID to scan
 
         Returns:
-            True if scan triggered successfully
+            Response dict with job_ids and queue info, or None on failure
         """
         try:
             url = f"{self.base_url}/api/v1/scans/scan"
@@ -404,21 +553,27 @@ class VulnForgeClient:
             response = await self.client.post(url, json=payload)
             response.raise_for_status()
 
-            logger.info(f"Scan triggered for container ID {container_id}")
-            return True
+            data = response.json()
+            logger.info(
+                f"Scan triggered for container ID {container_id}, job_ids={data.get('job_ids', [])}"
+            )
+            return data
 
         except httpx.HTTPStatusError as e:
             logger.error(f"VulnForge API error triggering scan: {e}")
-            return False
+            return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(f"VulnForge connection error triggering scan: {e}")
-            return False
+            return None
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid data triggering scan: {e}")
-            return False
+            return None
 
     async def get_container_id_by_name(self, container_name: str) -> int | None:
         """Find VulnForge container ID by container name.
+
+        Tries O(1) by-name endpoint first, falls back to list-all for
+        backward compatibility with older VulnForge versions.
 
         Args:
             container_name: Docker container name (e.g., "nginx", "sonarr")
@@ -426,6 +581,26 @@ class VulnForgeClient:
         Returns:
             VulnForge container ID or None if not found
         """
+        # Try direct by-name lookup first (O(1))
+        try:
+            url = f"{self.base_url}/api/v1/containers/by-name/{container_name}"
+            response = await self.client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                container_id = data.get("id")
+                if container_id:
+                    return container_id
+            elif response.status_code == 404:
+                logger.warning(f"Container '{container_name}' not found in VulnForge")
+                return None
+            # Other errors: fall through to list-all fallback
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"VulnForge connection error looking up container: {e}")
+            return None
+        except (ValueError, KeyError, AttributeError):
+            pass  # Fall through to list-all
+
+        # Fallback: list all containers and search (O(N))
         try:
             url = f"{self.base_url}/api/v1/containers/"
             response = await self.client.get(url)
@@ -449,7 +624,7 @@ class VulnForgeClient:
             logger.error(f"Invalid VulnForge response looking up container: {e}")
             return None
 
-    async def trigger_scan_by_name(self, container_name: str) -> bool:
+    async def trigger_scan_by_name(self, container_name: str) -> dict | None:
         """Trigger scan for container by name (TideWatch container name).
 
         This is a convenience method that looks up the VulnForge container ID
@@ -459,18 +634,49 @@ class VulnForgeClient:
             container_name: Docker container name
 
         Returns:
-            True if scan triggered successfully
+            Response dict with job_ids, or None if not found or failed
         """
         container_id = await self.get_container_id_by_name(container_name)
         if not container_id:
             logger.warning(
                 f"Cannot trigger scan: container '{container_name}' not found in VulnForge"
             )
-            return False
+            return None
         return await self.trigger_scan(container_id)
 
+    async def get_scan_job_status(self, job_id: int) -> dict | None:
+        """Poll VulnForge for scan job status.
+
+        Args:
+            job_id: ScanJob ID returned from trigger_scan
+
+        Returns:
+            Job status dict (id, status, scan_id, etc.) or None on error
+        """
+        try:
+            url = f"{self.base_url}/api/v1/scans/jobs/{job_id}"
+            response = await self.client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Scan job {job_id} not found in VulnForge")
+                return None
+            logger.error(f"VulnForge API error getting scan job status: {e}")
+            return None
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"VulnForge connection error getting scan job status: {e}")
+            return None
+        except (ValueError, KeyError, AttributeError) as e:
+            logger.error(f"Invalid VulnForge response for scan job status: {e}")
+            return None
+
     async def get_cve_delta(
-        self, container_name: str | None = None, since_hours: int = 24
+        self,
+        container_name: str | None = None,
+        since_hours: int = 24,
+        scan_id: int | None = None,
     ) -> dict | None:
         """Get CVE delta from VulnForge's cve-delta endpoint.
 
@@ -480,6 +686,7 @@ class VulnForgeClient:
         Args:
             container_name: Optional filter for specific container
             since_hours: Number of hours to look back (default 24)
+            scan_id: Optional specific scan ID for deterministic retrieval
 
         Returns:
             Dict with CVE delta information or None on error
@@ -489,6 +696,8 @@ class VulnForgeClient:
             params: dict[str, Any] = {"since_hours": since_hours}
             if container_name:
                 params["container_name"] = container_name
+            if scan_id:
+                params["scan_id"] = scan_id
 
             logger.info(f"Querying VulnForge CVE delta: {params}")
             response = await self.client.get(url, params=params)

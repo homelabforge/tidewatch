@@ -166,6 +166,15 @@ async def list_history(
     if end_date:
         end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
         update_query = update_query.where(UpdateHistory.started_at <= end_dt)
+
+    # Exclude dependency events from global history (only show in container-specific history)
+    if not container_id:
+        dependency_event_types = {"dependency_update", "dependency_ignore", "dependency_unignore"}
+        update_query = update_query.where(
+            (UpdateHistory.event_type.is_(None))
+            | (~UpdateHistory.event_type.in_(dependency_event_types))
+        )
+
     update_query = update_query.limit(fetch_limit)
 
     # Query restarts (only completed ones)

@@ -3,14 +3,13 @@
 import logging
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
 from app.models.vulnerability_scan import VulnerabilityScan
 from app.schemas.scan import ScanResultSchema, ScanSummarySchema
-from app.services.settings_service import SettingsService
-from app.services.vulnforge_client import VulnForgeClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,44 +39,50 @@ class ScanService:
         if not container:
             raise ValueError(f"Container with ID {container_id} not found")
 
+        # Check global VulnForge setting first
+        from app.services.settings_service import SettingsService
+
+        vulnforge_global = await SettingsService.get_bool(db, "vulnforge_enabled")
+        if not vulnforge_global:
+            raise ValueError("VulnForge integration is globally disabled")
+
         logger.info(f"Container {container.name}: vulnforge_enabled={container.vulnforge_enabled}")
         if not container.vulnforge_enabled:
             error_msg = f"VulnForge scanning is disabled for container '{container.name}'"
             logger.error(f"Raising ValueError: {error_msg}")
             raise ValueError(error_msg)
 
-        # Get VulnForge API URL from settings
-        vulnforge_url = await SettingsService.get(db, "vulnforge_api_url")
-        if not vulnforge_url:
-            raise ValueError("VulnForge API URL not configured")
+        # Get VulnForge client (handles URL, auth, and enabled checks)
+        from app.services.vulnforge_client import create_vulnforge_client
 
-        # Initialize VulnForge client
-        async with VulnForgeClient(base_url=vulnforge_url) as client:
+        client = await create_vulnforge_client(db)
+        if not client:
+            raise ValueError("VulnForge URL not configured")
+
+        async with client:
             try:
                 # Get vulnerability data from VulnForge
                 vuln_data = await client.get_image_vulnerabilities(
-                    str(container.image), str(container.current_tag)
+                    str(container.image),
+                    str(container.current_tag),
+                    registry=str(container.registry),
                 )
 
-                # Parse vulnerability data
+                # Parse vulnerability data (matches vulnforge_client.py return format)
                 vuln_dict = vuln_data or {}
-                total_vulns = vuln_dict.get("total_vulnerabilities", 0)
-                severity_counts = vuln_dict.get("severity_counts", {})
-                cves = vuln_dict.get("cve_list", [])
-                risk_score = vuln_dict.get("risk_score")
 
                 # Create scan record
                 scan = VulnerabilityScan(
                     container_id=container_id,
                     scanned_at=datetime.now(UTC),
                     status="completed",
-                    total_vulns=total_vulns,
-                    critical_count=severity_counts.get("CRITICAL", 0),
-                    high_count=severity_counts.get("HIGH", 0),
-                    medium_count=severity_counts.get("MEDIUM", 0),
-                    low_count=severity_counts.get("LOW", 0),
-                    cves=cves,
-                    risk_score=risk_score,
+                    total_vulns=vuln_dict.get("total_vulns", 0),
+                    critical_count=vuln_dict.get("critical", 0),
+                    high_count=vuln_dict.get("high", 0),
+                    medium_count=vuln_dict.get("medium", 0),
+                    low_count=vuln_dict.get("low", 0),
+                    cves=vuln_dict.get("cves", []),
+                    risk_score=vuln_dict.get("risk_score"),
                 )
 
                 db.add(scan)
@@ -100,9 +105,29 @@ class ScanService:
                     status=scan.status,
                 )
 
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                # Transport/infra errors — VulnForge unreachable, don't create noisy
+                # "failed scan" records for transient connectivity issues
+                logger.error(f"VulnForge connection error scanning {container.name}: {e}")
+                raise
+            except httpx.HTTPStatusError as e:
+                # VulnForge returned an error response (auth failure, 500, etc.)
+                logger.error(
+                    f"VulnForge HTTP error scanning {container.name}: "
+                    f"{e.response.status_code} {e.response.text[:200]}"
+                )
+                scan = VulnerabilityScan(
+                    container_id=container_id,
+                    scanned_at=datetime.now(UTC),
+                    status="failed",
+                    error_message=f"VulnForge HTTP {e.response.status_code}",
+                )
+                db.add(scan)
+                await db.commit()
+                raise
             except Exception as e:
+                # Actual scan-domain failures (parsing, data issues)
                 logger.error(f"Failed to scan container {container.name}: {e}")
-                # Create failed scan record
                 scan = VulnerabilityScan(
                     container_id=container_id,
                     scanned_at=datetime.now(UTC),

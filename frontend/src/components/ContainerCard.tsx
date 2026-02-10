@@ -1,5 +1,5 @@
-import { Container } from '../types';
-import { Package, Calendar, Shield, ShieldAlert, AlertTriangle, RotateCw, Zap, Eye, PowerOff } from 'lucide-react';
+import { Container, DependencySummary } from '../types';
+import { Package, Calendar, Shield, ShieldAlert, AlertTriangle, RotateCw, Zap, Eye, PowerOff, Server, Layers, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -7,6 +7,7 @@ interface ContainerCardProps {
   onClick: () => void;
   hasUpdate?: boolean;
   vulnforgeGlobalEnabled?: boolean;
+  dependencySummary?: DependencySummary;
 }
 
 // Helper to determine update severity based on version difference
@@ -28,7 +29,7 @@ function getUpdateSeverity(currentTag: string, latestTag: string): 'patch' | 'mi
   return 'minor';
 }
 
-export default function ContainerCard({ container, onClick, hasUpdate = false, vulnforgeGlobalEnabled = false }: ContainerCardProps) {
+export default function ContainerCard({ container, onClick, hasUpdate = false, vulnforgeGlobalEnabled = false, dependencySummary }: ContainerCardProps) {
   // Determine update badge properties
   let updateBadgeColor = '';
   let updateBadgeText = '';
@@ -141,13 +142,41 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
           )}
         </div>
 
-        {/* Row 2: Dynamic badges (Update Available, etc.) */}
+        {/* Row 2: Dynamic badges (Update Available, Dependency updates, etc.) */}
         <div className="flex flex-wrap gap-2 min-h-[24px]">
           {updateBadgeText && (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${updateBadgeColor}`}>
               {!hasUpdate && <AlertTriangle size={12} className="mr-1" />}
               {updateBadgeText}
             </span>
+          )}
+          {container.is_my_project && dependencySummary && (
+            <>
+              {dependencySummary.http_server_updates > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                  <Server size={10} className="mr-1" />
+                  {dependencySummary.http_server_updates} Server
+                </span>
+              )}
+              {dependencySummary.dockerfile_updates > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Layers size={10} className="mr-1" />
+                  {dependencySummary.dockerfile_updates} Base
+                </span>
+              )}
+              {dependencySummary.app_prod_updates > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                  <Package size={10} className="mr-1" />
+                  {dependencySummary.app_prod_updates} Deps
+                </span>
+              )}
+              {dependencySummary.app_dev_updates > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                  <Wrench size={10} className="mr-1" />
+                  {dependencySummary.app_dev_updates} Dev
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>

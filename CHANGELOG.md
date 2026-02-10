@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Durable VulnForge scan reconciliation** — New `PendingScanJob` model and `pending_scan_jobs` table (migration 044) replaces fire-and-forget `asyncio.create_task()` with persisted scan tracking that survives process restarts
+- **APScheduler scan worker** — `vulnforge_scan_worker.py` processes pending VulnForge scan jobs every 15 seconds, rate-limited to 3 jobs per cycle. Handles full lifecycle: pending → triggered → polling → completed/failed
+- **Crash recovery** — `recover_interrupted_jobs()` runs at startup, resetting in-flight jobs to resume polling or re-trigger as needed
+- **CVE delta writer** — Shared `vulnforge_cve_writer.py` helper for writing CVE data to Update and UpdateHistory records, extracted from the old `_trigger_vulnforge_rescan` method
+- **Scan correlation via job_id** — `get_scan_job_status()` and `trigger_scan_by_name()` methods on VulnForgeClient for polling VulnForge scan jobs by correlation ID instead of time-window queries
+- **O(1) container lookup** — `get_container_id_by_name()` tries VulnForge's `/by-name/{name}` endpoint first, falls back to list-all for backward compatibility
+- **PendingScanJob retention cleanup** — Scheduled daily at 2:30 AM, deletes completed/failed `pending_scan_jobs` rows older than 30 days
+- **Image-based container lookup** — New `get_containers_by_image()` method on `VulnForgeClient` tries VulnForge's `/by-image` endpoint first (O(1) indexed lookup), falls back to list-all + client-side matching for backward compatibility with older VulnForge versions
+- **7 new regression tests** in `test_regression_codex_review.py` — client factory usage verification, registry passthrough, exception handling split, basic_auth removal, PendingScanJob cleanup
+- **Resilient trigger retry with discovery** — `_handle_pending` in `vulnforge_scan_worker.py` now retries up to 5 times with exponential backoff (0s, 0s, 30s, 60s, 120s) when VulnForge returns 404 for a container. On attempt 3+, triggers VulnForge container discovery (`POST /containers/discover`) to speed up detection of newly-recreated containers. Fixes the race condition where TideWatch updates a container faster than VulnForge discovers it
+- **`trigger_container_discovery()` client method** — New method on `VulnForgeClient` for triggering VulnForge's container discovery endpoint
+- **Migration 046** — Adds `trigger_attempt_count` and `last_trigger_attempt_at` columns to `pending_scan_jobs` table for retry tracking
+- **37 integration tests** in `test_vulnforge_scan_integration.py` — PendingScanJob lifecycle, CVE delta writer, scan worker, crash recovery, VulnForge client name-based lookup, image-based container lookup, trigger retry with discovery (first failure retries, retries exhaust then fails, discovery triggered on later attempts, not on early attempts, backoff skips cycle, full retry lifecycle, discovery client tests)
+
+### Changed
+- **VulnForge client factory extracted** — `create_vulnforge_client()` moved from `UpdateEngine` to module-level async factory in `vulnforge_client.py`, used by both `scan_service.py` and the scan worker
+- **Settings key fixed** — `vulnforge_api_url` → `vulnforge_url` in `scan_service.py`
+- **Response schema fixed** — `scan_service.py` now uses correct VulnForge field names (`total_vulns`, flat severity keys, `cves`)
+- **Auth passthrough fixed** — `scan_service.py` uses shared `create_vulnforge_client()` factory ensuring auth settings are always passed
+- **`basic_auth` removed** — Removed dead `basic_auth` branch from VulnForge client; auto-migrates existing `basic_auth` config to `none` with warning log
+- **Scan service exception handling split** — Transport errors (`ConnectError`, `TimeoutException`) no longer create noisy "failed scan" records; HTTP errors and domain errors handled separately
+
+### Fixed
+- **PendingScanJob atomicity** — Scan job row created inside `begin_nested()` block, committed atomically with update status change. No orphaned jobs possible on crash
+- **`update_checker.py` VulnForgeClient construction** — `_enrich_with_vulnforge` and `_refresh_vulnforge_baseline` passed removed `username`/`password` kwargs to `VulnForgeClient()`, causing a TypeError. Now uses `create_vulnforge_client(db)` factory
+- **Registry passthrough in scan_service.py** — `get_image_vulnerabilities()` now receives `registry=container.registry`, fixing GHCR/LSCR image mismatch in VulnForge lookups
+- **Dead basic_auth code in test_vulnforge_connection** — Removed `vulnforge_username`/`vulnforge_password` reads and `basic_auth` branch from connectivity test endpoint
+- **Global `vulnforge_enabled` check in scan_service.py** — `scan_container()` now checks the global `vulnforge_enabled` setting before the per-container flag, with clear error messages for each case
+- **Duplicate VulnForge client creation** — `_handle_polling` in scan worker now passes its existing client to `_fetch_and_write_cve_delta`, eliminating a redundant HTTP client construction + DB settings read per completed job
+- **Dead settings cleanup** — Migration 045 removes orphaned `vulnforge_username`/`vulnforge_password` settings from the database
+- **Scan trigger race condition** — VulnForge scan requests no longer hard-fail when the container hasn't been discovered yet (e.g., after TideWatch force-recreates a container during an update). Previously, `_handle_pending` would immediately mark the PendingScanJob as failed on the first 404; now it retries with backoff and triggers VulnForge discovery
+
+### Added
+- **My Projects: Filesystem HTTP server detection** — 3-method detection (FROM images, dependency files, RUN commands) that works without running containers; shared `project_resolver.py` and parse-only `manifest_reader.py` utilities
+- **My Projects: Background dependency scan** — `DependencyScanJob` model, `DependencyScanService` with bounded concurrency (`Semaphore(3)`), SSE progress events (`dependency-scan-*`), and cancellation support; mirrors the CheckJob pattern
+- **My Projects: Dependency summary endpoint** — `GET /my-projects/dependency-summary` returns per-container counts of HTTP server, Dockerfile, prod, and dev dependency updates (non-ignored only)
+- **My Projects: Scan Dependencies button** — Purple "Scan Deps" button in dashboard My Projects header with `DepScanProgressBar` showing real-time scan progress via SSE
+- **My Projects: Dependency update badges** — `ContainerCard` shows color-coded badges: purple (Server), amber (Base Image), teal (Prod Deps), gray (Dev Deps) when updates are available
+- **My Projects: Dashboard empty state** — My Projects section always renders when `my_projects_enabled=true`, with "Scan Projects" button and helpful empty state even when no projects are discovered yet
+- **Database migration 043** — Creates `dependency_scan_jobs` table with status and created_at indexes
+- **33 new filesystem HTTP server detection tests** — Covers all 3 detection methods, precedence rules, E2E scanning, and server pattern validation
+
+### Changed
+- **Removed custom `http.server.*` Dockerfile labels** — HTTP server detection is now fully automatic via filesystem scanning (FROM lines, dependency files, RUN commands). Custom labels removed from all 5 project Dockerfiles. Community container label detection retained for third-party images.
+- **Global history excludes dependency events** — `dependency_update`, `dependency_ignore`, `dependency_unignore` events filtered from global timeline; still visible in per-container history
+- **HTTP server scan dispatches by project type** — `scan_http_servers` route uses filesystem scanning for `is_my_project=True` containers, Docker exec for community containers
+- **Dashboard render logic restructured** — My Projects section renders independently of `filteredContainers.length`, preventing the empty-state short-circuit from hiding it
+
 ### Dev Dependencies
 - **@types/react**: 19.2.10 → 19.2.13
 - **@vitejs/plugin-react**: 5.1.2 → 5.1.3

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.app_dependency import AppDependency as AppDependencyModel
+from app.utils.project_resolver import find_project_root
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ class DependencyScanner:
             project_root = Path(manual_path)
         else:
             # Auto-detect project root from compose file location
-            project_root = self._find_project_root(compose_file, service_name)
+            project_root = find_project_root(compose_file, service_name, self.projects_directory)
 
         if not project_root or not project_root.exists():
             logger.warning(

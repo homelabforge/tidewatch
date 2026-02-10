@@ -55,11 +55,6 @@ LABEL org.opencontainers.image.title="TideWatch"
 LABEL org.opencontainers.image.url="https://www.homelabforge.io"
 LABEL org.opencontainers.image.description="Intelligent Docker container update management and monitoring platform"
 
-# HTTP server metadata
-LABEL http.server.name="granian"
-LABEL http.server.version="2.7.1"
-LABEL http.server.type="asgi"
-
 WORKDIR /app
 
 # Install runtime dependencies (Docker CLI for compose operations)

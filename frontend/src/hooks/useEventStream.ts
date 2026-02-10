@@ -23,6 +23,19 @@ export interface CheckJobProgressEvent {
   error?: string;
 }
 
+// Dependency scan progress event data
+export interface DepScanProgressEvent {
+  job_id: number;
+  status: string;
+  total_count: number;
+  scanned_count: number;
+  updates_found: number;
+  errors_count?: number;
+  current_project?: string | null;
+  progress_percent?: number;
+  error?: string;
+}
+
 interface UseEventStreamOptions {
   onUpdateAvailable?: (data: Record<string, unknown> | undefined) => void;
   onUpdateApplied?: (data: Record<string, unknown> | undefined) => void;
@@ -36,6 +49,12 @@ interface UseEventStreamOptions {
   onCheckJobCompleted?: (data: CheckJobProgressEvent) => void;
   onCheckJobFailed?: (data: CheckJobProgressEvent) => void;
   onCheckJobCanceled?: (data: CheckJobProgressEvent) => void;
+  // Dependency scan callbacks
+  onDepScanStarted?: (data: DepScanProgressEvent) => void;
+  onDepScanProgress?: (data: DepScanProgressEvent) => void;
+  onDepScanCompleted?: (data: DepScanProgressEvent) => void;
+  onDepScanFailed?: (data: DepScanProgressEvent) => void;
+  onDepScanCanceled?: (data: DepScanProgressEvent) => void;
   enableToasts?: boolean;
 }
 
@@ -57,6 +76,11 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onCheckJobCompleted,
     onCheckJobFailed,
     onCheckJobCanceled,
+    onDepScanStarted,
+    onDepScanProgress,
+    onDepScanCompleted,
+    onDepScanFailed,
+    onDepScanCanceled,
     enableToasts = true,
   } = options;
 
@@ -168,6 +192,42 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
         }
         break;
 
+      // Dependency scan events
+      case 'dependency-scan-started':
+        if (data) onDepScanStarted?.(data as unknown as DepScanProgressEvent);
+        break;
+
+      case 'dependency-scan-progress':
+        if (data) onDepScanProgress?.(data as unknown as DepScanProgressEvent);
+        break;
+
+      case 'dependency-scan-completed':
+        if (data) onDepScanCompleted?.(data as unknown as DepScanProgressEvent);
+        if (enableToasts) {
+          toast.success('Dependency scan complete', {
+            description: `Found ${data?.updates_found || 0} updates across ${data?.scanned_count || 0} projects`,
+          });
+        }
+        break;
+
+      case 'dependency-scan-failed':
+        if (data) onDepScanFailed?.(data as unknown as DepScanProgressEvent);
+        if (enableToasts) {
+          toast.error('Dependency scan failed', {
+            description: String(data?.error ?? 'Unknown error occurred'),
+          });
+        }
+        break;
+
+      case 'dependency-scan-canceled':
+        if (data) onDepScanCanceled?.(data as unknown as DepScanProgressEvent);
+        if (enableToasts) {
+          toast.info('Dependency scan canceled', {
+            description: `Scanned ${data?.scanned_count || 0} of ${data?.total_count || 0} projects`,
+          });
+        }
+        break;
+
       default:
         console.debug('[EventStream] Unknown event type:', type, data);
     }
@@ -183,6 +243,11 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onCheckJobCompleted,
     onCheckJobFailed,
     onCheckJobCanceled,
+    onDepScanStarted,
+    onDepScanProgress,
+    onDepScanCompleted,
+    onDepScanFailed,
+    onDepScanCanceled,
     enableToasts,
   ]);
 

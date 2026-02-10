@@ -413,6 +413,181 @@ async def list_excluded_containers(
     return list(containers)
 
 
+@router.get("/my-projects/dependency-summary")
+async def get_dependency_summary(
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get dependency update summary for all My Projects.
+
+    Returns counts of available updates by category for each My Project container,
+    used to populate badges on container cards.
+
+    Returns:
+        Dict with summaries keyed by container ID
+    """
+    from sqlalchemy import func
+
+    from app.models.app_dependency import AppDependency
+    from app.models.dockerfile_dependency import DockerfileDependency
+    from app.models.http_server import HttpServer
+
+    # Get My Project container IDs
+    my_project_ids_result = await db.execute(
+        select(Container.id).where(Container.is_my_project == True)  # noqa: E712
+    )
+    my_project_ids = [r[0] for r in my_project_ids_result.all()]
+
+    if not my_project_ids:
+        return {"summaries": {}}
+
+    # HTTP server updates
+    http_result = await db.execute(
+        select(HttpServer.container_id, func.count(HttpServer.id))
+        .where(
+            HttpServer.container_id.in_(my_project_ids),
+            HttpServer.update_available == True,  # noqa: E712
+            HttpServer.ignored == False,  # noqa: E712
+        )
+        .group_by(HttpServer.container_id)
+    )
+    http_counts: dict[int, int] = {row[0]: row[1] for row in http_result.all()}
+
+    # Dockerfile dependency updates
+    df_result = await db.execute(
+        select(DockerfileDependency.container_id, func.count(DockerfileDependency.id))
+        .where(
+            DockerfileDependency.container_id.in_(my_project_ids),
+            DockerfileDependency.update_available == True,  # noqa: E712
+            DockerfileDependency.ignored == False,  # noqa: E712
+        )
+        .group_by(DockerfileDependency.container_id)
+    )
+    df_counts: dict[int, int] = {row[0]: row[1] for row in df_result.all()}
+
+    # App prod deps
+    app_prod_result = await db.execute(
+        select(AppDependency.container_id, func.count(AppDependency.id))
+        .where(
+            AppDependency.container_id.in_(my_project_ids),
+            AppDependency.update_available == True,  # noqa: E712
+            AppDependency.ignored == False,  # noqa: E712
+            AppDependency.dependency_type == "production",
+        )
+        .group_by(AppDependency.container_id)
+    )
+    app_prod_counts: dict[int, int] = {row[0]: row[1] for row in app_prod_result.all()}
+
+    # App dev deps
+    app_dev_result = await db.execute(
+        select(AppDependency.container_id, func.count(AppDependency.id))
+        .where(
+            AppDependency.container_id.in_(my_project_ids),
+            AppDependency.update_available == True,  # noqa: E712
+            AppDependency.ignored == False,  # noqa: E712
+            AppDependency.dependency_type == "development",
+        )
+        .group_by(AppDependency.container_id)
+    )
+    app_dev_counts: dict[int, int] = {row[0]: row[1] for row in app_dev_result.all()}
+
+    # Build response
+    summaries: dict[str, dict[str, int]] = {}
+    all_ids: set[int] = set(http_counts) | set(df_counts) | set(app_prod_counts) | set(app_dev_counts)
+    for cid in all_ids:
+        summaries[str(cid)] = {
+            "http_server_updates": http_counts.get(cid, 0),
+            "dockerfile_updates": df_counts.get(cid, 0),
+            "app_prod_updates": app_prod_counts.get(cid, 0),
+            "app_dev_updates": app_dev_counts.get(cid, 0),
+        }
+
+    return {"summaries": summaries}
+
+
+@router.post("/my-projects/scan-dependencies")
+async def scan_all_dependencies(
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Start a background dependency scan for all My Projects.
+
+    Returns:
+        Job status with job_id
+    """
+    from app.services.dependency_scan_service import DependencyScanService
+
+    # Check for existing running job
+    existing = await DependencyScanService.get_active_job(db)
+    if existing:
+        return {"success": True, "job_id": existing.id, "already_running": True}
+
+    job = await DependencyScanService.create_job(db, triggered_by="user")
+    DependencyScanService.start_job_background(job.id)
+    return {"success": True, "job_id": job.id, "status": "queued"}
+
+
+@router.get("/my-projects/scan-dependencies/{job_id}")
+async def get_dependency_scan_status(
+    job_id: int,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get current status of a dependency scan job.
+
+    Used for reconnect recovery when SSE connection drops.
+
+    Args:
+        job_id: Job ID
+
+    Returns:
+        Current job state
+    """
+    from app.services.dependency_scan_service import DependencyScanService
+
+    job = await DependencyScanService.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "total_count": job.total_count,
+        "scanned_count": job.scanned_count,
+        "updates_found": job.updates_found,
+        "errors_count": job.errors_count,
+        "current_project": job.current_project,
+        "progress_percent": job.progress_percent,
+        "error_message": job.error_message,
+    }
+
+
+@router.post("/my-projects/scan-dependencies/{job_id}/cancel")
+async def cancel_dependency_scan(
+    job_id: int,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Request cancellation of a dependency scan job.
+
+    Args:
+        job_id: Job ID to cancel
+
+    Returns:
+        Cancellation confirmation
+    """
+    from app.services.dependency_scan_service import DependencyScanService
+
+    job = await DependencyScanService.get_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.is_active:
+        raise HTTPException(status_code=400, detail="Job is not active")
+
+    await DependencyScanService.request_cancellation(db, job_id)
+    return {"success": True, "message": "Cancellation requested"}
+
+
 @router.get("/{container_id}/dependencies")
 async def get_container_dependencies(
     _admin: dict | None = Depends(require_auth),
@@ -1310,13 +1485,26 @@ async def scan_http_servers(
     try:
         from app.services.http_server_scanner import http_scanner
 
-        # Scan for HTTP servers (pass container model for Dockerfile detection)
-        servers = await http_scanner.scan_container_http_servers(
-            container.name, container_model=container, db=db
-        )
+        # Use filesystem scanning for My Projects, Docker-based for regular containers
+        if container.is_my_project:
+            servers = await http_scanner.scan_project_http_servers(container_model=container, db=db)
+            # persist_http_servers is called inside scan_project_http_servers
+            # Re-fetch persisted records for response
+            from sqlalchemy import select
 
-        # Persist to database
-        persisted = await http_scanner.persist_http_servers(container.id, servers, db)
+            from app.models.http_server import HttpServer
+
+            result = await db.execute(
+                select(HttpServer).where(HttpServer.container_id == container.id)
+            )
+            persisted = list(result.scalars().all())
+        else:
+            # Scan for HTTP servers (pass container model for Dockerfile detection)
+            servers = await http_scanner.scan_container_http_servers(
+                container.name, container_model=container, db=db
+            )
+            # Persist to database
+            persisted = await http_scanner.persist_http_servers(container.id, servers, db)
 
         return {
             "success": True,

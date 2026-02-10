@@ -246,8 +246,6 @@ async def test_vulnforge_connection(
         vulnforge_url = await SettingsService.get(db, "vulnforge_url")
         auth_type = await SettingsService.get(db, "vulnforge_auth_type")
         api_key = await SettingsService.get(db, "vulnforge_api_key")
-        username = await SettingsService.get(db, "vulnforge_username")
-        password = await SettingsService.get(db, "vulnforge_password")
 
         if not vulnforge_url:
             return {
@@ -256,18 +254,10 @@ async def test_vulnforge_connection(
                 "details": {},
             }
 
-        # Build auth headers based on configured type
+        # Build auth headers — VulnForge only supports X-API-Key or none
         headers = {}
         if auth_type == "api_key" and api_key:
-            # VulnForge uses X-API-Key header for API key authentication
             headers["X-API-Key"] = api_key
-        elif auth_type == "basic_auth" and username and password:
-            import base64
-
-            credentials = f"{username}:{password}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        # auth_type == "none" requires no headers
 
         # Test connection with health endpoint
         base_url = vulnforge_url.rstrip("/")
@@ -290,9 +280,7 @@ async def test_vulnforge_connection(
 
             auth_status = "none"
             if auth_type == "api_key" and api_key:
-                auth_status = "api_key (Bearer)"
-            elif auth_type == "basic_auth" and username:
-                auth_status = "basic_auth"
+                auth_status = "api_key"
 
             return {
                 "success": True,

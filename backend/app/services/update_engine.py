@@ -403,12 +403,9 @@ class UpdateEngine:
                 }
             )
 
-            # Trigger VulnForge rescan (fire-and-forget)
-            # This runs in the background and doesn't block the update
-            # Pass update_id so we can store CVE delta results when scan completes
-            asyncio.create_task(UpdateEngine._trigger_vulnforge_rescan(container.name, update.id))
-
-            # Success! Wrap status updates in transaction for atomicity
+            # Success! Wrap status updates in transaction for atomicity.
+            # PendingScanJob is created here so it commits with the update —
+            # the APScheduler worker picks it up and handles the VulnForge scan.
             async with db.begin_nested():
                 update.status = "applied"
                 update.version += 1  # Increment version for optimistic locking
@@ -437,6 +434,15 @@ class UpdateEngine:
                 history.status = "success"
                 history.completed_at = datetime.now(UTC)
                 history.can_rollback = True
+
+                # Create PendingScanJob atomically with the update commit
+                from app.models.pending_scan_job import PendingScanJob
+
+                pending_scan = PendingScanJob(
+                    container_name=container.name,
+                    update_id=update.id,
+                )
+                db.add(pending_scan)
 
             await db.commit()
 
@@ -1759,134 +1765,6 @@ class UpdateEngine:
         Returns:
             VulnForgeClient instance or None if disabled/not configured
         """
-        from app.services.vulnforge_client import VulnForgeClient
+        from app.services.vulnforge_client import create_vulnforge_client
 
-        # Check if VulnForge is enabled
-        vulnforge_enabled = await SettingsService.get_bool(db, "vulnforge_enabled")
-        if not vulnforge_enabled:
-            return None
-
-        # Get VulnForge configuration
-        vulnforge_url = await SettingsService.get(db, "vulnforge_url")
-        if not vulnforge_url:
-            logger.warning("VulnForge URL not configured")
-            return None
-
-        # Get authentication settings
-        auth_type = await SettingsService.get(db, "vulnforge_auth_type", "none")
-        api_key = await SettingsService.get(db, "vulnforge_api_key")
-        username = await SettingsService.get(db, "vulnforge_username")
-        password = await SettingsService.get(db, "vulnforge_password")
-
-        return VulnForgeClient(
-            base_url=vulnforge_url,  # Guaranteed non-None by check on line 1669
-            auth_type=auth_type or "none",
-            api_key=api_key,
-            username=username,
-            password=password,
-        )
-
-    @staticmethod
-    async def _trigger_vulnforge_rescan(container_name: str, update_id: int) -> None:
-        """Trigger VulnForge rescan after update and fetch CVE delta results.
-
-        This is a best-effort operation that doesn't block the update workflow.
-        After triggering the scan, waits for it to complete and then fetches
-        the CVE delta to store in the Update record.
-
-        Note: This method creates its own database session because it runs
-        as an asyncio.create_task() after the main update transaction completes.
-
-        Args:
-            container_name: Name of the container to rescan
-            update_id: ID of the Update record to store CVE results in
-        """
-        from app.database import AsyncSessionLocal
-        from app.models.update import Update
-
-        try:
-            # Create a fresh database session for this background task
-            async with AsyncSessionLocal() as db:
-                vulnforge = await UpdateEngine._get_vulnforge_client(db)
-                if not vulnforge:
-                    return
-
-                try:
-                    # Step 1: Trigger the scan
-                    success = await vulnforge.trigger_scan_by_name(container_name)
-                    if not success:
-                        logger.warning(
-                            f"VulnForge rescan request returned false for {container_name}"
-                        )
-                        return
-
-                    logger.info(f"Triggered VulnForge rescan for {container_name}")
-
-                    # Step 2: Wait for scan to complete (VulnForge scans typically take 30-90 seconds)
-                    # Poll every 15 seconds for up to 3 minutes
-                    max_wait_seconds = 180
-                    poll_interval = 15
-                    elapsed = 0
-
-                    while elapsed < max_wait_seconds:
-                        await asyncio.sleep(poll_interval)
-                        elapsed += poll_interval
-
-                        # Step 3: Fetch CVE delta for this container
-                        delta = await vulnforge.get_cve_delta(
-                            container_name=container_name,
-                            since_hours=1,  # Only look at very recent scans
-                        )
-
-                        if delta and delta.get("scans"):
-                            # Found scan results - get the most recent one for this container
-                            latest_scan = delta["scans"][0]
-                            cves_fixed = latest_scan.get("cves_fixed", [])
-                            cves_introduced = latest_scan.get("cves_introduced", [])
-                            total_vulns = latest_scan.get("total_vulns", 0)
-
-                            # Step 4: Update BOTH the Update record and UpdateHistory record with CVE data
-                            result = await db.execute(select(Update).where(Update.id == update_id))
-                            update_record = result.scalar_one_or_none()
-
-                            if update_record:
-                                update_record.cves_fixed = cves_fixed
-                                update_record.new_vulns = total_vulns
-                                update_record.vuln_delta = len(cves_introduced) - len(cves_fixed)
-
-                                # ALSO update the corresponding UpdateHistory record
-                                from app.models.history import UpdateHistory
-
-                                history_result = await db.execute(
-                                    select(UpdateHistory).where(
-                                        UpdateHistory.update_id == update_id
-                                    )
-                                )
-                                history_record = history_result.scalar_one_or_none()
-
-                                if history_record:
-                                    history_record.cves_fixed = cves_fixed
-                                    logger.info(
-                                        f"Backfilled UpdateHistory {history_record.id} with "
-                                        f"{len(cves_fixed)} CVEs for {container_name}"
-                                    )
-
-                                await db.commit()
-
-                                logger.info(
-                                    f"Updated CVE data for {container_name}: "
-                                    f"{len(cves_fixed)} fixed, {len(cves_introduced)} introduced, "
-                                    f"{total_vulns} total vulns"
-                                )
-                            return
-
-                    logger.warning(
-                        f"VulnForge scan for {container_name} did not complete within {max_wait_seconds}s"
-                    )
-
-                finally:
-                    await vulnforge.close()
-
-        except Exception as e:
-            # Don't fail - this is best-effort
-            logger.warning(f"Failed to trigger VulnForge rescan for {container_name}: {e}")
+        return await create_vulnforge_client(db)

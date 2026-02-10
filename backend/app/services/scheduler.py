@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,6 +133,28 @@ class SchedulerService:
                     max_instances=1,
                 )
                 logger.info(f"Docker cleanup scheduled: {cleanup_schedule}")
+
+            # Add VulnForge scan worker (runs every 15 seconds)
+            from app.services.vulnforge_scan_worker import process_pending_scan_jobs
+
+            self.scheduler.add_job(
+                process_pending_scan_jobs,
+                IntervalTrigger(seconds=15),
+                id="vulnforge_scan_worker",
+                name="VulnForge Pending Scan Worker",
+                replace_existing=True,
+                max_instances=1,
+            )
+
+            # Add PendingScanJob cleanup (daily at 2:30 AM)
+            self.scheduler.add_job(
+                self._run_pending_scan_job_cleanup,
+                CronTrigger.from_crontab("30 2 * * *"),
+                id="pending_scan_job_cleanup",
+                name="PendingScanJob Retention Cleanup",
+                replace_existing=True,
+                max_instances=1,
+            )
 
             # Start the scheduler
             self.scheduler.start()
@@ -550,6 +573,33 @@ class SchedulerService:
             logger.error(
                 f"Invalid data during Dockerfile dependencies check after {duration:.2f}s: {e}"
             )
+
+    async def _run_pending_scan_job_cleanup(self):
+        """Clean up old completed/failed PendingScanJob rows (30-day retention)."""
+        logger.info("Starting PendingScanJob cleanup")
+        try:
+            async with AsyncSessionLocal() as db:
+                from datetime import timedelta
+
+                from sqlalchemy import delete
+
+                from app.models.pending_scan_job import PendingScanJob
+
+                cutoff = datetime.now(UTC) - timedelta(days=30)
+
+                result = await db.execute(
+                    delete(PendingScanJob).where(
+                        PendingScanJob.status.in_(["completed", "failed"]),
+                        PendingScanJob.completed_at < cutoff,
+                    )
+                )
+                deleted: int = result.rowcount  # type: ignore[assignment]
+                await db.commit()
+
+                if deleted:
+                    logger.info(f"PendingScanJob cleanup: deleted {deleted} old jobs")
+        except Exception as e:
+            logger.error(f"Error during PendingScanJob cleanup: {e}")
 
     async def _run_docker_cleanup(self):
         """Run Docker resource cleanup job.

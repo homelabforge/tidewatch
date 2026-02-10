@@ -3,12 +3,14 @@
 from app.models.app_dependency import AppDependency
 from app.models.check_job import CheckJob
 from app.models.container import Container
+from app.models.dependency_scan_job import DependencyScanJob
 from app.models.dockerfile_dependency import DockerfileDependency
 from app.models.history import UpdateHistory
 from app.models.http_server import HttpServer
 from app.models.metrics_history import MetricsHistory
 from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
+from app.models.pending_scan_job import PendingScanJob
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.models.secret_key import SecretKey
@@ -34,4 +36,6 @@ __all__ = [
     "VulnerabilityScan",
     "Webhook",
     "CheckJob",
+    "DependencyScanJob",
+    "PendingScanJob",
 ]

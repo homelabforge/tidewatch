@@ -10,6 +10,8 @@ import docker
 import httpx
 from docker.errors import APIError, DockerException, NotFound
 
+from app.utils.security import sanitize_log_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,41 @@ class HttpServerScanner:
                 "check_url": "https://httpd.apache.org/",
                 "latest_api": None,
             },
+            "uvicorn": {
+                "commands": ["uvicorn --version"],
+                "version_regex": r"uvicorn\s+v?(\d+\.\d+\.\d+)",
+                "check_url": "https://github.com/encode/uvicorn/releases",
+                "latest_api": "https://api.github.com/repos/encode/uvicorn/releases/latest",
+            },
+            "gunicorn": {
+                "commands": ["gunicorn --version"],
+                "version_regex": r"gunicorn\s+\(?v?(\d+\.\d+\.\d+)\)?",
+                "check_url": "https://github.com/benoitc/gunicorn/releases",
+                "latest_api": "https://api.github.com/repos/benoitc/gunicorn/releases/latest",
+            },
+        }
+
+        # Docker images that are HTTP servers (for FROM line detection)
+        self.from_image_servers: dict[str, str] = {
+            "nginx": "nginx",
+            "httpd": "apache",
+            "caddy": "caddy",
+            "traefik": "traefik",
+            "lighttpd": "lighttpd",
+        }
+
+        # Dependency packages that are HTTP servers
+        self.dependency_servers: dict[str, dict[str, str]] = {
+            # Python (pypi)
+            "granian": {"name": "granian", "ecosystem": "pypi"},
+            "uvicorn": {"name": "uvicorn", "ecosystem": "pypi"},
+            "gunicorn": {"name": "gunicorn", "ecosystem": "pypi"},
+            # Node.js (npm) — these serve HTTP directly
+            "express": {"name": "node", "ecosystem": "npm"},
+            "fastify": {"name": "node", "ecosystem": "npm"},
+            "next": {"name": "node", "ecosystem": "npm"},
+            "koa": {"name": "node", "ecosystem": "npm"},
+            "@hapi/hapi": {"name": "node", "ecosystem": "npm"},
         }
 
         # Process-based detection (for servers running as processes)
@@ -99,18 +136,8 @@ class HttpServerScanner:
         try:
             container = self.docker_client.containers.get(container_name)
 
-            # Read projects directory from settings for path reconstruction
-            if db:
-                from app.services.settings_service import SettingsService
-
-                projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
-            else:
-                projects_dir = "/projects"
-
             # Method 0: Check container labels (works even when stopped)
-            label_servers = await self._detect_from_labels(
-                container, container_model, db, projects_dir=projects_dir
-            )
+            label_servers = await self._detect_from_labels(container)
 
             # If container is not running, only use label detection
             if container.status != "running":
@@ -162,26 +189,13 @@ class HttpServerScanner:
                 servers = list(servers_dict.values())
 
             # Detect Dockerfile paths for all detected servers (if not already set)
-            # Also read version from Dockerfile if available (source of truth for My Projects)
             for server in servers:
                 if not server.get("dockerfile_path"):
-                    dockerfile_path, line_number = await self._find_dockerfile_path(
+                    dockerfile_path = await self._find_dockerfile_path(
                         container, container_model, db
                     )
                     if dockerfile_path:
                         server["dockerfile_path"] = dockerfile_path
-                        server["line_number"] = line_number
-
-                        # Read version from Dockerfile LABEL (source of truth)
-                        # dockerfile_path is now relative, reconstruct absolute for file read
-                        dockerfile_version = self._read_version_from_dockerfile(
-                            str(Path(projects_dir) / dockerfile_path)
-                        )
-                        if dockerfile_version:
-                            server["current_version"] = dockerfile_version
-                            logger.info(
-                                f"Using Dockerfile version {dockerfile_version} for {server['name']} (overriding container version)"
-                            )
 
             # Get latest versions for detected servers
             for server in servers:
@@ -200,6 +214,320 @@ class HttpServerScanner:
             logger.error(f"Docker error scanning container {container_name}: {e}")
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid data scanning container {container_name}: {e}")
+
+        return servers
+
+    async def scan_project_http_servers(
+        self, container_model: Any, db: Any
+    ) -> list[dict[str, Any]]:
+        """Scan a My Project container for HTTP servers using filesystem only.
+
+        No running container needed. Detects servers from:
+        1. Dockerfile FROM lines (image-based servers like nginx, caddy)
+        2. Dependency files (pyproject.toml, requirements.txt, package.json)
+        3. Dockerfile RUN commands (apt-get install, pip install, etc.)
+
+        Args:
+            container_model: Container database model (must have is_my_project=True)
+            db: Database session
+
+        Returns:
+            List of detected HTTP servers with version information
+        """
+        from app.services.settings_service import SettingsService
+        from app.utils.project_resolver import find_project_root
+
+        servers: list[dict[str, Any]] = []
+
+        # Read projects directory from settings
+        projects_dir_str = await SettingsService.get(db, "projects_directory") or "/projects"
+        projects_directory = Path(projects_dir_str)
+
+        # Resolve project root
+        compose_file = getattr(container_model, "compose_file", None) or ""
+        service_name = getattr(container_model, "name", "") or ""
+
+        project_root = find_project_root(compose_file, service_name, projects_directory)
+        if not project_root:
+            logger.warning(
+                "No project root found for %s (compose=%s, service=%s)",
+                sanitize_log_message(service_name),
+                sanitize_log_message(compose_file),
+                sanitize_log_message(service_name),
+            )
+            return servers
+
+        # Locate Dockerfile (check common locations)
+        dockerfile_path: Path | None = None
+        for candidate in [
+            project_root / "Dockerfile",
+            project_root / "docker" / "Dockerfile",
+            project_root / "build" / "Dockerfile",
+        ]:
+            if candidate.exists() and candidate.is_file():
+                dockerfile_path = candidate
+                break
+
+        # Run detection methods and merge results
+        servers_dict: dict[str, dict[str, Any]] = {}
+
+        # Method 1: Dockerfile FROM lines (highest precedence)
+        if dockerfile_path:
+            for server in self._detect_from_dockerfile_from(dockerfile_path):
+                servers_dict[server["name"]] = server
+
+        # Method 2: Dependency files
+        for server in self._detect_from_dependency_files(project_root):
+            if server["name"] not in servers_dict:
+                servers_dict[server["name"]] = server
+            elif not servers_dict[server["name"]].get("current_version"):
+                servers_dict[server["name"]]["current_version"] = server.get("current_version")
+
+        # Method 3: Dockerfile RUN commands (lowest precedence)
+        if dockerfile_path:
+            for server in self._detect_from_dockerfile_run(dockerfile_path):
+                if server["name"] not in servers_dict:
+                    servers_dict[server["name"]] = server
+
+        servers = list(servers_dict.values())
+
+        # Set dockerfile_path on all servers if we found one
+        if dockerfile_path:
+            rel_dockerfile = str(dockerfile_path.relative_to(projects_directory))
+            for server in servers:
+                if not server.get("dockerfile_path"):
+                    server["dockerfile_path"] = rel_dockerfile
+
+        # Get latest versions and check for updates
+        for server in servers:
+            server["latest_version"] = await self._get_latest_version(
+                server["name"], server.get("current_version")
+            )
+            server["update_available"] = self._check_update_available(
+                server.get("current_version"), server.get("latest_version")
+            )
+
+        # Persist to database
+        if db and hasattr(container_model, "id"):
+            await self.persist_http_servers(container_model.id, servers, db)
+
+        return servers
+
+    def _detect_from_dockerfile_from(self, dockerfile_path: Path) -> list[dict[str, Any]]:
+        """Detect HTTP servers from Dockerfile FROM lines.
+
+        Matches image names against known HTTP server images.
+        Extracts version from tag, stripping variant suffixes like -alpine, -slim.
+
+        Args:
+            dockerfile_path: Path to Dockerfile
+
+        Returns:
+            List of server info dicts
+        """
+        servers: list[dict[str, Any]] = []
+        try:
+            with open(dockerfile_path, encoding="utf-8") as f:
+                for line_num, line in enumerate(f, start=1):
+                    stripped = line.strip()
+                    # Match FROM lines: FROM image:tag AS alias
+                    from_match = re.match(
+                        r"^FROM\s+(?:--platform=\S+\s+)?(\S+?)(?::(\S+))?\s*(?:AS\s+\S+)?$",
+                        stripped,
+                        re.IGNORECASE,
+                    )
+                    if not from_match:
+                        continue
+
+                    image = from_match.group(1).lower()
+                    tag = from_match.group(2)
+
+                    # Strip registry prefix (e.g., docker.io/library/nginx -> nginx)
+                    image_name = image.rsplit("/", 1)[-1]
+
+                    server_name = self.from_image_servers.get(image_name)
+                    if not server_name:
+                        continue
+
+                    # Extract version from tag, stripping variant suffixes
+                    version: str | None = None
+                    if tag:
+                        version_match = re.match(r"^v?(\d+(?:\.\d+){0,2})", tag)
+                        if version_match:
+                            version = version_match.group(1)
+
+                    servers.append(
+                        {
+                            "name": server_name,
+                            "current_version": version,
+                            "detection_method": "dockerfile_from",
+                            "last_checked": datetime.now(UTC),
+                            "dockerfile_path": str(dockerfile_path),
+                            "line_number": line_num,
+                        }
+                    )
+                    logger.info(
+                        "Detected %s v%s from FROM line in %s:%d",
+                        server_name,
+                        version or "unknown",
+                        sanitize_log_message(str(dockerfile_path)),
+                        line_num,
+                    )
+
+        except OSError as e:
+            logger.debug(
+                "Could not read Dockerfile %s: %s",
+                sanitize_log_message(str(dockerfile_path)),
+                sanitize_log_message(str(e)),
+            )
+
+        return servers
+
+    def _detect_from_dependency_files(self, project_root: Path) -> list[dict[str, Any]]:
+        """Detect HTTP servers from dependency manifest files.
+
+        Reads local manifest files only — NO network calls. Checks for known
+        HTTP server packages in dependencies.
+
+        Args:
+            project_root: Path to project root directory
+
+        Returns:
+            List of server info dicts
+        """
+        from app.utils.manifest_reader import (
+            ParsedDependency,
+            parse_package_json,
+            parse_pyproject_toml,
+            parse_requirements_txt,
+        )
+
+        servers: list[dict[str, Any]] = []
+        seen_servers: set[str] = set()
+
+        # Scan standard manifest locations
+        manifest_paths: list[tuple[str, Path]] = []
+
+        # Python manifests
+        for subdir in ["", "backend"]:
+            base = project_root / subdir if subdir else project_root
+            pyproject = base / "pyproject.toml"
+            if pyproject.exists():
+                manifest_paths.append(("pyproject", pyproject))
+            requirements = base / "requirements.txt"
+            if requirements.exists():
+                manifest_paths.append(("requirements", requirements))
+
+        # Node manifests
+        for subdir in ["", "frontend"]:
+            base = project_root / subdir if subdir else project_root
+            package_json = base / "package.json"
+            if package_json.exists():
+                manifest_paths.append(("package_json", package_json))
+
+        # Parse each manifest and check for known server packages
+        all_deps: list[ParsedDependency] = []
+        for manifest_type, path in manifest_paths:
+            if manifest_type == "pyproject":
+                all_deps.extend(parse_pyproject_toml(path))
+            elif manifest_type == "requirements":
+                all_deps.extend(parse_requirements_txt(path))
+            elif manifest_type == "package_json":
+                all_deps.extend(parse_package_json(path))
+
+        for dep in all_deps:
+            server_info = self.dependency_servers.get(dep.name)
+            if not server_info:
+                continue
+
+            server_name = server_info["name"]
+            if server_name in seen_servers:
+                continue
+            seen_servers.add(server_name)
+
+            servers.append(
+                {
+                    "name": server_name,
+                    "current_version": dep.version,
+                    "detection_method": "dependency_file",
+                    "last_checked": datetime.now(UTC),
+                }
+            )
+            logger.info(
+                "Detected %s v%s from dependency %s in %s",
+                server_name,
+                dep.version or "unknown",
+                dep.name,
+                sanitize_log_message(dep.source_file),
+            )
+
+        return servers
+
+    def _detect_from_dockerfile_run(self, dockerfile_path: Path) -> list[dict[str, Any]]:
+        """Detect HTTP servers from Dockerfile RUN commands.
+
+        Matches patterns like:
+            RUN apt-get install -y nginx
+            RUN apk add lighttpd
+            RUN pip install uvicorn
+
+        Version is typically not extractable from RUN commands.
+
+        Args:
+            dockerfile_path: Path to Dockerfile
+
+        Returns:
+            List of server info dicts
+        """
+        servers: list[dict[str, Any]] = []
+        seen_servers: set[str] = set()
+
+        # Patterns: (regex, server_name)
+        run_patterns: list[tuple[str, str]] = [
+            # System package managers
+            (r"apt-get\s+install\s+.*\bnginx\b", "nginx"),
+            (r"apk\s+add\s+.*\bnginx\b", "nginx"),
+            (r"apt-get\s+install\s+.*\bapache2\b", "apache"),
+            (r"apt-get\s+install\s+.*\blighttpd\b", "lighttpd"),
+            (r"apk\s+add\s+.*\blighttpd\b", "lighttpd"),
+            # pip installs
+            (r"pip\s+install\s+.*\buvicorn\b", "uvicorn"),
+            (r"pip\s+install\s+.*\bgunicorn\b", "gunicorn"),
+            (r"pip\s+install\s+.*\bgranian\b", "granian"),
+            # npm installs
+            (r"npm\s+install\s+.*\bexpress\b", "node"),
+        ]
+
+        try:
+            with open(dockerfile_path, encoding="utf-8") as f:
+                content = f.read()
+
+            for pattern, server_name in run_patterns:
+                if server_name in seen_servers:
+                    continue
+                if re.search(pattern, content, re.IGNORECASE):
+                    seen_servers.add(server_name)
+                    servers.append(
+                        {
+                            "name": server_name,
+                            "current_version": None,
+                            "detection_method": "dockerfile_run",
+                            "last_checked": datetime.now(UTC),
+                            "dockerfile_path": str(dockerfile_path),
+                        }
+                    )
+                    logger.info(
+                        "Detected %s from RUN command in %s",
+                        server_name,
+                        sanitize_log_message(str(dockerfile_path)),
+                    )
+
+        except OSError as e:
+            logger.debug(
+                "Could not read Dockerfile %s: %s",
+                sanitize_log_message(str(dockerfile_path)),
+                sanitize_log_message(str(e)),
+            )
 
         return servers
 
@@ -519,59 +847,35 @@ class HttpServerScanner:
             # If version parsing fails, default to info severity
             return "info"
 
-    async def _detect_from_labels(
-        self,
-        container,
-        container_model=None,
-        db=None,
-        projects_dir: str = "/projects",
-    ) -> list[dict[str, Any]]:
+    async def _detect_from_labels(self, container) -> list[dict[str, Any]]:
         """Detect HTTP servers from container labels.
+
+        Checks for http.server.* labels on the container image. These labels
+        are optional — most detection now happens via filesystem methods
+        (FROM, dependency files, RUN). Third-party images may still use them.
 
         Args:
             container: Docker container object
-            container_model: Optional Container database model with is_my_project flag
-            db: Optional database session for reading settings
-            projects_dir: Projects directory for path reconstruction
 
         Returns:
-            List of server info dicts with dockerfile_path populated if available
+            List of server info dicts
         """
         servers = []
 
         try:
             labels = container.labels or {}
 
-            # Check for http.server.* labels
+            # Check for http.server.* labels (third-party images may use these)
             server_name = labels.get("http.server.name")
             if server_name:
-                server_info = {
-                    "name": server_name.lower(),
-                    "current_version": labels.get("http.server.version"),
-                    "detection_method": "labels",
-                    "last_checked": datetime.now(UTC),
-                }
-
-                # Detect Dockerfile path for "My Projects" containers
-                dockerfile_path, line_number = await self._find_dockerfile_path(
-                    container, container_model, db
+                servers.append(
+                    {
+                        "name": server_name.lower(),
+                        "current_version": labels.get("http.server.version"),
+                        "detection_method": "labels",
+                        "last_checked": datetime.now(UTC),
+                    }
                 )
-                if dockerfile_path:
-                    server_info["dockerfile_path"] = dockerfile_path
-                    server_info["line_number"] = line_number
-                    # Read version from Dockerfile (source of truth) instead of
-                    # container labels which may be stale from the built image
-                    dockerfile_version = self._read_version_from_dockerfile(
-                        str(Path(projects_dir) / dockerfile_path)
-                    )
-                    if dockerfile_version:
-                        server_info["current_version"] = dockerfile_version
-                        logger.info(
-                            f"Using Dockerfile version {dockerfile_version} for "
-                            f"{server_name} (overriding container label)"
-                        )
-
-                servers.append(server_info)
                 logger.info(f"Detected {server_name} from labels in {container.name}")
 
         except (AttributeError, TypeError) as e:
@@ -579,31 +883,8 @@ class HttpServerScanner:
 
         return servers
 
-    def _read_version_from_dockerfile(self, dockerfile_path: str) -> str | None:
-        """Read http.server.version from Dockerfile LABEL.
-
-        Args:
-            dockerfile_path: Path to the Dockerfile
-
-        Returns:
-            Version string or None
-        """
-        try:
-            with open(dockerfile_path, encoding="utf-8") as f:
-                for line in f:
-                    if "LABEL http.server.version=" in line:
-                        # Extract version from: LABEL http.server.version="2.6.1"
-                        match = re.search(r'LABEL\s+http\.server\.version="([^"]+)"', line)
-                        if match:
-                            return match.group(1)
-        except OSError as e:
-            logger.debug(f"Error reading version from Dockerfile {dockerfile_path}: {e}")
-        return None
-
-    async def _find_dockerfile_path(
-        self, container, container_model=None, db=None
-    ) -> tuple[str | None, int | None]:
-        """Find Dockerfile path and line number for http.server.version label.
+    async def _find_dockerfile_path(self, container, container_model=None, db=None) -> str | None:
+        """Find Dockerfile path for a My Projects container.
 
         For "My Projects" containers, the Dockerfile is located at:
         {projects_directory}/{project_name}/Dockerfile
@@ -614,10 +895,8 @@ class HttpServerScanner:
             db: Database session (required to read projects_directory setting)
 
         Returns:
-            Tuple of (dockerfile_path, line_number) or (None, None)
+            Project-relative Dockerfile path or None
         """
-        from pathlib import Path
-
         from app.services.settings_service import SettingsService
 
         try:
@@ -628,16 +907,13 @@ class HttpServerScanner:
                 logger.debug(
                     f"Container {container.name} is not a My Project, skipping Dockerfile detection"
                 )
-                return None, None
+                return None
 
             # Get projects directory from settings (fallback to /projects)
             if db:
                 projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
             else:
-                projects_dir = "/projects"  # Fallback if no db session
-                logger.warning(
-                    "No db session provided, using default projects_directory: /projects"
-                )
+                projects_dir = "/projects"
 
             # Extract project name from container name
             # Examples: "familycircle-dev" -> "familycircle", "mygarage" -> "mygarage"
@@ -651,34 +927,19 @@ class HttpServerScanner:
                 logger.warning(
                     f"Expected Dockerfile not found at {abs_dockerfile} for container {container.name}"
                 )
-                return None, None
-
-            # Find line number of http.server.version label
-            line_number = None
-            with open(abs_dockerfile, encoding="utf-8") as f:
-                for i, line in enumerate(f, start=1):
-                    if "LABEL http.server.version=" in line:
-                        line_number = i
-                        break
+                return None
 
             # Store project-relative path (e.g. "tidewatch/Dockerfile")
             rel_path = str(abs_dockerfile.relative_to(projects_dir))
-
-            if line_number:
-                logger.info(
-                    f"Found Dockerfile at {abs_dockerfile}:{line_number} for {container.name}"
-                )
-            else:
-                logger.warning(f"Could not find http.server.version label in {abs_dockerfile}")
-
-            return rel_path, line_number
+            logger.info(f"Found Dockerfile at {abs_dockerfile} for {container.name}")
+            return rel_path
 
         except OSError as e:
-            logger.error(f"Error reading Dockerfile: {e}")
-            return None, None
+            logger.error(f"Error finding Dockerfile: {e}")
+            return None
         except (AttributeError, IndexError) as e:
             logger.debug(f"Error parsing container name: {e}")
-            return None, None
+            return None
 
     async def _detect_from_container_config(self, container) -> list[dict[str, Any]]:
         """Detect HTTP servers from container config without exec."""

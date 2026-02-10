@@ -511,6 +511,26 @@ export interface HttpServersResponse {
   scan_status: 'idle' | 'scanning' | 'error';
 }
 
+// Dependency summary for My Projects badges
+export interface DependencySummary {
+  http_server_updates: number;
+  dockerfile_updates: number;
+  app_prod_updates: number;
+  app_dev_updates: number;
+}
+
+// Dependency scan job (background scan tracking)
+export interface DependencyScanJobState {
+  jobId: number;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+  totalCount: number;
+  scannedCount: number;
+  updatesFound: number;
+  errorsCount: number;
+  currentProject: string | null;
+  progressPercent: number;
+}
+
 // Check Job types (background update check tracking)
 export interface CheckJobProgress {
   job_id: number;

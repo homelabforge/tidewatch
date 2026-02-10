@@ -1171,8 +1171,6 @@ class TestVulnForgeIntegration:
                     base_url="http://vulnforge:8080",
                     auth_type="api_key",
                     api_key="test-key-123",
-                    username=None,
-                    password=None,
                 )
 
 

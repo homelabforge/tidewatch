@@ -120,6 +120,11 @@ async def lifespan(app: FastAPI):
             await db.commit()
             logger.info(f"Cleaned up {len(stuck_records)} stuck update history records")
 
+    # Recover any VulnForge scan jobs interrupted by previous shutdown
+    from app.services.vulnforge_scan_worker import recover_interrupted_jobs
+
+    await recover_interrupted_jobs()
+
     # Start background scheduler for automatic update checks
     await scheduler_service.start()
     logger.info("Background scheduler started")

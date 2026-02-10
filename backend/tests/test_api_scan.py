@@ -35,23 +35,27 @@ class TestScanContainerEndpoint:
         await db.commit()
         await db.refresh(container)
 
-        # Set VulnForge URL in settings
-        await SettingsService.set(db, "vulnforge_api_url", "http://vulnforge:8080")
+        # Set VulnForge settings
+        await SettingsService.set(db, "vulnforge_url", "http://vulnforge:8080")
+        await SettingsService.set(db, "vulnforge_enabled", "true")
         await db.commit()
 
-        # Mock VulnForge client response
+        # Mock VulnForge client response (matches vulnforge_client.py return format)
         mock_vuln_data = {
-            "total_vulnerabilities": 15,
-            "severity_counts": {"CRITICAL": 2, "HIGH": 5, "MEDIUM": 6, "LOW": 2},
-            "cve_list": ["CVE-2023-1234", "CVE-2023-5678"],
+            "total_vulns": 15,
+            "critical": 2,
+            "high": 5,
+            "medium": 6,
+            "low": 2,
+            "cves": ["CVE-2023-1234", "CVE-2023-5678"],
             "risk_score": 7.5,
         }
 
-        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
+        with patch("app.services.vulnforge_client.create_vulnforge_client") as mock_factory:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
-            mock_client.return_value = mock_instance
+            mock_factory.return_value = mock_instance
 
             response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
 
@@ -87,9 +91,7 @@ class TestScanContainerEndpoint:
 
         response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
 
-        print(f"Response status: {response.status_code}")
-        print(f"Response JSON: {response.json()}")
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "disabled" in response.json()["detail"].lower()
 
     async def test_scan_container_requires_auth(self, client, db):
@@ -148,23 +150,27 @@ class TestScanAllContainersEndpoint:
         db.add_all(containers)
         await db.commit()
 
-        # Set VulnForge URL
-        await SettingsService.set(db, "vulnforge_api_url", "http://vulnforge:8080")
+        # Set VulnForge settings
+        await SettingsService.set(db, "vulnforge_url", "http://vulnforge:8080")
+        await SettingsService.set(db, "vulnforge_enabled", "true")
         await db.commit()
 
-        # Mock VulnForge client
+        # Mock VulnForge client (matches vulnforge_client.py return format)
         mock_vuln_data = {
-            "total_vulnerabilities": 5,
-            "severity_counts": {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 2, "LOW": 0},
-            "cve_list": ["CVE-2023-9999"],
+            "total_vulns": 5,
+            "critical": 1,
+            "high": 2,
+            "medium": 2,
+            "low": 0,
+            "cves": ["CVE-2023-9999"],
             "risk_score": 6.0,
         }
 
-        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
+        with patch("app.services.vulnforge_client.create_vulnforge_client") as mock_factory:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
-            mock_client.return_value = mock_instance
+            mock_factory.return_value = mock_instance
 
             response = await authenticated_client.post("/api/v1/scan/all")
 
@@ -198,23 +204,27 @@ class TestScanAllContainersEndpoint:
         db.add_all(containers)
         await db.commit()
 
-        # Set VulnForge URL
-        await SettingsService.set(db, "vulnforge_api_url", "http://vulnforge:8080")
+        # Set VulnForge settings
+        await SettingsService.set(db, "vulnforge_url", "http://vulnforge:8080")
+        await SettingsService.set(db, "vulnforge_enabled", "true")
         await db.commit()
 
-        # Mock VulnForge client
+        # Mock VulnForge client (matches vulnforge_client.py return format)
         mock_vuln_data = {
-            "total_vulnerabilities": 3,
-            "severity_counts": {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 0},
-            "cve_list": [],
+            "total_vulns": 3,
+            "critical": 0,
+            "high": 1,
+            "medium": 2,
+            "low": 0,
+            "cves": [],
             "risk_score": 4.0,
         }
 
-        with patch("app.services.scan_service.VulnForgeClient") as mock_client:
+        with patch("app.services.vulnforge_client.create_vulnforge_client") as mock_factory:
             mock_instance = AsyncMock()
             mock_instance.__aenter__.return_value = mock_instance
             mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
-            mock_client.return_value = mock_instance
+            mock_factory.return_value = mock_instance
 
             response = await authenticated_client.post("/api/v1/scan/all")
 

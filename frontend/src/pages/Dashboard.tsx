@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { Container, Update, FilterOptions, SortOption, AnalyticsSummary } from '../types';
+import { Container, Update, FilterOptions, SortOption, AnalyticsSummary, DependencySummary } from '../types';
 import { api } from '../services/api';
 import ContainerCard from '../components/ContainerCard';
 import CheckProgressBar, { CheckJobState } from '../components/CheckProgressBar';
-import { useEventStream, CheckJobProgressEvent } from '../hooks/useEventStream';
-import { Search, RefreshCw, Package, Archive } from 'lucide-react';
+import DepScanProgressBar, { DepScanJobState } from '../components/DepScanProgressBar';
+import { useEventStream, CheckJobProgressEvent, DepScanProgressEvent } from '../hooks/useEventStream';
+import { Search, RefreshCw, Package, Archive, FolderSearch, ScanSearch } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Lazy load the large ContainerModal component
@@ -19,6 +20,8 @@ export default function Dashboard() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [vulnforgeEnabled, setVulnforgeEnabled] = useState(false);
+  const [myProjectsEnabled, setMyProjectsEnabled] = useState(false);
+  const [scanningProjects, setScanningProjects] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     status: 'all',
@@ -30,22 +33,33 @@ export default function Dashboard() {
   // Track check job state for progress bar
   const [checkJob, setCheckJob] = useState<CheckJobState | null>(null);
 
+  // Dependency summary per container (keyed by container ID string)
+  const [depSummary, setDepSummary] = useState<Record<string, DependencySummary>>({});
+  // Dependency scan job state
+  const [depScanJob, setDepScanJob] = useState<DepScanJobState | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [containersData, updatesData, analyticsData, settingsData] = await Promise.all([
+      const [containersData, updatesData, analyticsData, settingsData, depSummaryData] = await Promise.all([
         api.containers.getAll(),
         api.updates.getAll(),
         api.analytics.getSummary(30),
         api.settings.getAll(),
+        api.containers.getDependencySummary().catch(() => ({ summaries: {} })),
       ]);
       setContainers(containersData);
       setUpdates(updatesData);
       setAnalytics(analyticsData);
+      setDepSummary(depSummaryData.summaries);
 
       // Check if VulnForge is enabled globally
       const vulnforgeSetting = settingsData.find((s) => s.key === 'vulnforge_enabled');
       setVulnforgeEnabled(vulnforgeSetting?.value === 'true');
+
+      // Check if My Projects is enabled
+      const myProjectsSetting = settingsData.find((s) => s.key === 'my_projects_enabled');
+      setMyProjectsEnabled(myProjectsSetting?.value === 'true');
     } catch {
       toast.error('Failed to load data');
     } finally {
@@ -164,6 +178,112 @@ export default function Dashboard() {
     setCheckJob(null);
   }, []);
 
+  const handleScanMyProjects = useCallback(async () => {
+    setScanningProjects(true);
+    try {
+      const result = await api.containers.scanMyProjects();
+      if (result.success) {
+        const { added, updated, skipped } = result.results;
+        toast.success(`Projects: ${added} added, ${updated} updated, ${skipped} skipped`);
+        await loadData();
+      }
+    } catch {
+      toast.error('Failed to scan projects');
+    } finally {
+      setScanningProjects(false);
+    }
+  }, [loadData]);
+
+  // --- Dependency scan handlers ---
+  const handleScanDependencies = useCallback(async () => {
+    try {
+      const result = await api.containers.scanAllProjectDependencies();
+      if (result.already_running) {
+        toast.info('Dependency scan already in progress');
+        const jobStatus = await api.containers.getDependencyScanStatus(result.job_id);
+        setDepScanJob({
+          jobId: jobStatus.job_id,
+          status: jobStatus.status as DepScanJobState['status'],
+          totalCount: jobStatus.total_count,
+          scannedCount: jobStatus.scanned_count,
+          updatesFound: jobStatus.updates_found,
+          errorsCount: jobStatus.errors_count,
+          currentProject: jobStatus.current_project,
+          progressPercent: jobStatus.progress_percent,
+        });
+      } else {
+        setDepScanJob({
+          jobId: result.job_id,
+          status: 'queued',
+          totalCount: 0,
+          scannedCount: 0,
+          updatesFound: 0,
+          errorsCount: 0,
+          currentProject: null,
+          progressPercent: 0,
+        });
+        toast.info('Dependency scan started');
+      }
+    } catch {
+      toast.error('Failed to start dependency scan');
+    }
+  }, []);
+
+  const handleDepScanProgress = useCallback((data: DepScanProgressEvent) => {
+    setDepScanJob({
+      jobId: data.job_id,
+      status: data.status as DepScanJobState['status'],
+      totalCount: data.total_count,
+      scannedCount: data.scanned_count,
+      updatesFound: data.updates_found,
+      errorsCount: data.errors_count || 0,
+      currentProject: data.current_project || null,
+      progressPercent: data.progress_percent || 0,
+    });
+  }, []);
+
+  const handleDepScanCompleted = useCallback((data: DepScanProgressEvent) => {
+    setDepScanJob({
+      jobId: data.job_id,
+      status: 'done',
+      totalCount: data.total_count,
+      scannedCount: data.scanned_count,
+      updatesFound: data.updates_found,
+      errorsCount: data.errors_count || 0,
+      currentProject: null,
+      progressPercent: 100,
+    });
+    // Reload dependency summary after scan completes
+    api.containers.getDependencySummary()
+      .then((res) => setDepSummary(res.summaries))
+      .catch(() => {});
+  }, []);
+
+  const handleDepScanFailed = useCallback(() => {
+    setDepScanJob(prev => prev ? { ...prev, status: 'failed' } : null);
+  }, []);
+
+  const handleDepScanCanceled = useCallback(() => {
+    setDepScanJob(prev => prev ? { ...prev, status: 'canceled' } : null);
+    api.containers.getDependencySummary()
+      .then((res) => setDepSummary(res.summaries))
+      .catch(() => {});
+  }, []);
+
+  const handleCancelDepScan = useCallback(async () => {
+    if (!depScanJob) return;
+    try {
+      await api.containers.cancelDependencyScan(depScanJob.jobId);
+      toast.info('Cancellation requested');
+    } catch {
+      toast.error('Failed to cancel scan');
+    }
+  }, [depScanJob]);
+
+  const handleDismissDepScan = useCallback(() => {
+    setDepScanJob(null);
+  }, []);
+
   // Subscribe to SSE events
   useEventStream({
     onCheckJobStarted: handleCheckJobProgress,
@@ -171,6 +291,11 @@ export default function Dashboard() {
     onCheckJobCompleted: handleCheckJobCompleted,
     onCheckJobFailed: handleCheckJobFailed,
     onCheckJobCanceled: handleCheckJobCanceled,
+    onDepScanStarted: handleDepScanProgress,
+    onDepScanProgress: handleDepScanProgress,
+    onDepScanCompleted: handleDepScanCompleted,
+    onDepScanFailed: handleDepScanFailed,
+    onDepScanCanceled: handleDepScanCanceled,
     enableToasts: false, // We handle toasts ourselves
   });
 
@@ -507,46 +632,75 @@ export default function Dashboard() {
             <RefreshCw className="animate-spin mx-auto mb-4 text-primary" size={48} />
             <p className="text-tide-text-muted">Loading containers...</p>
           </div>
-        ) : filteredContainers.length === 0 ? (
-          <div className="text-center py-12">
-            <Package className="mx-auto mb-4 text-gray-600" size={48} />
-            <p className="text-tide-text-muted">No containers found</p>
-            <button
-              onClick={handleScan}
-              className="mt-4 px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors"
-            >
-              Scan for Containers
-            </button>
-          </div>
         ) : (
           <>
-            {/* My Projects Section */}
-            {myProjects.length > 0 && (
+            {/* My Projects Section — always show when feature enabled */}
+            {myProjectsEnabled && (
               <div className="mb-8">
-                <h2 className="text-xl font-bold text-tide-text mb-4 flex items-center gap-2">
-                  <span className="text-primary">★</span> My Projects
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {myProjects.map((container) => {
-                    const hasUpdate = updates.some((u) => u.container_id === container.id && u.status === 'pending');
-                    return (
-                      <ContainerCard
-                        key={container.id}
-                        container={container}
-                        hasUpdate={hasUpdate}
-                        vulnforgeGlobalEnabled={vulnforgeEnabled}
-                        onClick={() => setSelectedContainer(container)}
-                      />
-                    );
-                  })}
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-tide-text flex items-center gap-2">
+                    <span className="text-primary">★</span> My Projects
+                  </h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleScanDependencies}
+                      disabled={depScanJob?.status === 'running' || depScanJob?.status === 'queued' || myProjects.length === 0}
+                      className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <ScanSearch size={14} className={(depScanJob?.status === 'running' || depScanJob?.status === 'queued') ? 'animate-pulse' : ''} />
+                      Scan Deps
+                    </button>
+                    <button
+                      onClick={handleScanMyProjects}
+                      disabled={scanningProjects}
+                      className="px-3 py-1.5 bg-tide-surface hover:bg-tide-surface-light border border-tide-border text-tide-text rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <FolderSearch size={14} className={scanningProjects ? 'animate-pulse' : ''} />
+                      {scanningProjects ? 'Scanning...' : 'Scan Projects'}
+                    </button>
+                  </div>
                 </div>
+
+                {/* Dependency Scan Progress Bar */}
+                {depScanJob && (
+                  <DepScanProgressBar
+                    job={depScanJob}
+                    onCancel={handleCancelDepScan}
+                    onDismiss={handleDismissDepScan}
+                  />
+                )}
+
+                {myProjects.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {myProjects.map((container) => {
+                      const hasUpdate = updates.some((u) => u.container_id === container.id && u.status === 'pending');
+                      return (
+                        <ContainerCard
+                          key={container.id}
+                          container={container}
+                          hasUpdate={hasUpdate}
+                          vulnforgeGlobalEnabled={vulnforgeEnabled}
+                          dependencySummary={depSummary[String(container.id)]}
+                          onClick={() => setSelectedContainer(container)}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-tide-surface rounded-lg border border-tide-border border-dashed">
+                    <FolderSearch className="mx-auto mb-3 text-tide-text-muted" size={32} />
+                    <p className="text-tide-text-muted text-sm">
+                      No projects discovered yet. Click &quot;Scan Projects&quot; to find containers in your projects directory.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Community Containers Section */}
-            {otherContainers.length > 0 && (
+            {otherContainers.length > 0 ? (
               <div>
-                {myProjects.length > 0 && (
+                {myProjectsEnabled && (
                   <h2 className="text-xl font-bold text-tide-text mb-4">Community Containers</h2>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -564,7 +718,18 @@ export default function Dashboard() {
                   })}
                 </div>
               </div>
-            )}
+            ) : !myProjectsEnabled && filteredContainers.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="mx-auto mb-4 text-gray-600" size={48} />
+                <p className="text-tide-text-muted">No containers found</p>
+                <button
+                  onClick={handleScan}
+                  className="mt-4 px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors"
+                >
+                  Scan for Containers
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </div>

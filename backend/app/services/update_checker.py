@@ -29,7 +29,7 @@ from app.services.settings_service import SettingsService
 
 # Import UpdateDecisionTrace from update_decision_maker to avoid circular import
 from app.services.update_decision_maker import UpdateDecisionTrace
-from app.services.vulnforge_client import VulnForgeClient
+from app.services.vulnforge_client import create_vulnforge_client
 from app.utils.version import get_version_change_type
 
 if TYPE_CHECKING:
@@ -1210,31 +1210,11 @@ class UpdateChecker:
             container: Container being updated
         """
         try:
-            # Get VulnForge settings
-            vulnforge_enabled = await SettingsService.get_bool(db, "vulnforge_enabled")
-            if not vulnforge_enabled:
-                logger.debug("VulnForge integration disabled")
+            # Get VulnForge client (handles enabled check, URL, and auth)
+            vulnforge = await create_vulnforge_client(db)
+            if not vulnforge:
+                logger.debug("VulnForge integration disabled or not configured")
                 return
-
-            vulnforge_url = await SettingsService.get(db, "vulnforge_url")
-            if not vulnforge_url:
-                logger.warning("VulnForge URL not configured")
-                return
-
-            # Get authentication settings
-            auth_type = await SettingsService.get(db, "vulnforge_auth_type") or "none"
-            vulnforge_api_key = await SettingsService.get(db, "vulnforge_api_key")
-            vulnforge_username = await SettingsService.get(db, "vulnforge_username")
-            vulnforge_password = await SettingsService.get(db, "vulnforge_password")
-
-            # Create VulnForge client
-            vulnforge = VulnForgeClient(
-                base_url=vulnforge_url,
-                auth_type=auth_type,
-                api_key=vulnforge_api_key,
-                username=vulnforge_username,
-                password=vulnforge_password,
-            )
 
             try:
                 # Compare vulnerabilities
@@ -1343,27 +1323,10 @@ class UpdateChecker:
     ) -> None:
         """Refresh current vulnerability count from VulnForge for a container."""
         try:
-            vulnforge_enabled = await SettingsService.get_bool(db, "vulnforge_enabled")
-            if not vulnforge_enabled:
+            # Get VulnForge client (handles enabled check, URL, and auth)
+            vulnforge = await create_vulnforge_client(db)
+            if not vulnforge:
                 return
-
-            vulnforge_url = await SettingsService.get(db, "vulnforge_url")
-            if not vulnforge_url:
-                logger.debug("VulnForge URL not configured; skipping baseline refresh")
-                return
-
-            auth_type = await SettingsService.get(db, "vulnforge_auth_type") or "none"
-            vulnforge_api_key = await SettingsService.get(db, "vulnforge_api_key")
-            vulnforge_username = await SettingsService.get(db, "vulnforge_username")
-            vulnforge_password = await SettingsService.get(db, "vulnforge_password")
-
-            vulnforge = VulnForgeClient(
-                base_url=vulnforge_url,
-                auth_type=auth_type,
-                api_key=vulnforge_api_key,
-                username=vulnforge_username,
-                password=vulnforge_password,
-            )
 
             try:
                 data = await vulnforge.get_image_vulnerabilities(

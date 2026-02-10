@@ -23,6 +23,7 @@ import type {
   CheckJobStartResponse,
   CheckJobResult,
   CheckJobSummary,
+  DependencySummary,
   RollbackHistoryResponse,
   RollbackResponse,
 } from '../types';
@@ -209,6 +210,34 @@ export const containerApi = {
     apiCall<{ success: boolean; results: { added: number; updated: number; skipped: number; errors?: string[] } }>('/containers/scan-my-projects', {
       method: 'POST',
     }),
+
+  getDependencySummary: () =>
+    apiCall<{ summaries: Record<string, DependencySummary> }>('/containers/my-projects/dependency-summary'),
+
+  scanAllProjectDependencies: () =>
+    apiCall<{ success: boolean; job_id: number; status?: string; already_running?: boolean }>(
+      '/containers/my-projects/scan-dependencies',
+      { method: 'POST' }
+    ),
+
+  getDependencyScanStatus: (jobId: number) =>
+    apiCall<{
+      job_id: number;
+      status: string;
+      total_count: number;
+      scanned_count: number;
+      updates_found: number;
+      errors_count: number;
+      current_project: string | null;
+      progress_percent: number;
+      error_message: string | null;
+    }>(`/containers/my-projects/scan-dependencies/${jobId}`),
+
+  cancelDependencyScan: (jobId: number) =>
+    apiCall<{ success: boolean; message: string }>(
+      `/containers/my-projects/scan-dependencies/${jobId}/cancel`,
+      { method: 'POST' }
+    ),
 
   getDockerfileDependencies: (id: number) =>
     apiCall<DockerfileDependenciesResponse>(`/containers/${id}/dockerfile-dependencies`),

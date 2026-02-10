@@ -150,23 +150,12 @@ class SettingsService:
         "vulnforge_auth_type": {
             "value": "none",
             "category": "integrations",
-            "description": "VulnForge auth type: none, api_key, or basic_auth",
+            "description": "VulnForge auth type: none or api_key",
         },
         "vulnforge_api_key": {
             "value": "",
             "category": "integrations",
-            "description": "VulnForge API key for Bearer token auth (encrypted)",
-            "encrypted": True,
-        },
-        "vulnforge_username": {
-            "value": "",
-            "category": "integrations",
-            "description": "VulnForge username for basic auth (optional)",
-        },
-        "vulnforge_password": {
-            "value": "",
-            "category": "integrations",
-            "description": "VulnForge password for basic auth (encrypted)",
+            "description": "VulnForge API key for X-API-Key header auth (encrypted)",
             "encrypted": True,
         },
         "vulnforge_enabled": {
