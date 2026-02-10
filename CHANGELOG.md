@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-02-10
+
 ### Added
 - **Durable VulnForge scan reconciliation** — New `PendingScanJob` model and `pending_scan_jobs` table (migration 044) replaces fire-and-forget `asyncio.create_task()` with persisted scan tracking that survives process restarts
 - **APScheduler scan worker** — `vulnforge_scan_worker.py` processes pending VulnForge scan jobs every 15 seconds, rate-limited to 3 jobs per cycle. Handles full lifecycle: pending → triggered → polling → completed/failed
