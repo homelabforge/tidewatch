@@ -18,6 +18,9 @@ class HttpServerSchema(BaseModel):
     detection_method: str
     dockerfile_path: str | None = None
     line_number: int | None = None
+    manifest_file: str | None = None
+    package_name: str | None = None
+    ecosystem: str | None = None
     ignored: bool = False
     ignored_version: str | None = None
     ignored_by: str | None = None

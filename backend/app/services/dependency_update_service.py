@@ -2,7 +2,7 @@
 
 Handles preview and actual updates for all dependency types:
 - Dockerfile base images
-- HTTP server version labels
+- HTTP server versions (manifest files, FROM instructions, or labels)
 - Application dependencies (npm, pypi, etc.)
 """
 
@@ -387,14 +387,26 @@ class DependencyUpdateService:
                 "history_id": None,
             }
 
+    # Reverse mapping: canonical server name -> Docker image name
+    SERVER_NAME_TO_IMAGE = {
+        "nginx": "nginx",
+        "apache": "httpd",
+        "caddy": "caddy",
+        "traefik": "traefik",
+        "lighttpd": "lighttpd",
+    }
+
     @staticmethod
-    async def update_http_server_label(
+    async def update_http_server(
         db: AsyncSession, server_id: int, new_version: str, triggered_by: str = "user"
     ) -> dict[str, Any]:
         """
-        Update http.server.version label in Dockerfile.
+        Update HTTP server version in the appropriate source file.
 
-        Similar to update_dockerfile_base_image but for LABEL instructions.
+        Dispatches based on detection_method:
+        - dependency_file: Updates manifest (pyproject.toml, requirements.txt, package.json)
+        - dockerfile_from: Updates FROM instruction in Dockerfile
+        - labels: Updates LABEL instruction in Dockerfile (third-party containers)
         """
         backup_path = None
         server = None
@@ -423,9 +435,12 @@ class DependencyUpdateService:
             projects_dir = await SettingsService.get(db, "projects_directory") or "/projects"
             projects_base = Path(projects_dir)
 
-            # Validate new version (generic validation)
+            # Validate new version based on ecosystem
             try:
-                validate_version_string(new_version)
+                ecosystem = (
+                    server.ecosystem if server.detection_method == "dependency_file" else None
+                )
+                validate_version_string(new_version, ecosystem=ecosystem)
             except VersionValidationError as e:
                 return {
                     "success": False,
@@ -434,72 +449,47 @@ class DependencyUpdateService:
                     "history_id": None,
                 }
 
-            # Need Dockerfile path (should be in server.dockerfile_path)
-            if not server.dockerfile_path:
-                return {
-                    "success": False,
-                    "error": "HTTP server does not have associated Dockerfile path",
-                    "backup_path": None,
-                    "history_id": None,
-                }
-
-            # Construct full file path from project-relative path
-            file_path = projects_base / server.dockerfile_path
-
-            # Validate file path
-            try:
-                validated_path = validate_file_path_for_update(
-                    str(file_path), allowed_base=projects_base
+            # Determine target file and update strategy based on detection method
+            if server.detection_method == "dependency_file":
+                (
+                    success_result,
+                    file_path_str,
+                    changes_desc,
+                ) = await DependencyUpdateService._update_http_server_manifest(
+                    server, new_version, projects_base
                 )
-            except PathValidationError as e:
+            elif server.detection_method == "dockerfile_from":
+                (
+                    success_result,
+                    file_path_str,
+                    changes_desc,
+                ) = await DependencyUpdateService._update_http_server_from(
+                    server, new_version, projects_base
+                )
+            elif server.detection_method == "labels":
+                (
+                    success_result,
+                    file_path_str,
+                    changes_desc,
+                ) = await DependencyUpdateService._update_http_server_label(
+                    server, new_version, projects_base
+                )
+            else:
                 return {
                     "success": False,
-                    "error": f"Invalid file path: {e}",
+                    "error": (
+                        f"Cannot update HTTP server detected via '{server.detection_method}'. "
+                        "No editable source file identified."
+                    ),
                     "backup_path": None,
                     "history_id": None,
                 }
 
-            # Create backup
-            try:
-                backup_path = create_timestamped_backup(validated_path)
-            except FileOperationError as e:
-                return {
-                    "success": False,
-                    "error": f"Backup failed: {e}",
-                    "backup_path": None,
-                    "history_id": None,
-                }
+            # Unpack result from strategy method
+            if not success_result.get("success"):
+                return success_result
 
-            # Update label
-            success, updated_content = DockerfileParser.update_label_value(
-                dockerfile_path=validated_path,
-                label_key="http.server.version",
-                new_value=new_version,
-            )
-
-            if not success:
-                return {
-                    "success": False,
-                    "error": "Failed to update http.server.version label in Dockerfile",
-                    "backup_path": str(backup_path),
-                    "history_id": None,
-                }
-
-            # Write atomically
-            try:
-                atomic_file_write(validated_path, updated_content)
-            except FileOperationError as e:
-                if backup_path:
-                    try:
-                        restore_from_backup(backup_path, validated_path)
-                    except FileOperationError:
-                        pass
-                return {
-                    "success": False,
-                    "error": f"Write failed: {e}",
-                    "backup_path": str(backup_path),
-                    "history_id": None,
-                }
+            backup_path = success_result.get("backup_path")
 
             # Update server record
             old_version = server.current_version
@@ -516,13 +506,13 @@ class DependencyUpdateService:
                 from_tag=old_version or "unknown",
                 to_tag=new_version,
                 update_type="manual",
-                backup_path=str(backup_path),
+                backup_path=str(backup_path) if backup_path else None,
                 status="success",
                 event_type="dependency_update",
                 dependency_type="http_server",
                 dependency_id=server.id,
                 dependency_name=server.name,
-                file_path=str(validated_path),
+                file_path=file_path_str,
                 reason=f"Updated {server.name} from {old_version} to {new_version}",
                 triggered_by=triggered_by,
                 completed_at=datetime.now(UTC),
@@ -541,18 +531,20 @@ class DependencyUpdateService:
 
             # Update CHANGELOG.md (non-blocking)
             try:
-                project_root = ChangelogUpdater.extract_project_root(
-                    server.dockerfile_path,
-                    base_path=projects_base,
-                )
-                if project_root:
-                    ChangelogUpdater.update_changelog(
-                        project_root=project_root,
-                        dependency_name=server.name,
-                        old_version=old_version or "unknown",
-                        new_version=new_version,
-                        dependency_type="http_server",
+                changelog_source = server.manifest_file or server.dockerfile_path
+                if changelog_source:
+                    project_root = ChangelogUpdater.extract_project_root(
+                        changelog_source,
+                        base_path=projects_base,
                     )
+                    if project_root:
+                        ChangelogUpdater.update_changelog(
+                            project_root=project_root,
+                            dependency_name=server.name,
+                            old_version=old_version or "unknown",
+                            new_version=new_version,
+                            dependency_type="http_server",
+                        )
             except Exception as changelog_err:
                 logger.warning(f"Failed to update CHANGELOG: {changelog_err}")
 
@@ -563,9 +555,9 @@ class DependencyUpdateService:
 
             return {
                 "success": True,
-                "backup_path": str(backup_path),
+                "backup_path": str(backup_path) if backup_path else None,
                 "history_id": history.id,
-                "changes_made": f"LABEL http.server.version: {old_version} → {new_version}",
+                "changes_made": changes_desc,
             }
 
         except Exception as e:
@@ -575,11 +567,13 @@ class DependencyUpdateService:
             )
 
             if backup_path and Path(backup_path).exists() and server:
-                try:
-                    file_path = projects_base / (server.dockerfile_path or "")
-                    restore_from_backup(Path(backup_path), file_path)
-                except Exception:
-                    pass
+                restore_target = server.manifest_file or server.dockerfile_path
+                if restore_target:
+                    try:
+                        file_path = projects_base / restore_target
+                        restore_from_backup(Path(backup_path), file_path)
+                    except Exception:
+                        pass
 
             return {
                 "success": False,
@@ -587,6 +581,328 @@ class DependencyUpdateService:
                 "backup_path": str(backup_path) if backup_path else None,
                 "history_id": None,
             }
+
+    @staticmethod
+    async def _update_http_server_manifest(
+        server: Any, new_version: str, projects_base: Path
+    ) -> tuple[dict[str, Any], str, str]:
+        """Update HTTP server version in a manifest file (pyproject.toml, etc.).
+
+        Returns:
+            Tuple of (result_dict, file_path_str, changes_description)
+        """
+        if not server.manifest_file or not server.package_name:
+            return (
+                {
+                    "success": False,
+                    "error": (
+                        "Manifest file info missing for this HTTP server. "
+                        "Re-scan the container to populate manifest context."
+                    ),
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        file_path = projects_base / server.manifest_file
+
+        try:
+            validated_path = validate_file_path_for_update(
+                str(file_path), allowed_base=projects_base
+            )
+        except PathValidationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Invalid file path: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            backup_path = create_timestamped_backup(validated_path)
+        except FileOperationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Backup failed: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        # Update manifest based on file type
+        manifest_name = validated_path.name.lower()
+        success = False
+        updated_content = ""
+
+        if manifest_name == "pyproject.toml":
+            success, updated_content = update_pyproject_toml(
+                validated_path, server.package_name, new_version, "dependencies"
+            )
+        elif manifest_name == "requirements.txt":
+            success, updated_content = update_requirements_txt(
+                validated_path, server.package_name, new_version
+            )
+        elif manifest_name == "package.json":
+            success, updated_content = update_package_json(
+                validated_path, server.package_name, new_version, "dependencies"
+            )
+        else:
+            return (
+                {
+                    "success": False,
+                    "error": f"Unsupported manifest file type: {manifest_name}",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        if not success:
+            return (
+                {
+                    "success": False,
+                    "error": f"Failed to update {server.package_name} in {manifest_name}",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            atomic_file_write(validated_path, updated_content)
+        except FileOperationError as e:
+            if backup_path:
+                try:
+                    restore_from_backup(backup_path, validated_path)
+                except FileOperationError:
+                    pass
+            return (
+                {
+                    "success": False,
+                    "error": f"Write failed: {e}",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        old_version = server.current_version or "unknown"
+        return (
+            {"success": True, "backup_path": backup_path},
+            str(validated_path),
+            f"{server.package_name}: {old_version} → {new_version} ({manifest_name})",
+        )
+
+    @staticmethod
+    async def _update_http_server_from(
+        server: Any, new_version: str, projects_base: Path
+    ) -> tuple[dict[str, Any], str, str]:
+        """Update HTTP server version in Dockerfile FROM instruction.
+
+        Returns:
+            Tuple of (result_dict, file_path_str, changes_description)
+        """
+        if not server.dockerfile_path:
+            return (
+                {
+                    "success": False,
+                    "error": "HTTP server does not have associated Dockerfile path",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        # Map canonical server name to Docker image name
+        server_name: str = server.name or ""
+        image_name: str = DependencyUpdateService.SERVER_NAME_TO_IMAGE.get(server_name, server_name)
+
+        file_path = projects_base / server.dockerfile_path
+
+        try:
+            validated_path = validate_file_path_for_update(
+                str(file_path), allowed_base=projects_base
+            )
+        except PathValidationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Invalid file path: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            backup_path = create_timestamped_backup(validated_path)
+        except FileOperationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Backup failed: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        success, updated_content = DockerfileParser.update_from_instruction(
+            dockerfile_path=validated_path,
+            image_name=image_name,
+            new_tag=new_version,
+            line_number=server.line_number,
+        )
+
+        if not success:
+            return (
+                {
+                    "success": False,
+                    "error": f"Failed to update FROM {image_name} instruction in Dockerfile",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            atomic_file_write(validated_path, updated_content)
+        except FileOperationError as e:
+            if backup_path:
+                try:
+                    restore_from_backup(backup_path, validated_path)
+                except FileOperationError:
+                    pass
+            return (
+                {
+                    "success": False,
+                    "error": f"Write failed: {e}",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        old_version = server.current_version or "unknown"
+        return (
+            {"success": True, "backup_path": backup_path},
+            str(validated_path),
+            f"FROM {image_name}:{old_version} → FROM {image_name}:{new_version}",
+        )
+
+    @staticmethod
+    async def _update_http_server_label(
+        server: Any, new_version: str, projects_base: Path
+    ) -> tuple[dict[str, Any], str, str]:
+        """Update HTTP server version via LABEL in Dockerfile (third-party containers).
+
+        Returns:
+            Tuple of (result_dict, file_path_str, changes_description)
+        """
+        if not server.dockerfile_path:
+            return (
+                {
+                    "success": False,
+                    "error": "HTTP server does not have associated Dockerfile path",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        file_path = projects_base / server.dockerfile_path
+
+        try:
+            validated_path = validate_file_path_for_update(
+                str(file_path), allowed_base=projects_base
+            )
+        except PathValidationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Invalid file path: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            backup_path = create_timestamped_backup(validated_path)
+        except FileOperationError as e:
+            return (
+                {
+                    "success": False,
+                    "error": f"Backup failed: {e}",
+                    "backup_path": None,
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        success, updated_content = DockerfileParser.update_label_value(
+            dockerfile_path=validated_path,
+            label_key="http.server.version",
+            new_value=new_version,
+        )
+
+        if not success:
+            return (
+                {
+                    "success": False,
+                    "error": "Failed to update http.server.version label in Dockerfile",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        try:
+            atomic_file_write(validated_path, updated_content)
+        except FileOperationError as e:
+            if backup_path:
+                try:
+                    restore_from_backup(backup_path, validated_path)
+                except FileOperationError:
+                    pass
+            return (
+                {
+                    "success": False,
+                    "error": f"Write failed: {e}",
+                    "backup_path": str(backup_path),
+                    "history_id": None,
+                },
+                "",
+                "",
+            )
+
+        old_version = server.current_version or "unknown"
+        return (
+            {"success": True, "backup_path": backup_path},
+            str(validated_path),
+            f"LABEL http.server.version: {old_version} → {new_version}",
+        )
 
     @staticmethod
     async def update_app_dependency(
@@ -905,12 +1221,31 @@ class DependencyUpdateService:
                 if not server:
                     return {"error": "HTTP server not found"}
 
+                current_ver = server.current_version or "unknown"
+
+                # Generate preview based on detection method
+                if server.detection_method == "dependency_file" and server.package_name:
+                    current_line = f'"{server.package_name}>={current_ver}"'
+                    new_line = f'"{server.package_name}>={new_version}"'
+                    file_path = server.manifest_file or "unknown"
+                elif server.detection_method == "dockerfile_from":
+                    image_name = DependencyUpdateService.SERVER_NAME_TO_IMAGE.get(
+                        server.name or "", server.name or ""
+                    )
+                    current_line = f"FROM {image_name}:{current_ver}"
+                    new_line = f"FROM {image_name}:{new_version}"
+                    file_path = server.dockerfile_path or "unknown"
+                else:
+                    current_line = f'LABEL http.server.version="{current_ver}"'
+                    new_line = f'LABEL http.server.version="{new_version}"'
+                    file_path = server.dockerfile_path or "unknown"
+
                 return {
-                    "current_line": f'LABEL http.server.version="{server.current_version}"',
-                    "new_line": f'LABEL http.server.version="{new_version}"',
-                    "file_path": server.dockerfile_path or "unknown",
+                    "current_line": current_line,
+                    "new_line": new_line,
+                    "file_path": file_path,
                     "line_number": server.line_number,
-                    "current_version": server.current_version or "unknown",
+                    "current_version": current_ver,
                     "new_version": new_version,
                 }
 
@@ -1115,7 +1450,7 @@ class DependencyUpdateService:
                 triggered_by=triggered_by,
             )
         elif dependency_type == "http_server":
-            result = await DependencyUpdateService.update_http_server_label(
+            result = await DependencyUpdateService.update_http_server(
                 db=db,
                 server_id=dependency_id,
                 new_version=target_version,

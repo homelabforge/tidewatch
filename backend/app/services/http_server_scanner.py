@@ -280,8 +280,15 @@ class HttpServerScanner:
         for server in self._detect_from_dependency_files(project_root):
             if server["name"] not in servers_dict:
                 servers_dict[server["name"]] = server
-            elif not servers_dict[server["name"]].get("current_version"):
-                servers_dict[server["name"]]["current_version"] = server.get("current_version")
+            else:
+                existing = servers_dict[server["name"]]
+                # Fill in version if FROM detection didn't have one
+                if not existing.get("current_version"):
+                    existing["current_version"] = server.get("current_version")
+                # Always merge manifest context (useful even for FROM-detected servers)
+                for key in ("manifest_file", "package_name", "ecosystem"):
+                    if server.get(key) and not existing.get(key):
+                        existing[key] = server[key]
 
         # Method 3: Dockerfile RUN commands (lowest precedence)
         if dockerfile_path:
@@ -297,6 +304,15 @@ class HttpServerScanner:
             for server in servers:
                 if not server.get("dockerfile_path"):
                     server["dockerfile_path"] = rel_dockerfile
+
+        # Convert absolute manifest paths to project-relative
+        for server in servers:
+            mf = server.get("manifest_file")
+            if mf and Path(mf).is_absolute():
+                try:
+                    server["manifest_file"] = str(Path(mf).relative_to(projects_directory))
+                except ValueError:
+                    pass
 
         # Get latest versions and check for updates
         for server in servers:
@@ -451,6 +467,9 @@ class HttpServerScanner:
                     "current_version": dep.version,
                     "detection_method": "dependency_file",
                     "last_checked": datetime.now(UTC),
+                    "manifest_file": dep.source_file,
+                    "package_name": dep.name,
+                    "ecosystem": server_info["ecosystem"],
                 }
             )
             logger.info(
@@ -598,6 +617,9 @@ class HttpServerScanner:
                 server.detection_method = server_data.get("detection_method", "unknown")
                 server.dockerfile_path = server_data.get("dockerfile_path")
                 server.line_number = server_data.get("line_number")
+                server.manifest_file = server_data.get("manifest_file")
+                server.package_name = server_data.get("package_name")
+                server.ecosystem = server_data.get("ecosystem")
                 server.last_checked = datetime.now(UTC)
 
                 # Clear ignore if new version beyond ignored version
@@ -624,6 +646,9 @@ class HttpServerScanner:
                     detection_method=server_data.get("detection_method", "unknown"),
                     dockerfile_path=server_data.get("dockerfile_path"),
                     line_number=server_data.get("line_number"),
+                    manifest_file=server_data.get("manifest_file"),
+                    package_name=server_data.get("package_name"),
+                    ecosystem=server_data.get("ecosystem"),
                     last_checked=datetime.now(UTC),
                 )
                 db.add(server)

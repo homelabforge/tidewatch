@@ -38,7 +38,7 @@ class HttpServer(Base):
     )  # critical, high, medium, low, info
     detection_method: Mapped[str] = mapped_column(
         String, nullable=False
-    )  # labels, process, version_command, container_config
+    )  # dependency_file, dockerfile_from, dockerfile_run, labels
 
     # Dockerfile context (if detected from Dockerfile)
     dockerfile_path: Mapped[str | None] = mapped_column(
@@ -47,6 +47,17 @@ class HttpServer(Base):
     line_number: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )  # Line number in Dockerfile
+
+    # Manifest context (for dependency_file detection method)
+    manifest_file: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Path to pyproject.toml, requirements.txt, package.json
+    package_name: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Actual package name in manifest (e.g., "granian", "express")
+    ecosystem: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Package ecosystem: pypi, npm
 
     # Ignore tracking (version-specific)
     ignored: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

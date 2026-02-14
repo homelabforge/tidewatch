@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- HTTP server updates now modify the actual source file (pyproject.toml, requirements.txt, package.json) instead of looking for a nonexistent Dockerfile label
+
 ## [3.8.0] - 2026-02-10
 
 ### Added
@@ -31,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **My Projects: Dashboard empty state** — My Projects section always renders when `my_projects_enabled=true`, with "Scan Projects" button and helpful empty state even when no projects are discovered yet
 - **Database migration 043** — Creates `dependency_scan_jobs` table with status and created_at indexes
 - **33 new filesystem HTTP server detection tests** — Covers all 3 detection methods, precedence rules, E2E scanning, and server pattern validation
-- 
+
 ### Changed
 - **VulnForge client factory extracted** — `create_vulnforge_client()` moved from `UpdateEngine` to module-level async factory in `vulnforge_client.py`, used by both `scan_service.py` and the scan worker
 - **Settings key fixed** — `vulnforge_api_url` → `vulnforge_url` in `scan_service.py`

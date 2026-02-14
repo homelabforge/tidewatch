@@ -524,12 +524,13 @@ async def update_http_server(
     server_id: int, request: UpdateRequest, db: AsyncSession = Depends(get_db)
 ):
     """
-    Update an HTTP server version label in the Dockerfile.
+    Update an HTTP server version in the appropriate source file.
 
+    Dispatches based on detection method (manifest file, Dockerfile FROM, or label).
     Creates a backup before updating and records the change in history.
     """
     try:
-        result = await DependencyUpdateService.update_http_server_label(
+        result = await DependencyUpdateService.update_http_server(
             db=db,
             server_id=server_id,
             new_version=request.new_version,

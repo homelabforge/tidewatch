@@ -493,7 +493,9 @@ async def get_dependency_summary(
 
     # Build response
     summaries: dict[str, dict[str, int]] = {}
-    all_ids: set[int] = set(http_counts) | set(df_counts) | set(app_prod_counts) | set(app_dev_counts)
+    all_ids: set[int] = (
+        set(http_counts) | set(df_counts) | set(app_prod_counts) | set(app_dev_counts)
+    )
     for cid in all_ids:
         summaries[str(cid)] = {
             "http_server_updates": http_counts.get(cid, 0),
