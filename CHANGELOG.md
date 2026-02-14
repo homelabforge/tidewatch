@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.1] - 2026-02-14
+
 ### Fixed
 - HTTP server updates now modify the actual source file (pyproject.toml, requirements.txt, package.json) instead of looking for a nonexistent Dockerfile label
 
