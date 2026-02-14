@@ -467,7 +467,7 @@ class DataBackupService:
             try:
                 await asyncio.to_thread(helper.remove, force=True)
             except Exception:
-                pass
+                pass  # Best-effort cleanup of temporary helper container
 
         # Check file size from local mount
         local_tar = BACKUP_BASE_DIR / container_name / backup_id / tar_filename
@@ -519,7 +519,7 @@ class DataBackupService:
             try:
                 await asyncio.to_thread(helper.remove, force=True)
             except Exception:
-                pass
+                pass  # Best-effort cleanup of temporary helper container
 
         local_tar = BACKUP_BASE_DIR / container_name / backup_id / tar_filename
         size = local_tar.stat().st_size if local_tar.exists() else 0
@@ -772,7 +772,7 @@ class DataBackupService:
             try:
                 await asyncio.to_thread(helper.remove, force=True)
             except Exception:
-                pass
+                pass  # Best-effort cleanup of temporary helper container
 
     async def restore_postgresql(
         self,

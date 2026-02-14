@@ -312,7 +312,7 @@ class HttpServerScanner:
                 try:
                     server["manifest_file"] = str(Path(mf).relative_to(projects_directory))
                 except ValueError:
-                    pass
+                    pass  # Path not under projects_directory; keep absolute
 
         # Get latest versions and check for updates
         for server in servers:

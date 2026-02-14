@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - HTTP server updates now modify the actual source file (pyproject.toml, requirements.txt, package.json) instead of looking for a nonexistent Dockerfile label
 
+### Security
+- Bump `cryptography` 46.0.3 → 46.0.5 (indirect dependency)
+
 ## [3.8.0] - 2026-02-10
 
 ### Added

@@ -573,7 +573,7 @@ class DependencyUpdateService:
                         file_path = projects_base / restore_target
                         restore_from_backup(Path(backup_path), file_path)
                     except Exception:
-                        pass
+                        pass  # Best-effort restore; original error is reported below
 
             return {
                 "success": False,
@@ -686,7 +686,7 @@ class DependencyUpdateService:
                 try:
                     restore_from_backup(backup_path, validated_path)
                 except FileOperationError:
-                    pass
+                    pass  # Best-effort restore; write error is reported below
             return (
                 {
                     "success": False,
@@ -788,7 +788,7 @@ class DependencyUpdateService:
                 try:
                     restore_from_backup(backup_path, validated_path)
                 except FileOperationError:
-                    pass
+                    pass  # Best-effort restore; write error is reported below
             return (
                 {
                     "success": False,
@@ -885,7 +885,7 @@ class DependencyUpdateService:
                 try:
                     restore_from_backup(backup_path, validated_path)
                 except FileOperationError:
-                    pass
+                    pass  # Best-effort restore; write error is reported below
             return (
                 {
                     "success": False,
