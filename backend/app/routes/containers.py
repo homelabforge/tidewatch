@@ -1489,9 +1489,7 @@ async def scan_http_servers(
 
         # Use filesystem scanning for My Projects, Docker-based for regular containers
         if container.is_my_project:
-            _servers = await http_scanner.scan_project_http_servers(
-                container_model=container, db=db
-            )
+            await http_scanner.scan_project_http_servers(container_model=container, db=db)
             # persist_http_servers is called inside scan_project_http_servers
             # Re-fetch persisted records for response
             from sqlalchemy import select
