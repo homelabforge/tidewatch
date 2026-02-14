@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -39,11 +39,19 @@ async def get_analytics_summary(
     )
     day_col = func.strftime("%Y-%m-%d", timestamp_col)
 
+    # Only count container image updates (exclude dependency_update, restart, etc.)
+    # Legacy records have NULL event_type and should be included.
+    container_update_filter = or_(
+        UpdateHistory.event_type == "update",
+        UpdateHistory.event_type.is_(None),
+    )
+
     # Update frequency (successful updates per day)
     frequency_result = await db.execute(
         select(day_col.label("day"), func.count().label("count"))
         .where(
             UpdateHistory.status == "success",
+            container_update_filter,
             timestamp_col >= start_window_str,
         )
         .group_by(day_col)
@@ -57,7 +65,9 @@ async def get_analytics_summary(
     ]
 
     # Vulnerability trends (CVEs fixed per day)
-    history_rows = await db.execute(select(UpdateHistory).where(timestamp_col >= start_window_str))
+    history_rows = await db.execute(
+        select(UpdateHistory).where(container_update_filter, timestamp_col >= start_window_str)
+    )
     histories = history_rows.scalars().all()
 
     cve_counts: dict[str, int] = defaultdict(int)
@@ -84,9 +94,11 @@ async def get_analytics_summary(
         DistributionItem(label=row[0], value=int(row[1])) for row in policy_rows
     ]
 
-    # Total updates (all statuses) in the period
+    # Total updates (all statuses) in the period — container updates only
     total_updates_result = await db.execute(
-        select(func.count()).select_from(UpdateHistory).where(timestamp_col >= start_window_str)
+        select(func.count())
+        .select_from(UpdateHistory)
+        .where(container_update_filter, timestamp_col >= start_window_str)
     )
     total_updates = total_updates_result.scalar_one()
 
@@ -96,6 +108,7 @@ async def get_analytics_summary(
         .select_from(UpdateHistory)
         .where(
             UpdateHistory.status == "success",
+            container_update_filter,
             timestamp_col >= start_window_str,
         )
     )
@@ -107,6 +120,7 @@ async def get_analytics_summary(
         .select_from(UpdateHistory)
         .where(
             UpdateHistory.status == "failed",
+            container_update_filter,
             timestamp_col >= start_window_str,
         )
     )
@@ -121,6 +135,7 @@ async def get_analytics_summary(
             )
         ).where(
             UpdateHistory.status == "success",
+            container_update_filter,
             UpdateHistory.completed_at.isnot(None),
             UpdateHistory.started_at.isnot(None),
             timestamp_col >= start_window_str,

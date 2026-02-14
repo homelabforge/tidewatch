@@ -263,6 +263,64 @@ class TestAnalyticsSummaryEndpoint:
             assert "date" in trend
             assert "cves_fixed" in trend
 
+    async def test_summary_excludes_dependency_updates(self, authenticated_client, db):
+        """Test that dependency updates are not counted in update frequency card."""
+        container = Container(
+            name="dep-test",
+            image="nginx",
+            current_tag="1.21",
+            registry="docker.io",
+            compose_file="/compose/test.yml",
+            service_name="nginx",
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        # Create a real container update (should be counted)
+        container_update = UpdateHistory(
+            container_id=container.id,
+            container_name=container.name,
+            from_tag="1.20",
+            to_tag="1.21",
+            status="success",
+            event_type="update",
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        # Create dependency updates (should NOT be counted)
+        dep_update = UpdateHistory(
+            container_id=container.id,
+            container_name=container.name,
+            from_tag="2.0.0",
+            to_tag="2.1.0",
+            status="success",
+            event_type="dependency_update",
+            dependency_type="app_dependency",
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        dep_ignore = UpdateHistory(
+            container_id=container.id,
+            container_name=container.name,
+            from_tag="1.0.0",
+            to_tag="1.0.0",
+            status="success",
+            event_type="dependency_ignore",
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        db.add_all([container_update, dep_update, dep_ignore])
+        await db.commit()
+
+        response = await authenticated_client.get("/api/v1/analytics/summary")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        # Only the container update should be counted
+        assert data["total_updates"] == 1
+        assert data["successful_updates"] == 1
+
     async def test_summary_update_frequency_structure(self, authenticated_client, db):
         """Test update frequency has correct structure."""
         response = await authenticated_client.get("/api/v1/analytics/summary")
