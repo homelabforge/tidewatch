@@ -104,7 +104,7 @@ class TestMaskSensitive:
 
     def test_masks_api_key(self):
         """Test masks API key showing last 4 chars."""
-        assert mask_sensitive("sk_live_1234567890abcdef") == "***cdef"
+        assert mask_sensitive("tok_example_1234567890abcdef") == "***cdef"
 
     def test_masks_password(self):
         """Test masks password."""
@@ -135,14 +135,14 @@ class TestMaskSensitive:
     def test_custom_mask_character(self):
         """Test custom mask character."""
         assert (
-            mask_sensitive("sk_live_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
+            mask_sensitive("tok_example_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
         )
         assert mask_sensitive("password", visible_chars=3, mask_char="#") == "###ord"
 
     def test_never_shows_beginning(self):
         """Test never shows beginning of secrets (highest entropy)."""
-        result = mask_sensitive("sk_live_very_secret_key_12345")
-        assert not result.startswith("sk")
+        result = mask_sensitive("tok_example_very_secret_key_12345")
+        assert not result.startswith("tok_example")
         assert result.endswith("2345")
 
     def test_safe_for_logging(self):

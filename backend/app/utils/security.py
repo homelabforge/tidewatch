@@ -63,7 +63,7 @@ def mask_sensitive(value: str | None, visible_chars: int = 4, mask_char: str = "
         Masked string showing only last visible_chars characters
 
     Examples:
-        >>> mask_sensitive("sk_live_1234567890abcdef")
+        >>> mask_sensitive("tok_example_1234567890abcdef")
         '***cdef'
         >>> mask_sensitive("password123", visible_chars=3)
         '***123'
