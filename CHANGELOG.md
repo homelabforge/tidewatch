@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Bulk "Scan Deps" now persists app dependency results to the database so project card badges update
+
 ## [3.8.1] - 2026-02-14
 
 ### Fixed

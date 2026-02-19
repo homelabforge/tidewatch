@@ -341,13 +341,14 @@ async def _scan_app_deps(container: Container, db: AsyncSession) -> int:
         Number of updates found
     """
     try:
-        from app.services.app_dependencies import DependencyScanner
+        from app.services.app_dependencies import get_scanner
 
-        scanner = DependencyScanner()
+        scanner = await get_scanner(db)
         deps = await scanner.scan_container_dependencies(
             compose_file=container.compose_file or "",
             service_name=container.name,
         )
+        await scanner.persist_dependencies(db, container.id, deps)
         return sum(1 for d in deps if d.update_available)
     except Exception as e:
         logger.debug("App dep scan failed for %s: %s", container.name, str(e))
