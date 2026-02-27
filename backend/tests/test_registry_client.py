@@ -800,3 +800,268 @@ class TestIsNonSemverTag:
     def test_non_semver_detection(self, tag, expected):
         """Correctly identify non-semver tags for digest tracking."""
         assert is_non_semver_tag(tag) is expected
+
+
+class TestIsLinuxServerImage:
+    """Tests for RegistryClient._is_linuxserver_image() namespace detection."""
+
+    @pytest.fixture
+    def client(self):
+        """Create DockerHub client for helper method access."""
+        from app.services.registry_client import DockerHubClient
+
+        return DockerHubClient()
+
+    def test_dockerhub_linuxserver_namespace(self, client):
+        """DockerHub linuxserver/* images are detected."""
+        assert client._is_linuxserver_image("linuxserver/sonarr") is True
+
+    def test_dockerhub_linuxserver_plex(self, client):
+        """DockerHub linuxserver/plex is detected."""
+        assert client._is_linuxserver_image("linuxserver/plex") is True
+
+    def test_dockerhub_other_namespace(self, client):
+        """Non-linuxserver DockerHub images are not detected."""
+        assert client._is_linuxserver_image("library/nginx") is False
+
+    def test_dockerhub_official_image(self, client):
+        """Official (unprefixed) DockerHub images are not detected."""
+        assert client._is_linuxserver_image("nginx") is False
+
+    def test_ghcr_linuxserver(self, client):
+        """GHCR images under linuxserver org are detected."""
+        assert client._is_linuxserver_image("ghcr.io/linuxserver/sonarr") is True
+
+    def test_ghcr_other_org(self, client):
+        """GHCR images under other orgs are not detected."""
+        assert client._is_linuxserver_image("ghcr.io/someorg/myapp") is False
+
+    def test_case_insensitive(self, client):
+        """Detection is case-insensitive."""
+        assert client._is_linuxserver_image("LinuxServer/sonarr") is True
+
+
+class TestExtractVariantSuffix:
+    """Tests for RegistryClient._extract_variant_suffix()."""
+
+    @pytest.fixture
+    def client(self):
+        """Create DockerHub client for helper method access."""
+        from app.services.registry_client import DockerHubClient
+
+        return DockerHubClient()
+
+    # normalize_ls=True: LinuxServer build counters are normalized
+
+    def test_simple_ls_counter_normalized(self, client):
+        """Simple ls<N> suffix is normalized to 'ls'."""
+        assert client._extract_variant_suffix("v1.13.4-ls131", normalize_ls=True) == "ls"
+
+    def test_higher_ls_counter_same_token(self, client):
+        """Higher ls counter normalizes to the same 'ls' token."""
+        assert client._extract_variant_suffix("v1.13.10-ls140", normalize_ls=True) == "ls"
+
+    def test_four_part_version_ls_normalized(self, client):
+        """Four-part version with ls counter is normalized."""
+        assert client._extract_variant_suffix("4.0.16.2944-ls300", normalize_ls=True) == "ls"
+
+    def test_composite_hash_ls_normalized(self, client):
+        """Composite hash+ls suffix (plex-style) is normalized to 'ls'."""
+        assert (
+            client._extract_variant_suffix("1.42.2.10156-f737b826c-ls284", normalize_ls=True)
+            == "ls"
+        )
+
+    def test_composite_hash_ls_alt_normalized(self, client):
+        """Alternate composite hash+ls suffix is normalized to same 'ls' token."""
+        assert (
+            client._extract_variant_suffix("1.42.3.10180-abc123def-ls290", normalize_ls=True)
+            == "ls"
+        )
+
+    def test_alpine_suffix_not_normalized(self, client):
+        """Pure-alpha suffix without ls counter is returned verbatim."""
+        assert client._extract_variant_suffix("3.12-alpine", normalize_ls=True) == "alpine"
+
+    # normalize_ls=False (default): strict equality, all suffixes verbatim
+
+    def test_ls_suffix_kept_strict(self, client):
+        """With normalize_ls=False, ls suffix is returned verbatim (not normalized)."""
+        assert client._extract_variant_suffix("v1.13.4-ls131", normalize_ls=False) == "ls131"
+
+    def test_alpine_version_suffix_strict(self, client):
+        """Digit-bearing alpine version suffix is returned verbatim (regression guard)."""
+        assert client._extract_variant_suffix("3.12-alpine3.20", normalize_ls=False) == "alpine3.20"
+
+    def test_unstable_suffix_strict(self, client):
+        """Alpha suffix 'unstable' is returned verbatim."""
+        assert client._extract_variant_suffix("4.6.0-unstable", normalize_ls=False) == "unstable"
+
+    def test_no_suffix_returns_none(self, client):
+        """Tags with no hyphen return None."""
+        assert client._extract_variant_suffix("1.2.3") is None
+
+    def test_v_prefix_no_suffix_returns_none(self, client):
+        """v-prefixed tag with no hyphen after version returns None."""
+        assert client._extract_variant_suffix("v1.2.3") is None
+
+
+class TestLinuxServerSuffixMatching:
+    """Tests that ls-suffix normalization produces correct matching behavior."""
+
+    @pytest.fixture
+    def client(self):
+        """Create DockerHub client for helper method access."""
+        from app.services.registry_client import DockerHubClient
+
+        return DockerHubClient()
+
+    def test_simple_ls_counter_change_matches(self, client):
+        """ls131 and ls140 both normalize to 'ls', so they match."""
+        current = client._extract_variant_suffix("v1.13.4-ls131", normalize_ls=True)
+        candidate = client._extract_variant_suffix("v1.13.10-ls140", normalize_ls=True)
+        assert current == candidate
+
+    def test_composite_ls_counter_change_matches(self, client):
+        """Different composite hash+ls suffixes both normalize to 'ls'."""
+        current = client._extract_variant_suffix(
+            "1.42.2.10156-f737b826c-ls284", normalize_ls=True
+        )
+        candidate = client._extract_variant_suffix(
+            "1.42.3.10180-abc123def-ls290", normalize_ls=True
+        )
+        assert current == candidate
+
+    def test_alpine_to_slim_blocked(self, client):
+        """'alpine' and 'slim' are different variants and must not match."""
+        assert client._extract_variant_suffix("3.12-alpine") != client._extract_variant_suffix(
+            "3.13-slim"
+        )
+
+    def test_alpine_to_alpine_allowed(self, client):
+        """Same 'alpine' suffix allows cross-version update."""
+        assert client._extract_variant_suffix("3.12-alpine") == client._extract_variant_suffix(
+            "3.13-alpine"
+        )
+
+    def test_alpine_version_suffix_strict(self, client):
+        """Digit-bearing alpine3.20 and alpine3.21 are distinct variants (regression guard)."""
+        assert client._extract_variant_suffix(
+            "3.12-alpine3.20"
+        ) != client._extract_variant_suffix("3.13-alpine3.21")
+
+
+class TestDockerHubLinuxServerUpdateEndToEnd:
+    """End-to-end: mocked DockerHub HTTP confirms ls-tagged images receive updates."""
+
+    @pytest.mark.asyncio
+    async def test_speedtest_tracker_update_detected(self):
+        """Update is found for a linuxserver image whose only diff is the ls counter."""
+        from app.services.registry_client import DockerHubClient
+
+        client = DockerHubClient()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"name": "v1.13.4-ls131"},  # current version
+                {"name": "v1.13.5-ls132"},  # one patch newer
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.client, "get", return_value=mock_response):
+            result = await client._get_semver_update(
+                "linuxserver/speedtest-tracker",
+                "v1.13.4-ls131",
+                "patch",
+            )
+
+        assert result == "v1.13.5-ls132"
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_non_linuxserver_ls_suffix_blocked(self):
+        """Non-LinuxServer image with ls-like suffix retains strict equality (no update found)."""
+        from app.services.registry_client import DockerHubClient
+
+        client = DockerHubClient()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"name": "1.0.0-ls10"},  # current — strict suffix match required
+                {"name": "1.0.1-ls11"},  # different ls suffix under strict mode
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.client, "get", return_value=mock_response):
+            result = await client._get_semver_update(
+                "someorg/myapp",  # NOT a linuxserver namespace
+                "1.0.0-ls10",
+                "patch",
+            )
+
+        assert result is None  # strict: ls10 != ls11 -> no match
+        await client.close()
+
+
+class TestLSCRLinuxServerUpdateEndToEnd:
+    """End-to-end: mocked LSCR confirms composite hash+ls tagged images receive updates."""
+
+    @pytest.mark.asyncio
+    async def test_composite_hash_ls_update_detected(self):
+        """Composite hash+ls tag update is found on LSCR (hash churn does not block)."""
+        from unittest.mock import AsyncMock
+
+        from app.services.registry_client import LSCRClient
+
+        client = LSCRClient()
+
+        with patch.object(
+            client,
+            "get_all_tags",
+            new=AsyncMock(
+                return_value=[
+                    "1.42.2.10156-f737b826c-ls284",  # current version
+                    "1.42.3.10180-abc123def-ls290",  # newer, different hash
+                ]
+            ),
+        ):
+            result = await client.get_latest_tag(
+                "linuxserver/plex",
+                "1.42.2.10156-f737b826c-ls284",
+                "patch",
+            )
+
+        assert result == "1.42.3.10180-abc123def-ls290"
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_simple_ls_update_still_works(self):
+        """Simple ls counter update continues to work on LSCR."""
+        from unittest.mock import AsyncMock
+
+        from app.services.registry_client import LSCRClient
+
+        client = LSCRClient()
+
+        with patch.object(
+            client,
+            "get_all_tags",
+            new=AsyncMock(
+                return_value=[
+                    "v2.7.5-ls15",  # current
+                    "v2.7.6-ls16",  # newer
+                ]
+            ),
+        ):
+            result = await client.get_latest_tag(
+                "linuxserver/tautulli",
+                "v2.7.5-ls15",
+                "patch",
+            )
+
+        assert result == "v2.7.6-ls16"
+        await client.close()

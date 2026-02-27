@@ -580,6 +580,63 @@ class RegistryClient(ABC):
                         continue
             return None
 
+    @staticmethod
+    def _is_linuxserver_image(image: str) -> bool:
+        """Return True if the image is from the LinuxServer project.
+
+        Matches 'linuxserver' as a path segment in any registry format:
+          - 'linuxserver/sonarr'          (DockerHub)
+          - 'ghcr.io/linuxserver/sonarr'  (GHCR)
+          - 'lscr.io/linuxserver/sonarr'  (LSCR via generic client)
+
+        Args:
+            image: Docker image reference string.
+
+        Returns:
+            True if 'linuxserver' is a segment in the image path.
+        """
+        return "linuxserver" in image.lower().split("/")
+
+    @staticmethod
+    def _extract_variant_suffix(tag: str, normalize_ls: bool = False) -> str | None:
+        """Extract semantic variant suffix for cross-version matching.
+
+        Returns the portion of a tag after the first hyphen, lowercased. When
+        normalize_ls is True (LinuxServer images only), suffixes matching the
+        LinuxServer build-counter pattern (ls<N> or <hash>-ls<N>) are normalized
+        to the stable token 'ls' so counter churn does not block updates.
+
+        Non-LinuxServer suffixes — including digit-bearing ones like 'alpine3.20'
+        or 'cuda12' — are always returned verbatim to preserve strict track
+        matching.
+
+        Args:
+            tag: Docker image tag string.
+            normalize_ls: If True, apply LinuxServer build-counter normalization.
+
+        Returns:
+            Normalized suffix string, or None if no hyphen-separated suffix exists.
+
+        Examples (normalize_ls=False):
+            'v1.13.4-ls131'            -> 'ls131'      (raw, strict)
+            '3.12-alpine3.20'          -> 'alpine3.20'  (raw, strict)
+            '1.2.3'                    -> None
+
+        Examples (normalize_ls=True):
+            'v1.13.4-ls131'                -> 'ls'       (normalized)
+            'v1.13.10-ls140'               -> 'ls'       (normalized, same)
+            '1.42.2.10156-f737b826c-ls284' -> 'ls'       (composite normalized)
+            '3.12-alpine'                  -> 'alpine'   (no ls counter, unchanged)
+            '3.12-alpine3.20'              -> 'alpine3.20' (no ls counter, unchanged)
+        """
+        tag_without_v = tag.lstrip("vV")
+        if "-" not in tag_without_v:
+            return None
+        suffix = tag_without_v.split("-", 1)[1].lower()
+        if normalize_ls and re.search(r"(?:^|-)ls\d+$", suffix):
+            return "ls"
+        return suffix
+
     def _is_non_semver_tag(self, tag: str) -> bool:
         """Check if tag requires digest tracking (non-semantic version).
 
@@ -844,6 +901,8 @@ class DockerHubClient(RegistryClient):
         url = f"{self.BASE_URL}/repositories/{image}/tags?page_size=100"
         best_tag = None
         current_version = self._parse_semver(current_tag)
+        normalize_ls = self._is_linuxserver_image(image)
+        current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
 
         try:
             # Fetch up to 500 tags (5 pages) max
@@ -868,26 +927,12 @@ class DockerHubClient(RegistryClient):
                     if not include_prereleases and is_prerelease_tag(tag_name):
                         continue
 
-                    # Extract suffix from current tag to ensure we only suggest matching variants
-                    # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-                    current_tag_without_v = current_tag.lstrip("vV")
-                    current_suffix = None
-                    if "-" in current_tag_without_v:
-                        current_parts = current_tag_without_v.split("-", 1)
-                        if len(current_parts) == 2:
-                            current_suffix = current_parts[1].lower()
-
-                    # Extract suffix from candidate tag
-                    tag_without_v = tag_name.lstrip("vV")
-                    candidate_suffix = None
-                    if "-" in tag_without_v:
-                        parts = tag_without_v.split("-", 1)
-                        if len(parts) == 2:
-                            candidate_suffix = parts[1].lower()
-
-                    # Skip if suffixes don't match
-                    # This ensures alpine images only get alpine updates, debian only gets debian, etc.
-                    if current_suffix != candidate_suffix:
+                    # Skip candidates on a different variant track.
+                    # For LinuxServer images, ls<N> build counters are normalized so
+                    # counter churn (ls131->ls140) does not block updates.
+                    if current_variant != self._extract_variant_suffix(
+                        tag_name, normalize_ls=normalize_ls
+                    ):
                         continue
 
                     # Check if this is a valid update
@@ -1142,30 +1187,15 @@ class GHCRClient(RegistryClient):
         if not include_prereleases:
             version_tags = [t for t in version_tags if not is_prerelease_tag(t)]
 
-        # Extract suffix from current tag to ensure we only suggest matching variants
-        # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip("vV")
-        current_suffix = None
-        if "-" in current_tag_without_v:
-            current_parts = current_tag_without_v.split("-", 1)
-            if len(current_parts) == 2:
-                current_suffix = current_parts[1].lower()
-
-        # Filter tags to only include those with matching suffix
-        filtered_tags = []
-        for tag in version_tags:
-            tag_without_v = tag.lstrip("vV")
-            candidate_suffix = None
-            if "-" in tag_without_v:
-                parts = tag_without_v.split("-", 1)
-                if len(parts) == 2:
-                    candidate_suffix = parts[1].lower()
-
-            # Only keep tags with matching suffix (or both have no suffix)
-            if current_suffix == candidate_suffix:
-                filtered_tags.append(tag)
-
-        version_tags = filtered_tags
+        # Filter tags to only include those on the same variant track.
+        # For LinuxServer images, ls<N> build counters are normalized so
+        # counter churn (ls131->ls140) does not block updates.
+        normalize_ls = self._is_linuxserver_image(image)
+        current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
+        version_tags = [
+            tag for tag in version_tags
+            if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
+        ]
 
         # Find best match
         best_tag = None
@@ -1354,16 +1384,17 @@ class LSCRClient(RegistryClient):
         if not tags:
             return None
 
-        # LinuxServer images often use "latest" or version-specific tags
-        # Try to find semantic versions and optionally filter out nightly/develop/pre-release tags
+        # All LSCR images are LinuxServer. Normalize ls<N> counters and composite
+        # hash+ls<N> suffixes (e.g., f737b826c-ls284) to a stable 'ls' token so
+        # build-counter churn does not block updates across releases.
+        current_variant = self._extract_variant_suffix(current_tag, normalize_ls=True)
         version_tags = []
         for t in tags:
-            # Skip tags with common pre-release/development indicators (unless explicitly allowed)
+            # Skip pre-release tags unless explicitly allowed
             if not include_prereleases and is_prerelease_tag(t):
                 continue
-            # Skip tags with different structural patterns
-            # (e.g., 4.0.16.2944-ls300 vs 5.14-version-2.0.0.5344)
-            if not tags_have_matching_pattern(current_tag, t):
+            # Skip candidates on a different variant track
+            if self._extract_variant_suffix(t, normalize_ls=True) != current_variant:
                 continue
             # Only include tags that have valid semantic versions
             if self._parse_semver(t) is not None:
@@ -1511,30 +1542,15 @@ class GCRClient(RegistryClient):
         if not include_prereleases:
             version_tags = [t for t in version_tags if not is_prerelease_tag(t)]
 
-        # Extract suffix from current tag to ensure we only suggest matching variants
-        # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip("vV")
-        current_suffix = None
-        if "-" in current_tag_without_v:
-            current_parts = current_tag_without_v.split("-", 1)
-            if len(current_parts) == 2:
-                current_suffix = current_parts[1].lower()
-
-        # Filter tags to only include those with matching suffix
-        filtered_tags = []
-        for tag in version_tags:
-            tag_without_v = tag.lstrip("vV")
-            candidate_suffix = None
-            if "-" in tag_without_v:
-                parts = tag_without_v.split("-", 1)
-                if len(parts) == 2:
-                    candidate_suffix = parts[1].lower()
-
-            # Only keep tags with matching suffix (or both have no suffix)
-            if current_suffix == candidate_suffix:
-                filtered_tags.append(tag)
-
-        version_tags = filtered_tags
+        # Filter tags to only include those on the same variant track.
+        # For LinuxServer images, ls<N> build counters are normalized so
+        # counter churn (ls131->ls140) does not block updates.
+        normalize_ls = self._is_linuxserver_image(image)
+        current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
+        version_tags = [
+            tag for tag in version_tags
+            if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
+        ]
 
         # Find best match
         best_tag = None
@@ -1670,30 +1686,15 @@ class QuayClient(RegistryClient):
         if not include_prereleases:
             version_tags = [t for t in version_tags if not is_prerelease_tag(t)]
 
-        # Extract suffix from current tag to ensure we only suggest matching variants
-        # E.g., if current is "3.12-alpine", only suggest "3.13-alpine", not "3.13-trixie"
-        current_tag_without_v = current_tag.lstrip("vV")
-        current_suffix = None
-        if "-" in current_tag_without_v:
-            current_parts = current_tag_without_v.split("-", 1)
-            if len(current_parts) == 2:
-                current_suffix = current_parts[1].lower()
-
-        # Filter tags to only include those with matching suffix
-        filtered_tags = []
-        for tag in version_tags:
-            tag_without_v = tag.lstrip("vV")
-            candidate_suffix = None
-            if "-" in tag_without_v:
-                parts = tag_without_v.split("-", 1)
-                if len(parts) == 2:
-                    candidate_suffix = parts[1].lower()
-
-            # Only keep tags with matching suffix (or both have no suffix)
-            if current_suffix == candidate_suffix:
-                filtered_tags.append(tag)
-
-        version_tags = filtered_tags
+        # Filter tags to only include those on the same variant track.
+        # For LinuxServer images, ls<N> build counters are normalized so
+        # counter churn (ls131->ls140) does not block updates.
+        normalize_ls = self._is_linuxserver_image(image)
+        current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
+        version_tags = [
+            tag for tag in version_tags
+            if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
+        ]
 
         # Find best match
         best_tag = None
