@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-02-26
+
 ### Changed
 - Redesigned About page with version badge, cleaner section layout, Learn More links, and a "Made with ❤️" footer.
 
 ### Fixed
 - LinuxServer containers (sonarr, radarr, lidarr, prowlarr, plex, speedtest-tracker) no longer miss updates. Build-counter suffixes like `ls131→ls140` and composite hash+ls suffixes like `f737b826c-ls284→abc123def-ls290` are now normalized per-namespace so they don't block version comparison.
+- Bulk "Scan Deps" now persists app dependency results to the database so project card badges update
 
 ### Dockerfile Dependencies
 - **oven/bun**: 1.3.9-alpine → 1.3.10-alpine
@@ -49,8 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **react-router-dom**: 7.13.0 → 7.13.1
 - **sqlalchemy**: 2.0.46 → 2.0.47
 
-### Fixed
-- Bulk "Scan Deps" now persists app dependency results to the database so project card badges update
 
 ## [3.8.1] - 2026-02-14
 
