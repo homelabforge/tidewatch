@@ -12,13 +12,17 @@ Tests version parsing, prerelease detection, and tag filtering:
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.registry_client import (
     NON_PEP440_PRERELEASE_INDICATORS,
+    DockerHubClient,
+    GHCRClient,
+    LSCRClient,
     TagCache,
+    _is_calver_tag,
     canonical_arch_suffix,
     is_non_semver_tag,
     is_prerelease_tag,
@@ -924,9 +928,7 @@ class TestLinuxServerSuffixMatching:
 
     def test_composite_ls_counter_change_matches(self, client):
         """Different composite hash+ls suffixes both normalize to 'ls'."""
-        current = client._extract_variant_suffix(
-            "1.42.2.10156-f737b826c-ls284", normalize_ls=True
-        )
+        current = client._extract_variant_suffix("1.42.2.10156-f737b826c-ls284", normalize_ls=True)
         candidate = client._extract_variant_suffix(
             "1.42.3.10180-abc123def-ls290", normalize_ls=True
         )
@@ -946,9 +948,9 @@ class TestLinuxServerSuffixMatching:
 
     def test_alpine_version_suffix_strict(self, client):
         """Digit-bearing alpine3.20 and alpine3.21 are distinct variants (regression guard)."""
-        assert client._extract_variant_suffix(
-            "3.12-alpine3.20"
-        ) != client._extract_variant_suffix("3.13-alpine3.21")
+        assert client._extract_variant_suffix("3.12-alpine3.20") != client._extract_variant_suffix(
+            "3.13-alpine3.21"
+        )
 
 
 class TestDockerHubLinuxServerUpdateEndToEnd:
@@ -1065,3 +1067,179 @@ class TestLSCRLinuxServerUpdateEndToEnd:
 
         assert result == "v2.7.6-ls16"
         await client.close()
+
+
+# ---------------------------------------------------------------------------
+# CalVer structural detection
+# ---------------------------------------------------------------------------
+
+
+def _hub_page(tags: list[str], next_url: str | None = None) -> MagicMock:
+    """Build a mock httpx Response for a Docker Hub tag-list page."""
+    body = {"results": [{"name": t} for t in tags], "next": next_url}
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value=body)
+    return resp
+
+
+class TestCalVerDetection:
+    """Unit tests for _is_calver_tag() structural detection."""
+
+    def test_yyyymmdd_prefix(self):
+        """8-digit YYYYMMDD prefix (e.g., Kopia nightly builds)."""
+        assert _is_calver_tag("20260224.0.42919") is True
+
+    def test_yyyy_mm_dd(self):
+        """YYYY.MM.DD format."""
+        assert _is_calver_tag("2024.01.15") is True
+
+    def test_yyyy_mm_only(self):
+        """YYYY.MM format."""
+        assert _is_calver_tag("2024.12") is True
+
+    def test_legacy_calver_no_year_floor(self):
+        """No year lower bound — legacy CalVer bases still detected."""
+        assert _is_calver_tag("2019.12.1") is True
+
+    def test_semver_major_minor_patch(self):
+        """Standard SemVer is not CalVer."""
+        assert _is_calver_tag("0.22.3") is False
+
+    def test_semver_low_major(self):
+        """Low major-version SemVer is not CalVer."""
+        assert _is_calver_tag("1.0.0") is False
+
+    def test_month_zero_is_not_calver(self):
+        """Month component 0 is not a valid CalVer month — treated as SemVer."""
+        assert _is_calver_tag("2000.0.0") is False
+
+    def test_uppercase_v_prefix_stripped(self):
+        """Uppercase V prefix is stripped before detection."""
+        assert _is_calver_tag("V20260224.0.1") is True
+
+    def test_lowercase_v_prefix_stripped(self):
+        """Lowercase v prefix is stripped before detection."""
+        assert _is_calver_tag("v20260224.0.1") is True
+
+    def test_yyyy_mm_with_hyphen_separator(self):
+        """YYYY.MM format with hyphen works as suffix separator."""
+        assert _is_calver_tag("2024.01-patch1") is True
+
+    def test_non_calver_single_digit_month(self):
+        """Single-digit month (1) does not match 01-12 pattern → not CalVer."""
+        # Pattern requires 2-digit month (01-09, 10-12); bare "1" doesn't qualify.
+        assert _is_calver_tag("2000.1.0") is False
+
+    def test_invalid_month_13(self):
+        """Month > 12 is not valid CalVer month."""
+        assert _is_calver_tag("2024.13.01") is False
+
+
+class TestCalVerCrossTrackProtection:
+    """Integration: CalVer cross-track rejection exercised through get_latest_tag."""
+
+    @pytest.fixture
+    def hub_client(self):
+        """DockerHubClient with no real network access."""
+        return DockerHubClient()
+
+    @pytest.mark.asyncio
+    async def test_kopia_calver_build_blocked(self, hub_client):
+        """Kopia SemVer 0.22.3 must not be offered a CalVer auto-build."""
+        tags = ["0.22.1", "0.22.2", "0.22.3", "20260224.0.42919", "20260225.0.50000"]
+        with patch.object(hub_client.client, "get", new=AsyncMock(return_value=_hub_page(tags))):
+            result = await hub_client.get_latest_tag("kopia/kopia", "0.22.3", scope="major")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_calver_to_calver_allowed(self, hub_client):
+        """CalVer container receives a newer CalVer update."""
+        tags = ["20260100.0.1", "20260224.0.42919"]
+        with patch.object(hub_client.client, "get", new=AsyncMock(return_value=_hub_page(tags))):
+            result = await hub_client.get_latest_tag("some/app", "20260100.0.1", scope="major")
+        assert result == "20260224.0.42919"
+
+    @pytest.mark.asyncio
+    async def test_semver_update_unaffected(self, hub_client):
+        """Normal SemVer minor update still works after the guard is in place."""
+        tags = ["0.22.3", "0.22.4", "0.23.0"]
+        with patch.object(hub_client.client, "get", new=AsyncMock(return_value=_hub_page(tags))):
+            result = await hub_client.get_latest_tag("kopia/kopia", "0.22.3", scope="minor")
+        assert result == "0.23.0"
+
+
+class TestCalVerCrossTrackGHCR:
+    """Integration: CalVer cross-track rejection through GHCRClient.get_latest_tag."""
+
+    @pytest.fixture
+    def ghcr_client(self) -> GHCRClient:
+        return GHCRClient()
+
+    @pytest.mark.asyncio
+    async def test_ghcr_calver_blocked_for_semver(self, ghcr_client: GHCRClient) -> None:
+        """CalVer candidate is rejected; valid SemVer update is still returned."""
+        tags = ["0.22.3", "0.22.4", "20260224.0.42919"]
+        with patch.object(ghcr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await ghcr_client.get_latest_tag("kopia/kopia", "0.22.3", scope="major")
+        assert result == "0.22.4"
+
+    @pytest.mark.asyncio
+    async def test_ghcr_calver_to_calver_allowed(self, ghcr_client: GHCRClient) -> None:
+        """CalVer→CalVer update passes through the guard."""
+        tags = ["20260100.0.1", "20260224.0.42919"]
+        with patch.object(ghcr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await ghcr_client.get_latest_tag("some/app", "20260100.0.1", scope="major")
+        assert result == "20260224.0.42919"
+
+    @pytest.mark.asyncio
+    async def test_ghcr_semver_update_unaffected(self, ghcr_client: GHCRClient) -> None:
+        """Normal SemVer-only pool: best in-scope tag returned, no false blocks."""
+        tags = ["0.22.3", "0.22.4", "0.23.0"]
+        with patch.object(ghcr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await ghcr_client.get_latest_tag("some/app", "0.22.3", scope="minor")
+        assert result == "0.23.0"
+
+
+class TestCalVerCrossTrackLSCR:
+    """Integration: CalVer cross-track rejection through LSCRClient.get_latest_tag."""
+
+    @pytest.fixture
+    def lscr_client(self) -> LSCRClient:
+        return LSCRClient()
+
+    @pytest.mark.asyncio
+    async def test_lscr_calver_blocked_for_semver(self, lscr_client: LSCRClient) -> None:
+        """CalVer candidate is rejected; SemVer minor update is still returned.
+
+        Uses 1.0.0-ls131 → 1.1.0-ls5 (semver changes) + CalVer candidate
+        to confirm the CalVer guard fires while the valid SemVer update passes.
+        """
+        tags = ["1.0.0-ls131", "1.1.0-ls5", "20260224.0.42919-ls1"]
+        with patch.object(lscr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await lscr_client.get_latest_tag(
+                "linuxserver/someapp", "1.0.0-ls131", scope="minor"
+            )
+        assert result == "1.1.0-ls5"
+
+    @pytest.mark.asyncio
+    async def test_lscr_calver_only_pool_returns_none_for_semver(
+        self, lscr_client: LSCRClient
+    ) -> None:
+        """If the only newer tag is CalVer, return None for a SemVer container."""
+        tags = ["1.0.0-ls131", "20260224.0.42919-ls1", "20260225.0.50000-ls2"]
+        with patch.object(lscr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await lscr_client.get_latest_tag(
+                "linuxserver/someapp", "1.0.0-ls131", scope="major"
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_lscr_semver_update_unaffected(self, lscr_client: LSCRClient) -> None:
+        """Normal SemVer update (with ls counter normalization) still works."""
+        tags = ["1.0.0-ls131", "1.1.0-ls1"]
+        with patch.object(lscr_client, "get_all_tags", new=AsyncMock(return_value=tags)):
+            result = await lscr_client.get_latest_tag(
+                "linuxserver/someapp", "1.0.0-ls131", scope="minor"
+            )
+        assert result == "1.1.0-ls1"

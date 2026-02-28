@@ -150,6 +150,11 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
               {updateBadgeText}
             </span>
           )}
+          {container.calver_blocked_tag && !container.update_available && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              CalVer build blocked ({container.calver_blocked_tag})
+            </span>
+          )}
           {container.is_my_project && dependencySummary && (
             <>
               {dependencySummary.http_server_updates > 0 && (

@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,6 +42,8 @@ class ContainerSchema(BaseModel):
     update_available: bool
     latest_tag: str | None = None
     latest_major_tag: str | None = None
+    calver_blocked_tag: str | None = None
+    version_track: str | None = None
     last_checked: datetime | None = None
     last_updated: datetime | None = None
     labels: dict[str, str] = Field(default_factory=dict)
@@ -155,6 +158,7 @@ class ContainerUpdate(BaseModel):
     policy: str | None = None  # patch-only, minor-and-patch, auto, security, manual, disabled
     scope: str | None = None  # patch, minor, major
     include_prereleases: bool | None = None  # Include nightly, dev, alpha, beta, rc tags
+    version_track: Literal["semver", "calver"] | None = None  # None=auto, "semver", "calver"
     vulnforge_enabled: bool | None = None
     health_check_url: str | None = None
     health_check_method: str | None = None

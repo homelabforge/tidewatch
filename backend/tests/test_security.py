@@ -135,7 +135,8 @@ class TestMaskSensitive:
     def test_custom_mask_character(self):
         """Test custom mask character."""
         assert (
-            mask_sensitive("tok_example_1234567890abcdef", visible_chars=4, mask_char="X") == "XXXcdef"
+            mask_sensitive("tok_example_1234567890abcdef", visible_chars=4, mask_char="X")
+            == "XXXcdef"
         )
         assert mask_sensitive("password", visible_chars=3, mask_char="#") == "###ord"
 

@@ -39,6 +39,7 @@ class FetchTagsRequest:
         scope: Update scope ("patch", "minor", "major")
         include_prereleases: Whether to include prerelease tags
         current_digest: Current digest for 'latest' tag tracking
+        version_track: Versioning scheme override (None=auto, "semver", "calver")
     """
 
     registry: str
@@ -47,6 +48,7 @@ class FetchTagsRequest:
     scope: str
     include_prereleases: bool
     current_digest: str | None = None
+    version_track: str | None = None
 
 
 @dataclass
@@ -56,6 +58,7 @@ class FetchTagsResponse:
     Attributes:
         latest_tag: Latest tag within scope (None if no update)
         latest_major_tag: Latest major version (for scope violation visibility)
+        calver_blocked_tag: Best CalVer candidate blocked for SemVer container (UI badge)
         all_tags: All available tags for the image
         metadata: Additional metadata (e.g., digest for 'latest' tag)
         cache_hit: Whether result came from run-scoped cache
@@ -69,6 +72,7 @@ class FetchTagsResponse:
     metadata: dict[str, Any] | None
     cache_hit: bool
     fetch_duration_ms: float
+    calver_blocked_tag: str | None = None
     error: str | None = None
 
 
@@ -140,13 +144,14 @@ class TagFetcher:
         """
         start_time = time.monotonic()
 
-        # Build cache key
+        # Build cache key (version_track included so different overrides don't collide)
         key = ImageCheckKey(
             registry=request.registry.lower(),
             image=request.image,
             current_tag=request.current_tag,
             scope=request.scope,
             include_prereleases=request.include_prereleases,
+            version_track=request.version_track,
         )
 
         # Check run-scoped cache first
@@ -160,6 +165,7 @@ class TagFetcher:
                 return FetchTagsResponse(
                     latest_tag=cached.latest_tag,
                     latest_major_tag=cached.latest_major_tag,
+                    calver_blocked_tag=cached.calver_blocked_tag,
                     all_tags=cached.tags,
                     metadata=cached.metadata,
                     cache_hit=True,
@@ -190,6 +196,7 @@ class TagFetcher:
                         request.scope,
                         current_digest=request.current_digest,
                         include_prereleases=request.include_prereleases,
+                        version_track=request.version_track,
                     )
 
                     # Fetch latest major tag (for scope violation visibility)
@@ -200,6 +207,7 @@ class TagFetcher:
                                 request.image,
                                 request.current_tag,
                                 include_prereleases=request.include_prereleases,
+                                version_track=request.version_track,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to fetch major tag for {request.image}: {e}")
@@ -225,11 +233,23 @@ class TagFetcher:
 
                     duration_ms = (time.monotonic() - start_time) * 1000
 
+                    # Collect cross-scheme rejection for UI visibility (one summary log per check)
+                    calver_blocked_tag = getattr(client, "_best_cross_scheme_rejected", None)
+                    if calver_blocked_tag:
+                        logger.info(
+                            "Cross-scheme candidate blocked for %s:%s — best rejected: %s "
+                            "[reason=track_mismatch]",
+                            request.image,
+                            request.current_tag,
+                            calver_blocked_tag,
+                        )
+
                     # Create result
                     result = TagFetchResult(
                         tags=all_tags,
                         latest_tag=latest_tag,
                         latest_major_tag=latest_major_tag,
+                        calver_blocked_tag=calver_blocked_tag,
                         metadata=metadata,
                     )
 
@@ -245,6 +265,7 @@ class TagFetcher:
                     response = FetchTagsResponse(
                         latest_tag=latest_tag,
                         latest_major_tag=latest_major_tag,
+                        calver_blocked_tag=calver_blocked_tag,
                         all_tags=all_tags,
                         metadata=metadata,
                         cache_hit=False,
@@ -304,6 +325,7 @@ class TagFetcher:
         current_digest: str | None = (
             container.current_digest if is_non_semver_tag(current_tag) else None
         )  # type: ignore[attr-defined]
+        version_track: str | None = container.version_track if container.version_track else None  # type: ignore[attr-defined]
 
         return await self.fetch_tags(
             FetchTagsRequest(
@@ -313,6 +335,7 @@ class TagFetcher:
                 scope=scope,
                 include_prereleases=include_prereleases,
                 current_digest=current_digest,
+                version_track=version_track,
             )
         )
 
@@ -338,5 +361,6 @@ class TagFetcher:
                 scope=key.scope,
                 include_prereleases=key.include_prereleases,
                 current_digest=current_digest,
+                version_track=key.version_track,
             )
         )

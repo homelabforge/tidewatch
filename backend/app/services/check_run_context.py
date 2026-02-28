@@ -33,6 +33,7 @@ class ImageCheckKey:
         current_tag: Current tag being checked
         scope: Update scope ("patch", "minor", "major")
         include_prereleases: Whether prereleases are included in search
+        version_track: Version scheme override (None=auto, "semver", "calver")
     """
 
     registry: str
@@ -40,6 +41,7 @@ class ImageCheckKey:
     current_tag: str
     scope: str
     include_prereleases: bool
+    version_track: str | None = None
 
     @classmethod
     def from_container(cls, container: Container, include_prereleases: bool) -> ImageCheckKey:
@@ -59,6 +61,7 @@ class ImageCheckKey:
             current_tag=str(container.current_tag),  # type: ignore[attr-defined]
             scope=str(container.scope),  # type: ignore[attr-defined]
             include_prereleases=include_prereleases,
+            version_track=container.version_track if container.version_track else None,  # type: ignore[attr-defined]
         )
 
 
@@ -72,6 +75,7 @@ class TagFetchResult:
         tags: All available tags for the image
         latest_tag: Latest tag within scope (None if no update)
         latest_major_tag: Latest major version (for scope violation visibility)
+        calver_blocked_tag: Best CalVer candidate blocked for SemVer container (UI badge)
         metadata: Additional metadata (e.g., digest for 'latest' tag)
         fetched_at: When the result was fetched
         error: Error message if fetch failed
@@ -80,6 +84,7 @@ class TagFetchResult:
     tags: list[str]
     latest_tag: str | None
     latest_major_tag: str | None
+    calver_blocked_tag: str | None = None
     metadata: dict[str, Any] | None = None
     fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     error: str | None = None

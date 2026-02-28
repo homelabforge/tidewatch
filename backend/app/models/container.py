@@ -39,6 +39,9 @@ class Container(Base):
     include_prereleases: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True, default=None
     )  # None=inherit global, True=include prereleases, False=stable only
+    version_track: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # None=auto-detect, "semver"=force SemVer, "calver"=force CalVer
 
     # VulnForge integration
     vulnforge_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -55,6 +58,9 @@ class Container(Base):
     latest_major_tag: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # Major version update (if exists outside scope)
+    calver_blocked_tag: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Best CalVer candidate blocked for SemVer container (UI badge)
     last_checked: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )  # Indexed for sorting

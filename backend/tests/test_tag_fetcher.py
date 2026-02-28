@@ -339,3 +339,39 @@ class TestDockerHubOptimization:
 
         # get_all_tags should NOT be called for non-semver tags
         mock_client.get_all_tags.assert_not_called()
+
+
+class TestImageCheckKeyVersionTrack:
+    """Two containers differing only in version_track must not share a cache key (Test B)."""
+
+    def _key(self, version_track: str | None) -> ImageCheckKey:
+        return ImageCheckKey(
+            registry="dockerhub",
+            image="kopia/kopia",
+            current_tag="0.22.3",
+            scope="major",
+            include_prereleases=False,
+            version_track=version_track,
+        )
+
+    def test_different_version_track_produces_different_keys(self):
+        key_auto = self._key(None)
+        key_semver = self._key("semver")
+        key_calver = self._key("calver")
+
+        assert key_auto != key_semver
+        assert key_auto != key_calver
+        assert key_semver != key_calver
+
+    def test_same_version_track_produces_same_key(self):
+        assert self._key("semver") == self._key("semver")
+
+    def test_none_and_missing_version_track_are_equivalent(self):
+        key_default = ImageCheckKey(
+            registry="dockerhub",
+            image="kopia/kopia",
+            current_tag="0.22.3",
+            scope="major",
+            include_prereleases=False,
+        )
+        assert key_default == self._key(None)

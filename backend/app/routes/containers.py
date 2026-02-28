@@ -264,6 +264,10 @@ async def update_container(
         container.release_source = update.release_source if update.release_source else None
     if update.is_my_project is not None:
         container.is_my_project = update.is_my_project
+    # version_track uses model_fields_set to distinguish "omitted" from "explicitly set to null".
+    # This allows callers to clear the field back to None (Auto) by sending null explicitly.
+    if "version_track" in update.model_fields_set:
+        container.version_track = update.version_track  # None clears back to Auto
 
     await db.commit()
     await db.refresh(container)

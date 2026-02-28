@@ -17,6 +17,8 @@ describe('ContainerCard', () => {
     update_available: false,
     latest_tag: null,
     latest_major_tag: null,
+    calver_blocked_tag: null,
+    version_track: null,
     last_checked: null,
     last_updated: null,
     labels: {},

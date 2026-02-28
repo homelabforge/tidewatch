@@ -169,11 +169,23 @@ class UpdateChecker:
                 if is_non_semver_tag(container.current_tag)
                 else None,
                 include_prereleases=include_prereleases,
+                version_track=container.version_track,
             )
+
+            # Persist cross-scheme rejection for UI visibility (one summary log per check)
+            calver_blocked = getattr(client, "_best_cross_scheme_rejected", None)
+            container.calver_blocked_tag = calver_blocked
+            if calver_blocked:
+                logger.info(
+                    "Cross-scheme candidate blocked for %s — best rejected: %s "
+                    "[reason=track_mismatch]",
+                    container.name,
+                    calver_blocked,
+                )
 
             # Check for major updates (informational visibility)
             await UpdateChecker._check_major_update(
-                client, container, include_prereleases, latest_tag
+                client, container, include_prereleases, latest_tag, container.version_track
             )
 
             # Extract suffix from current tag (e.g., "-alpine", "-slim")
@@ -382,6 +394,7 @@ class UpdateChecker:
         container: Container,
         include_prereleases: bool,
         latest_tag: str | None,
+        version_track: str | None = None,
     ) -> str | None:
         """Fetch the latest major tag for informational visibility.
 
@@ -393,6 +406,7 @@ class UpdateChecker:
             container: Container to check
             include_prereleases: Whether to include pre-release versions
             latest_tag: The latest in-scope tag (to avoid storing duplicates)
+            version_track: Versioning scheme override (None=auto, "semver", "calver")
 
         Returns:
             Latest major tag, or None
@@ -406,6 +420,7 @@ class UpdateChecker:
                 container.image,
                 container.current_tag,
                 include_prereleases=include_prereleases,
+                version_track=version_track,
             )
 
             if latest_major_tag and latest_major_tag != latest_tag:
@@ -799,6 +814,9 @@ class UpdateChecker:
         else:
             container.latest_major_tag = None
 
+        # Persist cross-scheme rejection for UI visibility (always assign to clear stale values)
+        container.calver_blocked_tag = fetch_response.calver_blocked_tag
+
         # Capture previous digest BEFORE any mutations (for accurate summaries later)
         previous_digest = container.current_digest
 
@@ -1018,39 +1036,8 @@ class UpdateChecker:
         elif container.vulnforge_enabled and is_digest_update:
             await UpdateChecker._refresh_vulnforge_baseline(db, container)
 
-        # Auto-approval check
-        auto_update_enabled = await SettingsService.get_bool(
-            db, "auto_update_enabled", default=False
-        )
-        should_approve, approval_reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled
-        )
-
-        if should_approve:
-            logger.info(f"Auto-approving update for {container.name}: {approval_reason}")
-            update.status = "approved"
-            update.approved_by = "system"
-            update.approved_at = datetime.now(UTC)
-
-        # Send notifications
-        from app.services.notifications.dispatcher import NotificationDispatcher
-
-        dispatcher = NotificationDispatcher(db)
-        if update.reason_type == "security" and update.cves_fixed:
-            await dispatcher.notify_security_update(
-                container.name,
-                update.from_tag,
-                update.to_tag,
-                update.cves_fixed,
-                update.vuln_delta or 0,
-            )
-        else:
-            await dispatcher.notify_update_available(
-                container.name,
-                update.from_tag,
-                update.to_tag,
-                update.reason_summary or "New version available",
-            )
+        # Auto-approval + notifications (shared logic with check_container)
+        await UpdateChecker._process_auto_approval_and_notify(db, update, container)
 
         logger.info(f"Created update record for {container.name}")
 

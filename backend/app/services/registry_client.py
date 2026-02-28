@@ -60,6 +60,46 @@ NON_PEP440_PRERELEASE_INDICATORS = [
     "hotfix-",
 ]
 
+# Compiled patterns for CalVer-like structural detection.
+# Goal: identify date-scheme versions vs numeric semver by structure only,
+# not calendar validity (day=99 still classifies as CalVer-like).
+# No year lower bound — legacy CalVer bases (2019.x, 2018.x) are detected.
+_CALVER_YYYYMMDD_RE = re.compile(r"^\d{4}(0[1-9]|1[0-2])\d{2}$")
+_CALVER_YYYY_MM_RE = re.compile(r"^\d{4}\.(0[1-9]|1[0-2])(?:[.\-_]|$)")
+
+
+def _is_calver_tag(tag: str) -> bool:
+    """Return True if tag uses a Calendar Versioning-like structure.
+
+    Performs structural detection only — does not validate calendar correctness.
+    Matches YYYYMMDD.x.x and YYYY.MM.x patterns. No year lower bound, so
+    legacy CalVer bases (e.g., 2019.12) are correctly identified.
+
+    Matches:
+        20260224.0.42919  → YYYYMMDD prefix (Kopia nightly)
+        2024.01.15        → YYYY.MM.DD
+        2019.12           → YYYY.MM (legacy CalVer)
+        v20260224.0.1     → v-prefix stripped before matching
+
+    Does NOT match:
+        0.22.3            → SemVer
+        2000.0.0          → month component is 0, not in 01-12
+        1.0.0             → SemVer
+
+    Args:
+        tag: Docker image tag to classify
+
+    Returns:
+        True if the tag appears to use Calendar Versioning structure
+    """
+    clean = tag.lstrip("vV")  # Handle both v and V prefix
+    first = re.split(r"[.\-_]", clean)[0]
+    if len(first) == 8 and _CALVER_YYYYMMDD_RE.match(first):
+        return True
+    if _CALVER_YYYY_MM_RE.match(clean):
+        return True
+    return False
+
 
 def is_prerelease_tag(tag: str) -> bool:
     """Detect if a Docker image tag represents a prerelease version.
@@ -336,6 +376,10 @@ class RegistryClient(ABC):
 
         self.client = httpx.AsyncClient(timeout=30.0, headers=headers, auth=auth if auth else None)
         self._registry_name = self.__class__.__name__.replace("Client", "").lower()
+        # Tracks the best CalVer candidate rejected for a SemVer container during the last
+        # get_latest_tag() call. Read by TagFetcher / update_checker after the call to surface
+        # the mismatch in the UI (similar to latest_major_tag for scope violations).
+        self._best_cross_scheme_rejected: str | None = None
 
     def _get_cache_key(self, image: str) -> str:
         """Generate cache key for image.
@@ -394,6 +438,7 @@ class RegistryClient(ABC):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag for an image.
 
@@ -403,6 +448,7 @@ class RegistryClient(ABC):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            version_track: Override version scheme detection (None=auto, "semver", "calver")
 
         Returns:
             Latest tag or None
@@ -434,13 +480,20 @@ class RegistryClient(ABC):
         """
         pass
 
-    def _compare_versions(self, current: str, candidate: str, scope: str) -> bool:
+    def _compare_versions(
+        self,
+        current: str,
+        candidate: str,
+        scope: str,
+        version_track: str | None = None,
+    ) -> bool:
         """Compare semantic versions based on scope.
 
         Args:
             current: Current version (e.g., "1.2.3")
             candidate: Candidate version (e.g., "1.2.4")
             scope: Update scope (patch, minor, major)
+            version_track: Override CalVer detection (None=auto, "semver", "calver")
 
         Returns:
             True if candidate is a valid update
@@ -473,6 +526,40 @@ class RegistryClient(ABC):
 
         curr_major, curr_minor, curr_patch, curr_extra = normalized_current
         cand_major, cand_minor, cand_patch, cand_extra = normalized_candidate
+
+        # Determine effective CalVer classification, respecting explicit version_track override.
+        # None = auto-detect; "semver" = force SemVer; "calver" = force CalVer.
+        if version_track == "semver":
+            is_curr_calver = False  # Container pinned to SemVer; reject CalVer candidates
+            is_cand_calver = _is_calver_tag(candidate)
+        elif version_track == "calver":
+            is_curr_calver = True  # Container pinned to CalVer; reject SemVer candidates
+            is_cand_calver = _is_calver_tag(candidate)
+        else:
+            is_curr_calver = _is_calver_tag(current)
+            is_cand_calver = _is_calver_tag(candidate)
+
+        if is_curr_calver != is_cand_calver:
+            logger.debug(
+                "Rejecting cross-scheme candidate: %s (calver=%s) -> %s (calver=%s) "
+                "[reason=track_mismatch, version_track=%s]",
+                current,
+                is_curr_calver,
+                candidate,
+                is_cand_calver,
+                version_track,
+            )
+            # Track the best CalVer candidate rejected for a SemVer container.
+            # Only when is_cand_calver=True and is_curr_calver=False: the container is
+            # on SemVer (auto or pinned) and a CalVer build appeared. This is what the
+            # UI badge ("CalVer build blocked") describes. SemVer→CalVer direction is
+            # not tracked because "CalVer blocked" badge text would be misleading.
+            if is_cand_calver and not is_curr_calver:
+                if self._best_cross_scheme_rejected is None or self._is_better_version(
+                    candidate, self._best_cross_scheme_rejected
+                ):
+                    self._best_cross_scheme_rejected = candidate
+            return False
 
         if (cand_major, cand_minor, cand_patch, cand_extra) <= (
             curr_major,
@@ -692,7 +779,11 @@ class RegistryClient(ABC):
         return any(indicator in lower_tag for indicator in windows_indicators)
 
     async def get_latest_major_tag(
-        self, image: str, current_tag: str, include_prereleases: bool = False
+        self,
+        image: str,
+        current_tag: str,
+        include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest major version regardless of container scope.
 
@@ -703,6 +794,7 @@ class RegistryClient(ABC):
             image: Image name
             current_tag: Current tag
             include_prereleases: Include pre-release tags
+            version_track: Override CalVer detection (None=auto, "semver", "calver")
 
         Returns:
             Latest major version or None
@@ -719,6 +811,7 @@ class RegistryClient(ABC):
             scope="major",  # Always major scope
             current_digest=None,  # Not needed for semver tags
             include_prereleases=include_prereleases,
+            version_track=version_track,
         )
 
 
@@ -796,6 +889,7 @@ class DockerHubClient(RegistryClient):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag from Docker Hub.
 
@@ -821,7 +915,9 @@ class DockerHubClient(RegistryClient):
             return None  # No update
 
         # For semantic versions, use optimized fetching
-        return await self._get_semver_update(image, current_tag, scope, include_prereleases)
+        return await self._get_semver_update(
+            image, current_tag, scope, include_prereleases, version_track=version_track
+        )
 
     async def _check_digest_change(
         self, image: str, current_tag: str, current_digest: str | None = None
@@ -890,6 +986,7 @@ class DockerHubClient(RegistryClient):
         current_tag: str,
         scope: str,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get semantic version update with optimized API calls.
 
@@ -936,7 +1033,7 @@ class DockerHubClient(RegistryClient):
                         continue
 
                     # Check if this is a valid update
-                    if self._compare_versions(current_tag, tag_name, scope):
+                    if self._compare_versions(current_tag, tag_name, scope, version_track):
                         if best_tag is None or self._is_better_version(tag_name, best_tag):
                             best_tag = tag_name
 
@@ -1149,6 +1246,7 @@ class GHCRClient(RegistryClient):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag from GHCR.
 
@@ -1193,14 +1291,15 @@ class GHCRClient(RegistryClient):
         normalize_ls = self._is_linuxserver_image(image)
         current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
         version_tags = [
-            tag for tag in version_tags
+            tag
+            for tag in version_tags
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope):
+            if self._compare_versions(current_tag, tag, scope, version_track):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1355,6 +1454,7 @@ class LSCRClient(RegistryClient):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag from LSCR.
 
@@ -1403,7 +1503,7 @@ class LSCRClient(RegistryClient):
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope):
+            if self._compare_versions(current_tag, tag, scope, version_track):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1504,6 +1604,7 @@ class GCRClient(RegistryClient):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag from GCR.
 
@@ -1548,14 +1649,15 @@ class GCRClient(RegistryClient):
         normalize_ls = self._is_linuxserver_image(image)
         current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
         version_tags = [
-            tag for tag in version_tags
+            tag
+            for tag in version_tags
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope):
+            if self._compare_versions(current_tag, tag, scope, version_track):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1648,6 +1750,7 @@ class QuayClient(RegistryClient):
         scope: str = "patch",
         current_digest: str | None = None,
         include_prereleases: bool = False,
+        version_track: str | None = None,
     ) -> str | None:
         """Get latest tag from Quay.io.
 
@@ -1692,14 +1795,15 @@ class QuayClient(RegistryClient):
         normalize_ls = self._is_linuxserver_image(image)
         current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
         version_tags = [
-            tag for tag in version_tags
+            tag
+            for tag in version_tags
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope):
+            if self._compare_versions(current_tag, tag, scope, version_track):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 

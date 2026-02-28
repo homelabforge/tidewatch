@@ -17,6 +17,8 @@ export interface Container {
   update_available: boolean;
   latest_tag: string | null;
   latest_major_tag: string | null;
+  calver_blocked_tag: string | null;
+  version_track: string | null;
   last_checked: string | null;
   last_updated: string | null;
   labels: Record<string, string>;

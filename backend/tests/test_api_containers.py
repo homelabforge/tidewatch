@@ -851,3 +851,84 @@ class TestContainerValidation:
     async def test_prevent_sql_injection(self, authenticated_client):
         """Test prevents SQL injection in filters."""
         pass
+
+
+class TestVersionTrackNullableClear:
+    """Test A: version_track nullable clear via model_fields_set."""
+
+    @pytest.mark.asyncio
+    async def test_version_track_set_to_semver(self, authenticated_client, db, make_container):
+        """PUT with version_track='semver' sets the field."""
+        container = make_container(name=f"vt-test-{id(self)}")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"version_track": "semver"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["version_track"] == "semver"
+
+    @pytest.mark.asyncio
+    async def test_version_track_clears_to_null(self, authenticated_client, db, make_container):
+        """PUT with version_track=null explicitly clears back to Auto (model_fields_set path)."""
+        container = make_container(name=f"vt-clear-{id(self)}")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        # First set to semver
+        await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"version_track": "semver"},
+        )
+
+        # Now explicitly clear back to null
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"version_track": None},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["version_track"] is None
+
+    @pytest.mark.asyncio
+    async def test_version_track_omitted_does_not_clear(
+        self, authenticated_client, db, make_container
+    ):
+        """Omitting version_track entirely must NOT clear the existing value."""
+        container = make_container(name=f"vt-omit-{id(self)}")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        # Set to calver
+        await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"version_track": "calver"},
+        )
+
+        # Omit version_track in subsequent update
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["version_track"] == "calver"  # Unchanged
+
+    @pytest.mark.asyncio
+    async def test_version_track_invalid_value_rejected(
+        self, authenticated_client, db, make_container
+    ):
+        """Invalid version_track value should be rejected with 422 (Pydantic Literal validation)."""
+        container = make_container(name=f"vt-invalid-{id(self)}")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"version_track": "unknown"},
+        )
+        assert resp.status_code == 422

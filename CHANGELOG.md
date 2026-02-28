@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
+- `calver_blocked_tag` field: when a CalVer build is detected for a SemVer container, the best blocked candidate is surfaced as an informational badge on the container card
+- GHCR and LSCR integration tests for the CalVer cross-track guard
+
 ## [3.8.2] - 2026-02-26
 
 ### Changed

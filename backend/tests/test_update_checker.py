@@ -16,7 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.container import Container
+from app.services.tag_fetcher import FetchTagsResponse
 from app.services.update_checker import UpdateChecker
+from app.services.update_decision_maker import UpdateDecisionMaker
 
 
 class TestAutoApprovalLogic:
@@ -1298,3 +1300,200 @@ class TestPrereleaseHandling:
             mock_client.get_latest_tag.assert_called_once()
             call_kwargs = mock_client.get_latest_tag.call_args.kwargs
             assert call_kwargs["include_prereleases"] is True
+
+
+# ---------------------------------------------------------------------------
+# apply_decision() refactor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_fetch_response(**overrides) -> FetchTagsResponse:
+    """Create a FetchTagsResponse with sensible defaults."""
+    defaults = {
+        "latest_tag": "1.25.3",
+        "latest_major_tag": None,
+        "all_tags": ["1.25.0", "1.25.3"],
+        "metadata": None,
+        "cache_hit": False,
+        "fetch_duration_ms": 50.0,
+        "error": None,
+    }
+    defaults.update(overrides)
+    return FetchTagsResponse(**defaults)
+
+
+class TestApplyDecisionRefactor:
+    """Verify apply_decision() correctly delegates to _process_auto_approval_and_notify."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Minimal async DB mock sufficient for apply_decision."""
+        db = AsyncMock()
+        # "Does this update already exist?" query → No
+        no_result = MagicMock()
+        no_result.scalar_one_or_none = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=no_result)
+        db.add = MagicMock()
+        # async with db.begin_nested():
+        nested = AsyncMock()
+        nested.__aenter__ = AsyncMock(return_value=None)
+        nested.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested)
+        db.refresh = AsyncMock()
+        db.rollback = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def base_container(self):
+        """Container with auto-approval policy and no enrichment configured."""
+        return Container(
+            id=1,
+            name="nginx",
+            image="nginx",
+            current_tag="1.25.0",
+            registry="docker.io",
+            compose_file="/compose/nginx.yml",
+            service_name="nginx",
+            policy="monitor",
+            scope="patch",
+            vulnforge_enabled=False,
+            release_source=None,
+        )
+
+    def _make_decision(self, container: Container, latest_tag: str = "1.25.3"):
+        """Build a real UpdateDecision via UpdateDecisionMaker."""
+        response = _make_fetch_response(latest_tag=latest_tag)
+        return UpdateDecisionMaker().make_decision(container, response, False)
+
+    @pytest.mark.asyncio
+    async def test_helper_called_before_event_published(self, mock_db, base_container):
+        """_process_auto_approval_and_notify must be awaited before event_bus.publish."""
+        call_order: list[str] = []
+
+        async def fake_notify(_db, _update, _container):
+            call_order.append("notify")
+
+        async def fake_publish(_event):
+            call_order.append("publish")
+
+        decision = self._make_decision(base_container)
+        fetch = _make_fetch_response()
+
+        with (
+            patch.object(
+                UpdateChecker, "_process_auto_approval_and_notify", side_effect=fake_notify
+            ),
+            patch("app.services.update_checker.event_bus.publish", side_effect=fake_publish),
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+        ):
+            await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert call_order == ["notify", "publish"]
+
+    @pytest.mark.asyncio
+    async def test_auto_approval_applied_correctly(self, mock_db, base_container):
+        """Auto-approval marks update as approved when global enabled and policy is auto."""
+        base_container.policy = "auto"
+        decision = self._make_decision(base_container)
+        fetch = _make_fetch_response()
+
+        with (
+            patch("app.services.update_checker.SettingsService.get_bool", return_value=True),
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+                ".notify_update_available",
+                new=AsyncMock(),
+            ),
+        ):
+            update = await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert update is not None
+        assert update.status == "approved"
+        assert update.approved_by == "system"
+
+
+class TestCalverBlockedTagPersistence:
+    """Test C: apply_decision() sets and clears calver_blocked_tag each run."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Minimal async DB mock sufficient for apply_decision."""
+        db = AsyncMock()
+        no_result = MagicMock()
+        no_result.scalar_one_or_none = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=no_result)
+        db.add = MagicMock()
+        nested = AsyncMock()
+        nested.__aenter__ = AsyncMock(return_value=None)
+        nested.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested)
+        db.refresh = AsyncMock()
+        db.rollback = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def base_container(self):
+        return Container(
+            id=1,
+            name="kopia",
+            image="kopia/kopia",
+            current_tag="0.22.3",
+            registry="ghcr.io",
+            compose_file="/compose/kopia.yml",
+            service_name="kopia",
+            policy="monitor",
+            scope="patch",
+            vulnforge_enabled=False,
+            release_source=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_calver_blocked_tag_set_from_fetch_response(self, mock_db, base_container):
+        """apply_decision() persists calver_blocked_tag from FetchTagsResponse."""
+        fetch = _make_fetch_response(calver_blocked_tag="20260224.0.42919")
+        decision = UpdateDecisionMaker().make_decision(base_container, fetch, False)
+
+        with (
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+        ):
+            await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert base_container.calver_blocked_tag == "20260224.0.42919"
+
+    @pytest.mark.asyncio
+    async def test_calver_blocked_tag_cleared_when_none(self, mock_db, base_container):
+        """apply_decision() clears stale calver_blocked_tag when FetchTagsResponse returns None."""
+        base_container.calver_blocked_tag = "20260224.0.42919"  # Stale from previous run
+        fetch = _make_fetch_response(calver_blocked_tag=None)
+        decision = UpdateDecisionMaker().make_decision(base_container, fetch, False)
+
+        with (
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+        ):
+            await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert base_container.calver_blocked_tag is None

@@ -13,6 +13,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const [policy, setPolicy] = useState(container.policy);
   const [scope, setScope] = useState(container.scope);
   const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases);
+  const [versionTrack, setVersionTrack] = useState<string | null>(container.version_track);
   const [vulnforgeEnabled] = useState(container.vulnforge_enabled);
   const [healthCheckMethod, setHealthCheckMethod] = useState(container.health_check_method);
   const [healthCheckUrl, setHealthCheckUrl] = useState(container.health_check_url || '');
@@ -164,6 +165,12 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     const newValue: boolean | null = value === 'null' ? null : value === 'true';
     setIncludePrereleases(newValue);
     await saveSettings({ include_prereleases: newValue });
+  };
+
+  const handleVersionTrackChange = async (value: string) => {
+    const newValue: string | null = value === 'null' ? null : value;
+    setVersionTrack(newValue);
+    await saveSettings({ version_track: newValue });
   };
 
   const handleHealthCheckMethodChange = async (method: string) => {
@@ -655,6 +662,35 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
               >
                 <div className="mb-2">
                   <span className={`font-medium ${scope === item.value ? 'text-tide-text' : 'text-tide-text'}`}>{item.label}</span>
+                </div>
+                <p className="text-xs text-tide-text-muted">{item.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Version Track */}
+        <div className={`bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border transition-opacity ${policy === 'disabled' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <h4 className="text-base font-semibold text-tide-text mb-3">Version Track</h4>
+          <p className="text-sm text-tide-text-muted mb-4">Override automatic versioning scheme detection. Use when a project has migrated between SemVer and CalVer.</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { value: 'null', label: 'Auto', desc: 'Detect scheme from tag structure' },
+              { value: 'semver', label: 'SemVer', desc: 'Force semantic versioning (1.2.3)' },
+              { value: 'calver', label: 'CalVer', desc: 'Force calendar versioning (2026.01.1)' },
+            ].map((item) => (
+              <button
+                key={item.value}
+                onClick={() => handleVersionTrackChange(item.value)}
+                disabled={savingSettings}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  (versionTrack ?? 'null') === item.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-tide-border bg-tide-surface hover:border-tide-border-light'
+                }`}
+              >
+                <div className="mb-2">
+                  <span className="font-medium text-tide-text">{item.label}</span>
                 </div>
                 <p className="text-xs text-tide-text-muted">{item.desc}</p>
               </button>
