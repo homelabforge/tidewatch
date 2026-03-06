@@ -454,11 +454,10 @@ class CleanupService:
             space_reclaimed = 0
             images_removed = 0
 
-            # Count deleted images
+            # Count deleted images (one "deleted: sha256:..." line per removed image)
             for line in output.split("\n"):
-                if line.startswith("deleted:") or (line and not line.startswith("Total")):
-                    if "sha256:" in line or len(line.strip()) == 12:
-                        images_removed += 1
+                if line.strip().startswith("deleted: sha256:"):
+                    images_removed += 1
 
             # Parse space reclaimed
             match = re.search(r"Total reclaimed space:\s*([\d.]+\s*[A-Za-z]+)", output)

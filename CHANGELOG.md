@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Docker cleanup notification now correctly counts removed images (previously overcounted by including `untagged:` lines alongside `deleted:` lines)
+
 ### Added
 - Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
 - `calver_blocked_tag` field: when a CalVer build is detected for a SemVer container, the best blocked candidate is surfaced as an informational badge on the container card
