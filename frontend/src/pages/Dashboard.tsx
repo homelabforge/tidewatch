@@ -565,7 +565,7 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
@@ -637,7 +637,7 @@ export default function Dashboard() {
             {/* My Projects Section — always show when feature enabled */}
             {myProjectsEnabled && (
               <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <h2 className="text-xl font-bold text-tide-text flex items-center gap-2">
                     <span className="text-primary">★</span> My Projects
                   </h2>

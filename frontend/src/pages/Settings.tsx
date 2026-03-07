@@ -115,8 +115,8 @@ export default function Settings() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-tide-border mb-6">
-          <nav className="-mb-px flex space-x-8">
+        <div className="border-b border-tide-border mb-6 overflow-x-auto">
+          <nav className="-mb-px flex space-x-6 sm:space-x-8 min-w-max">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
