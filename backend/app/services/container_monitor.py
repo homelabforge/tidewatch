@@ -23,8 +23,8 @@ class ContainerMonitorService:
         if self.client:
             try:
                 self.client.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Ignoring error closing old Docker client: %s", e)
         self.client = make_docker_client(resolve_docker_url_sync())
         logger.info("Docker client reconnected to %s", resolve_docker_url_sync())
 

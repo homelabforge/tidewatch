@@ -123,8 +123,8 @@ class HttpServerScanner:
         if self.docker_client:
             try:
                 self.docker_client.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Ignoring error closing old Docker client: %s", e)
         self.docker_client = make_docker_client(resolve_docker_url_sync())
         logger.info("HttpServerScanner Docker client reconnected")
 

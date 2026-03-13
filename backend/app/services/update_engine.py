@@ -1498,7 +1498,7 @@ class UpdateEngine:
                         proxy_up = True
                         break
                 except Exception:
-                    pass
+                    pass  # Expected — proxy is restarting, retry until timeout
                 await asyncio.sleep(1)
 
         if not proxy_up:
@@ -1527,7 +1527,7 @@ class UpdateEngine:
             if scanner and hasattr(scanner, "reconnect"):
                 scanner.reconnect()
         except ImportError:
-            pass
+            pass  # Scanner module not loaded — skip reconnect
 
         # Step 3: Resolve runtime container name
         resolved_name = await UpdateEngine._resolve_container_runtime_name(container)
