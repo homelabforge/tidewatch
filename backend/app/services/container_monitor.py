@@ -1,12 +1,12 @@
 """Container monitoring service for detecting crashes and exit codes."""
 
 import logging
-import os
 
-import docker
 from docker.errors import DockerException, NotFound
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from app.services.compose_parser import validate_container_name
+from app.services.docker_access import make_docker_client, resolve_docker_url_sync
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,17 @@ class ContainerMonitorService:
 
     def __init__(self) -> None:
         """Initialize with Docker client."""
-        # Use DOCKER_HOST if set, otherwise use default Unix socket
-        docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
-        self.client = docker.DockerClient(base_url=docker_host)
+        self.client = make_docker_client(resolve_docker_url_sync())
+
+    def reconnect(self) -> None:
+        """Reinitialize Docker client (e.g. after proxy restart)."""
+        if self.client:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+        self.client = make_docker_client(resolve_docker_url_sync())
+        logger.info("Docker client reconnected to %s", resolve_docker_url_sync())
 
     async def get_container_state(self, container_name: str) -> dict | None:
         """Get full container state including exit codes using Docker SDK.
@@ -56,7 +64,7 @@ class ContainerMonitorService:
             }
         except NotFound:
             return {"error": "Container not found", "running": False}
-        except DockerException as e:
+        except (DockerException, RequestsConnectionError) as e:
             logger.error(f"Docker error getting state for {container_name}: {e}")
             return {"error": str(e), "running": False}
         except (ValueError, KeyError, AttributeError) as e:

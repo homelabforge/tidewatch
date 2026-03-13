@@ -4,6 +4,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from docker.errors import DockerException
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,6 +92,8 @@ class RestartSchedulerService:
                 logger.error(f"Service dependency error in restart monitor loop: {e}")
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid data in restart monitor loop: {e}")
+            except (DockerException, RequestsConnectionError) as e:
+                logger.error(f"Docker connection error in restart monitor loop: {e}")
 
     async def _check_and_schedule_restart(self, db: AsyncSession, container: Container):
         """Check if container needs restart and schedule if needed.
@@ -257,6 +261,10 @@ class RestartSchedulerService:
                 f"Invalid data checking restart for {container.name}: {e}",
                 exc_info=True,
             )
+        except (DockerException, RequestsConnectionError) as e:
+            logger.error(
+                f"Docker connection error checking restart for {container.name}: {e}",
+            )
 
     async def _execute_restart(self, container_id: int, attempt_number: int):
         """Execute a scheduled restart job.
@@ -348,6 +356,10 @@ class RestartSchedulerService:
                     f"Invalid data executing restart for container {container_id}: {e}",
                     exc_info=True,
                 )
+            except (DockerException, RequestsConnectionError) as e:
+                logger.error(
+                    f"Docker connection error executing restart for container {container_id}: {e}",
+                )
 
     async def _cleanup_successful_containers(self):
         """Reset restart states for containers that have been running successfully."""
@@ -389,6 +401,8 @@ class RestartSchedulerService:
                 logger.error(f"Service dependency error in cleanup job: {e}", exc_info=True)
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid data in cleanup job: {e}", exc_info=True)
+            except (DockerException, RequestsConnectionError) as e:
+                logger.error(f"Docker connection error in cleanup job: {e}")
 
 
 # Note: This is instantiated by SchedulerService when it creates the APScheduler instance

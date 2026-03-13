@@ -8,15 +8,19 @@ for crash-safe rollback.
 import asyncio
 import json
 import logging
-import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import docker
 from pathlib import Path
 
-import docker
 from docker.errors import APIError, DockerException, NotFound
+
+from app.services.docker_access import make_docker_client, resolve_docker_url_sync
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +101,7 @@ class DataBackupService:
     """
 
     def __init__(self) -> None:
-        docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
-        self.client = docker.DockerClient(base_url=docker_host)
+        self.client = make_docker_client(resolve_docker_url_sync())
 
     def _get_backup_dir(self, container_name: str, backup_id: str) -> Path:
         """Get the backup directory path for a container backup."""

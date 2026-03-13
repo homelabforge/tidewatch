@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.auth import require_auth
+from app.services.docker_access import docker_subprocess_env, resolve_docker_url_sync
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,6 +51,7 @@ async def get_docker_version() -> str:
             "{{.Server.Version}}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=docker_subprocess_env(resolve_docker_url_sync()),
         )
 
         try:

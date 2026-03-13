@@ -2,7 +2,6 @@
 
 import logging
 
-import docker
 import httpx
 from docker.errors import DockerException
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +12,7 @@ from app.database import get_db
 from app.schemas import SettingCategory, SettingSchema, SettingUpdate
 from app.services import SettingsService
 from app.services.auth import require_auth
+from app.services.docker_access import make_docker_client, resolve_docker_url
 from app.utils.error_handling import safe_error_response
 
 logger = logging.getLogger(__name__)
@@ -180,14 +180,9 @@ async def test_docker_connection(
     try:
         docker_socket = await SettingsService.get(db, "docker_socket") or "unknown"
 
-        # Determine docker host format
-        if docker_socket.startswith(("tcp://", "unix://")):
-            docker_host = docker_socket
-        else:
-            docker_host = f"unix://{docker_socket}"
-
         # Test connection using Docker SDK
-        client = docker.DockerClient(base_url=docker_host, timeout=10)
+        docker_url = await resolve_docker_url(db)
+        client = make_docker_client(docker_url, timeout=10)
 
         # Get version info
         version_info = client.version()
@@ -204,7 +199,7 @@ async def test_docker_connection(
             "success": True,
             "message": f"Connected to Docker Engine v{version}",
             "details": {
-                "docker_host": docker_host,
+                "docker_host": docker_url,
                 "version": version,
                 "api_version": api_version,
                 "containers": containers,

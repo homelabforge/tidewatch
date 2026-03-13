@@ -995,23 +995,14 @@ async def get_container_logs(
     """
     from datetime import datetime
 
-    import docker
     from docker.errors import APIError, DockerException, NotFound
 
-    from app.services import SettingsService
+    from app.services.docker_access import make_docker_client, resolve_docker_url
 
     try:
-        # Get docker socket
-        docker_socket = await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
-
-        # Determine docker host format
-        if docker_socket.startswith(("tcp://", "unix://")):
-            docker_host = docker_socket
-        else:
-            docker_host = f"unix://{docker_socket}"
-
         # Connect to Docker
-        client = docker.DockerClient(base_url=docker_host, timeout=10)
+        docker_url = await resolve_docker_url(db)
+        client = make_docker_client(docker_url, timeout=10)
 
         # Get running container
         docker_container = client.containers.get(container.name)

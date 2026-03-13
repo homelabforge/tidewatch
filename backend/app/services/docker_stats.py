@@ -4,7 +4,14 @@ import asyncio
 import json
 import logging
 
+from app.services.docker_access import docker_subprocess_env, resolve_docker_url_sync
+
 logger = logging.getLogger(__name__)
+
+# Resolved once at import; reconnect() on ContainerMonitorService
+# covers proxy restarts. For a full runtime-change story, see
+# docker_access.py docstring.
+_DOCKER_ENV = docker_subprocess_env(resolve_docker_url_sync())
 
 
 class DockerStatsService:
@@ -32,6 +39,7 @@ class DockerStatsService:
                 "{{json .}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
@@ -237,12 +245,8 @@ class DockerStatsService:
 
             cmd.append(container_name)
 
-            # Set up environment with DOCKER_HOST if provided
-            import os
-
-            env = os.environ.copy()
-            if docker_host:
-                env["DOCKER_HOST"] = docker_host
+            # Use provided docker_host or fall back to resolved default
+            env = docker_subprocess_env(docker_host) if docker_host else _DOCKER_ENV
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -295,6 +299,7 @@ class DockerStatsService:
                 container_name,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5.0)
@@ -328,6 +333,7 @@ class DockerStatsService:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
@@ -380,6 +386,7 @@ class DockerStatsService:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)

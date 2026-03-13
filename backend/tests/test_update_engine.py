@@ -331,6 +331,43 @@ class TestDockerComposeExecution:
             assert "Image not found" in result["error"]
 
 
+class TestDockerComposeSkipStop:
+    """Test skip_stop parameter in _execute_docker_compose."""
+
+    @pytest.mark.asyncio
+    async def test_execute_docker_compose_skip_stop(self, mock_filesystem):
+        """When skip_stop=True, stop subprocess is NOT spawned."""
+        compose_file = "/compose/proxies.yml"
+        service_name = "socket-proxy-rw"
+
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(b"", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await UpdateEngine._execute_docker_compose(
+                compose_file,
+                service_name,
+                "/var/run/docker.sock",
+                "docker compose",
+                skip_stop=True,
+            )
+
+            assert result["success"] is True
+            # Only one subprocess call (up), no stop call
+            assert mock_exec.call_count == 1
+            call_args = mock_exec.call_args_list[0][0]
+            assert "stop" not in call_args
+            assert "up" in call_args
+            assert "--force-recreate" in call_args
+
+
 class TestImagePulling:
     """Test suite for docker image pull operations."""
 
@@ -735,7 +772,7 @@ class TestApplyUpdateOrchestration:
             call_order.append("pull")
             return {"success": True}
 
-        async def track_execute(*args):
+        async def track_execute(*args, **kwargs):
             call_order.append("execute")
             return {"success": True}
 
@@ -1109,6 +1146,172 @@ class TestRollbackUpdate:
             assert result["success"] is True
             assert mock_history.status == "rolled_back"
             assert mock_history.rolled_back_at is not None
+
+    @pytest.mark.asyncio
+    async def test_proxy_rollback_skips_sdk_stop(self, mock_db, mock_container, mock_history):
+        """Proxy rollback skips pre-restore SDK stop and uses skip_stop=True."""
+        # Make container look like the proxy
+        mock_container.name = "socket-proxy-rw"
+        mock_container.service_name = "socket-proxy-rw"
+        mock_history.container_name = "socket-proxy-rw"
+        mock_history.data_backup_id = "backup-123"
+        mock_history.data_backup_status = "success"
+
+        history_result = MagicMock()
+        history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
+        container_result = MagicMock()
+        container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
+
+        mock_execute = AsyncMock(return_value={"success": True, "stdout": "", "stderr": ""})
+
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch.object(
+                UpdateEngine,
+                "_validate_health_check",
+                new=AsyncMock(
+                    return_value={"success": True, "method": "http_check"},
+                ),
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="tcp://socket-proxy-rw:2375",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+            patch(
+                "app.services.docker_access.resolve_docker_url",
+                new=AsyncMock(return_value="tcp://socket-proxy-rw:2375"),
+            ),
+        ):
+            result = await UpdateEngine.rollback_update(mock_db, 1)
+
+            # Verify skip_stop=True was passed
+            mock_execute.assert_called_once()
+            _, kwargs = mock_execute.call_args
+            assert kwargs.get("skip_stop") is True
+
+            # Verify no Docker SDK stop was attempted (data restore block skipped)
+            # If it were called, we'd see a docker.DockerClient mock — none exists
+            assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_proxy_rollback_verifies_after_proxy_lost_success(
+        self, mock_db, mock_container, mock_history
+    ):
+        """Proxy rollback with proxy_lost=True and verification succeeds."""
+        mock_container.name = "socket-proxy-rw"
+        mock_container.service_name = "socket-proxy-rw"
+        mock_history.container_name = "socket-proxy-rw"
+
+        history_result = MagicMock()
+        history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
+        container_result = MagicMock()
+        container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
+
+        mock_execute = AsyncMock(
+            return_value={"success": True, "proxy_lost": True, "stdout": "", "stderr": ""}
+        )
+        mock_verify = AsyncMock(
+            return_value={"success": True, "image_id": "sha256:abc", "running": True}
+        )
+
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch.object(UpdateEngine, "_verify_proxy_update", mock_verify),
+            patch.object(
+                UpdateEngine,
+                "_validate_health_check",
+                new=AsyncMock(
+                    return_value={"success": True, "method": "http_check"},
+                ),
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="tcp://socket-proxy-rw:2375",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+            patch(
+                "app.services.docker_access.resolve_docker_url",
+                new=AsyncMock(return_value="tcp://socket-proxy-rw:2375"),
+            ),
+        ):
+            result = await UpdateEngine.rollback_update(mock_db, 1)
+
+            assert result["success"] is True
+            mock_verify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_proxy_rollback_verifies_after_proxy_lost_failure(
+        self, mock_db, mock_container, mock_history
+    ):
+        """Proxy rollback with proxy_lost=True and verification fails → rollback fails."""
+        mock_container.name = "socket-proxy-rw"
+        mock_container.service_name = "socket-proxy-rw"
+        mock_history.container_name = "socket-proxy-rw"
+
+        history_result = MagicMock()
+        history_result.scalar_one_or_none = MagicMock(return_value=mock_history)
+        container_result = MagicMock()
+        container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_db.execute = AsyncMock(
+            side_effect=[history_result, container_result, no_in_progress_result]
+        )
+
+        mock_execute = AsyncMock(
+            return_value={"success": True, "proxy_lost": True, "stdout": "", "stderr": ""}
+        )
+        mock_verify = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Proxy did not respond within 45s",
+                "running": False,
+            }
+        )
+
+        with (
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
+            patch.object(UpdateEngine, "_verify_proxy_update", mock_verify),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="tcp://socket-proxy-rw:2375",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+            patch(
+                "app.services.docker_access.resolve_docker_url",
+                new=AsyncMock(return_value="tcp://socket-proxy-rw:2375"),
+            ),
+        ):
+            result = await UpdateEngine.rollback_update(mock_db, 1)
+
+            assert result["success"] is False
+            mock_verify.assert_called_once()
 
 
 class TestVulnForgeIntegration:

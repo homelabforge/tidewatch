@@ -16,6 +16,12 @@ from app.models.container import Container
 from app.models.history import UpdateHistory
 from app.models.update import Update
 from app.services.compose_parser import ComposeParser
+from app.services.docker_access import (
+    docker_subprocess_env,
+    make_docker_client,
+    resolve_docker_url,
+    resolve_docker_url_sync,
+)
 from app.services.event_bus import event_bus
 from app.services.registry_client import RegistryClientFactory
 from app.services.settings_service import SettingsService
@@ -89,9 +95,8 @@ class UpdateEngine:
             return
 
         try:
-            import docker
-
-            client = docker.from_env()
+            docker_url = await resolve_docker_url(db)
+            client = make_docker_client(docker_url)
             docker_container = client.containers.get(container.name)
             project = docker_container.labels.get("com.docker.compose.project")
 
@@ -351,15 +356,43 @@ class UpdateEngine:
             )
 
             # Step 4: Execute docker compose up (now quick since image is pulled)
+            # Detect if we're updating TideWatch's own Docker API proxy
+            docker_url = await resolve_docker_url(db)
+            is_proxy = UpdateEngine._is_docker_api_dependency(
+                container.name, container.service_name, docker_url
+            )
+
+            expected_image_id = None
+            if is_proxy:
+                logger.warning(
+                    "Updating %s (TideWatch's Docker API proxy). Using proxy-safe strategy.",
+                    container.name,
+                )
+                expected_image_id = await UpdateEngine._get_local_image_id(
+                    container.image, update.to_tag, docker_url
+                )
+
             result = await UpdateEngine._execute_docker_compose(
                 container.compose_file,
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
                 container.compose_project,
+                skip_stop=is_proxy,
             )
 
-            if not result["success"]:
+            if result.get("proxy_lost"):
+                verify = await UpdateEngine._verify_proxy_update(
+                    container,
+                    expected_image_id,
+                    update.to_tag,
+                    docker_url,
+                    timeout=45,
+                )
+                if not verify["success"]:
+                    raise Exception(f"Proxy update verification failed: {verify['error']}")
+                logger.info("Proxy update verified: image_id=%s", verify.get("image_id"))
+            elif not result["success"]:
                 raise Exception(f"Docker compose failed: {result['error']}")
 
             await event_bus.publish(
@@ -707,6 +740,13 @@ class UpdateEngine:
                 f"expected {history.to_tag}. The container may have been updated again."
             )
 
+        # Detect proxy early — needed before data-restore block to avoid
+        # SDK stop against a dead proxy during proxy rollback
+        docker_url = await resolve_docker_url(db)
+        is_proxy = UpdateEngine._is_docker_api_dependency(
+            container.name, container.service_name, docker_url
+        )
+
         logger.info(f"Rolling back {container.name}: {history.to_tag} -> {history.from_tag}")
 
         await event_bus.publish(
@@ -730,17 +770,16 @@ class UpdateEngine:
                 raise Exception("Failed to update compose file")
 
             # Step 1.5: Stop container, then restore data from backup
+            # Skip for proxy rollback — SDK stop would talk through the dead proxy,
+            # and socket proxies have no persistent data to restore
             data_restore_status = None
-            if history.data_backup_id and history.data_backup_status == "success":
+            if history.data_backup_id and history.data_backup_status == "success" and not is_proxy:
                 # Stop the container BEFORE restoring data to avoid corruption
                 try:
-                    import docker
                     from docker.errors import NotFound as DockerNotFound
 
-                    docker_socket = (
-                        await SettingsService.get(db, "docker_socket") or "/var/run/docker.sock"
-                    )
-                    docker_client = docker.DockerClient(base_url=docker_socket)
+                    docker_url = await resolve_docker_url(db)
+                    docker_client = make_docker_client(docker_url)
                     try:
                         target = await asyncio.to_thread(
                             docker_client.containers.get, container.name
@@ -805,14 +844,38 @@ class UpdateEngine:
                 await SettingsService.get(db, "docker_compose_command", "docker compose")
                 or "docker compose"
             )
+
+            expected_image_id = None
+            if is_proxy:
+                logger.warning(
+                    "Rolling back %s (TideWatch's Docker API proxy). Using proxy-safe strategy.",
+                    container.name,
+                )
+                expected_image_id = await UpdateEngine._get_local_image_id(
+                    container.image, history.from_tag, docker_url
+                )
+
             result = await UpdateEngine._execute_docker_compose(
                 container.compose_file,
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
                 container.compose_project,
+                skip_stop=is_proxy,
             )
-            if not result["success"]:
+
+            if result.get("proxy_lost"):
+                verify = await UpdateEngine._verify_proxy_update(
+                    container,
+                    expected_image_id,
+                    history.from_tag,
+                    docker_url,
+                    timeout=45,
+                )
+                if not verify["success"]:
+                    raise Exception(f"Proxy rollback verification failed: {verify['error']}")
+                logger.info("Proxy rollback verified: image_id=%s", verify.get("image_id"))
+            elif not result["success"]:
                 raise Exception(f"Docker compose failed: {result['error']}")
 
             # Step 2.5: Post-compose-up PostgreSQL restore (if applicable)
@@ -1216,6 +1279,7 @@ class UpdateEngine:
                     target,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    env=docker_subprocess_env(resolve_docker_url_sync()),
                 )
 
                 try:
@@ -1292,6 +1356,7 @@ class UpdateEngine:
                         *cmd,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
+                        env=docker_subprocess_env(resolve_docker_url_sync()),
                     )
 
                     stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -1324,6 +1389,226 @@ class UpdateEngine:
             )
 
         return None
+
+    # --- Proxy self-update helpers ---
+
+    _PROXY_LOSS_PATTERNS = [
+        "connection refused",
+        "connection reset by peer",
+        "broken pipe",
+        "name or service not known",
+        "no such host",
+        "eof",
+    ]
+
+    @staticmethod
+    def _is_proxy_loss(stderr: str) -> bool:
+        """Check if stderr indicates loss of Docker proxy connection.
+
+        Only known disconnect signatures trigger this. Anything else
+        (permission denied, image not found, compose syntax error) stays
+        as a hard failure.
+        """
+        lower = stderr.lower()
+        return any(p in lower for p in UpdateEngine._PROXY_LOSS_PATTERNS)
+
+    @staticmethod
+    def _is_docker_api_dependency(
+        container_name: str,
+        service_name: str,
+        docker_url: str,
+    ) -> bool:
+        """Check if this container is TideWatch's Docker API pathway.
+
+        Uses the configured *docker_url* (from DB ``docker_socket`` setting)
+        to determine if updating this container would sever Docker API access.
+        On a Docker compose network, the service name IS the DNS name.
+        """
+        if not docker_url.startswith("tcp://"):
+            return False
+        try:
+            parsed = urlparse(docker_url)
+            proxy_hostname = parsed.hostname
+        except Exception:
+            return False
+        identifiers = {container_name, service_name}
+        if proxy_hostname in identifiers:
+            logger.warning(
+                "Container %s/%s matches Docker API proxy hostname %s",
+                container_name,
+                service_name,
+                proxy_hostname,
+            )
+            return True
+        return False
+
+    @staticmethod
+    async def _get_local_image_id(image_ref: str, tag: str, docker_url: str) -> str | None:
+        """Get the local image ID for a ref:tag that was just pulled.
+
+        Called after ``_pull_docker_image`` succeeds — the image is in the
+        local daemon cache. For mutable tags like ``latest``, this captures
+        the specific digest that was pulled.
+        """
+        try:
+            client = make_docker_client(docker_url)
+            img = client.images.get(f"{image_ref}:{tag}")
+            image_id = img.id
+            client.close()
+            return image_id
+        except Exception as e:
+            logger.warning("Could not capture image ID for %s:%s: %s", image_ref, tag, e)
+            return None
+
+    @staticmethod
+    async def _verify_proxy_update(
+        container: Container,
+        expected_image_id: str | None,
+        expected_tag: str,
+        docker_url: str,
+        timeout: int = 45,
+    ) -> dict:
+        """Wait for the proxy to come back, then verify it's running the right image.
+
+        Args:
+            container: The Container model being updated.
+            expected_image_id: Image ID captured pre-update (from _get_local_image_id).
+            expected_tag: Tag the update targets.
+            docker_url: TCP Docker endpoint URL.
+            timeout: Max seconds to wait for proxy _ping.
+
+        Returns:
+            Dict with ``success``, ``error``, ``image_id``, ``running`` keys.
+        """
+        from app.services.container_monitor import container_monitor
+
+        parsed = urlparse(docker_url)
+        host = parsed.hostname
+        port = parsed.port or 2375
+
+        # Step 1: Wait for proxy _ping
+        logger.info("Waiting up to %ds for proxy at %s:%d to respond...", timeout, host, port)
+        proxy_up = False
+        start = asyncio.get_event_loop().time()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(2.0)) as http_client:
+            while (asyncio.get_event_loop().time() - start) < timeout:
+                try:
+                    resp = await http_client.get(f"http://{host}:{port}/_ping")
+                    if resp.status_code == 200:
+                        proxy_up = True
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+
+        if not proxy_up:
+            logger.error(
+                "CRITICAL: Proxy %s did not come back after update. "
+                "Manual intervention required: "
+                "dcp pull %s && dcp up -d %s",
+                container.name,
+                container.name,
+                container.name,
+            )
+            return {
+                "success": False,
+                "error": f"Proxy did not respond within {timeout}s",
+                "running": False,
+            }
+
+        # Step 2: Reconnect Docker clients
+        logger.info("Proxy is back. Reconnecting Docker clients...")
+        container_monitor.reconnect()
+        # Reconnect scanner if singleton exists
+        try:
+            import app.services.http_server_scanner as scanner_mod
+
+            scanner = getattr(scanner_mod, "http_scanner", None)
+            if scanner and hasattr(scanner, "reconnect"):
+                scanner.reconnect()
+        except ImportError:
+            pass
+
+        # Step 3: Resolve runtime container name
+        resolved_name = await UpdateEngine._resolve_container_runtime_name(container)
+        target_name = resolved_name or container.name
+
+        # Step 4: Verify container state
+        try:
+            client = make_docker_client(docker_url)
+            docker_container = client.containers.get(target_name)
+            docker_container.reload()
+
+            if docker_container.status != "running":
+                client.close()
+                return {
+                    "success": False,
+                    "error": f"Container status is '{docker_container.status}', not 'running'",
+                    "running": False,
+                }
+
+            # Step 5: Verify image identity by ID
+            if docker_container.image is None:
+                client.close()
+                return {
+                    "success": False,
+                    "error": "Container has no image reference",
+                    "running": True,
+                }
+            running_image_id = docker_container.image.id
+
+            if expected_image_id:
+                if running_image_id == expected_image_id:
+                    client.close()
+                    return {
+                        "success": True,
+                        "image_id": running_image_id,
+                        "running": True,
+                    }
+                else:
+                    client.close()
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Image mismatch: running {running_image_id}, "
+                            f"expected {expected_image_id}"
+                        ),
+                        "image_id": running_image_id,
+                        "running": True,
+                    }
+            else:
+                # Fallback: check RepoTags for exact match
+                repo_tags = docker_container.image.attrs.get("RepoTags", [])
+                expected_tag_str = f"{container.image}:{expected_tag}"
+                if expected_tag_str in repo_tags:
+                    client.close()
+                    return {
+                        "success": True,
+                        "image_id": running_image_id,
+                        "running": True,
+                    }
+                else:
+                    client.close()
+                    logger.warning(
+                        "Could not verify image ID (no pre-capture). RepoTags=%s, expected=%s",
+                        repo_tags,
+                        expected_tag_str,
+                    )
+                    # Accept it — container is running, we just can't verify the exact image
+                    return {
+                        "success": True,
+                        "image_id": running_image_id,
+                        "running": True,
+                        "warning": "Image identity unverified (no pre-capture ID)",
+                    }
+
+        except Exception as e:
+            logger.error("Failed to verify proxy update: %s", e)
+            return {
+                "success": False,
+                "error": str(e),
+                "running": False,
+            }
 
     @staticmethod
     async def _fetch_latest_digest(container: Container, db: AsyncSession) -> str | None:
@@ -1433,6 +1718,7 @@ class UpdateEngine:
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
         compose_project: str | None = None,
+        skip_stop: bool = False,
     ) -> dict:
         """Execute docker compose up for a service.
 
@@ -1442,9 +1728,14 @@ class UpdateEngine:
             docker_socket: Docker socket path
             compose_command: Docker compose command template with placeholders
             compose_project: Docker Compose project name (e.g., 'homelab', 'proxies')
+            skip_stop: If True, skip explicit stop (for proxy self-update).
+                ``--force-recreate`` on ``up`` handles the stop atomically.
 
         Returns:
-            Result dict with success status
+            Result dict with success status. When ``skip_stop=True`` and the
+            proxy connection is lost after dispatching ``up``, returns
+            ``{"success": True, "proxy_lost": True}`` — the caller must
+            verify the update separately.
         """
         # Validate service name to prevent command injection
         try:
@@ -1493,47 +1784,44 @@ class UpdateEngine:
                     "stdout": "",
                 }
 
-            # First, stop the existing container to avoid name conflicts
-            stop_cmd = base_cmd.copy()
-
-            # Add project and compose file flags (use host path)
-            if compose_project:
-                stop_cmd.extend(["-p", compose_project])
-            stop_cmd.extend(["-f", host_compose_path])
-
-            if env_file and env_file.exists():
-                stop_cmd.extend(["--env-file", str(env_file)])
-
-            stop_cmd.extend(["stop", validated_service])
-
-            logger.info(f"Stopping container first: {' '.join(stop_cmd)}")
-
-            # Execute stop command (ignore errors if container not running)
+            # Build env with DOCKER_HOST for subprocess calls
             docker_host = (
                 docker_socket
                 if docker_socket.startswith(("tcp://", "unix://"))
                 else f"unix://{docker_socket}"
             )
-            import os
-
-            env = os.environ.copy()
-            env["DOCKER_HOST"] = docker_host
+            env = docker_subprocess_env(docker_host)
             # Note: COMPOSE_ROOT uses host path from .env (/srv/raid0/docker/compose)
             # TideWatch mounts this path at BOTH /compose AND the host path
             # This allows both env_file (client-side) and secrets (daemon-side) to work
 
-            try:
-                stop_process = await asyncio.create_subprocess_exec(
-                    *stop_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=env,
+            if not skip_stop:
+                # Stop the existing container to avoid name conflicts
+                stop_cmd = base_cmd.copy()
+                if compose_project:
+                    stop_cmd.extend(["-p", compose_project])
+                stop_cmd.extend(["-f", host_compose_path])
+                if env_file and env_file.exists():
+                    stop_cmd.extend(["--env-file", str(env_file)])
+                stop_cmd.extend(["stop", validated_service])
+
+                logger.info(f"Stopping container first: {' '.join(stop_cmd)}")
+
+                try:
+                    stop_process = await asyncio.create_subprocess_exec(
+                        *stop_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=env,
+                    )
+                    await asyncio.wait_for(stop_process.communicate(), timeout=60)
+                    logger.info("Container stopped successfully (or was not running)")
+                except Exception as e:
+                    logger.warning(f"Stop command failed (container may not be running): {e}")
+            else:
+                logger.info(
+                    "Skipping explicit stop (proxy self-update); --force-recreate will handle it"
                 )
-                await asyncio.wait_for(stop_process.communicate(), timeout=60)
-                logger.info("Container stopped successfully (or was not running)")
-            except Exception as e:
-                logger.warning(f"Stop command failed (container may not be running): {e}")
-                # Continue anyway - container might not have been running
 
             # Build command using list-based construction (safe)
             cmd = base_cmd.copy()
@@ -1571,6 +1859,18 @@ class UpdateEngine:
                 stderr = stderr_bytes.decode("utf-8") if stderr_bytes else ""
 
                 if process.returncode != 0:
+                    # Check if this is a proxy-loss disconnect
+                    if skip_stop and UpdateEngine._is_proxy_loss(stderr):
+                        logger.warning(
+                            "Docker compose lost connection (proxy self-update). "
+                            "Will verify separately."
+                        )
+                        return {
+                            "success": True,
+                            "proxy_lost": True,
+                            "stdout": stdout,
+                            "stderr": stderr,
+                        }
                     logger.error(f"Docker compose failed: {stderr}")
                     return {
                         "success": False,
@@ -1585,11 +1885,20 @@ class UpdateEngine:
                     "stdout": stdout,
                     "stderr": stderr,
                 }
-            except TimeoutError:
-                logger.error("Docker compose command timed out after 300 seconds")
+            except (TimeoutError, OSError, ConnectionResetError) as e:
+                if skip_stop:
+                    logger.warning("Docker compose connection lost during proxy self-update: %s", e)
+                    return {
+                        "success": True,
+                        "proxy_lost": True,
+                        "stdout": "",
+                        "stderr": str(e),
+                    }
+                error_msg = str(e) or "Docker compose timed out after 5 minutes"
+                logger.error("Docker compose command failed: %s", error_msg)
                 return {
                     "success": False,
-                    "error": "Operation timed out after 5 minutes",
+                    "error": error_msg,
                     "stdout": "",
                 }
 

@@ -6,9 +6,12 @@ import logging
 import re
 from typing import Any
 
+from app.services.docker_access import docker_subprocess_env, resolve_docker_url_sync
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+_DOCKER_ENV = docker_subprocess_env(resolve_docker_url_sync())
 
 
 class CleanupService:
@@ -96,6 +99,7 @@ class CleanupService:
                 "{{json .}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
@@ -198,6 +202,7 @@ class CleanupService:
                 "{{json .}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
@@ -262,6 +267,7 @@ class CleanupService:
                 "{{json .}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
@@ -328,6 +334,7 @@ class CleanupService:
                 "{{json .}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
@@ -433,6 +440,7 @@ class CleanupService:
                 "-f",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
@@ -522,6 +530,7 @@ class CleanupService:
                         container["id"],
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
+                        env=_DOCKER_ENV,
                     )
 
                     await asyncio.wait_for(process.communicate(), timeout=30.0)
@@ -554,6 +563,7 @@ class CleanupService:
                 "-f",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
@@ -622,6 +632,7 @@ class CleanupService:
                         image["id"],
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
+                        env=_DOCKER_ENV,
                     )
 
                     _, stderr_out = await asyncio.wait_for(process.communicate(), timeout=60.0)
@@ -668,6 +679,7 @@ class CleanupService:
                 f"until={hours}h",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
             )
 
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)

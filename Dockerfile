@@ -57,8 +57,9 @@ LABEL org.opencontainers.image.description="Intelligent Docker container update 
 
 WORKDIR /app
 
-# Install runtime dependencies (Docker CLI for compose operations)
+# Install runtime dependencies, create non-root user, and set up directories
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
@@ -69,7 +70,9 @@ RUN apt-get update && \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 1000 --user-group --system --create-home --no-log-init tidewatch \
+    && mkdir -p /data
 
 # Copy Python dependencies from builder
 COPY --from=backend-builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
@@ -82,12 +85,8 @@ COPY --from=backend-builder /app/pyproject.toml ./
 # Copy frontend build
 COPY --from=frontend-builder /app/frontend/dist ./static
 
-# Create data directory for SQLite database
-RUN mkdir -p /data
-
-# Create non-root user for security
-RUN useradd --uid 1000 --user-group --system --create-home --no-log-init tidewatch && \
-    chown -R tidewatch:tidewatch /app /data
+# Set ownership and permissions
+RUN chown -R tidewatch:tidewatch /app /data
 
 # Switch to non-root user
 USER tidewatch

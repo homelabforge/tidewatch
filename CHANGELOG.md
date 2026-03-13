@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Docker cleanup notification now correctly counts removed images (previously overcounted by including `untagged:` lines alongside `deleted:` lines)
 - Mobile layout overflow on Dashboard (filter/button bar) and Settings (tab navigation) no longer bleeds outside the viewport
+- Docker socket proxy (socket-proxy-rw) can now self-update without severing TideWatch's Docker API access
+- 13 Docker call sites that ignored the configured socket proxy are now routed through centralized endpoint resolution
+- Restart scheduler no longer crashes on `requests.ConnectionError` when the Docker proxy is temporarily unavailable
+- HTTP server scanner no longer crashes if the Docker proxy dies mid-scan
+- Rollback of the Docker socket proxy no longer attempts an SDK stop through the dead proxy
 
 ### Added
 - Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer

@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import docker
 import httpx
 from docker.errors import APIError, DockerException, NotFound
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
+from app.services.docker_access import make_docker_client, resolve_docker_url_sync
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,17 @@ class HttpServerScanner:
 
     def __init__(self):
         self.timeout = httpx.Timeout(5.0)
-        self.docker_client = docker.from_env()
+        self.docker_client = make_docker_client(resolve_docker_url_sync())
+
+    def reconnect(self) -> None:
+        """Reinitialize Docker client (e.g. after proxy restart)."""
+        if self.docker_client:
+            try:
+                self.docker_client.close()
+            except Exception:
+                pass
+        self.docker_client = make_docker_client(resolve_docker_url_sync())
+        logger.info("HttpServerScanner Docker client reconnected")
 
         # Known HTTP servers and their detection methods
         self.server_patterns = {
@@ -210,7 +221,7 @@ class HttpServerScanner:
             logger.error(f"Container {container_name} not found")
         except APIError as e:
             logger.error(f"Docker API error scanning container {container_name}: {e}")
-        except DockerException as e:
+        except (DockerException, RequestsConnectionError) as e:
             logger.error(f"Docker error scanning container {container_name}: {e}")
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(f"Invalid data scanning container {container_name}: {e}")

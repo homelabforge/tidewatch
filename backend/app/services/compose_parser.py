@@ -13,6 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
+from app.services.docker_access import make_docker_client, resolve_docker_url
 from app.services.settings_service import SettingsService
 from app.utils.security import sanitize_log_message, sanitize_path
 
@@ -683,10 +684,10 @@ class ComposeParser:
             db: Database session
         """
         try:
-            import docker
             from docker.errors import NotFound
 
-            client = docker.from_env()
+            docker_url = await resolve_docker_url(db)
+            client = make_docker_client(docker_url)
         except Exception as e:
             logger.warning(f"Could not connect to Docker for compose project sync: {e}")
             return
