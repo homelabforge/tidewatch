@@ -15,8 +15,10 @@ def scanner():
     """Create an HttpServerScanner with mocked Docker client."""
     from unittest.mock import MagicMock, patch
 
-    with patch("app.services.http_server_scanner.docker") as mock_docker:
-        mock_docker.from_env.return_value = MagicMock()
+    with patch(
+        "app.services.http_server_scanner.make_docker_client",
+        return_value=MagicMock(),
+    ):
         from app.services.http_server_scanner import HttpServerScanner
 
         return HttpServerScanner()

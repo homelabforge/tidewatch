@@ -23,16 +23,6 @@ class HttpServerScanner:
         self.timeout = httpx.Timeout(5.0)
         self.docker_client = make_docker_client(resolve_docker_url_sync())
 
-    def reconnect(self) -> None:
-        """Reinitialize Docker client (e.g. after proxy restart)."""
-        if self.docker_client:
-            try:
-                self.docker_client.close()
-            except Exception:
-                pass
-        self.docker_client = make_docker_client(resolve_docker_url_sync())
-        logger.info("HttpServerScanner Docker client reconnected")
-
         # Known HTTP servers and their detection methods
         self.server_patterns = {
             "nginx": {
@@ -127,6 +117,16 @@ class HttpServerScanner:
             "node": "node",
             "python": "python.*manage.py runserver",
         }
+
+    def reconnect(self) -> None:
+        """Reinitialize Docker client (e.g. after proxy restart)."""
+        if self.docker_client:
+            try:
+                self.docker_client.close()
+            except Exception:
+                pass
+        self.docker_client = make_docker_client(resolve_docker_url_sync())
+        logger.info("HttpServerScanner Docker client reconnected")
 
     async def scan_container_http_servers(
         self, container_name: str, container_model=None, db=None
