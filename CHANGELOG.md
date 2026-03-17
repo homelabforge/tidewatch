@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
 - `calver_blocked_tag` field: when a CalVer build is detected for a SemVer container, the best blocked candidate is surfaced as an informational badge on the container card
 - GHCR and LSCR integration tests for the CalVer cross-track guard
+- OpenAPI-generated TypeScript types: frontend types are now auto-generated from backend Pydantic schemas via `openapi-typescript`, eliminating manual type drift; CI enforces freshness on every PR
+- `data_backup_id` and `data_backup_status` fields exposed on container history items so the data backup badge in the history tab now renders correctly
 
 ## [3.8.2] - 2026-02-26
 
