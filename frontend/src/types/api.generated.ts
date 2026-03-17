@@ -3941,18 +3941,12 @@ export interface components {
         };
         /** Body_restore_backup_legacy_api_v1_backup_restore_post */
         Body_restore_backup_legacy_api_v1_backup_restore_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_backup_api_v1_backup_upload_post */
         Body_upload_backup_api_v1_backup_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /**
