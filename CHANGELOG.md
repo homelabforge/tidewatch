@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.3] - 2026-03-17
+
 ### Security
 - Bumped PyJWT from 2.11.0 to 2.12.1 to address CVE for unknown `crit` header acceptance (Dependabot #3)
 - Removed unused `sanitize_path` import in compose_parser.py (CodeQL #659)
 - Fixed unused global variable writes in version.py (CodeQL #657, #658)
+
+### Added
+- Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
+- `calver_blocked_tag` field: when a CalVer build is detected for a SemVer container, the best blocked candidate is surfaced as an informational badge on the container card
+- GHCR and LSCR integration tests for the CalVer cross-track guard
+- OpenAPI-generated TypeScript types: frontend types are now auto-generated from backend Pydantic schemas via `openapi-typescript`, eliminating manual type drift; CI enforces freshness on every PR
+- `data_backup_id` and `data_backup_status` fields exposed on container history items so the data backup badge in the history tab now renders correctly
+- TestGetAppVersion regression test suite (4 tests) verifying cache population, return-value-equals-global, warm-cache file skip, and fallback path
 
 ### Fixed
 - Docker cleanup notification now correctly counts removed images (previously overcounted by including `untagged:` lines alongside `deleted:` lines)
@@ -21,13 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP server scanner no longer crashes if the Docker proxy dies mid-scan
 - Rollback of the Docker socket proxy no longer attempts an SDK stop through the dead proxy
 - Container discovery now works on TrueNAS, Unraid, and other systems where compose files are stored outside `/compose` (previously any non-standard path was silently rejected)
-
-### Added
-- Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
-- `calver_blocked_tag` field: when a CalVer build is detected for a SemVer container, the best blocked candidate is surfaced as an informational badge on the container card
-- GHCR and LSCR integration tests for the CalVer cross-track guard
-- OpenAPI-generated TypeScript types: frontend types are now auto-generated from backend Pydantic schemas via `openapi-typescript`, eliminating manual type drift; CI enforces freshness on every PR
-- `data_backup_id` and `data_backup_status` fields exposed on container history items so the data backup badge in the history tab now renders correctly
 
 ## [3.8.2] - 2026-02-26
 
