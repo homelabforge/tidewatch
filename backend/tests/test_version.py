@@ -76,8 +76,8 @@ class TestGetAppVersion:
         """Fallback sets _app_version='0.0.0-dev' and returns that value — CodeQL #658 regression guard."""
         version_module._app_version = None
 
-        with patch("app.utils.version.Path") as MockPath:
-            MockPath.return_value.exists.return_value = False
+        with patch("app.utils.version.Path") as mock_path:
+            mock_path.return_value.exists.return_value = False
 
             result = get_app_version()
 
