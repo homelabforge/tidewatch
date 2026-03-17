@@ -6,17 +6,87 @@ Tests semantic versioning (semver) parsing and comparison:
 - Prefix handling (v prefix)
 - Suffix handling (-alpine, -slim, etc.)
 - Edge cases (missing parts, invalid formats)
+- get_app_version() caching behaviour (CodeQL #657/#658 regression)
 """
+
+from unittest.mock import patch
 
 import pytest
 
+import app.utils.version as version_module
 from app.utils.version import (
+    get_app_version,
     get_version_change_type,
     is_major_update,
     is_minor_or_patch_update,
     is_patch_update,
     parse_version,
 )
+
+
+class TestGetAppVersion:
+    """Regression tests for get_app_version() caching (CodeQL #657/#658).
+
+    CodeQL flagged that _app_version was written to but a parallel local/literal
+    was returned instead of reading the global back.  The fix returns
+    cast(str, _app_version) so the global write is observably used.
+
+    These tests verify:
+      1. The cache is populated (not None) after the first call.
+      2. The returned value equals the cached global (not a detached local).
+      3. Warm-cache calls never hit the filesystem.
+      4. The fallback path ("0.0.0-dev") also populates and returns the cache.
+    """
+
+    def setup_method(self) -> None:
+        """Reset module-level cache before every test."""
+        version_module._app_version = None
+
+    def teardown_method(self) -> None:
+        """Restore module-level cache after every test."""
+        version_module._app_version = None
+
+    def test_cache_is_populated_after_first_call(self) -> None:
+        """_app_version is not None after get_app_version() returns."""
+        assert version_module._app_version is None  # pre-condition
+        get_app_version()
+        assert version_module._app_version is not None
+
+    def test_return_value_equals_cached_global(self) -> None:
+        """Return value matches _app_version — CodeQL #657 regression guard.
+
+        Before the fix, the function returned ``version`` (a local) and wrote
+        ``_app_version = version``.  This test documents that the returned
+        value must equal the cached global, not a detached copy.
+        """
+        result = get_app_version()
+        assert result == version_module._app_version, (
+            "Return value must equal _app_version — "
+            "global write must be the value that is returned"
+        )
+
+    def test_warm_cache_skips_file_read(self) -> None:
+        """Second call returns _app_version without touching the filesystem."""
+        version_module._app_version = "3.8.2"
+        with patch("builtins.open", side_effect=AssertionError("must not read file on warm cache")):
+            result = get_app_version()
+        assert result == "3.8.2"
+
+    def test_fallback_populates_cache_and_returns_it(self) -> None:
+        """Fallback sets _app_version='0.0.0-dev' and returns that value — CodeQL #658 regression guard."""
+        version_module._app_version = None
+
+        with patch("app.utils.version.Path") as MockPath:
+            MockPath.return_value.exists.return_value = False
+
+            result = get_app_version()
+
+        assert result == "0.0.0-dev"
+        assert version_module._app_version == "0.0.0-dev", (
+            "_app_version must be set to the fallback string — "
+            "global write must be the value that is returned"
+        )
+        assert result == version_module._app_version
 
 
 class TestParseVersion:
