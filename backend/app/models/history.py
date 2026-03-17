@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -16,7 +16,9 @@ class UpdateHistory(Base):
     __tablename__ = "update_history"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    container_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    container_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("containers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     container_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     update_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True, index=True

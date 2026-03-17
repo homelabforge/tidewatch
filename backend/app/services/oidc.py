@@ -633,7 +633,7 @@ async def verify_pending_link(
     Returns:
         ID token claims if successful, None otherwise
     """
-    from app.services.auth import get_admin_profile, verify_password
+    from app.services.auth import get_admin_password_hash, get_admin_profile, verify_password
 
     await _cleanup_expired_pending_links(db)
 
@@ -665,7 +665,7 @@ async def verify_pending_link(
         logger.error("Admin profile not found during pending link verification")
         return None
 
-    password_hash = await SettingsService.get(db, "admin_password_hash", default="")
+    password_hash = await get_admin_password_hash(db)
     if not password_hash:
         logger.error("No password hash found for admin")
         return None

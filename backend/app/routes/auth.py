@@ -1,7 +1,7 @@
 """Authentication API endpoints."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,8 @@ from app.services.auth import (
     JWT_COOKIE_NAME,
     authenticate_admin,
     create_access_token,
+    create_admin_user,
+    get_admin_password_hash,
     get_admin_profile,
     get_auth_mode,
     hash_password,
@@ -32,7 +34,7 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_log_message
+from app.utils.security import is_secure_cookie, sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -78,25 +80,22 @@ async def setup_admin_account(
     # Check if admin account already exists (not using is_setup_complete
     # because that returns True when auth_mode="none", which would prevent
     # users from creating an admin account to transition to local auth)
-    admin_username = await SettingsService.get(db, "admin_username")
-    if admin_username and admin_username.strip():
+    existing_profile = await get_admin_profile(db)
+    if existing_profile:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Setup already complete. Admin account exists.",
         )
 
-    # Hash password
+    # Hash password and create admin user
     password_hash = hash_password(setup_data.password)
-
-    # Create admin account in settings
-    now = datetime.now(UTC).isoformat()
-    await SettingsService.set(db, "admin_username", setup_data.username)
-    await SettingsService.set(db, "admin_email", setup_data.email)
-    await SettingsService.set(db, "admin_password_hash", password_hash)
-    await SettingsService.set(db, "admin_full_name", setup_data.full_name or "")
-    await SettingsService.set(db, "admin_auth_method", "local")
-    await SettingsService.set(db, "admin_created_at", now)
-    await SettingsService.set(db, "admin_last_login", now)
+    await create_admin_user(
+        db,
+        username=setup_data.username,
+        email=setup_data.email,
+        password_hash=password_hash,
+        full_name=setup_data.full_name or "",
+    )
 
     # Enable local authentication
     await SettingsService.set(db, "auth_mode", "local")
@@ -172,7 +171,7 @@ async def login(
         key=JWT_COOKIE_NAME,
         value=access_token,
         httponly=True,
-        secure=False,  # Set to True if using HTTPS
+        secure=is_secure_cookie(),
         samesite="lax",
         max_age=JWT_COOKIE_MAX_AGE,
     )
@@ -292,7 +291,7 @@ async def change_password(
         )
 
     # Verify current password
-    current_hash = await SettingsService.get(db, "admin_password_hash", default="")
+    current_hash = await get_admin_password_hash(db)
     if not current_hash:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

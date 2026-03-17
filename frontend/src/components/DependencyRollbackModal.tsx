@@ -29,11 +29,11 @@ export default function DependencyRollbackModal({
     try {
       let data: RollbackHistoryResponse;
       if (dependencyType === 'dockerfile') {
-        data = await api.dependencies.getDockerfileRollbackHistory(dependency.id);
+        data = await api.dependencies.getDockerfileRollbackHistory(dependency.id as number);
       } else if (dependencyType === 'http_server') {
-        data = await api.dependencies.getHttpServerRollbackHistory(dependency.id);
+        data = await api.dependencies.getHttpServerRollbackHistory(dependency.id as number);
       } else {
-        data = await api.dependencies.getAppDependencyRollbackHistory(dependency.id);
+        data = await api.dependencies.getAppDependencyRollbackHistory(dependency.id as number);
       }
       setHistory(data);
     } catch (err) {
@@ -56,11 +56,11 @@ export default function DependencyRollbackModal({
     setError(null);
     try {
       if (dependencyType === 'dockerfile') {
-        await api.dependencies.rollbackDockerfile(dependency.id, selectedVersion.from_version);
+        await api.dependencies.rollbackDockerfile(dependency.id as number, selectedVersion.from_version);
       } else if (dependencyType === 'http_server') {
-        await api.dependencies.rollbackHttpServer(dependency.id, selectedVersion.from_version);
+        await api.dependencies.rollbackHttpServer(dependency.id as number, selectedVersion.from_version);
       } else {
-        await api.dependencies.rollbackAppDependency(dependency.id, selectedVersion.from_version);
+        await api.dependencies.rollbackAppDependency(dependency.id as number, selectedVersion.from_version);
       }
       onRollbackComplete();
       onClose();

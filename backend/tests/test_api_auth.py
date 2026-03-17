@@ -108,11 +108,15 @@ class TestSetupEndpoint:
         assert data["full_name"] == "Admin User"
         assert data["message"] == "Admin account created successfully"
 
-        # Verify admin was created in settings
-        from app.services.settings_service import SettingsService
+        # Verify admin was created in users table
+        from sqlalchemy import select
 
-        username = await SettingsService.get(db, "admin_username")
-        assert username == "admin"
+        from app.models.user import User
+
+        result = await db.execute(select(User).where(User.username == "admin"))
+        user = result.scalar_one_or_none()
+        assert user is not None
+        assert user.username == "admin"
 
     async def test_setup_enables_local_auth(self, client, db):
         """Test setup enables local authentication."""
@@ -201,12 +205,15 @@ class TestSetupEndpoint:
         assert response.status_code == status.HTTP_201_CREATED
 
         # Verify password was hashed (not stored in plaintext)
-        from app.services.settings_service import SettingsService
+        from sqlalchemy import select
 
-        password_hash = await SettingsService.get(db, "admin_password_hash")
-        assert password_hash is not None
-        assert password_hash != "AdminPass123!"
-        assert len(password_hash) > 50  # bcrypt hashes are long
+        from app.models.user import User
+
+        result = await db.execute(select(User).where(User.username == "admin"))
+        user = result.scalar_one_or_none()
+        assert user is not None
+        assert user.password_hash != "AdminPass123!"
+        assert len(user.password_hash) > 50  # Argon2 hashes are long
 
     async def test_setup_csrf_protection(self, client):
         """Test setup endpoint is exempt from CSRF protection."""

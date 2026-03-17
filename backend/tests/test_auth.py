@@ -299,265 +299,230 @@ class TestJWTOperations:
 
 
 class TestAdminProfileManagement:
-    """Test suite for admin profile management."""
+    """Test suite for admin profile management using User model."""
 
     @pytest.fixture
     def mock_db(self):
         """Mock database session."""
         return AsyncMock()
 
-    @pytest.fixture
-    def mock_settings_service(self):
-        """Mock SettingsService."""
-        with patch("app.services.auth.SettingsService") as mock:
-            yield mock
+    def _make_mock_user(self, **overrides):
+        """Create a mock User object."""
+        from unittest.mock import MagicMock
+
+        from app.models.user import User
+
+        user = MagicMock(spec=User)
+        user.username = overrides.get("username", "admin")
+        user.email = overrides.get("email", "admin@example.com")
+        user.full_name = overrides.get("full_name", "Administrator")
+        user.password_hash = overrides.get("password_hash", hash_password("password"))
+        user.auth_method = overrides.get("auth_method", "local")
+        user.oidc_subject = overrides.get("oidc_subject", None)
+        user.oidc_provider = overrides.get("oidc_provider", "")
+        user.created_at = overrides.get("created_at", datetime(2025, 1, 1, tzinfo=UTC))
+        user.last_login = overrides.get("last_login", datetime(2025, 1, 15, 10, 30, tzinfo=UTC))
+        user.to_profile_dict = lambda: {
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "auth_method": user.auth_method,
+            "oidc_provider": user.oidc_provider or "",
+            "created_at": user.created_at.isoformat() if user.created_at else "",
+            "last_login": user.last_login.isoformat() if user.last_login else "",
+        }
+        return user
 
     @pytest.mark.asyncio
-    async def test_is_setup_complete_auth_disabled(self, mock_db, mock_settings_service):
+    async def test_is_setup_complete_auth_disabled(self, mock_db):
         """Test is_setup_complete() returns True when auth disabled."""
-        mock_settings_service.get = AsyncMock(return_value="none")
-
-        result = await is_setup_complete(mock_db)
-
-        assert result is True
+        with patch("app.services.auth.SettingsService") as mock_settings:
+            mock_settings.get = AsyncMock(return_value="none")
+            result = await is_setup_complete(mock_db)
+            assert result is True
 
     @pytest.mark.asyncio
-    async def test_is_setup_complete_admin_exists(self, mock_db, mock_settings_service):
+    async def test_is_setup_complete_admin_exists(self, mock_db):
         """Test is_setup_complete() returns True when admin exists."""
-        # First call returns 'local', second call returns 'admin_user'
-        mock_settings_service.get = AsyncMock(side_effect=["local", "admin_user"])
-
-        result = await is_setup_complete(mock_db)
-
-        assert result is True
+        mock_user = self._make_mock_user()
+        with (
+            patch("app.services.auth.SettingsService") as mock_settings,
+            patch("app.services.auth._get_admin_user", return_value=mock_user),
+        ):
+            mock_settings.get = AsyncMock(return_value="local")
+            result = await is_setup_complete(mock_db)
+            assert result is True
 
     @pytest.mark.asyncio
-    async def test_is_setup_complete_no_admin(self, mock_db, mock_settings_service):
+    async def test_is_setup_complete_no_admin(self, mock_db):
         """Test is_setup_complete() returns False when no admin."""
-        mock_settings_service.get = AsyncMock(side_effect=["local", ""])
-
-        result = await is_setup_complete(mock_db)
-
-        assert result is False
+        with (
+            patch("app.services.auth.SettingsService") as mock_settings,
+            patch("app.services.auth._get_admin_user", return_value=None),
+        ):
+            mock_settings.get = AsyncMock(return_value="local")
+            result = await is_setup_complete(mock_db)
+            assert result is False
 
     @pytest.mark.asyncio
-    async def test_get_admin_profile_returns_profile(self, mock_db, mock_settings_service):
+    async def test_get_admin_profile_returns_profile(self, mock_db):
         """Test get_admin_profile() returns complete profile dict."""
-
-        async def mock_get(db, key, default=""):
-            profile_data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_email": "admin@example.com",
-                "admin_full_name": "Administrator",
-                "admin_auth_method": "local",
-                "admin_oidc_provider": "",
-                "admin_created_at": "2025-01-01T00:00:00Z",
-                "admin_last_login": "2025-01-15T10:30:00Z",
-            }
-            return profile_data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-
-        profile = await get_admin_profile(mock_db)
-        assert profile is not None
-
-        assert profile["username"] == "admin"
-        assert profile["email"] == "admin@example.com"
-        assert profile["full_name"] == "Administrator"
-        assert profile["auth_method"] == "local"
+        mock_user = self._make_mock_user()
+        with (
+            patch("app.services.auth.SettingsService") as mock_settings,
+            patch("app.services.auth._get_admin_user", return_value=mock_user),
+        ):
+            mock_settings.get = AsyncMock(return_value="local")
+            profile = await get_admin_profile(mock_db)
+            assert profile is not None
+            assert profile["username"] == "admin"
+            assert profile["email"] == "admin@example.com"
+            assert profile["full_name"] == "Administrator"
+            assert profile["auth_method"] == "local"
 
     @pytest.mark.asyncio
-    async def test_get_admin_profile_setup_not_complete(self, mock_db, mock_settings_service):
+    async def test_get_admin_profile_setup_not_complete(self, mock_db):
         """Test get_admin_profile() returns None when setup incomplete."""
-        mock_settings_service.get = AsyncMock(side_effect=["local", ""])
-
-        profile = await get_admin_profile(mock_db)
-
-        assert profile is None
+        with (
+            patch("app.services.auth.SettingsService") as mock_settings,
+            patch("app.services.auth._get_admin_user", return_value=None),
+        ):
+            mock_settings.get = AsyncMock(return_value="local")
+            profile = await get_admin_profile(mock_db)
+            assert profile is None
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_email(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_email(self, mock_db):
         """Test update_admin_profile() updates email."""
-        mock_settings_service.set = AsyncMock()
-
-        await update_admin_profile(mock_db, email="newemail@example.com")
-
-        mock_settings_service.set.assert_called_once_with(
-            mock_db, "admin_email", "newemail@example.com"
-        )
+        mock_user = self._make_mock_user()
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            mock_db.commit = AsyncMock()
+            await update_admin_profile(mock_db, email="newemail@example.com")
+            assert mock_user.email == "newemail@example.com"
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_full_name(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_full_name(self, mock_db):
         """Test update_admin_profile() updates full name."""
-        mock_settings_service.set = AsyncMock()
-
-        await update_admin_profile(mock_db, full_name="John Doe")
-
-        mock_settings_service.set.assert_called_once_with(mock_db, "admin_full_name", "John Doe")
+        mock_user = self._make_mock_user()
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            mock_db.commit = AsyncMock()
+            await update_admin_profile(mock_db, full_name="John Doe")
+            assert mock_user.full_name == "John Doe"
 
     @pytest.mark.asyncio
-    async def test_update_admin_profile_updates_both(self, mock_db, mock_settings_service):
+    async def test_update_admin_profile_updates_both(self, mock_db):
         """Test update_admin_profile() updates both fields."""
-        mock_settings_service.set = AsyncMock()
-
-        await update_admin_profile(mock_db, email="new@example.com", full_name="New Name")
-
-        assert mock_settings_service.set.call_count == 2
+        mock_user = self._make_mock_user()
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            mock_db.commit = AsyncMock()
+            await update_admin_profile(mock_db, email="new@example.com", full_name="New Name")
+            assert mock_user.email == "new@example.com"
+            assert mock_user.full_name == "New Name"
 
     @pytest.mark.asyncio
-    async def test_update_admin_password(self, mock_db, mock_settings_service):
+    async def test_update_admin_password(self, mock_db):
         """Test update_admin_password() updates password hash."""
-        mock_settings_service.set = AsyncMock()
+        mock_user = self._make_mock_user()
         new_hash = "$argon2id$v=19$m=102400,t=2,p=8$..."
-
-        await update_admin_password(mock_db, new_hash)
-
-        mock_settings_service.set.assert_called_once_with(mock_db, "admin_password_hash", new_hash)
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            mock_db.commit = AsyncMock()
+            await update_admin_password(mock_db, new_hash)
+            assert mock_user.password_hash == new_hash
 
 
 class TestAuthentication:
-    """Test suite for admin authentication."""
+    """Test suite for admin authentication using User model."""
 
     @pytest.fixture
     def mock_db(self):
         """Mock database session."""
         return AsyncMock()
 
-    @pytest.fixture
-    def mock_settings_service(self):
-        """Mock SettingsService."""
-        with patch("app.services.auth.SettingsService") as mock:
-            yield mock
+    def _make_mock_user(self, **overrides):
+        """Create a mock User object."""
+        from unittest.mock import MagicMock
+
+        from app.models.user import User
+
+        user = MagicMock(spec=User)
+        user.username = overrides.get("username", "admin")
+        user.email = overrides.get("email", "admin@example.com")
+        user.full_name = overrides.get("full_name", "Admin User")
+        user.password_hash = overrides.get("password_hash", hash_password("SecurePassword123!"))
+        user.auth_method = overrides.get("auth_method", "local")
+        user.oidc_subject = overrides.get("oidc_subject", None)
+        user.oidc_provider = overrides.get("oidc_provider", "")
+        user.created_at = overrides.get("created_at", datetime(2025, 1, 1, tzinfo=UTC))
+        user.last_login = overrides.get("last_login", datetime(2025, 1, 15, 10, 30, tzinfo=UTC))
+        user.to_profile_dict = lambda: {
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "auth_method": user.auth_method,
+            "oidc_provider": user.oidc_provider or "",
+            "created_at": user.created_at.isoformat() if user.created_at else "",
+            "last_login": user.last_login.isoformat() if user.last_login else "",
+        }
+        return user
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_success(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_success(self, mock_db):
         """Test authenticate_admin() succeeds with correct credentials."""
         password = "SecurePassword123!"
-        password_hash = hash_password(password)
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_email": "admin@example.com",
-                "admin_password_hash": password_hash,
-                "admin_auth_method": "local",
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-        mock_settings_service.set = AsyncMock()
-
-        profile = await authenticate_admin(mock_db, "admin", password)
-
-        assert profile is not None
-        assert profile["username"] == "admin"
+        mock_user = self._make_mock_user(password_hash=hash_password(password))
+        with (
+            patch("app.services.auth._get_admin_user", return_value=mock_user),
+            patch("app.services.auth.update_admin_last_login", new_callable=AsyncMock),
+        ):
+            profile = await authenticate_admin(mock_db, "admin", password)
+            assert profile is not None
+            assert profile["username"] == "admin"
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_wrong_username(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_wrong_username(self, mock_db):
         """Test authenticate_admin() fails with wrong username."""
-        password = "SecurePassword123!"
-        password_hash = hash_password(password)
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_password_hash": password_hash,
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-
-        profile = await authenticate_admin(mock_db, "wrong_user", password)
-
-        assert profile is None
+        mock_user = self._make_mock_user()
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            profile = await authenticate_admin(mock_db, "wrong_user", "SecurePassword123!")
+            assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_wrong_password(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_wrong_password(self, mock_db):
         """Test authenticate_admin() fails with wrong password."""
-        password_hash = hash_password("CorrectPassword")
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_password_hash": password_hash,
-                "admin_auth_method": "local",
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-
-        profile = await authenticate_admin(mock_db, "admin", "WrongPassword")
-
-        assert profile is None
+        mock_user = self._make_mock_user(password_hash=hash_password("CorrectPassword"))
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            profile = await authenticate_admin(mock_db, "admin", "WrongPassword")
+            assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_no_password_hash(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_no_password_hash(self, mock_db):
         """Test authenticate_admin() fails when no password hash set."""
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_password_hash": "",  # No password set
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-
-        profile = await authenticate_admin(mock_db, "admin", "AnyPassword")
-
-        assert profile is None
+        mock_user = self._make_mock_user(password_hash="")
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            profile = await authenticate_admin(mock_db, "admin", "AnyPassword")
+            assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_oidc_user_rejects_password(
-        self, mock_db, mock_settings_service
-    ):
+    async def test_authenticate_admin_oidc_user_rejects_password(self, mock_db):
         """Test authenticate_admin() rejects password login for OIDC users."""
-        password_hash = hash_password("SomePassword")
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_password_hash": password_hash,
-                "admin_auth_method": "oidc",  # OIDC user
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-
-        profile = await authenticate_admin(mock_db, "admin", "SomePassword")
-
-        assert profile is None
+        mock_user = self._make_mock_user(auth_method="oidc")
+        with patch("app.services.auth._get_admin_user", return_value=mock_user):
+            profile = await authenticate_admin(mock_db, "admin", "SomePassword")
+            assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_updates_last_login(self, mock_db, mock_settings_service):
+    async def test_authenticate_admin_updates_last_login(self, mock_db):
         """Test authenticate_admin() updates last_login timestamp."""
         password = "SecurePassword123!"
-        password_hash = hash_password(password)
-
-        async def mock_get(db, key, default=""):
-            data = {
-                "auth_mode": "local",
-                "admin_username": "admin",
-                "admin_password_hash": password_hash,
-                "admin_auth_method": "local",
-            }
-            return data.get(key, default)
-
-        mock_settings_service.get = AsyncMock(side_effect=mock_get)
-        mock_settings_service.set = AsyncMock()
-
-        await authenticate_admin(mock_db, "admin", password)
-
-        # Check last_login was updated
-        set_calls = mock_settings_service.set.call_args_list
-        last_login_call = [call for call in set_calls if call[0][1] == "admin_last_login"]
-        assert len(last_login_call) == 1
+        mock_user = self._make_mock_user(password_hash=hash_password(password))
+        with (
+            patch("app.services.auth._get_admin_user", return_value=mock_user),
+            patch(
+                "app.services.auth.update_admin_last_login", new_callable=AsyncMock
+            ) as mock_update,
+        ):
+            await authenticate_admin(mock_db, "admin", password)
+            mock_update.assert_called_once_with(mock_db)
 
 
 class TestAuthMode:

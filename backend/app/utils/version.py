@@ -1,8 +1,49 @@
-"""Version comparison utilities for semver."""
+"""Version comparison and app version utilities."""
 
 import logging
+import tomllib
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Cached app version (read once at import time)
+_app_version: str | None = None
+
+
+def get_app_version() -> str:
+    """Get TideWatch version from pyproject.toml (single source of truth).
+
+    Searches multiple candidate paths to work in both development
+    and Docker container environments. Result is cached after first call.
+
+    Returns:
+        Version string, or "0.0.0-dev" if pyproject.toml cannot be found/parsed.
+    """
+    global _app_version  # noqa: PLW0603
+    if _app_version is not None:
+        return _app_version
+
+    candidates = [
+        Path("/app/pyproject.toml"),  # Docker production image
+        Path(__file__).resolve().parent.parent.parent / "pyproject.toml",  # backend/pyproject.toml
+        Path("pyproject.toml"),  # CWD fallback
+    ]
+
+    for pyproject_path in candidates:
+        try:
+            if pyproject_path.exists():
+                with open(pyproject_path, "rb") as f:
+                    data = tomllib.load(f)
+                version = data["project"]["version"]
+                _app_version = version
+                return version
+        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError) as e:
+            logger.debug(f"Could not read version from {pyproject_path}: {e}")
+            continue
+
+    logger.warning("pyproject.toml not found in any candidate path")
+    _app_version = "0.0.0-dev"
+    return "0.0.0-dev"
 
 
 def parse_version(version: str) -> tuple[int, int, int]:

@@ -642,6 +642,8 @@ class TestContainerStats:
                 status="success",
                 started_at=datetime.now(UTC),
                 completed_at=datetime.now(UTC),
+                data_backup_id="backup-abc123",
+                data_backup_status="success",
             ),
             UpdateHistory(
                 container_id=container.id,
@@ -667,6 +669,12 @@ class TestContainerStats:
         # Verify history entries are in descending order (most recent first)
         assert data[0]["to_tag"] == "1.20"
         assert data[1]["to_tag"] == "1.19"
+
+        # Verify data_backup_id and data_backup_status are serialized by HistoryItemSchema
+        assert data[0]["data_backup_id"] == "backup-abc123"
+        assert data[0]["data_backup_status"] == "success"
+        assert data[1]["data_backup_id"] is None
+        assert data[1]["data_backup_status"] is None
 
     async def test_get_container_history_pagination(self, authenticated_client, db, make_container):
         """Test history endpoint pagination."""

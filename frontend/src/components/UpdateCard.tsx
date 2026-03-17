@@ -229,13 +229,13 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
       )}
 
       {/* Security Info */}
-      {(update.cves_fixed.length > 0 || update.vuln_delta !== 0) && (
+      {((update.cves_fixed?.length ?? 0) > 0 || update.vuln_delta !== 0) && (
         <div className="bg-tide-surface/50 rounded-md p-3 mb-3 space-y-2">
-          {update.cves_fixed.length > 0 && (
+          {(update.cves_fixed?.length ?? 0) > 0 && (
             <div className="flex items-center gap-2 text-sm">
               <Shield size={14} className="text-green-400" />
               <span className="text-tide-text">
-                Fixes {update.cves_fixed.length} CVE{update.cves_fixed.length > 1 ? 's' : ''}
+                Fixes {update.cves_fixed!.length} CVE{update.cves_fixed!.length > 1 ? 's' : ''}
               </span>
             </div>
           )}

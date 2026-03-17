@@ -1,48 +1,36 @@
 /**
  * Authentication and OIDC type definitions for TideWatch
  *
- * These types match the backend schema definitions from:
- * - backend/app/schemas/auth.py
- * - backend/app/api/auth.py
- * - backend/app/api/oidc.py
+ * Generated types (6): aliases from OpenAPI schema via api.generated.ts
+ * Hand-maintained types (7): narrow unions, not in OpenAPI, or backend contract mismatch
  */
 
+import type { components } from './api.generated';
+
 // ============================================================================
-// Auth Status & Setup
+// Generated: aliases from OpenAPI schema
+// ============================================================================
+
+export type SetupRequest = components['schemas']['SetupRequest'];
+export type SetupResponse = components['schemas']['SetupResponse'];
+export type LoginRequest = components['schemas']['LoginRequest'];
+export type UpdateProfileRequest = components['schemas']['UpdateProfileRequest'];
+export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
+export type OIDCConfig = components['schemas']['OIDCConfig'];
+
+// ============================================================================
+// Hand-maintained: narrow union literals (generated would widen to string)
 // ============================================================================
 
 export interface AuthStatusResponse {
   setup_complete: boolean;
-  auth_mode: "none" | "local" | "oidc";
+  auth_mode: 'none' | 'local' | 'oidc';
   oidc_enabled: boolean;
-}
-
-export interface SetupRequest {
-  username: string;
-  email: string;
-  password: string;
-  full_name?: string;
-}
-
-export interface SetupResponse {
-  username: string;
-  email: string;
-  full_name: string | null;
-  message: string;
-}
-
-// ============================================================================
-// Local Authentication
-// ============================================================================
-
-export interface LoginRequest {
-  username: string;
-  password: string;
 }
 
 export interface TokenResponse {
   access_token: string;
-  token_type: "bearer";
+  token_type: 'bearer';
   expires_in: number;
   csrf_token?: string;
 }
@@ -52,42 +40,18 @@ export interface UserProfile {
   username: string;
   email: string;
   full_name: string | null;
-  auth_method: "local" | "oidc";
+  auth_method: 'local' | 'oidc';
   oidc_provider: string | null;
   created_at: string | null;
   last_login: string | null;
 }
 
-export interface UpdateProfileRequest {
-  email?: string;
-  full_name?: string;
-}
-
-export interface ChangePasswordRequest {
-  current_password: string;
-  new_password: string;
-}
+// ============================================================================
+// Hand-maintained: not in OpenAPI or backend contract mismatch
+// ============================================================================
 
 export interface MessageResponse {
   message: string;
-}
-
-// ============================================================================
-// OIDC Authentication
-// ============================================================================
-
-export interface OIDCConfig {
-  enabled: boolean;
-  issuer_url: string;
-  client_id: string;
-  client_secret: string; // Masked in GET responses
-  provider_name: string;
-  scopes: string;
-  redirect_uri: string;
-  username_claim?: string;
-  email_claim?: string;
-  link_token_expire_minutes?: number;
-  link_max_password_attempts?: number;
 }
 
 export interface OIDCLinkRequest {
@@ -95,6 +59,10 @@ export interface OIDCLinkRequest {
   password: string;
 }
 
+// OIDCTestResult stays hand-maintained: backend declares metadata as dict | None,
+// but frontend uses OIDCProviderMetadata (structured OIDC discovery doc).
+// Generating this would widen metadata to Record<string, unknown> | null.
+// Long-term fix: add OIDCProviderMetadata Pydantic model to backend OIDCTestResult.
 export interface OIDCTestResult {
   success: boolean;
   provider_reachable: boolean;

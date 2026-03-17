@@ -2,23 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { Update, Container } from '../types';
 import { api } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
-import CheckProgressBar, { CheckJobState } from '../components/CheckProgressBar';
-import { useEventStream, CheckJobProgressEvent } from '../hooks/useEventStream';
+import CheckProgressBar from '../components/CheckProgressBar';
+import { useCheckJob } from '../hooks/useCheckJob';
 import { RefreshCw, CheckCircle, XCircle, AlertCircle, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Updates() {
   const [updates, setUpdates] = useState<Update[]>([]);
-  const [containers, setContainers] = useState<Map<number, Container>>(new Map()); // Container lookup by ID
+  const [containers, setContainers] = useState<Map<number, Container>>(new Map());
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('needs_attention');
-  // Track multiple concurrent operations using Sets
   const [applyingUpdateIds, setApplyingUpdateIds] = useState<Set<number>>(new Set());
   const [approvingUpdateIds, setApprovingUpdateIds] = useState<Set<number>>(new Set());
   const [rejectingUpdateIds, setRejectingUpdateIds] = useState<Set<number>>(new Set());
-
-  // Track check job state
-  const [checkJob, setCheckJob] = useState<CheckJobState | null>(null);
 
   const loadUpdates = useCallback(async () => {
     setLoading(true);
@@ -45,60 +41,9 @@ export default function Updates() {
     loadUpdates();
   }, [loadUpdates]);
 
-  // SSE event handlers for check job progress
-  const handleCheckJobProgress = useCallback((data: CheckJobProgressEvent) => {
-    setCheckJob({
-      jobId: data.job_id,
-      status: data.status as CheckJobState['status'],
-      totalCount: data.total_count,
-      checkedCount: data.checked_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentContainer: data.current_container || null,
-      progressPercent: data.progress_percent || 0,
-    });
-  }, []);
-
-  const handleCheckJobCompleted = useCallback((data: CheckJobProgressEvent) => {
-    setCheckJob({
-      jobId: data.job_id,
-      status: 'done',
-      totalCount: data.total_count,
-      checkedCount: data.checked_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentContainer: null,
-      progressPercent: 100,
-    });
-    // Reload updates after check completes
-    loadUpdates();
-  }, [loadUpdates]);
-
-  const handleCheckJobFailed = useCallback(() => {
-    setCheckJob(prev => prev ? {
-      ...prev,
-      status: 'failed',
-    } : null);
-    setLoading(false);
-  }, []);
-
-  const handleCheckJobCanceled = useCallback(() => {
-    setCheckJob(prev => prev ? {
-      ...prev,
-      status: 'canceled',
-    } : null);
-    // Reload updates to show any that were found before cancellation
-    loadUpdates();
-  }, [loadUpdates]);
-
-  // Subscribe to SSE events
-  useEventStream({
-    onCheckJobStarted: handleCheckJobProgress,
-    onCheckJobProgress: handleCheckJobProgress,
-    onCheckJobCompleted: handleCheckJobCompleted,
-    onCheckJobFailed: handleCheckJobFailed,
-    onCheckJobCanceled: handleCheckJobCanceled,
-    enableToasts: false, // We handle toasts ourselves
+  const { checkJob, startCheckAll, cancelCheckJob, dismissCheckJob } = useCheckJob({
+    onCompleted: loadUpdates,
+    onCanceled: loadUpdates,
   });
 
   const handleApprove = async (id: number) => {
@@ -265,56 +210,9 @@ export default function Updates() {
     }
   };
 
-  const handleCheckAll = async () => {
-    try {
-      const result = await api.updates.checkAll();
-
-      if (result.already_running) {
-        toast.info('Update check already in progress');
-        // Fetch current job status
-        const jobStatus = await api.updates.getCheckJob(result.job_id);
-        setCheckJob({
-          jobId: jobStatus.id,
-          status: jobStatus.status,
-          totalCount: jobStatus.total_count,
-          checkedCount: jobStatus.checked_count,
-          updatesFound: jobStatus.updates_found,
-          errorsCount: jobStatus.errors_count,
-          currentContainer: jobStatus.current_container,
-          progressPercent: jobStatus.progress_percent,
-        });
-      } else {
-        // New job started - initialize state
-        setCheckJob({
-          jobId: result.job_id,
-          status: 'queued',
-          totalCount: 0,
-          checkedCount: 0,
-          updatesFound: 0,
-          errorsCount: 0,
-          currentContainer: null,
-          progressPercent: 0,
-        });
-        toast.info('Update check started');
-      }
-    } catch {
-      toast.error('Failed to start update check');
-    }
-  };
-
-  const handleCancelCheckJob = async () => {
-    if (!checkJob) return;
-    try {
-      await api.updates.cancelCheckJob(checkJob.jobId);
-      toast.info('Cancellation requested');
-    } catch {
-      toast.error('Failed to cancel check');
-    }
-  };
-
-  const handleDismissCheckJob = () => {
-    setCheckJob(null);
-  };
+  const handleCheckAll = startCheckAll;
+  const handleCancelCheckJob = cancelCheckJob;
+  const handleDismissCheckJob = dismissCheckJob;
 
   const getFilteredUpdates = () => {
     if (filter === 'needs_attention') return updates.filter((u) =>

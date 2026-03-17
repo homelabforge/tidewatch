@@ -35,7 +35,7 @@ from app.services.auth import (
     require_auth,
 )
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_log_message
+from app.utils.security import is_secure_cookie, sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +424,7 @@ async def oidc_callback(
         key=JWT_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        secure=False,  # Set to True if using HTTPS
+        secure=is_secure_cookie(),
         samesite="lax",
         max_age=JWT_COOKIE_MAX_AGE,
     )
@@ -501,7 +501,7 @@ async def link_oidc_account(
         key=JWT_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        secure=False,  # Set to True if using HTTPS
+        secure=is_secure_cookie(),
         samesite="lax",
         max_age=JWT_COOKIE_MAX_AGE,
     )

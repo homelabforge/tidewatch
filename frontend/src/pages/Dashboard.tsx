@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { Container, Update, FilterOptions, SortOption, AnalyticsSummary, DependencySummary } from '../types';
+import { Container, Update, FilterOptions, SortOption, AnalyticsSummary } from '../types';
 import { api } from '../services/api';
 import ContainerCard from '../components/ContainerCard';
-import CheckProgressBar, { CheckJobState } from '../components/CheckProgressBar';
-import DepScanProgressBar, { DepScanJobState } from '../components/DepScanProgressBar';
-import { useEventStream, CheckJobProgressEvent, DepScanProgressEvent } from '../hooks/useEventStream';
-import { Search, RefreshCw, Package, Archive, FolderSearch, ScanSearch } from 'lucide-react';
+import CheckProgressBar from '../components/CheckProgressBar';
+import DepScanProgressBar from '../components/DepScanProgressBar';
+import DashboardStats from '../components/dashboard/DashboardStats';
+import DashboardFilters from '../components/dashboard/DashboardFilters';
+import { useCheckJob } from '../hooks/useCheckJob';
+import { useDepScan } from '../hooks/useDepScan';
+import { RefreshCw, Package, FolderSearch, ScanSearch } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Lazy load the large ContainerModal component
@@ -17,7 +20,6 @@ export default function Dashboard() {
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [vulnforgeEnabled, setVulnforgeEnabled] = useState(false);
   const [myProjectsEnabled, setMyProjectsEnabled] = useState(false);
@@ -29,14 +31,6 @@ export default function Dashboard() {
     hasUpdate: 'all',
   });
   const [sort] = useState<SortOption>({ field: 'name', direction: 'asc' });
-
-  // Track check job state for progress bar
-  const [checkJob, setCheckJob] = useState<CheckJobState | null>(null);
-
-  // Dependency summary per container (keyed by container ID string)
-  const [depSummary, setDepSummary] = useState<Record<string, DependencySummary>>({});
-  // Dependency scan job state
-  const [depScanJob, setDepScanJob] = useState<DepScanJobState | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -51,13 +45,11 @@ export default function Dashboard() {
       setContainers(containersData);
       setUpdates(updatesData);
       setAnalytics(analyticsData);
-      setDepSummary(depSummaryData.summaries);
+      depScan.setDepSummary(depSummaryData.summaries);
 
-      // Check if VulnForge is enabled globally
       const vulnforgeSetting = settingsData.find((s) => s.key === 'vulnforge_enabled');
       setVulnforgeEnabled(vulnforgeSetting?.value === 'true');
 
-      // Check if My Projects is enabled
       const myProjectsSetting = settingsData.find((s) => s.key === 'my_projects_enabled');
       setMyProjectsEnabled(myProjectsSetting?.value === 'true');
     } catch {
@@ -65,7 +57,17 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Check job hook
+  const checkJobHook = useCheckJob({
+    onCompleted: loadData,
+    onCanceled: loadData,
+  });
+
+  // Dep scan hook
+  const depScan = useDepScan();
 
   const handleScan = useCallback(async () => {
     setScanning(true);
@@ -79,104 +81,6 @@ export default function Dashboard() {
       setScanning(false);
     }
   }, [loadData]);
-
-  const handleCheckAllUpdates = useCallback(async () => {
-    setCheckingUpdates(true);
-    try {
-      const result = await api.updates.checkAll();
-      if (result.already_running) {
-        toast.info('Update check already in progress');
-        // Fetch current job status
-        const jobStatus = await api.updates.getCheckJob(result.job_id);
-        setCheckJob({
-          jobId: jobStatus.id,
-          status: jobStatus.status,
-          totalCount: jobStatus.total_count,
-          checkedCount: jobStatus.checked_count,
-          updatesFound: jobStatus.updates_found,
-          errorsCount: jobStatus.errors_count,
-          currentContainer: jobStatus.current_container,
-          progressPercent: jobStatus.progress_percent,
-        });
-      } else {
-        // New job started - initialize state
-        setCheckJob({
-          jobId: result.job_id,
-          status: 'queued',
-          totalCount: 0,
-          checkedCount: 0,
-          updatesFound: 0,
-          errorsCount: 0,
-          currentContainer: null,
-          progressPercent: 0,
-        });
-        toast.info('Update check started');
-      }
-      setCheckingUpdates(false);
-    } catch {
-      toast.error('Failed to start update check');
-      setCheckingUpdates(false);
-    }
-  }, []);
-
-  // SSE event handlers for check job progress
-  const handleCheckJobProgress = useCallback((data: CheckJobProgressEvent) => {
-    setCheckJob({
-      jobId: data.job_id,
-      status: data.status as CheckJobState['status'],
-      totalCount: data.total_count,
-      checkedCount: data.checked_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentContainer: data.current_container || null,
-      progressPercent: data.progress_percent || 0,
-    });
-  }, []);
-
-  const handleCheckJobCompleted = useCallback((data: CheckJobProgressEvent) => {
-    setCheckJob({
-      jobId: data.job_id,
-      status: 'done',
-      totalCount: data.total_count,
-      checkedCount: data.checked_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentContainer: null,
-      progressPercent: 100,
-    });
-    // Reload data after check completes
-    loadData();
-  }, [loadData]);
-
-  const handleCheckJobFailed = useCallback(() => {
-    setCheckJob(prev => prev ? {
-      ...prev,
-      status: 'failed',
-    } : null);
-  }, []);
-
-  const handleCheckJobCanceled = useCallback(() => {
-    setCheckJob(prev => prev ? {
-      ...prev,
-      status: 'canceled',
-    } : null);
-    // Reload data to show any updates found before cancellation
-    loadData();
-  }, [loadData]);
-
-  const handleCancelCheckJob = useCallback(async () => {
-    if (!checkJob) return;
-    try {
-      await api.updates.cancelCheckJob(checkJob.jobId);
-      toast.info('Cancellation requested');
-    } catch {
-      toast.error('Failed to cancel check');
-    }
-  }, [checkJob]);
-
-  const handleDismissCheckJob = useCallback(() => {
-    setCheckJob(null);
-  }, []);
 
   const handleScanMyProjects = useCallback(async () => {
     setScanningProjects(true);
@@ -194,118 +98,12 @@ export default function Dashboard() {
     }
   }, [loadData]);
 
-  // --- Dependency scan handlers ---
-  const handleScanDependencies = useCallback(async () => {
-    try {
-      const result = await api.containers.scanAllProjectDependencies();
-      if (result.already_running) {
-        toast.info('Dependency scan already in progress');
-        const jobStatus = await api.containers.getDependencyScanStatus(result.job_id);
-        setDepScanJob({
-          jobId: jobStatus.job_id,
-          status: jobStatus.status as DepScanJobState['status'],
-          totalCount: jobStatus.total_count,
-          scannedCount: jobStatus.scanned_count,
-          updatesFound: jobStatus.updates_found,
-          errorsCount: jobStatus.errors_count,
-          currentProject: jobStatus.current_project,
-          progressPercent: jobStatus.progress_percent,
-        });
-      } else {
-        setDepScanJob({
-          jobId: result.job_id,
-          status: 'queued',
-          totalCount: 0,
-          scannedCount: 0,
-          updatesFound: 0,
-          errorsCount: 0,
-          currentProject: null,
-          progressPercent: 0,
-        });
-        toast.info('Dependency scan started');
-      }
-    } catch {
-      toast.error('Failed to start dependency scan');
-    }
-  }, []);
-
-  const handleDepScanProgress = useCallback((data: DepScanProgressEvent) => {
-    setDepScanJob({
-      jobId: data.job_id,
-      status: data.status as DepScanJobState['status'],
-      totalCount: data.total_count,
-      scannedCount: data.scanned_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentProject: data.current_project || null,
-      progressPercent: data.progress_percent || 0,
-    });
-  }, []);
-
-  const handleDepScanCompleted = useCallback((data: DepScanProgressEvent) => {
-    setDepScanJob({
-      jobId: data.job_id,
-      status: 'done',
-      totalCount: data.total_count,
-      scannedCount: data.scanned_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentProject: null,
-      progressPercent: 100,
-    });
-    // Reload dependency summary after scan completes
-    api.containers.getDependencySummary()
-      .then((res) => setDepSummary(res.summaries))
-      .catch(() => {});
-  }, []);
-
-  const handleDepScanFailed = useCallback(() => {
-    setDepScanJob(prev => prev ? { ...prev, status: 'failed' } : null);
-  }, []);
-
-  const handleDepScanCanceled = useCallback(() => {
-    setDepScanJob(prev => prev ? { ...prev, status: 'canceled' } : null);
-    api.containers.getDependencySummary()
-      .then((res) => setDepSummary(res.summaries))
-      .catch(() => {});
-  }, []);
-
-  const handleCancelDepScan = useCallback(async () => {
-    if (!depScanJob) return;
-    try {
-      await api.containers.cancelDependencyScan(depScanJob.jobId);
-      toast.info('Cancellation requested');
-    } catch {
-      toast.error('Failed to cancel scan');
-    }
-  }, [depScanJob]);
-
-  const handleDismissDepScan = useCallback(() => {
-    setDepScanJob(null);
-  }, []);
-
-  // Subscribe to SSE events
-  useEventStream({
-    onCheckJobStarted: handleCheckJobProgress,
-    onCheckJobProgress: handleCheckJobProgress,
-    onCheckJobCompleted: handleCheckJobCompleted,
-    onCheckJobFailed: handleCheckJobFailed,
-    onCheckJobCanceled: handleCheckJobCanceled,
-    onDepScanStarted: handleDepScanProgress,
-    onDepScanProgress: handleDepScanProgress,
-    onDepScanCompleted: handleDepScanCompleted,
-    onDepScanFailed: handleDepScanFailed,
-    onDepScanCanceled: handleDepScanCanceled,
-    enableToasts: false, // We handle toasts ourselves
-  });
-
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Memoize filtered and sorted containers to avoid recalculation on every render
+  // Memoize filtered and sorted containers
   const filteredContainers = useMemo(() => {
-    // Create a Map for O(1) update lookups instead of O(n) for each container
     const pendingUpdatesMap = new Map(
       updates
         .filter((u) => u.status === 'pending')
@@ -313,7 +111,6 @@ export default function Dashboard() {
     );
 
     const filtered = containers.filter((container) => {
-      // Search filter
       if (filters.search) {
         const search = filters.search.toLowerCase();
         if (
@@ -324,15 +121,10 @@ export default function Dashboard() {
         }
       }
 
-      // Status filter - skip for now as we don't have runtime status
-      // Runtime status would need to be fetched from Docker
-
-      // Auto-update filter
       const isAutoUpdate = container.policy === 'auto';
       if (filters.autoUpdate === 'enabled' && !isAutoUpdate) return false;
       if (filters.autoUpdate === 'disabled' && isAutoUpdate) return false;
 
-      // Has update filter - use Map for O(1) lookup instead of O(n) .some()
       const hasUpdate = pendingUpdatesMap.has(container.id);
       if (filters.hasUpdate === 'yes' && !hasUpdate) return false;
       if (filters.hasUpdate === 'no' && hasUpdate) return false;
@@ -340,7 +132,6 @@ export default function Dashboard() {
       return true;
     });
 
-    // Sort
     filtered.sort((a, b) => {
       const aVal = a[sort.field as keyof Container];
       const bVal = b[sort.field as keyof Container];
@@ -356,22 +147,19 @@ export default function Dashboard() {
     return filtered;
   }, [containers, filters, updates, sort]);
 
-  // Split containers into My Projects and Community Containers
   const { myProjects, otherContainers } = useMemo(() => ({
     myProjects: filteredContainers.filter((c) => c.is_my_project),
     otherContainers: filteredContainers.filter((c) => !c.is_my_project),
   }), [filteredContainers]);
 
-  // Memoize statistics to avoid recalculation
   const stats = useMemo(() => ({
     totalContainers: containers.length,
-    runningContainers: containers.length, // All containers in DB are considered "tracked"
+    runningContainers: containers.length,
     autoUpdateEnabled: containers.filter((c) => c.policy === 'auto').length,
     staleContainers: updates.filter((u) => u.status === 'pending' && u.reason_type === 'stale').length,
     pendingUpdates: updates.filter((u) => u.status === 'pending').length,
   }), [containers, updates]);
 
-  // Memoize policy distribution calculation
   const policyStats = useMemo(() => {
     return containers.reduce((acc, c) => {
       const policy = c.policy || 'monitor';
@@ -390,59 +178,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-tide-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-tide-text-muted">Total Containers</p>
-                <p className="text-3xl font-bold text-tide-text mt-2">{stats.totalContainers}</p>
-              </div>
-              <Package className="text-primary" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-tide-text-muted">Running</p>
-                <p className="text-3xl font-bold text-green-400 mt-2">{stats.runningContainers}</p>
-              </div>
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-            </div>
-          </div>
-
-          <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-tide-text-muted">Auto-Update Enabled</p>
-                <p className="text-3xl font-bold text-primary mt-2">{stats.autoUpdateEnabled}</p>
-              </div>
-              <RefreshCw className="text-primary" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-tide-text-muted">Stale Containers</p>
-                <p className="text-3xl font-bold text-orange-400 mt-2">{stats.staleContainers}</p>
-              </div>
-              <Archive className="text-orange-400" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-tide-text-muted">Pending Updates</p>
-                <p className="text-3xl font-bold text-accent mt-2">{stats.pendingUpdates}</p>
-              </div>
-              {stats.pendingUpdates > 0 && (
-                <div className="w-3 h-3 bg-accent rounded-full animate-pulse"></div>
-              )}
-            </div>
-          </div>
-        </div>
+        <DashboardStats {...stats} />
 
         {/* Analytics Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -481,7 +217,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* CVEs Resolved Card - Only show when VulnForge is enabled */}
+          {/* CVEs Resolved Card */}
           {vulnforgeEnabled && (
             <div className="bg-tide-surface rounded-lg p-6 border border-tide-border">
               <div className="flex items-center justify-between mb-4">
@@ -553,76 +289,22 @@ export default function Dashboard() {
         </div>
 
         {/* Actions Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-tide-text-muted" size={20} />
-            <input
-              type="text"
-              placeholder="Search containers..."
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="w-full pl-10 pr-4 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="px-4 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Status</option>
-              <option value="running">Running</option>
-              <option value="stopped">Stopped</option>
-              <option value="exited">Exited</option>
-            </select>
-
-            <select
-              value={filters.autoUpdate}
-              onChange={(e) => setFilters({ ...filters, autoUpdate: e.target.value })}
-              className="px-4 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Auto-Update</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </select>
-
-            <select
-              value={filters.hasUpdate}
-              onChange={(e) => setFilters({ ...filters, hasUpdate: e.target.value })}
-              className="px-4 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Updates</option>
-              <option value="yes">Has Updates</option>
-              <option value="no">No Updates</option>
-            </select>
-
-            <button
-              onClick={handleScan}
-              disabled={scanning || checkingUpdates}
-              className="px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              <RefreshCw size={16} className={scanning ? 'animate-spin' : ''} />
-              {scanning ? 'Scanning...' : 'Scan'}
-            </button>
-
-            <button
-              onClick={handleCheckAllUpdates}
-              disabled={scanning || checkJob?.status === 'running' || checkJob?.status === 'queued'}
-              className="px-4 py-2 bg-accent hover:bg-accent-dark text-tide-text rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              <RefreshCw size={16} className={(checkJob?.status === 'running' || checkJob?.status === 'queued') ? 'animate-spin' : ''} />
-              Check Updates
-            </button>
-          </div>
-        </div>
+        <DashboardFilters
+          filters={filters}
+          onFilterChange={setFilters}
+          scanning={scanning}
+          checkingUpdates={checkJobHook.checkingUpdates}
+          checkJobStatus={checkJobHook.checkJob?.status ?? null}
+          onScan={handleScan}
+          onCheckUpdates={checkJobHook.startCheckAll}
+        />
 
         {/* Check Progress Bar */}
-        {checkJob && (
+        {checkJobHook.checkJob && (
           <CheckProgressBar
-            job={checkJob}
-            onCancel={handleCancelCheckJob}
-            onDismiss={handleDismissCheckJob}
+            job={checkJobHook.checkJob}
+            onCancel={checkJobHook.cancelCheckJob}
+            onDismiss={checkJobHook.dismissCheckJob}
           />
         )}
 
@@ -634,7 +316,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
-            {/* My Projects Section — always show when feature enabled */}
+            {/* My Projects Section */}
             {myProjectsEnabled && (
               <div className="mb-8">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -643,11 +325,11 @@ export default function Dashboard() {
                   </h2>
                   <div className="flex gap-2">
                     <button
-                      onClick={handleScanDependencies}
-                      disabled={depScanJob?.status === 'running' || depScanJob?.status === 'queued' || myProjects.length === 0}
+                      onClick={depScan.startDepScan}
+                      disabled={depScan.depScanJob?.status === 'running' || depScan.depScanJob?.status === 'queued' || myProjects.length === 0}
                       className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                     >
-                      <ScanSearch size={14} className={(depScanJob?.status === 'running' || depScanJob?.status === 'queued') ? 'animate-pulse' : ''} />
+                      <ScanSearch size={14} className={(depScan.depScanJob?.status === 'running' || depScan.depScanJob?.status === 'queued') ? 'animate-pulse' : ''} />
                       Scan Deps
                     </button>
                     <button
@@ -662,11 +344,11 @@ export default function Dashboard() {
                 </div>
 
                 {/* Dependency Scan Progress Bar */}
-                {depScanJob && (
+                {depScan.depScanJob && (
                   <DepScanProgressBar
-                    job={depScanJob}
-                    onCancel={handleCancelDepScan}
-                    onDismiss={handleDismissDepScan}
+                    job={depScan.depScanJob}
+                    onCancel={depScan.cancelDepScan}
+                    onDismiss={depScan.dismissDepScan}
                   />
                 )}
 
@@ -680,7 +362,7 @@ export default function Dashboard() {
                           container={container}
                           hasUpdate={hasUpdate}
                           vulnforgeGlobalEnabled={vulnforgeEnabled}
-                          dependencySummary={depSummary[String(container.id)]}
+                          dependencySummary={depScan.depSummary[String(container.id)]}
                           onClick={() => setSelectedContainer(container)}
                         />
                       );

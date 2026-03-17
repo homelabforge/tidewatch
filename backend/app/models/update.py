@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Index, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -24,7 +24,9 @@ class Update(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    container_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    container_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("containers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     container_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     # Version information

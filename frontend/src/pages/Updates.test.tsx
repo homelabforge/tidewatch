@@ -35,6 +35,15 @@ vi.mock('sonner', () => ({
   },
 }))
 
+// Mock EventStreamContext to prevent real SSE connections in tests
+vi.mock('../contexts/EventStreamContext', () => ({
+  useEventStreamContext: vi.fn(() => ({
+    connectionStatus: 'connected',
+    reconnect: vi.fn(),
+    subscribe: vi.fn(() => vi.fn()),
+  })),
+}))
+
 // Mock useEventStream hook
 vi.mock('../hooks/useEventStream', () => ({
   useEventStream: vi.fn(),

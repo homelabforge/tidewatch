@@ -115,6 +115,10 @@ class HistoryItemSchema(BaseModel):
     dependency_id: int | None = None
     dependency_name: str | None = None
 
+    # Data backup fields (exposed from ORM model)
+    data_backup_id: str | None = None
+    data_backup_status: str | None = None  # success, failed, skipped, timeout
+
     model_config = {"from_attributes": True}
 
 

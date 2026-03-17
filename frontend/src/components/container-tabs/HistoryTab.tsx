@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle, ArrowRight, Undo2, EyeOff, Eye, History } from 'lucide-react';
-import { Container, UpdateHistory } from '../../types';
+import { Container, HistoryItem } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
@@ -13,10 +13,10 @@ interface HistoryTabProps {
 }
 
 export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabProps) {
-  const [history, setHistory] = useState<UpdateHistory[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const loadUpdateHistory = useCallback(async () => {
+  const loadHistoryItem = useCallback(async () => {
     setLoadingHistory(true);
     try {
       const response = await fetch(`/api/v1/containers/${container.id}/details`);
@@ -32,8 +32,8 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
   }, [container.id]);
 
   useEffect(() => {
-    loadUpdateHistory();
-  }, [loadUpdateHistory]);
+    loadHistoryItem();
+  }, [loadHistoryItem]);
 
   const handleRollback = async (historyId: number, dataBackupStatus?: string | null) => {
     const confirmMessage = dataBackupStatus === 'success'
@@ -46,7 +46,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
     try {
       await api.history.rollback(historyId);
       toast.success('Rollback initiated successfully');
-      await loadUpdateHistory();
+      await loadHistoryItem();
       onClose();
     } catch (error) {
       console.error('Rollback error:', error);
@@ -54,7 +54,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
     }
   };
 
-  const handleUnignoreFromHistory = async (item: UpdateHistory) => {
+  const handleUnignoreFromHistory = async (item: HistoryItem) => {
     if (!item.dependency_id || !item.dependency_type) {
       toast.error('Missing dependency information');
       return;
@@ -72,7 +72,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
         toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
       }
 
-      await loadUpdateHistory();
+      await loadHistoryItem();
       onUpdate?.();
     } catch (error) {
       console.error('Unignore error:', error);
@@ -85,7 +85,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-tide-text">Update History</h3>
         <button
-          onClick={loadUpdateHistory}
+          onClick={loadHistoryItem}
           disabled={loadingHistory}
           className="px-3 py-1 bg-tide-surface-light hover:bg-gray-500 text-tide-text rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
         >
@@ -199,7 +199,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                       </button>
                     )}
                   </div>
-                  {item.duration_seconds !== null && (
+                  {item.duration_seconds != null && (
                     <span className="text-xs text-tide-text-muted">
                       {item.duration_seconds < 60
                         ? `${item.duration_seconds}s`

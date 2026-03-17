@@ -4,11 +4,12 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_container_or_404
 from app.models.container import Container
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
@@ -36,6 +37,7 @@ router = APIRouter()
 async def get_restart_state(
     container_id: int,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartStateSchema:
     """Get current restart state for a container.
@@ -46,31 +48,8 @@ async def get_restart_state(
     Returns:
         Restart state with backoff info and computed properties
     """
-    # Verify container exists
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get or create restart state
-    state_result = await db.execute(
-        select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
-    )
-    state = state_result.scalar_one_or_none()
-
-    if not state:
-        # Create default state
-        state = ContainerRestartState(
-            container_id=container.id,
-            container_name=container.name,
-            enabled=container.auto_restart_enabled,
-            max_attempts=container.restart_max_attempts,
-            backoff_strategy=container.restart_backoff_strategy,
-            success_window_seconds=container.restart_success_window,
-        )
-        db.add(state)
-        await db.commit()
-        await db.refresh(state)
+    state = await RestartService.get_or_create_restart_state(db, container)
 
     # Build response with computed properties
     response = RestartStateSchema.model_validate(state)
@@ -85,6 +64,7 @@ async def get_restart_state(
 async def get_restart_history(
     container_id: int,
     _admin: dict | None = Depends(require_auth),
+    _container: Container = Depends(get_container_or_404),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -99,12 +79,6 @@ async def get_restart_history(
     Returns:
         Paginated list of restart log entries
     """
-    # Verify container exists
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get total count
     count_result = await db.execute(
         select(func.count())
@@ -133,6 +107,7 @@ async def enable_restart(
     container_id: int,
     request: EnableRestartRequest,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Enable auto-restart for a container.
@@ -144,24 +119,8 @@ async def enable_restart(
     Returns:
         Success response with updated state
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get or create restart state
-    state_result = await db.execute(
-        select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
-    )
-    state = state_result.scalar_one_or_none()
-
-    if not state:
-        state = ContainerRestartState(
-            container_id=container.id,
-            container_name=container.name,
-        )
-        db.add(state)
+    state = await RestartService.get_or_create_restart_state(db, container)
 
     # Update state
     state.enabled = True
@@ -195,6 +154,7 @@ async def disable_restart(
     container_id: int,
     request: DisableRestartRequest,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Disable auto-restart for a container.
@@ -206,12 +166,6 @@ async def disable_restart(
     Returns:
         Success response
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get restart state
     state_result = await db.execute(
         select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
@@ -242,6 +196,7 @@ async def reset_restart_state(
     container_id: int,
     request: ResetRestartStateRequest,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Reset restart state (clear failures and backoff).
@@ -253,12 +208,6 @@ async def reset_restart_state(
     Returns:
         Success response with reset state
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get restart state
     state_result = await db.execute(
         select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
@@ -297,6 +246,7 @@ async def pause_restart(
     container_id: int,
     request: PauseRestartRequest,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Temporarily pause auto-restart for a container.
@@ -308,12 +258,6 @@ async def pause_restart(
     Returns:
         Success response with paused state
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get restart state
     state_result = await db.execute(
         select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
@@ -345,6 +289,7 @@ async def pause_restart(
 async def resume_restart(
     container_id: int,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Resume auto-restart after pause.
@@ -355,12 +300,6 @@ async def resume_restart(
     Returns:
         Success response
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get restart state
     state_result = await db.execute(
         select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
@@ -392,6 +331,7 @@ async def manual_restart(
     container_id: int,
     request: ManualRestartRequest,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> RestartActionResponse:
     """Manually trigger a restart (bypasses backoff if requested).
@@ -403,26 +343,8 @@ async def manual_restart(
     Returns:
         Success response with execution result
     """
-    # Get container
-    container_result = await db.execute(select(Container).where(Container.id == container_id))
-    container = container_result.scalar_one_or_none()
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     # Get or create restart state
-    state_result = await db.execute(
-        select(ContainerRestartState).where(ContainerRestartState.container_id == container_id)
-    )
-    state = state_result.scalar_one_or_none()
-
-    if not state:
-        state = ContainerRestartState(
-            container_id=container.id,
-            container_name=container.name,
-        )
-        db.add(state)
-        await db.commit()
-        await db.refresh(state)
+    state = await RestartService.get_or_create_restart_state(db, container)
 
     # Execute restart
     attempt_number = state.consecutive_failures + 1 if not request.skip_backoff else 1
@@ -485,28 +407,6 @@ async def get_restart_stats(
     )
     with_failures = failures_result.scalar_one()
 
-    # Containers paused
-    now = datetime.now(UTC)
-    paused_result = await db.execute(
-        select(func.count())
-        .select_from(ContainerRestartState)
-        .where(
-            and_(
-                ContainerRestartState.paused_until.isnot(None),
-                ContainerRestartState.paused_until > now,
-            )
-        )
-    )
-    paused_result.scalar_one()
-
-    # Max retries reached
-    max_retries_result = await db.execute(
-        select(func.count())
-        .select_from(ContainerRestartState)
-        .where(ContainerRestartState.max_retries_reached)
-    )
-    max_retries_result.scalar_one()
-
     # Restarts today
     today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_result = await db.execute(
@@ -532,16 +432,6 @@ async def get_restart_stats(
         .where(ContainerRestartState.current_backoff_seconds > 0)
     )
     avg_backoff = backoff_result.scalar_one() or 0.0
-
-    # Success rate (last 100 restarts)
-    recent_logs_result = await db.execute(
-        select(ContainerRestartLog).order_by(desc(ContainerRestartLog.scheduled_at)).limit(100)
-    )
-    recent_logs = recent_logs_result.scalars().all()
-
-    if recent_logs:
-        successful = sum(1 for log in recent_logs if log.success)
-        _ = (successful / len(recent_logs)) * 100
 
     return RestartStatsResponse(
         total_containers=total_monitored,

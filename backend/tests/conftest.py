@@ -251,14 +251,18 @@ async def client(app, db):
 
 @pytest.fixture
 async def admin_user(db):
-    """Create admin credentials in settings for authentication tests."""
-    # Set admin credentials in settings (TideWatch uses settings-based auth)
+    """Create admin user for authentication tests."""
+    from app.models.user import User
+
     password_hash = hash_password("AdminPassword123!")
-    await SettingsService.set(db, "admin_username", "admin")
-    await SettingsService.set(db, "admin_email", "admin@example.com")
-    await SettingsService.set(db, "admin_password_hash", password_hash)
-    await SettingsService.set(db, "admin_full_name", "Admin User")
-    await SettingsService.set(db, "admin_auth_method", "local")
+    user = User(
+        username="admin",
+        email="admin@example.com",
+        password_hash=password_hash,
+        full_name="Admin User",
+        auth_method="local",
+    )
+    db.add(user)
 
     # Enable local authentication (required for require_auth to work properly)
     await SettingsService.set(db, "auth_mode", "local")

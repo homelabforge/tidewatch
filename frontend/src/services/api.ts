@@ -1,7 +1,8 @@
 import type {
   Container,
   Update,
-  UpdateHistory,
+  HistoryItem,
+  UpdateHistoryDetail,
   UnifiedHistoryEvent,
   SystemInfo,
   ContainerMetrics,
@@ -59,7 +60,9 @@ function updateCsrfToken(response: Response): void {
   const token = response.headers.get('x-csrf-token') || response.headers.get('X-CSRF-Token');
   if (token) {
     csrfToken = token;
-    console.log('[CSRF] Token updated:', token.substring(0, 10) + '...');
+    if (import.meta.env.DEV) {
+      console.log('[CSRF] Token updated:', token.substring(0, 10) + '...');
+    }
   }
 }
 
@@ -78,8 +81,10 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const csrfToken = getCsrfToken();
     if (csrfToken) {
       headers['X-CSRF-Token'] = csrfToken;
-      console.log(`[CSRF] Including token in ${method} ${endpoint}:`, csrfToken.substring(0, 10) + '...');
-    } else {
+      if (import.meta.env.DEV) {
+        console.log(`[CSRF] Including token in ${method} ${endpoint}:`, csrfToken.substring(0, 10) + '...');
+      }
+    } else if (import.meta.env.DEV) {
       console.warn(`[CSRF] No token available for ${method} ${endpoint}`);
     }
   }
@@ -168,7 +173,7 @@ export const containerApi = {
     apiCall<ContainerMetrics>(`/containers/${id}/metrics`),
 
   getHistory: (id: number) =>
-    apiCall<UpdateHistory[]>(`/containers/${id}/history`),
+    apiCall<HistoryItem[]>(`/containers/${id}/history`),
 
   getDependencies: (id: number) =>
     apiCall<DependencyInfo>(`/containers/${id}/dependencies`),
@@ -349,7 +354,7 @@ export const historyApi = {
   // Trailing slash to avoid redirect that can downgrade scheme
   getAll: () => apiCall<UnifiedHistoryEvent[]>('/history/'),
 
-  getById: (id: number) => apiCall<UpdateHistory>(`/history/${id}`),
+  getById: (id: number) => apiCall<UpdateHistoryDetail>(`/history/${id}`),
 
   rollback: (id: number) =>
     apiCall<{ message: string }>(`/history/${id}/rollback`, {

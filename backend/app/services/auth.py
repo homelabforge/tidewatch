@@ -1,4 +1,4 @@
-"""Authentication service for TideWatch - single-user, settings-based JWT auth."""
+"""Authentication service for TideWatch - single-user JWT auth with User model."""
 
 import logging
 import secrets
@@ -10,9 +10,11 @@ from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from authlib.jose import JoseError, jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
 from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -216,7 +218,22 @@ def decode_token(token: str) -> dict:
 
 
 # ============================================================================
-# Admin Profile Management (Settings-based)
+# User Model Helpers
+# ============================================================================
+
+
+async def _get_admin_user(db: AsyncSession) -> User | None:
+    """Get the admin user from the database.
+
+    Returns:
+        User instance or None if no admin account exists.
+    """
+    result = await db.execute(select(User).limit(1))
+    return result.scalar_one_or_none()
+
+
+# ============================================================================
+# Admin Profile Management
 # ============================================================================
 
 
@@ -232,12 +249,12 @@ async def is_setup_complete(db: AsyncSession) -> bool:
         return True
 
     # For local/OIDC auth, check if admin account exists
-    admin_username = await SettingsService.get(db, "admin_username")
-    return bool(admin_username and admin_username.strip())
+    user = await _get_admin_user(db)
+    return user is not None
 
 
 async def get_admin_profile(db: AsyncSession) -> dict | None:
-    """Get admin profile from settings.
+    """Get admin profile from User model.
 
     Returns:
         Dict with admin profile data, or None if setup not complete
@@ -245,43 +262,103 @@ async def get_admin_profile(db: AsyncSession) -> dict | None:
     if not await is_setup_complete(db):
         return None
 
-    return {
-        "username": await SettingsService.get(db, "admin_username", default=""),
-        "email": await SettingsService.get(db, "admin_email", default=""),
-        "full_name": await SettingsService.get(db, "admin_full_name", default=""),
-        "auth_method": await SettingsService.get(db, "admin_auth_method", default="local"),
-        "oidc_provider": await SettingsService.get(db, "admin_oidc_provider", default=""),
-        "created_at": await SettingsService.get(db, "admin_created_at", default=""),
-        "last_login": await SettingsService.get(db, "admin_last_login", default=""),
-    }
+    user = await _get_admin_user(db)
+    if not user:
+        return None
+
+    return user.to_profile_dict()
 
 
 async def update_admin_profile(
     db: AsyncSession, email: str | None = None, full_name: str | None = None
 ) -> None:
-    """Update admin profile in settings."""
+    """Update admin profile."""
+    user = await _get_admin_user(db)
+    if not user:
+        return
+
     if email is not None:
-        await SettingsService.set(db, "admin_email", email)
+        user.email = email
     if full_name is not None:
-        await SettingsService.set(db, "admin_full_name", full_name)
+        user.full_name = full_name
+    await db.commit()
 
 
 async def update_admin_password(db: AsyncSession, new_hash: str) -> None:
-    """Update admin password hash in settings."""
-    await SettingsService.set(db, "admin_password_hash", new_hash)
+    """Update admin password hash."""
+    user = await _get_admin_user(db)
+    if not user:
+        return
+
+    user.password_hash = new_hash
+    await db.commit()
 
 
 async def update_admin_oidc_link(db: AsyncSession, oidc_subject: str, provider: str) -> None:
     """Link OIDC identity to admin account."""
-    await SettingsService.set(db, "admin_oidc_subject", oidc_subject)
-    await SettingsService.set(db, "admin_oidc_provider", provider)
-    await SettingsService.set(db, "admin_auth_method", "oidc")
+    user = await _get_admin_user(db)
+    if not user:
+        return
+
+    user.oidc_subject = oidc_subject
+    user.oidc_provider = provider
+    user.auth_method = "oidc"
+    await db.commit()
 
 
 async def update_admin_last_login(db: AsyncSession) -> None:
     """Update admin last login timestamp."""
-    now = datetime.now(UTC).isoformat()
-    await SettingsService.set(db, "admin_last_login", now)
+    user = await _get_admin_user(db)
+    if not user:
+        return
+
+    user.last_login = datetime.now(UTC)
+    await db.commit()
+
+
+async def create_admin_user(
+    db: AsyncSession,
+    username: str,
+    email: str,
+    password_hash: str,
+    full_name: str = "",
+) -> User:
+    """Create the admin user account.
+
+    Args:
+        db: Database session
+        username: Admin username
+        email: Admin email
+        password_hash: Argon2 password hash
+        full_name: Admin full name
+
+    Returns:
+        Created User instance
+    """
+    user = User(
+        username=username,
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        auth_method="local",
+        last_login=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def get_admin_password_hash(db: AsyncSession) -> str:
+    """Get admin password hash for verification.
+
+    Returns:
+        Password hash string, or empty string if no admin exists.
+    """
+    user = await _get_admin_user(db)
+    if not user:
+        return ""
+    return user.password_hash
 
 
 # ============================================================================
@@ -295,34 +372,32 @@ async def authenticate_admin(db: AsyncSession, username: str, password: str) -> 
     Returns:
         Admin profile dict if authenticated, None otherwise
     """
-    # Get admin profile
-    profile = await get_admin_profile(db)
-    if not profile:
+    user = await _get_admin_user(db)
+    if not user:
         return None
 
     # Check username matches
-    if profile["username"] != username:
+    if user.username != username:
         return None
 
-    # Get password hash
-    password_hash = await SettingsService.get(db, "admin_password_hash", default="")
-    if not password_hash:
+    # Check password hash exists
+    if not user.password_hash:
         logger.warning("Password login attempted but no password hash set")
         return None
 
     # Check auth method - reject password login for OIDC-only users
-    if profile["auth_method"] == "oidc":
+    if user.auth_method == "oidc":
         logger.warning("Password login attempted for OIDC-linked admin account")
         return None
 
     # Verify password
-    if not verify_password(password, password_hash):
+    if not verify_password(password, user.password_hash):
         return None
 
     # Update last login
     await update_admin_last_login(db)
 
-    return profile
+    return user.to_profile_dict()
 
 
 async def get_current_admin(
@@ -366,7 +441,7 @@ async def get_current_admin(
         logger.error("Invalid token subject: %s", sub)
         raise credentials_exception
 
-    # Get admin profile from settings
+    # Get admin profile from User model
     profile = await get_admin_profile(db)
     if not profile:
         logger.error("Admin profile not found")

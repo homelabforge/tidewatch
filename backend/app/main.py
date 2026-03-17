@@ -3,9 +3,7 @@
 import logging
 import os
 import secrets
-import tomllib
 from contextlib import asynccontextmanager
-from datetime import UTC
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -17,30 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import AsyncSessionLocal, init_db
 from app.services.scheduler import scheduler_service
 from app.services.settings_service import SettingsService
-
-
-def get_version() -> str:
-    """Read version from pyproject.toml (single source of truth)."""
-    try:
-        # Safely construct path relative to this file
-        # pyproject.toml is in backend/ directory (parent of app/)
-        app_dir = Path(__file__).parent.resolve()
-        backend_dir = app_dir.parent.resolve()
-        pyproject_path = backend_dir / "pyproject.toml"
-
-        # Verify path is within expected directory to prevent path traversal
-        # (pyproject.toml should be in /app or /app/backend in production)
-        if not pyproject_path.exists():
-            logger.warning(f"pyproject.toml not found at {pyproject_path}")
-            return "0.0.0-dev"
-
-        with open(pyproject_path, "rb") as f:
-            data = tomllib.load(f)
-        return data["project"]["version"]
-    except (FileNotFoundError, KeyError) as e:
-        logger.warning(f"Could not read version from pyproject.toml: {e}")
-        return "0.0.0-dev"
-
+from app.utils.version import get_app_version
 
 # Configure logging
 logging.basicConfig(
@@ -84,41 +59,10 @@ async def lifespan(app: FastAPI):
     logger.info("Default settings initialized")
 
     # Clean up stuck update history records from previous crashes
-    # Using raw SQL to avoid issues with model columns that may not exist yet during migrations
+    from app.services.update_engine import UpdateEngine
+
     async with AsyncSessionLocal() as db:
-        from datetime import datetime
-
-        from sqlalchemy import text
-
-        # Find all in_progress records using raw SQL
-        result = await db.execute(
-            text("SELECT id FROM update_history WHERE status = :status"),
-            {"status": "in_progress"},
-        )
-        stuck_records = result.fetchall()
-
-        if stuck_records:
-            logger.warning(
-                f"Found {len(stuck_records)} stuck update history records, marking as failed"
-            )
-            # Update records using raw SQL
-            await db.execute(
-                text("""
-                    UPDATE update_history
-                    SET status = :new_status,
-                        error_message = :error_msg,
-                        completed_at = :completed_at
-                    WHERE status = :old_status
-                """),
-                {
-                    "new_status": "failed",
-                    "error_msg": "Update interrupted by application restart",
-                    "completed_at": datetime.now(UTC).isoformat(),
-                    "old_status": "in_progress",
-                },
-            )
-            await db.commit()
-            logger.info(f"Cleaned up {len(stuck_records)} stuck update history records")
+        await UpdateEngine.recover_stuck_records(db)
 
     # Recover any VulnForge scan jobs interrupted by previous shutdown
     from app.services.vulnforge_scan_worker import recover_interrupted_jobs
@@ -152,7 +96,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TideWatch",
     description="Intelligent Docker Container Update Manager with Auto-Restart",
-    version=get_version(),
+    version=get_app_version(),
     lifespan=lifespan,
 )
 
@@ -220,7 +164,7 @@ app.add_middleware(CSRFProtectionMiddleware)
 
 # Session middleware for CSRF protection
 # Generate/load session secret key from persistent storage
-from app.utils.security import sanitize_path  # noqa: E402
+from app.utils.security import is_secure_cookie, sanitize_path  # noqa: E402
 
 try:
     # Validate session secret file path (must be in /data)
@@ -249,7 +193,7 @@ app.add_middleware(
     session_cookie="tidewatch_session",
     max_age=24 * 60 * 60,  # 24 hours
     same_site="lax",
-    https_only=False,  # Set to True if using HTTPS in production
+    https_only=is_secure_cookie(),
 )
 
 
@@ -293,7 +237,7 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
     # HSTS - only in production with HTTPS
-    if os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true":
+    if is_secure_cookie():
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     # Content Security Policy
@@ -363,10 +307,16 @@ async def health_check():
     return {"status": "healthy", "service": "tidewatch"}
 
 
-# Prometheus metrics endpoint
+# Prometheus metrics endpoint (full — via prometheus_client library)
+# For a lightweight subset, see also GET /api/v1/system/metrics
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint."""
+    """Full Prometheus metrics endpoint using the prometheus_client library.
+
+    This is the primary scrape target for Prometheus. Includes detailed histograms,
+    gauges, and counters. For a lightweight subset (container/update counts only),
+    use GET /api/v1/system/metrics.
+    """
     from app.database import AsyncSessionLocal
     from app.services.metrics import collect_metrics, get_content_type, get_metrics
 

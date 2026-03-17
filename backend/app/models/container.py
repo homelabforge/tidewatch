@@ -8,9 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.mixins import RestartConfigMixin, UpdatePolicyMixin
 
 
-class Container(Base):
+class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     """Docker container tracked by TideWatch."""
 
     __tablename__ = "containers"
@@ -31,17 +32,8 @@ class Container(Base):
         String, nullable=True
     )  # Docker Compose project name
 
-    # Update policy (from labels or UI)
-    policy: Mapped[str] = mapped_column(
-        String, default="monitor", index=True
-    )  # auto, monitor, disabled - indexed for filtering
-    scope: Mapped[str] = mapped_column(String, default="patch")  # patch, minor, major
-    include_prereleases: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True, default=None
-    )  # None=inherit global, True=include prereleases, False=stable only
-    version_track: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # None=auto-detect, "semver"=force SemVer, "calver"=force CalVer
+    # Update policy fields are provided by UpdatePolicyMixin:
+    # policy, scope, include_prereleases, version_track, update_window
 
     # VulnForge integration
     vulnforge_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -77,29 +69,17 @@ class Container(Base):
         String, nullable=True
     )  # e.g., github:owner/repo or https://changelog
 
-    # Intelligent restart configuration
-    auto_restart_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    restart_policy: Mapped[str] = mapped_column(
-        String, default="manual"
-    )  # manual, on-failure, always, unless-stopped
-    restart_max_attempts: Mapped[int] = mapped_column(Integer, default=10)
-    restart_backoff_strategy: Mapped[str] = mapped_column(
-        String, default="exponential"
-    )  # exponential, linear, fixed
-    restart_success_window: Mapped[int] = mapped_column(Integer, default=300)  # Seconds (5 minutes)
+    # Restart configuration fields are provided by RestartConfigMixin:
+    # auto_restart_enabled, restart_policy, restart_max_attempts,
+    # restart_backoff_strategy, restart_success_window
 
-    # Update window configuration (time-based restrictions)
-    update_window: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # Format: "HH:MM-HH:MM" or "Days:HH:MM-HH:MM"
-
-    # Dependency tracking for ordered updates
-    dependencies: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # JSON array of container names this depends on
-    dependents: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # JSON array of container names that depend on this
+    # Dependency tracking for ordered updates (JSON arrays)
+    dependencies: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )  # Container names this depends on
+    dependents: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )  # Container names that depend on this
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

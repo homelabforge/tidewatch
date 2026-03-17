@@ -6,8 +6,22 @@ This module provides functions to prevent security vulnerabilities:
 - Sensitive data exposure: Mask sensitive values in logs/responses
 """
 
+import os
 import re
 from pathlib import Path
+
+
+def is_secure_cookie() -> bool:
+    """Check if cookies should be set with the Secure flag.
+
+    Reads the CSRF_SECURE_COOKIE environment variable. When True, cookies
+    will be marked Secure (HTTPS-only). Should be set to True for
+    production deployments behind HTTPS/TLS termination (e.g., Traefik).
+
+    Returns:
+        True if cookies should be Secure, False otherwise.
+    """
+    return os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true"
 
 
 def sanitize_log_message(msg: str | bytes | int | float | None) -> str:

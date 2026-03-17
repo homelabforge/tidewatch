@@ -12,8 +12,8 @@ interface SettingsTabProps {
 export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const [policy, setPolicy] = useState(container.policy);
   const [scope, setScope] = useState(container.scope);
-  const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases);
-  const [versionTrack, setVersionTrack] = useState<string | null>(container.version_track);
+  const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases ?? null);
+  const [versionTrack, setVersionTrack] = useState<string | null>(container.version_track ?? null);
   const [vulnforgeEnabled] = useState(container.vulnforge_enabled);
   const [healthCheckMethod, setHealthCheckMethod] = useState(container.health_check_method);
   const [healthCheckUrl, setHealthCheckUrl] = useState(container.health_check_url || '');
@@ -55,7 +55,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
       try {
         const settings = await api.settings.getAll();
         const myProjectsSetting = settings.find(s => s.key === 'my_projects_enabled');
-        setMyProjectsEnabled(myProjectsSetting?.value === 'true' || myProjectsSetting?.value === true);
+        setMyProjectsEnabled(myProjectsSetting?.value === 'true');
       } catch (error) {
         console.error('Failed to load settings:', error);
       }

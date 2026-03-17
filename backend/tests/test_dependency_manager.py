@@ -10,7 +10,6 @@ Tests container dependency management and update ordering:
 - Cache eviction and clearing
 """
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -47,13 +46,13 @@ class TestGetUpdateOrder:
             name="db", image="postgres", current_tag="16", dependencies=None
         )
         api_container = make_container(
-            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+            name="api", image="node", current_tag="18", dependencies=(["db"])
         )
         web_container = make_container(
             name="web",
             image="nginx",
             current_tag="latest",
-            dependencies=json.dumps(["api"]),
+            dependencies=(["api"]),
         )
         db.add_all([db_container, api_container, web_container])
         await db.commit()
@@ -75,19 +74,19 @@ class TestGetUpdateOrder:
         db_container = make_container(name="db", image="postgres", current_tag="16")
         cache_container = make_container(name="cache", image="redis", current_tag="7")
         api_container = make_container(
-            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+            name="api", image="node", current_tag="18", dependencies=(["db"])
         )
         worker_container = make_container(
             name="worker",
             image="python",
             current_tag="3.11",
-            dependencies=json.dumps(["db", "cache"]),
+            dependencies=(["db", "cache"]),
         )
         web_container = make_container(
             name="web",
             image="nginx",
             current_tag="latest",
-            dependencies=json.dumps(["api", "cache"]),
+            dependencies=(["api", "cache"]),
         )
 
         db.add_all(
@@ -129,7 +128,7 @@ class TestGetUpdateOrder:
             name="web",
             image="nginx",
             current_tag="latest",
-            dependencies=json.dumps(["api", "external-service"]),
+            dependencies=(["api", "external-service"]),
         )
         db.add_all([api_container, web_container])
         await db.commit()
@@ -155,7 +154,7 @@ class TestGetUpdateOrder:
         """Test uses cache for repeated dependency resolution."""
         container1 = make_container(name="db", image="postgres", current_tag="16")
         container2 = make_container(
-            name="api", image="node", current_tag="18", dependencies=json.dumps(["db"])
+            name="api", image="node", current_tag="18", dependencies=(["db"])
         )
         db.add_all([container1, container2])
         await db.commit()
@@ -205,14 +204,12 @@ class TestGetUpdateOrder:
         """Test falls back to original order if circular dependency detected."""
         # Create circular dependency: a -> b -> c -> a
         container_a = make_container(
-            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["c"])
+            name="a", image="alpine", current_tag="3", dependencies=(["c"])
         )
         container_b = make_container(
-            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"])
+            name="b", image="busybox", current_tag="1", dependencies=(["a"])
         )
-        container_c = make_container(
-            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"])
-        )
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=(["b"]))
         db.add_all([container_a, container_b, container_c])
         await db.commit()
 
@@ -221,22 +218,20 @@ class TestGetUpdateOrder:
         # Should fall back to original order
         assert result == ["a", "b", "c"]
 
-    async def test_handles_invalid_json_dependencies(self, db, make_container, caplog):
-        """Test handles invalid JSON in dependencies field."""
+    async def test_handles_non_list_dependencies(self, db, make_container):
+        """Test handles non-list value in dependencies field gracefully."""
         container1 = make_container(name="db", image="postgres", current_tag="16")
+        # JSON column stores this as a string, not a list — should be treated as no deps
         container2 = make_container(
-            name="api", image="node", current_tag="18", dependencies="not-valid-json"
+            name="api", image="node", current_tag="18", dependencies="not-a-list"
         )
         db.add_all([container1, container2])
         await db.commit()
 
         result = await DependencyManager.get_update_order(db, ["api", "db"])
 
-        # Should treat api as having no dependencies
+        # Should treat api as having no dependencies (non-list value ignored)
         assert result == ["api", "db"] or result == ["db", "api"]
-
-        # Should log warning
-        assert "Invalid dependencies JSON" in caplog.text
 
 
 class TestTopologicalSort:
@@ -377,7 +372,7 @@ class TestUpdateContainerDependencies:
 
         # Refresh and check
         await db.refresh(container_a)
-        deps = json.loads(container_a.dependencies)
+        deps = container_a.dependencies
         assert deps == ["b"]
 
     async def test_updates_reverse_dependencies(self, db, make_container):
@@ -391,17 +386,15 @@ class TestUpdateContainerDependencies:
 
         # Check reverse dependency
         await db.refresh(container_b)
-        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        dependents = container_b.dependents or []
         assert "a" in dependents
 
     async def test_removes_old_dependencies(self, db, make_container):
         """Test removes old dependencies when updated."""
         container_a = make_container(
-            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"])
+            name="a", image="alpine", current_tag="3", dependencies=(["b"])
         )
-        container_b = make_container(
-            name="b", image="busybox", current_tag="1", dependents=json.dumps(["a"])
-        )
+        container_b = make_container(name="b", image="busybox", current_tag="1", dependents=(["a"]))
         container_c = make_container(name="c", image="caddy", current_tag="2")
         db.add_all([container_a, container_b, container_c])
         await db.commit()
@@ -411,12 +404,12 @@ class TestUpdateContainerDependencies:
 
         # Check b no longer has a as dependent
         await db.refresh(container_b)
-        dependents = json.loads(container_b.dependents) if container_b.dependents else []
+        dependents = container_b.dependents or []
         assert "a" not in dependents
 
         # Check c has a as dependent
         await db.refresh(container_c)
-        dependents = json.loads(container_c.dependents) if container_c.dependents else []
+        dependents = container_c.dependents or []
         assert "a" in dependents
 
     async def test_clears_dependency_cache(self, db, make_container):
@@ -493,10 +486,10 @@ class TestValidateDependencies:
         """Test rejects dependencies that create cycles."""
         # Create: a -> b -> c
         container_a = make_container(
-            name="a", image="alpine", current_tag="3", dependencies=json.dumps(["b"])
+            name="a", image="alpine", current_tag="3", dependencies=(["b"])
         )
         container_b = make_container(
-            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["c"])
+            name="b", image="busybox", current_tag="1", dependencies=(["c"])
         )
         container_c = make_container(name="c", image="caddy", current_tag="2")
         db.add_all([container_a, container_b, container_c])
@@ -513,11 +506,9 @@ class TestValidateDependencies:
         """Test allows complex but valid dependency graph."""
         container_a = make_container(name="a", image="alpine", current_tag="3")
         container_b = make_container(name="b", image="busybox", current_tag="1")
-        container_c = make_container(
-            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["a"])
-        )
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=(["a"]))
         container_d = make_container(
-            name="d", image="debian", current_tag="12", dependencies=json.dumps(["b"])
+            name="d", image="debian", current_tag="12", dependencies=(["b"])
         )
         db.add_all([container_a, container_b, container_c, container_d])
         await db.commit()
@@ -616,7 +607,7 @@ class TestDependencyManagerEdgeCases:
                 name=f"container{i}",
                 image="test",
                 current_tag="latest",
-                dependencies=json.dumps(deps) if deps else None,
+                dependencies=(deps) if deps else None,
             )
             containers.append(container)
 
@@ -646,13 +637,13 @@ class TestDependencyManagerEdgeCases:
                 name="api",
                 image="node",
                 current_tag="18",
-                dependencies=json.dumps(["db"]),
+                dependencies=(["db"]),
             ),
             make_container(
                 name="queue",
                 image="rabbitmq",
                 current_tag="3",
-                dependencies=json.dumps(["cache"]),
+                dependencies=(["cache"]),
             ),
         ]
         layer2 = [
@@ -660,7 +651,7 @@ class TestDependencyManagerEdgeCases:
                 name="worker",
                 image="python",
                 current_tag="3.11",
-                dependencies=json.dumps(["api", "queue"]),
+                dependencies=(["api", "queue"]),
             )
         ]
         layer3 = [
@@ -668,7 +659,7 @@ class TestDependencyManagerEdgeCases:
                 name="web",
                 image="nginx",
                 current_tag="latest",
-                dependencies=json.dumps(["worker"]),
+                dependencies=(["worker"]),
             )
         ]
 
@@ -705,13 +696,11 @@ class TestDependencyManagerEdgeCases:
 
         container_a = make_container(name="a", image="alpine", current_tag="3")
         container_b = make_container(
-            name="b", image="busybox", current_tag="1", dependencies=json.dumps(["a"])
+            name="b", image="busybox", current_tag="1", dependencies=(["a"])
         )
-        container_c = make_container(
-            name="c", image="caddy", current_tag="2", dependencies=json.dumps(["b"])
-        )
+        container_c = make_container(name="c", image="caddy", current_tag="2", dependencies=(["b"]))
         container_d = make_container(
-            name="d", image="debian", current_tag="12", dependencies=json.dumps(["c"])
+            name="d", image="debian", current_tag="12", dependencies=(["c"])
         )
 
         db.add_all([container_a, container_b, container_c, container_d])

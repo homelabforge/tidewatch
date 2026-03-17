@@ -3,9 +3,7 @@
 import asyncio
 import logging
 import shutil
-import tomllib
 from datetime import UTC, datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
@@ -14,30 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.auth import require_auth
 from app.services.docker_access import docker_subprocess_env, resolve_docker_url_sync
+from app.utils.version import get_app_version
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def get_version() -> str:
-    """Get version from pyproject.toml."""
-    try:
-        # Prefer the pyproject.toml that is copied into the app image
-        candidates = [
-            Path("/app/pyproject.toml"),
-            Path(__file__).resolve().parent.parent.parent / "pyproject.toml",
-            Path("pyproject.toml"),
-        ]
-
-        for pyproject_path in candidates:
-            if pyproject_path.exists():
-                with open(pyproject_path, "rb") as f:
-                    data = tomllib.load(f)
-                    return data.get("project", {}).get("version", "unknown")
-    except Exception:
-        # Fall through to "unknown" on any parsing/IO error
-        pass
-    return "unknown"
 
 
 async def get_docker_version() -> str:
@@ -84,7 +62,7 @@ async def get_system_info(
     )
 
     return {
-        "version": get_version(),
+        "version": get_app_version(),
         "docker_version": await get_docker_version(),
         "total_containers": total_containers or 0,
         "monitored_containers": monitored or 0,
@@ -99,7 +77,7 @@ async def get_system_info(
 async def get_version_info(_admin: dict | None = Depends(require_auth)):
     """Get version information."""
     return {
-        "version": get_version(),
+        "version": get_app_version(),
         "docker_version": await get_docker_version(),
     }
 
@@ -174,18 +152,16 @@ async def readiness_check():
 
 
 @router.get("/metrics")
-async def prometheus_metrics(db: AsyncSession = Depends(get_db)):
-    """Prometheus metrics endpoint.
+async def system_metrics_basic(db: AsyncSession = Depends(get_db)):
+    """Lightweight system metrics in Prometheus text format.
 
-    Provides metrics in Prometheus text format for scraping.
+    Returns a small subset of metrics (container counts, update counts by status)
+    using hand-built Prometheus text format. No external library required.
 
-    Metrics exposed:
-    - tidewatch_containers_total: Total containers monitored
-    - tidewatch_containers_monitored: Containers with auto-update enabled
-    - tidewatch_updates_pending: Pending updates
-    - tidewatch_updates_total: Total updates by status
+    For the full Prometheus metrics endpoint (with detailed histograms, gauges,
+    and counters from the prometheus_client library), use GET /metrics instead.
 
-    Note: This endpoint is public (no authentication required) for Prometheus scraping
+    Note: This endpoint is public (no authentication required) for Prometheus scraping.
     """
     from sqlalchemy import func
 

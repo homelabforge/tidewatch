@@ -50,7 +50,7 @@ export default function DependencyIgnoreModal({
     if ('latest_tag' in dependency) {
       return dependency.latest_tag;
     }
-    return dependency.latest_version;
+    return (dependency as AppDependency | HttpServer).latest_version;
   };
 
   return (

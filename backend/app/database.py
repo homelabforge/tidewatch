@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -59,6 +59,16 @@ if "sqlite" in DATABASE_URL:
         poolclass=StaticPool,  # Single persistent connection for SQLite
         pool_reset_on_return=None,  # Don't reset connections on return for SQLite
     )
+
+    # Enable foreign key enforcement on every new SQLite connection.
+    # This is a connection-level pragma that does NOT persist across connections,
+    # so it must be set each time — unlike WAL/synchronous/cache which are database-level.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_fk_pragma(dbapi_connection, connection_record):  # noqa: ARG001
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 else:
     # PostgreSQL/MySQL: Use connection pooling for better performance
     engine = create_async_engine(
@@ -109,10 +119,11 @@ async def init_db():
             # Set busy timeout to 5 seconds to handle concurrent access
             await conn.execute(text("PRAGMA busy_timeout=5000"))
 
-            # Enable foreign keys
-            await conn.execute(text("PRAGMA foreign_keys=ON"))
+            # Note: foreign_keys=ON is set per-connection via engine connect hook above
 
-            logger.info("SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout")
+            logger.info(
+                "SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout, FK enforcement"
+            )
 
     # Run pending migrations — fail-fast so we don't run with a broken schema
     from app.migrations.runner import run_migrations

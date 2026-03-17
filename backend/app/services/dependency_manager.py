@@ -69,18 +69,11 @@ class DependencyManager:
                 dependencies[name] = set()
                 continue
 
-            # Parse dependencies from JSON string
+            # Parse dependencies (JSON column — already deserialized)
             deps = set()
-            if container.dependencies:
-                try:
-                    deps_list = json.loads(container.dependencies)
-                    if isinstance(deps_list, list):
-                        # Only include dependencies that are in the update list
-                        deps = {d for d in deps_list if d in container_names}
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Invalid dependencies JSON for {name}: {container.dependencies}"
-                    )
+            deps_list = container.dependencies
+            if deps_list and isinstance(deps_list, list):
+                deps = {d for d in deps_list if d in container_names}
 
             dependencies[name] = deps
 
@@ -214,18 +207,14 @@ class DependencyManager:
 
         # Store old dependencies to clean up reverse links
         old_deps = set()
-        if container.dependencies:
-            try:
-                old_deps_list = json.loads(container.dependencies)
-                if isinstance(old_deps_list, list):
-                    old_deps = set(old_deps_list)
-            except json.JSONDecodeError:
-                pass
+        deps_list = container.dependencies
+        if deps_list and isinstance(deps_list, list):
+            old_deps = set(deps_list)
 
         new_deps = set(dependencies)
 
         # Update forward dependencies
-        container.dependencies = json.dumps(list(new_deps))
+        container.dependencies = list(new_deps)
 
         # Update reverse dependencies (dependents)
         # Remove this container from old dependencies' dependents lists
@@ -260,19 +249,15 @@ class DependencyManager:
             )
             return
 
-        # Parse current dependents
+        # Parse current dependents (JSON column — already deserialized)
         dependents = set()
-        if container.dependents:
-            try:
-                dependents_list = json.loads(container.dependents)
-                if isinstance(dependents_list, list):
-                    dependents = set(dependents_list)
-            except json.JSONDecodeError:
-                pass
+        deps_list = container.dependents
+        if deps_list and isinstance(deps_list, list):
+            dependents = set(deps_list)
 
         # Add new dependent
         dependents.add(dependent_name)
-        container.dependents = json.dumps(list(dependents))
+        container.dependents = list(dependents)
 
     @staticmethod
     async def _remove_from_dependents(db: AsyncSession, container_name: str, dependent_name: str):
@@ -289,19 +274,15 @@ class DependencyManager:
         if not container:
             return
 
-        # Parse current dependents
+        # Parse current dependents (JSON column — already deserialized)
         dependents = set()
-        if container.dependents:
-            try:
-                dependents_list = json.loads(container.dependents)
-                if isinstance(dependents_list, list):
-                    dependents = set(dependents_list)
-            except json.JSONDecodeError:
-                pass
+        deps_list = container.dependents
+        if deps_list and isinstance(deps_list, list):
+            dependents = set(deps_list)
 
         # Remove dependent
         dependents.discard(dependent_name)
-        container.dependents = json.dumps(list(dependents))
+        container.dependents = list(dependents)
 
     @staticmethod
     async def validate_dependencies(
@@ -336,15 +317,11 @@ class DependencyManager:
                 # Use proposed dependencies
                 dep_graph[container.name] = set(dependencies)
             else:
-                # Use existing dependencies
+                # Use existing dependencies (JSON column — already deserialized)
                 deps = set()
-                if container.dependencies:
-                    try:
-                        deps_list = json.loads(container.dependencies)
-                        if isinstance(deps_list, list):
-                            deps = set(deps_list)
-                    except json.JSONDecodeError:
-                        pass
+                deps_list = container.dependencies
+                if deps_list and isinstance(deps_list, list):
+                    deps = set(deps_list)
                 dep_graph[container.name] = deps
 
         # Try topological sort to detect cycles

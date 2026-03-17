@@ -316,7 +316,7 @@ class SchedulerService:
                 from app.services.update_engine import UpdateEngine
                 from app.services.update_window import UpdateWindow
 
-                now = datetime.now()
+                now = datetime.now(UTC)
 
                 result = await db.execute(
                     select(Update, Container)

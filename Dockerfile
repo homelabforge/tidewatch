@@ -1,7 +1,7 @@
 # ==============================================================================
 # Dockerfile for TideWatch - Intelligent Docker Container Update Manager
 # Multi-stage production build with frontend built from source
-# Frontend: Bun 1.3.9
+# Frontend: Bun 1.3.10
 # Backend: Python 3.14
 # ==============================================================================
 

@@ -1,19 +1,14 @@
 """API endpoints for dependency ignore/unignore operations."""
 
 import logging
-import re
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.app_dependency import AppDependency
-from app.models.container import Container
 from app.models.dockerfile_dependency import DockerfileDependency
-from app.models.history import UpdateHistory
 from app.models.http_server import HttpServer
 from app.schemas.dependency import (
     BatchDependencyUpdateItem,
@@ -28,41 +23,17 @@ from app.schemas.dependency import (
     UpdateRequest,
     UpdateResponse,
 )
+from app.services.auth import require_auth
+from app.services.dependency_ignore_service import (
+    APP_DEPENDENCY_CONFIG,
+    DOCKERFILE_CONFIG,
+    HTTP_SERVER_CONFIG,
+    DependencyIgnoreService,
+)
 from app.services.dependency_update_service import DependencyUpdateService
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
-
-
-def extract_version_prefix(tag: str | None) -> str | None:
-    """Extract major.minor version prefix from a tag.
-
-    Examples:
-        "3.15.0a5-slim" -> "3.15"
-        "22-alpine" -> "22"
-        "1.2.3" -> "1.2"
-        "latest" -> None
-
-    Args:
-        tag: Version tag string
-
-    Returns:
-        Major.minor prefix or None if cannot be parsed
-    """
-    if not tag:
-        return None
-
-    # Match version patterns like "3.15", "3.15.0", "3.15.0a5", "22", etc.
-    # Also handles tags like "3.14-slim" by stripping suffix first
-    match = re.match(r"^(\d+)(?:\.(\d+))?", tag)
-    if match:
-        major = match.group(1)
-        minor = match.group(2)
-        if minor:
-            return f"{major}.{minor}"
-        return major
-    return None
-
 
 router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
@@ -74,161 +45,41 @@ router = APIRouter(prefix="/dependencies", tags=["dependencies"])
 
 @router.post("/dockerfile/{dependency_id}/ignore")
 async def ignore_dockerfile_dependency(
-    dependency_id: int, request: IgnoreRequest, db: AsyncSession = Depends(get_db)
+    dependency_id: int,
+    request: IgnoreRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Ignore a Dockerfile dependency update.
+    """Ignore a Dockerfile dependency update.
 
     Marks the dependency as ignored for the current version transition.
     If a newer version is released later, the ignore will be automatically cleared.
     """
-    try:
-        # Get dependency with container relationship loaded
-        result = await db.execute(
-            select(DockerfileDependency)
-            .where(DockerfileDependency.id == dependency_id)
-            .options(selectinload(DockerfileDependency.container))
-        )
-        dependency = result.scalar_one_or_none()
-
-        if not dependency:
-            raise HTTPException(status_code=404, detail="Dependency not found")
-
-        if dependency.ignored:
-            raise HTTPException(status_code=400, detail="Dependency is already ignored")
-
-        # Update dependency
-        dependency.ignored = True
-        dependency.ignored_version = dependency.latest_tag  # Track which version we're ignoring
-        dependency.ignored_version_prefix = extract_version_prefix(
-            dependency.latest_tag
-        )  # For pattern matching
-        dependency.ignored_by = "user"  # TODO: Get from auth context when available
-        dependency.ignored_at = datetime.now(UTC)
-        dependency.ignored_reason = request.reason
-
-        # Get container name from relationship
-        container_name = dependency.container.name if dependency.container else "Unknown"
-
-        # Create history entry
-        history = UpdateHistory(
-            container_id=dependency.container_id,
-            container_name=container_name,
-            update_id=None,
-            from_tag=dependency.current_tag,
-            to_tag=dependency.latest_tag or dependency.current_tag,
-            update_type="manual",
-            status="success",
-            event_type="dependency_ignore",
-            dependency_type="dockerfile",
-            dependency_id=dependency.id,
-            dependency_name=dependency.image_name,
-            file_path=dependency.dockerfile_path,
-            reason=request.reason or "User ignored update",
-            triggered_by="user",
-        )
-        db.add(history)
-
-        await db.commit()
-
-        logger.info(
-            f"Ignored Dockerfile dependency {dependency.image_name} "
-            f"(id={dependency_id}) for version {dependency.latest_tag}"
-        )
-
-        return {"success": True, "message": "Dependency ignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error ignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to ignore dependency: {str(e)}")
+    return await DependencyIgnoreService.ignore(
+        db, DockerfileDependency, dependency_id, request.reason, DOCKERFILE_CONFIG
+    )
 
 
 @router.post("/dockerfile/{dependency_id}/unignore")
-async def unignore_dockerfile_dependency(dependency_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Unignore a Dockerfile dependency update.
-
-    Clears the ignore flag so the update will be shown again.
-    """
-    try:
-        # Get dependency
-        result = await db.execute(
-            select(DockerfileDependency).where(DockerfileDependency.id == dependency_id)
-        )
-        dependency = result.scalar_one_or_none()
-
-        if not dependency:
-            raise HTTPException(status_code=404, detail="Dependency not found")
-
-        if not dependency.ignored:
-            raise HTTPException(status_code=400, detail="Dependency is not ignored")
-
-        # Clear ignore fields
-        dependency.ignored = False
-        dependency.ignored_version = None
-        dependency.ignored_version_prefix = None
-        dependency.ignored_by = None
-        dependency.ignored_at = None
-        dependency.ignored_reason = None
-
-        # Get container name
-        container_result = await db.execute(
-            select(Container).where(Container.id == dependency.container_id)
-        )
-        container = container_result.scalar_one_or_none()
-        container_name = container.name if container else "Unknown"
-
-        # Create history event for unignore
-        history_event = UpdateHistory(
-            container_id=dependency.container_id,
-            container_name=container_name,
-            from_tag="",
-            to_tag="",
-            update_type="manual",
-            status="success",
-            event_type="dependency_unignore",
-            dependency_type="dockerfile",
-            dependency_id=dependency.id,
-            dependency_name=dependency.image_name,
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
-        )
-        db.add(history_event)
-
-        await db.commit()
-
-        logger.info(
-            f"Unignored Dockerfile dependency {sanitize_log_message(str(dependency.image_name))} (id={sanitize_log_message(str(dependency_id))})"
-        )
-
-        return {"success": True, "message": "Dependency unignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error unignoring Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to unignore dependency: {str(e)}")
+async def unignore_dockerfile_dependency(
+    dependency_id: int,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unignore a Dockerfile dependency update."""
+    return await DependencyIgnoreService.unignore(
+        db, DockerfileDependency, dependency_id, DOCKERFILE_CONFIG
+    )
 
 
 @router.get("/dockerfile/{dependency_id}/preview", response_model=PreviewResponse)
 async def preview_dockerfile_update(
     dependency_id: int,
     new_version: str = Query(..., description="New version to preview"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Preview a Dockerfile dependency update without applying it.
-
-    Returns the current and new lines that would be changed.
-    """
+    """Preview a Dockerfile dependency update without applying it."""
     try:
         result = await DependencyUpdateService.preview_update(
             db=db,
@@ -252,18 +103,17 @@ async def preview_dockerfile_update(
         logger.error(
             f"Error previewing Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to preview update")
 
 
 @router.post("/dockerfile/{dependency_id}/update", response_model=UpdateResponse)
 async def update_dockerfile_dependency(
-    dependency_id: int, request: UpdateRequest, db: AsyncSession = Depends(get_db)
+    dependency_id: int,
+    request: UpdateRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Update a Dockerfile dependency in the source file.
-
-    Creates a backup before updating and records the change in history.
-    """
+    """Update a Dockerfile dependency in the source file."""
     try:
         result = await DependencyUpdateService.update_dockerfile_base_image(
             db=db,
@@ -284,20 +134,17 @@ async def update_dockerfile_dependency(
         logger.error(
             f"Error updating Dockerfile dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to update dependency: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update dependency")
 
 
 @router.get("/dockerfile/{dependency_id}/rollback-history", response_model=RollbackHistoryResponse)
 async def get_dockerfile_rollback_history(
     dependency_id: int,
     limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get available rollback versions for a Dockerfile dependency.
-
-    Returns list of previous versions this dependency can be rolled back to.
-    """
+    """Get available rollback versions for a Dockerfile dependency."""
     result = await DependencyUpdateService.get_rollback_history(
         db=db,
         dependency_type="dockerfile",
@@ -315,13 +162,10 @@ async def get_dockerfile_rollback_history(
 async def rollback_dockerfile_dependency(
     dependency_id: int,
     request: RollbackRequest,
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Rollback a Dockerfile dependency to a previous version.
-
-    Creates a new update that sets the version back to target_version.
-    """
+    """Rollback a Dockerfile dependency to a previous version."""
     result = await DependencyUpdateService.rollback_dependency(
         db=db,
         dependency_type="dockerfile",
@@ -345,154 +189,35 @@ async def rollback_dockerfile_dependency(
 
 @router.post("/http-servers/{server_id}/ignore")
 async def ignore_http_server(
-    server_id: int, request: IgnoreRequest, db: AsyncSession = Depends(get_db)
+    server_id: int,
+    request: IgnoreRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Ignore an HTTP server update.
-
-    Marks the server as ignored for the current version transition.
-    """
-    try:
-        # Get server with container relationship loaded
-        result = await db.execute(
-            select(HttpServer)
-            .where(HttpServer.id == server_id)
-            .options(selectinload(HttpServer.container))
-        )
-        server = result.scalar_one_or_none()
-
-        if not server:
-            raise HTTPException(status_code=404, detail="HTTP server not found")
-
-        if server.ignored:
-            raise HTTPException(status_code=400, detail="HTTP server is already ignored")
-
-        # Update server
-        server.ignored = True
-        server.ignored_version = server.latest_version
-        server.ignored_version_prefix = extract_version_prefix(server.latest_version)
-        server.ignored_by = "user"
-        server.ignored_at = datetime.now(UTC)
-        server.ignored_reason = request.reason
-
-        # Get container name from relationship
-        container_name = server.container.name if server.container else "Unknown"
-
-        # Create history entry
-        history = UpdateHistory(
-            container_id=server.container_id,
-            container_name=container_name,
-            update_id=None,
-            from_tag=server.current_version or "unknown",
-            to_tag=server.latest_version or "unknown",
-            update_type="manual",
-            status="success",
-            event_type="dependency_ignore",
-            dependency_type="http_server",
-            dependency_id=server.id,
-            dependency_name=server.name,
-            file_path=server.dockerfile_path,
-            reason=request.reason or "User ignored update",
-            triggered_by="user",
-        )
-        db.add(history)
-
-        await db.commit()
-
-        logger.info(
-            f"Ignored HTTP server {server.name} (id={server_id}) "
-            f"for version {server.latest_version}"
-        )
-
-        return {"success": True, "message": "HTTP server ignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error ignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to ignore HTTP server: {str(e)}")
+    """Ignore an HTTP server update."""
+    return await DependencyIgnoreService.ignore(
+        db, HttpServer, server_id, request.reason, HTTP_SERVER_CONFIG
+    )
 
 
 @router.post("/http-servers/{server_id}/unignore")
-async def unignore_http_server(server_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Unignore an HTTP server update.
-    """
-    try:
-        # Get server
-        result = await db.execute(select(HttpServer).where(HttpServer.id == server_id))
-        server = result.scalar_one_or_none()
-
-        if not server:
-            raise HTTPException(status_code=404, detail="HTTP server not found")
-
-        if not server.ignored:
-            raise HTTPException(status_code=400, detail="HTTP server is not ignored")
-
-        # Clear ignore fields
-        server.ignored = False
-        server.ignored_version = None
-        server.ignored_version_prefix = None
-        server.ignored_by = None
-        server.ignored_at = None
-        server.ignored_reason = None
-
-        # Get container name
-        container_result = await db.execute(
-            select(Container).where(Container.id == server.container_id)
-        )
-        container = container_result.scalar_one_or_none()
-        container_name = container.name if container else "Unknown"
-
-        # Create history event for unignore
-        history_event = UpdateHistory(
-            container_id=server.container_id,
-            container_name=container_name,
-            from_tag="",
-            to_tag="",
-            update_type="manual",
-            status="success",
-            event_type="dependency_unignore",
-            dependency_type="http_server",
-            dependency_id=server.id,
-            dependency_name=server.name,
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
-        )
-        db.add(history_event)
-
-        await db.commit()
-
-        logger.info(
-            f"Unignored HTTP server {sanitize_log_message(str(server.name))} (id={sanitize_log_message(str(server_id))})"
-        )
-
-        return {"success": True, "message": "HTTP server unignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error unignoring HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to unignore HTTP server: {str(e)}")
+async def unignore_http_server(
+    server_id: int,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unignore an HTTP server update."""
+    return await DependencyIgnoreService.unignore(db, HttpServer, server_id, HTTP_SERVER_CONFIG)
 
 
 @router.get("/http-servers/{server_id}/preview", response_model=PreviewResponse)
 async def preview_http_server_update(
     server_id: int,
     new_version: str = Query(..., description="New version to preview"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Preview an HTTP server version update without applying it.
-
-    Returns the current and new LABEL lines that would be changed.
-    """
+    """Preview an HTTP server version update without applying it."""
     try:
         result = await DependencyUpdateService.preview_update(
             db=db,
@@ -516,19 +241,17 @@ async def preview_http_server_update(
         logger.error(
             f"Error previewing HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to preview update")
 
 
 @router.post("/http-servers/{server_id}/update", response_model=UpdateResponse)
 async def update_http_server(
-    server_id: int, request: UpdateRequest, db: AsyncSession = Depends(get_db)
+    server_id: int,
+    request: UpdateRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Update an HTTP server version in the appropriate source file.
-
-    Dispatches based on detection method (manifest file, Dockerfile FROM, or label).
-    Creates a backup before updating and records the change in history.
-    """
+    """Update an HTTP server version in the appropriate source file."""
     try:
         result = await DependencyUpdateService.update_http_server(
             db=db,
@@ -549,20 +272,17 @@ async def update_http_server(
         logger.error(
             f"Error updating HTTP server {sanitize_log_message(str(server_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to update HTTP server: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update HTTP server")
 
 
 @router.get("/http-servers/{server_id}/rollback-history", response_model=RollbackHistoryResponse)
 async def get_http_server_rollback_history(
     server_id: int,
     limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get available rollback versions for an HTTP server.
-
-    Returns list of previous versions this server can be rolled back to.
-    """
+    """Get available rollback versions for an HTTP server."""
     result = await DependencyUpdateService.get_rollback_history(
         db=db,
         dependency_type="http_server",
@@ -580,13 +300,10 @@ async def get_http_server_rollback_history(
 async def rollback_http_server(
     server_id: int,
     request: RollbackRequest,
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Rollback an HTTP server to a previous version.
-
-    Creates a new update that sets the version back to target_version.
-    """
+    """Rollback an HTTP server to a previous version."""
     result = await DependencyUpdateService.rollback_dependency(
         db=db,
         dependency_type="http_server",
@@ -611,10 +328,10 @@ async def rollback_http_server(
 @router.post("/app-dependencies/batch/update", response_model=BatchDependencyUpdateResponse)
 async def batch_update_app_dependencies(
     request: BatchDependencyUpdateRequest,
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Batch update multiple application dependencies.
+    """Batch update multiple application dependencies.
 
     Updates each dependency to its latest version. Returns granular
     success/failure status for each item.
@@ -743,152 +460,37 @@ async def batch_update_app_dependencies(
 
 @router.post("/app-dependencies/{dependency_id}/ignore")
 async def ignore_app_dependency(
-    dependency_id: int, request: IgnoreRequest, db: AsyncSession = Depends(get_db)
+    dependency_id: int,
+    request: IgnoreRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Ignore an application dependency update.
-    """
-    try:
-        # Get dependency with container relationship loaded
-        result = await db.execute(
-            select(AppDependency)
-            .where(AppDependency.id == dependency_id)
-            .options(selectinload(AppDependency.container))
-        )
-        dependency = result.scalar_one_or_none()
-
-        if not dependency:
-            raise HTTPException(status_code=404, detail="App dependency not found")
-
-        if dependency.ignored:
-            raise HTTPException(status_code=400, detail="App dependency is already ignored")
-
-        # Update dependency
-        dependency.ignored = True
-        dependency.ignored_version = dependency.latest_version
-        dependency.ignored_version_prefix = extract_version_prefix(dependency.latest_version)
-        dependency.ignored_by = "user"
-        dependency.ignored_at = datetime.now(UTC)
-        dependency.ignored_reason = request.reason
-
-        # Get container name from relationship
-        container_name = dependency.container.name if dependency.container else "Unknown"
-
-        # Create history entry
-        history = UpdateHistory(
-            container_id=dependency.container_id,
-            container_name=container_name,
-            update_id=None,
-            from_tag=dependency.current_version,
-            to_tag=dependency.latest_version or dependency.current_version,
-            update_type="manual",
-            status="success",
-            event_type="dependency_ignore",
-            dependency_type="app_dependency",
-            dependency_id=dependency.id,
-            dependency_name=dependency.name,
-            file_path=dependency.manifest_file,
-            reason=request.reason or "User ignored update",
-            triggered_by="user",
-        )
-        db.add(history)
-
-        await db.commit()
-
-        logger.info(
-            f"Ignored app dependency {dependency.name} (id={dependency_id}) "
-            f"for version {dependency.latest_version}"
-        )
-
-        return {"success": True, "message": "App dependency ignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error ignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to ignore app dependency: {str(e)}")
+    """Ignore an application dependency update."""
+    return await DependencyIgnoreService.ignore(
+        db, AppDependency, dependency_id, request.reason, APP_DEPENDENCY_CONFIG
+    )
 
 
 @router.post("/app-dependencies/{dependency_id}/unignore")
-async def unignore_app_dependency(dependency_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Unignore an application dependency update.
-    """
-    try:
-        # Get dependency
-        result = await db.execute(select(AppDependency).where(AppDependency.id == dependency_id))
-        dependency = result.scalar_one_or_none()
-
-        if not dependency:
-            raise HTTPException(status_code=404, detail="App dependency not found")
-
-        if not dependency.ignored:
-            raise HTTPException(status_code=400, detail="App dependency is not ignored")
-
-        # Clear ignore fields
-        dependency.ignored = False
-        dependency.ignored_version = None
-        dependency.ignored_version_prefix = None
-        dependency.ignored_by = None
-        dependency.ignored_at = None
-        dependency.ignored_reason = None
-
-        # Get container name
-        container_result = await db.execute(
-            select(Container).where(Container.id == dependency.container_id)
-        )
-        container = container_result.scalar_one_or_none()
-        container_name = container.name if container else "Unknown"
-
-        # Create history event for unignore
-        history_event = UpdateHistory(
-            container_id=dependency.container_id,
-            container_name=container_name,
-            from_tag="",
-            to_tag="",
-            update_type="manual",
-            status="success",
-            event_type="dependency_unignore",
-            dependency_type="app_dependency",
-            dependency_id=dependency.id,
-            dependency_name=dependency.name,
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
-        )
-        db.add(history_event)
-
-        await db.commit()
-
-        logger.info(
-            f"Unignored app dependency {sanitize_log_message(str(dependency.name))} (id={sanitize_log_message(str(dependency_id))})"
-        )
-
-        return {"success": True, "message": "App dependency unignored successfully"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(
-            f"Error unignoring app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to unignore app dependency: {str(e)}")
+async def unignore_app_dependency(
+    dependency_id: int,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unignore an application dependency update."""
+    return await DependencyIgnoreService.unignore(
+        db, AppDependency, dependency_id, APP_DEPENDENCY_CONFIG
+    )
 
 
 @router.get("/app-dependencies/{dependency_id}/preview", response_model=PreviewResponse)
 async def preview_app_dependency_update(
     dependency_id: int,
     new_version: str = Query(..., description="New version to preview"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Preview an app dependency update without applying it.
-
-    Returns the current and new lines that would be changed in the manifest file.
-    """
+    """Preview an app dependency update without applying it."""
     try:
         result = await DependencyUpdateService.preview_update(
             db=db,
@@ -912,21 +514,17 @@ async def preview_app_dependency_update(
         logger.error(
             f"Error previewing app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to preview update: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to preview update")
 
 
 @router.post("/app-dependencies/{dependency_id}/update", response_model=UpdateResponse)
 async def update_app_dependency(
-    dependency_id: int, request: UpdateRequest, db: AsyncSession = Depends(get_db)
+    dependency_id: int,
+    request: UpdateRequest,
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Update an app dependency in its manifest file.
-
-    Supports multiple manifest formats: package.json, requirements.txt,
-    pyproject.toml, composer.json, Cargo.toml, go.mod.
-
-    Creates a backup before updating and records the change in history.
-    """
+    """Update an app dependency in its manifest file."""
     try:
         result = await DependencyUpdateService.update_app_dependency(
             db=db,
@@ -947,7 +545,7 @@ async def update_app_dependency(
         logger.error(
             f"Error updating app dependency {sanitize_log_message(str(dependency_id))}: {sanitize_log_message(str(e))}"
         )
-        raise HTTPException(status_code=500, detail=f"Failed to update app dependency: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update app dependency")
 
 
 @router.get(
@@ -956,13 +554,10 @@ async def update_app_dependency(
 async def get_app_dependency_rollback_history(
     dependency_id: int,
     limit: int = Query(10, ge=1, le=50, description="Max history items"),
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get available rollback versions for an app dependency.
-
-    Returns list of previous versions this dependency can be rolled back to.
-    """
+    """Get available rollback versions for an app dependency."""
     result = await DependencyUpdateService.get_rollback_history(
         db=db,
         dependency_type="app_dependency",
@@ -980,13 +575,10 @@ async def get_app_dependency_rollback_history(
 async def rollback_app_dependency(
     dependency_id: int,
     request: RollbackRequest,
+    _admin: dict | None = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Rollback an app dependency to a previous version.
-
-    Creates a new update that sets the version back to target_version.
-    """
+    """Rollback an app dependency to a previous version."""
     result = await DependencyUpdateService.rollback_dependency(
         db=db,
         dependency_type="app_dependency",

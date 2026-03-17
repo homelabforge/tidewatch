@@ -607,27 +607,11 @@ async def get_container_dependencies(
     Returns:
         Dict with dependencies and dependents arrays
     """
-    import json
-
-    dependencies = []
-    if container.dependencies:
-        try:
-            dependencies = json.loads(container.dependencies)
-        except json.JSONDecodeError:
-            dependencies = []
-
-    dependents = []
-    if container.dependents:
-        try:
-            dependents = json.loads(container.dependents)
-        except json.JSONDecodeError:
-            dependents = []
-
     return {
         "container_id": container.id,
         "container_name": container.name,
-        "dependencies": dependencies,
-        "dependents": dependents,
+        "dependencies": container.dependencies or [],
+        "dependents": container.dependents or [],
     }
 
 

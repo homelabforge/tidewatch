@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import Dashboard from './Dashboard'
@@ -31,7 +32,17 @@ vi.mock('../services/api', () => ({
   },
 }))
 
-// Mock useEventStream to prevent real SSE connections in tests
+// Mock EventStreamContext to prevent real SSE connections in tests
+vi.mock('../contexts/EventStreamContext', () => ({
+  useEventStreamContext: vi.fn(() => ({
+    connectionStatus: 'connected',
+    reconnect: vi.fn(),
+    subscribe: vi.fn(() => vi.fn()),
+  })),
+  EventStreamProvider: ({ children }: { children: React.ReactNode }) => children,
+}))
+
+// Mock useEventStream (used by useCheckJob and useDepScan)
 vi.mock('../hooks/useEventStream', () => ({
   useEventStream: vi.fn(),
 }))
@@ -176,9 +187,9 @@ describe('Dashboard', () => {
     total_updates: 10,
     successful_updates: 8,
     failed_updates: 2,
-    update_frequency: {},
-    vulnerability_trends: {},
-    policy_distribution: {},
+    update_frequency: [],
+    vulnerability_trends: [],
+    policy_distribution: [],
     avg_update_duration_seconds: 45,
     total_cves_fixed: 15,
     updates_with_cves: 5,

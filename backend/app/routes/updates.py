@@ -6,10 +6,11 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_container_or_404
 from app.models.container import Container
 from app.models.update import Update
 from app.schemas.check_job import (
@@ -242,6 +243,7 @@ async def cancel_check_job(
 async def check_container_update(
     container_id: int,
     _admin: dict | None = Depends(require_auth),
+    container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Check a specific container for updates.
@@ -252,12 +254,6 @@ async def check_container_update(
     Returns:
         Update info if available
     """
-    result = await db.execute(select(Container).where(Container.id == container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
     update = await UpdateChecker.check_container(db, container)
     await db.commit()
 
@@ -291,73 +287,7 @@ async def batch_approve_updates(
     Returns:
         Summary of approved updates with success/failure counts
     """
-    approved = []
-    failed = []
-
-    for update_id in update_ids:
-        try:
-            # Use nested transaction for atomicity and concurrent safety
-            async with db.begin_nested():
-                # Get the update
-                result = await db.execute(select(Update).where(Update.id == update_id))
-                update = result.scalar_one_or_none()
-
-                if not update:
-                    failed.append({"id": update_id, "reason": "Update not found"})
-                    continue
-
-                # Idempotency check - already approved is OK
-                if update.status == "approved":
-                    approved.append({"id": update_id, "container_id": update.container_id})
-                    continue
-
-                # Only allow pending -> approved transition
-                if update.status != "pending":
-                    failed.append(
-                        {
-                            "id": update_id,
-                            "reason": f"Invalid status transition: {update.status} -> approved",
-                        }
-                    )
-                    continue
-
-                # Approve the update with version increment
-                update.status = "approved"
-                update.approved_at = datetime.now(UTC)
-                update.version += 1  # Increment version for optimistic locking
-
-            # Commit the nested transaction
-            await db.commit()
-            await db.refresh(update)
-
-            approved.append({"id": update_id, "container_id": update.container_id})
-
-        except OperationalError as e:
-            # Database lock/conflict - likely concurrent modification
-            logger.warning(
-                f"Database conflict approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
-            )
-            failed.append(
-                {
-                    "id": update_id,
-                    "reason": "Database conflict - concurrent modification detected",
-                }
-            )
-        except Exception as e:
-            logger.error(
-                f"Error approving update {sanitize_log_message(str(update_id))}: {sanitize_log_message(str(e))}"
-            )
-            failed.append({"id": update_id, "reason": "An error occurred processing the update"})
-
-    return {
-        "approved": approved,
-        "failed": failed,
-        "summary": {
-            "total": len(update_ids),
-            "approved_count": len(approved),
-            "failed_count": len(failed),
-        },
-    }
+    return await UpdateEngine.batch_approve(db, update_ids)
 
 
 @router.post("/batch/reject")
@@ -744,87 +674,9 @@ async def remove_container_from_db(
     Returns:
         Success message
     """
-    from app.models.history import UpdateHistory
-    from app.models.restart_log import ContainerRestartLog
-    from app.models.restart_state import ContainerRestartState
+    from app.services.container_cleanup_service import ContainerCleanupService
 
-    result = await db.execute(select(Update).where(Update.id == update_id))
-    update = result.scalar_one_or_none()
-
-    if not update:
-        raise HTTPException(status_code=404, detail="Update not found")
-
-    if update.reason_type != "stale":
-        raise HTTPException(
-            status_code=400,
-            detail="Only stale container notifications can use remove-container action",
-        )
-
-    # Get container
-    result = await db.execute(select(Container).where(Container.id == update.container_id))
-    container = result.scalar_one_or_none()
-
-    if not container:
-        raise HTTPException(status_code=404, detail="Container not found")
-
-    container_name = container.name
-
-    # Use transaction to ensure all-or-nothing deletion
-    try:
-        async with db.begin_nested():
-            # Delete related records
-            # 1. Delete update history
-            await db.execute(
-                select(UpdateHistory).where(UpdateHistory.container_id == container.id)
-            )
-            await db.execute(
-                UpdateHistory.__table__.delete().where(UpdateHistory.container_id == container.id)
-            )
-
-            # 2. Delete restart state and logs
-            await db.execute(
-                ContainerRestartState.__table__.delete().where(
-                    ContainerRestartState.container_id == container.id
-                )
-            )
-            await db.execute(
-                ContainerRestartLog.__table__.delete().where(
-                    ContainerRestartLog.container_id == container.id
-                )
-            )
-
-            # 3. Delete all updates for this container
-            await db.execute(Update.__table__.delete().where(Update.container_id == container.id))
-
-            # 4. Delete the container itself
-            await db.delete(container)
-
-        await db.commit()
-
-        logger.info(
-            f"Removed stale container from database: {sanitize_log_message(str(container_name))}"
-        )
-
-        return {
-            "success": True,
-            "message": f"Container '{container_name}' removed from database",
-        }
-    except IntegrityError as e:
-        await db.rollback()
-        logger.error(
-            f"Database constraint violation removing container: {sanitize_log_message(str(e))}"
-        )
-        raise HTTPException(
-            status_code=500, detail="Database constraint error during container removal"
-        )
-    except OperationalError as e:
-        await db.rollback()
-        logger.error(f"Database error removing container: {sanitize_log_message(str(e))}")
-        raise HTTPException(status_code=500, detail="Database error during container removal")
-    except (KeyError, AttributeError) as e:
-        await db.rollback()
-        logger.error(f"Invalid data removing container: {sanitize_log_message(str(e))}")
-        raise HTTPException(status_code=500, detail="Invalid container data")
+    return await ContainerCleanupService.remove_stale_container(db, update_id)
 
 
 @router.get("/scheduler/status")

@@ -285,6 +285,53 @@ async def download_backup(filename: str, _admin: dict | None = Depends(require_a
         safe_error_response(logger, e, "File system error", status_code=500)
 
 
+async def _restore_settings_from_data(db: AsyncSession, backup_data: dict[str, Any]) -> int:
+    """Validate backup structure and restore settings to database.
+
+    Args:
+        db: Database session
+        backup_data: Parsed JSON backup data
+
+    Returns:
+        Number of settings successfully restored
+
+    Raises:
+        HTTPException: If backup structure is invalid
+    """
+    if "settings" not in backup_data:
+        raise HTTPException(status_code=400, detail="Invalid backup file structure")
+
+    if not isinstance(backup_data["settings"], list):
+        raise HTTPException(status_code=400, detail="Invalid backup file format")
+
+    restored_count = 0
+    for setting_data in backup_data["settings"]:
+        key = setting_data.get("key")
+        value = setting_data.get("value")
+
+        if not key:
+            logger.warning(
+                f"Skipping setting with no key: {sanitize_log_message(str(setting_data))}"
+            )
+            continue
+
+        try:
+            await SettingsService.set(db, key, value)
+            restored_count += 1
+        except ValueError as e:
+            logger.error(
+                f"Invalid value for setting {sanitize_log_message(str(key))}: "
+                f"{sanitize_log_message(str(e))}"
+            )
+        except KeyError as e:
+            logger.error(
+                f"Invalid setting key {sanitize_log_message(str(key))}: "
+                f"{sanitize_log_message(str(e))}"
+            )
+
+    return restored_count
+
+
 @router.post("/restore/{filename}")
 async def restore_backup(
     filename: str,
@@ -340,39 +387,7 @@ async def restore_backup(
         with open(backup_path) as f:
             backup_data = json.load(f)
 
-        # Validate backup structure
-        if "settings" not in backup_data:
-            raise HTTPException(status_code=400, detail="Invalid backup file structure")
-
-        if not isinstance(backup_data["settings"], list):
-            raise HTTPException(status_code=400, detail="Invalid backup file format")
-
-        # Restore settings
-        restored_count = 0
-        for setting_data in backup_data["settings"]:
-            key = setting_data.get("key")
-            value = setting_data.get("value")
-
-            if not key:
-                logger.warning(
-                    f"Skipping setting with no key: {sanitize_log_message(str(setting_data))}"
-                )
-                continue
-
-            try:
-                # Update setting in database
-                await SettingsService.set(db, key, value)
-                restored_count += 1
-            except ValueError as e:
-                logger.error(
-                    f"Invalid value for setting {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}"
-                )
-                # Continue with other settings
-            except KeyError as e:
-                logger.error(
-                    f"Invalid setting key {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}"
-                )
-                # Continue with other settings
+        restored_count = await _restore_settings_from_data(db, backup_data)
 
         logger.info(
             f"Restored {sanitize_log_message(str(restored_count))} settings from {sanitize_log_message(str(filename))}"
@@ -588,39 +603,7 @@ async def restore_backup_legacy(
         except json.JSONDecodeError as e:
             safe_error_response(logger, e, "Invalid JSON file", status_code=400)
 
-        # Validate backup structure
-        if "settings" not in backup_data:
-            raise HTTPException(status_code=400, detail="Invalid backup file structure")
-
-        if not isinstance(backup_data["settings"], list):
-            raise HTTPException(status_code=400, detail="Invalid backup file format")
-
-        # Restore settings
-        restored_count = 0
-        for setting_data in backup_data["settings"]:
-            key = setting_data.get("key")
-            value = setting_data.get("value")
-
-            if not key:
-                logger.warning(
-                    f"Skipping setting with no key: {sanitize_log_message(str(setting_data))}"
-                )
-                continue
-
-            try:
-                # Update setting in database
-                await SettingsService.set(db, key, value)
-                restored_count += 1
-            except ValueError as e:
-                logger.error(
-                    f"Invalid value for setting {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}"
-                )
-                # Continue with other settings
-            except KeyError as e:
-                logger.error(
-                    f"Invalid setting key {sanitize_log_message(str(key))}: {sanitize_log_message(str(e))}"
-                )
-                # Continue with other settings
+        restored_count = await _restore_settings_from_data(db, backup_data)
 
         logger.info(
             f"Restored {sanitize_log_message(str(restored_count))} settings from uploaded file"

@@ -6,7 +6,7 @@ import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import PageSkeleton from './components/PageSkeleton';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { useEventStream } from './hooks/useEventStream';
+import { EventStreamProvider, useEventStreamContext } from './contexts/EventStreamContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 
@@ -23,10 +23,8 @@ import Login from './pages/Login';
 import LinkAccount from './pages/LinkAccount';
 
 function AppContent() {
-  // Initialize event stream for real-time updates
-  const { connectionStatus } = useEventStream({
-    enableToasts: true,
-  });
+  // Read connection status from the shared EventStreamProvider
+  const { connectionStatus } = useEventStreamContext();
 
   // Get current theme for dynamic Sonner theming
   const { theme } = useTheme();
@@ -104,7 +102,9 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <EventStreamProvider enableToasts>
+          <AppContent />
+        </EventStreamProvider>
       </AuthProvider>
     </ThemeProvider>
   );

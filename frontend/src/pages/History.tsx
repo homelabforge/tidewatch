@@ -164,7 +164,7 @@ export default function History() {
                   {history.map((item) => {
                     const duration = item.completed_at
                       ? Math.round(
-                          (new Date(item.completed_at).getTime() - new Date(item.started_at).getTime()) / 1000
+                          (new Date(item.completed_at!).getTime() - new Date(item.started_at!).getTime()) / 1000
                         )
                       : null;
 
@@ -214,7 +214,7 @@ export default function History() {
                             <div className="flex items-center gap-2 text-sm text-tide-text">
                               <RefreshCw size={14} className="text-blue-400" />
                               <span className="capitalize">
-                                {formatTriggerReason(item.trigger_reason)}
+                                {formatTriggerReason(item.trigger_reason ?? undefined)}
                               </span>
                               {item.exit_code !== null && item.exit_code !== undefined && (
                                 <span className="text-xs text-tide-text-muted">
@@ -233,10 +233,10 @@ export default function History() {
                         {/* Started */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-tide-text">
-                            {format(new Date(item.started_at), 'MMM d, yyyy')}
+                            {format(new Date(item.started_at!), 'MMM d, yyyy')}
                           </div>
                           <div className="text-xs text-tide-text-muted">
-                            {format(new Date(item.started_at), 'HH:mm:ss')}
+                            {format(new Date(item.started_at!), 'HH:mm:ss')}
                           </div>
                         </td>
 
@@ -295,7 +295,7 @@ export default function History() {
                             {item.container_name} ({item.event_type})
                           </span>
                           <span className="text-xs text-tide-text-muted">
-                            {format(new Date(item.started_at), 'MMM d, HH:mm')}
+                            {format(new Date(item.started_at!), 'MMM d, HH:mm')}
                           </span>
                         </div>
                         <p className="text-xs text-red-400">{item.error_message}</p>

@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -349,7 +349,7 @@ class DockerfileParser:
             from app.services.registry_client import RegistryClientFactory
 
             # Mark as checked
-            dependency.last_checked = datetime.now()
+            dependency.last_checked = datetime.now(UTC)
 
             # Get appropriate registry client
             factory = RegistryClientFactory()

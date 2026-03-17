@@ -39,6 +39,52 @@ class UpdateEngine:
     """Service for applying container updates."""
 
     @staticmethod
+    async def recover_stuck_records(db: AsyncSession) -> int:
+        """Mark any in_progress update history records as failed.
+
+        Called during application startup to clean up records left in an
+        inconsistent state by a previous crash or forced shutdown. Uses raw
+        SQL to avoid issues with model columns that may not exist yet during
+        migrations.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Number of records recovered
+        """
+        from sqlalchemy import text
+
+        result = await db.execute(
+            text("SELECT id FROM update_history WHERE status = :status"),
+            {"status": "in_progress"},
+        )
+        stuck_records = result.fetchall()
+
+        if stuck_records:
+            count = len(stuck_records)
+            logger.warning(f"Found {count} stuck update history records, marking as failed")
+            await db.execute(
+                text("""
+                    UPDATE update_history
+                    SET status = :new_status,
+                        error_message = :error_msg,
+                        completed_at = :completed_at
+                    WHERE status = :old_status
+                """),
+                {
+                    "new_status": "failed",
+                    "error_msg": "Update interrupted by application restart",
+                    "completed_at": datetime.now(UTC).isoformat(),
+                    "old_status": "in_progress",
+                },
+            )
+            await db.commit()
+            logger.info(f"Cleaned up {count} stuck update history records")
+            return count
+        return 0
+
+    @staticmethod
     def _translate_container_path_to_host(container_path: str) -> str:
         """Translate container-visible paths to host paths for docker compose.
 
@@ -2077,3 +2123,92 @@ class UpdateEngine:
         from app.services.vulnforge_client import create_vulnforge_client
 
         return await create_vulnforge_client(db)
+
+    @staticmethod
+    async def batch_approve(
+        db: AsyncSession, update_ids: list[int]
+    ) -> dict[str, list[dict] | dict]:
+        """Approve multiple updates in batch.
+
+        Uses nested transactions for atomicity per update. Idempotent — already-approved
+        updates are counted as successes.
+
+        Args:
+            db: Database session
+            update_ids: List of update IDs to approve
+
+        Returns:
+            Dict with 'approved', 'failed', and 'summary' keys
+        """
+        from sqlalchemy.exc import OperationalError
+
+        from app.utils.security import sanitize_log_message
+
+        approved: list[dict] = []
+        failed: list[dict] = []
+
+        for update_id in update_ids:
+            try:
+                async with db.begin_nested():
+                    result = await db.execute(select(Update).where(Update.id == update_id))
+                    update = result.scalar_one_or_none()
+
+                    if not update:
+                        failed.append({"id": update_id, "reason": "Update not found"})
+                        continue
+
+                    if update.status == "approved":
+                        approved.append({"id": update_id, "container_id": update.container_id})
+                        continue
+
+                    if update.status != "pending":
+                        failed.append(
+                            {
+                                "id": update_id,
+                                "reason": f"Invalid status transition: {update.status} -> approved",
+                            }
+                        )
+                        continue
+
+                    update.status = "approved"
+                    update.approved_at = datetime.now(UTC)
+                    update.version += 1
+
+                await db.commit()
+                await db.refresh(update)
+                approved.append({"id": update_id, "container_id": update.container_id})
+
+            except OperationalError as e:
+                logger.warning(
+                    f"Database conflict approving update "
+                    f"{sanitize_log_message(str(update_id))}: "
+                    f"{sanitize_log_message(str(e))}"
+                )
+                failed.append(
+                    {
+                        "id": update_id,
+                        "reason": "Database conflict - concurrent modification detected",
+                    }
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error approving update "
+                    f"{sanitize_log_message(str(update_id))}: "
+                    f"{sanitize_log_message(str(e))}"
+                )
+                failed.append(
+                    {
+                        "id": update_id,
+                        "reason": "An error occurred processing the update",
+                    }
+                )
+
+        return {
+            "approved": approved,
+            "failed": failed,
+            "summary": {
+                "total": len(update_ids),
+                "approved_count": len(approved),
+                "failed_count": len(failed),
+            },
+        }

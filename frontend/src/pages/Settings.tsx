@@ -40,11 +40,11 @@ export default function Settings() {
       setCategories([]); // Disable categories to show card-based UI
       const settingsMap: Record<string, unknown> = {};
       settingsData.forEach((setting) => {
-        let value = setting.value;
-        if (value === 'true') value = true;
-        else if (value === 'false') value = false;
-        else if (!isNaN(Number(value)) && value !== '') {
-          value = Number(value);
+        let value: unknown = setting.value;
+        if (setting.value === 'true') value = true;
+        else if (setting.value === 'false') value = false;
+        else if (!isNaN(Number(setting.value)) && setting.value !== '') {
+          value = Number(setting.value);
         }
         settingsMap[setting.key] = value;
       });

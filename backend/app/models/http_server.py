@@ -2,14 +2,15 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.mixins import IgnoreFieldsMixin
 
 
-class HttpServer(Base):
+class HttpServer(IgnoreFieldsMixin, Base):
     """HTTP servers detected in containers."""
 
     __tablename__ = "http_servers"
@@ -59,21 +60,7 @@ class HttpServer(Base):
         String, nullable=True
     )  # Package ecosystem: pypi, npm
 
-    # Ignore tracking (version-specific)
-    ignored: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    ignored_version: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )  # Which version transition was ignored (e.g., "2.6.0")
-    ignored_version_prefix: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )  # Major.minor prefix for pattern matching (e.g., "2.6" ignores all 2.6.x)
-    ignored_by: Mapped[str | None] = mapped_column(String, nullable=True)  # Who ignored the update
-    ignored_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )  # When it was ignored
-    ignored_reason: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )  # Optional reason for ignoring
+    # Ignore tracking (version-specific) — provided by IgnoreFieldsMixin
 
     # Metadata
     last_checked: Mapped[datetime | None] = mapped_column(
