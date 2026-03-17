@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restart scheduler no longer crashes on `requests.ConnectionError` when the Docker proxy is temporarily unavailable
 - HTTP server scanner no longer crashes if the Docker proxy dies mid-scan
 - Rollback of the Docker socket proxy no longer attempts an SDK stop through the dead proxy
+- Container discovery now works on TrueNAS, Unraid, and other systems where compose files are stored outside `/compose` (previously any non-standard path was silently rejected)
 
 ### Added
 - Per-container `version_track` setting (Auto / SemVer / CalVer) to override automatic versioning scheme detection — escape hatch for projects migrating between SemVer and CalVer
