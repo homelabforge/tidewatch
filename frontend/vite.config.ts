@@ -37,17 +37,12 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // React core libraries
-          'react-vendor': ['react', 'react-dom'],
-          // Router
-          'router-vendor': ['react-router-dom'],
-          // Charts
-          'charts-vendor': ['recharts'],
-          // UI libraries
-          'ui-vendor': ['lucide-react', 'sonner'],
-          // Date utilities
-          'utils-vendor': ['date-fns'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react-vendor';
+          if (id.includes('node_modules/react-router-dom')) return 'router-vendor';
+          if (id.includes('node_modules/recharts')) return 'charts-vendor';
+          if (id.includes('node_modules/lucide-react') || id.includes('node_modules/sonner')) return 'ui-vendor';
+          if (id.includes('node_modules/date-fns')) return 'utils-vendor';
         },
       },
     },
