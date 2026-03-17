@@ -147,28 +147,27 @@ class ComposeParser:
             logger.warning("Compose directory not configured")
             return []
 
-        # Validate compose directory path to prevent path traversal
-        # Allowed base directories: /compose (production), /tmp (tests), /srv/raid0/docker/compose (homelab)
+        # Validate compose directory path to prevent path traversal attacks.
+        # Reject any path containing dangerous patterns before resolving.
+        dangerous_patterns = ["..", "//", "\\", "\x00"]
+        if any(pattern in compose_dir for pattern in dangerous_patterns):
+            logger.warning(
+                f"Compose directory contains dangerous patterns: {sanitize_log_message(compose_dir)}"
+            )
+            return []
+
         try:
-            if compose_dir.startswith("/compose"):
-                validated_dir = sanitize_path(compose_dir, "/compose", allow_symlinks=False)
-            elif compose_dir.startswith("/tmp"):
-                validated_dir = sanitize_path(compose_dir, "/tmp", allow_symlinks=False)
-            elif compose_dir.startswith("/srv/raid0/docker/compose"):
-                validated_dir = sanitize_path(
-                    compose_dir, "/srv/raid0/docker/compose", allow_symlinks=False
-                )
-            else:
-                logger.warning(
-                    f"Compose directory outside allowed paths: {sanitize_log_message(compose_dir)}"
-                )
-                return []
+            validated_dir = Path(compose_dir).resolve()
 
             if not validated_dir.exists():
                 logger.warning(f"Compose directory not found: {validated_dir}")
                 return []
 
-        except (ValueError, FileNotFoundError) as e:
+            if not validated_dir.is_dir():
+                logger.warning(f"Compose directory is not a directory: {validated_dir}")
+                return []
+
+        except (OSError, RuntimeError) as e:
             logger.error(f"Invalid compose directory path: {sanitize_log_message(str(e))}")
             return []
 

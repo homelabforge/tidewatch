@@ -16,7 +16,7 @@ Tests YAML parsing, service extraction, and label handling:
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -780,3 +780,96 @@ services:
             assert containers[0].policy == "monitor"
         finally:
             os.unlink(path)
+
+
+class TestDiscoverContainersPathValidation:
+    """Regression tests for issue #32: non-standard compose paths silently return no containers.
+
+    Users on TrueNAS, Unraid, and other systems mount compose files at arbitrary
+    paths (e.g. /mnt/SSD_500/docker_data/compose). The old code had a hardcoded
+    allowlist that only permitted /compose and /tmp, silently dropping any other path.
+    """
+
+    SIMPLE_COMPOSE = "services:\n  nginx:\n    image: nginx:latest\n"
+
+    @pytest.fixture
+    def mock_db(self) -> AsyncMock:
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_accepts_standard_production_path(self, mock_db: AsyncMock) -> None:
+        """Standard /compose mount (default Docker volume) still works after fix."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "stack.yml").write_text(self.SIMPLE_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                result = await ComposeParser.discover_containers(mock_db)
+
+        assert len(result) == 1
+        assert result[0].name == "nginx"
+
+    @pytest.mark.asyncio
+    async def test_accepts_arbitrary_absolute_path(self, mock_db: AsyncMock) -> None:
+        """Regression for issue #32: any valid absolute path must be accepted.
+
+        Previously, paths outside /compose and /tmp (e.g. /mnt/SSD_500/compose
+        on TrueNAS) were silently rejected and returned no containers.
+        """
+        # Find a writable directory whose prefix is outside the old allowlist
+        for candidate_base in ["/var/tmp", "/srv", "/run/user"]:
+            if Path(candidate_base).exists() and os.access(candidate_base, os.W_OK):
+                break
+        else:
+            pytest.skip("No writable directory outside old allowlist available on this system")
+
+        with tempfile.TemporaryDirectory(dir=candidate_base) as custom_dir:
+            (Path(custom_dir) / "stack.yml").write_text(self.SIMPLE_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=custom_dir),
+            ):
+                result = await ComposeParser.discover_containers(mock_db)
+
+        assert len(result) == 1, (
+            f"Expected 1 container from {custom_dir!r}, got {len(result)}. "
+            "This path was previously in the old hardcoded allowlist rejection zone."
+        )
+        assert result[0].name == "nginx"
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal(self, mock_db: AsyncMock) -> None:
+        """Path traversal in compose_directory setting must still be rejected."""
+        with patch(
+            "app.services.compose_parser.SettingsService.get",
+            new=AsyncMock(return_value="/tmp/../etc"),
+        ):
+            result = await ComposeParser.discover_containers(mock_db)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_unconfigured_compose_directory(self, mock_db: AsyncMock) -> None:
+        """Missing compose_directory setting returns empty list."""
+        with patch(
+            "app.services.compose_parser.SettingsService.get",
+            new=AsyncMock(return_value=None),
+        ):
+            result = await ComposeParser.discover_containers(mock_db)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_nonexistent_directory(self, mock_db: AsyncMock) -> None:
+        """Nonexistent compose_directory returns empty list."""
+        with patch(
+            "app.services.compose_parser.SettingsService.get",
+            new=AsyncMock(return_value="/tmp/tidewatch-nonexistent-path-xyz"),
+        ):
+            result = await ComposeParser.discover_containers(mock_db)
+
+        assert result == []
