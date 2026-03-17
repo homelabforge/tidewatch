@@ -234,7 +234,7 @@ export default function MetricsTab({ container }: MetricsTabProps) {
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="timestamp" stroke="#9CA3AF" tickFormatter={(value) => format(new Date(value), 'HH:mm')} />
                     <YAxis stroke="#9CA3AF" tickFormatter={(value) => formatBytes(value)} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} labelFormatter={(value) => format(new Date(value as string), 'PPpp')} formatter={(value, name?: string) => [formatBytes((value as number) || 0), name || '']} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} labelFormatter={(value) => format(new Date(value as string), 'PPpp')} formatter={(value, name) => [formatBytes((value as number) || 0), String(name ?? '')]} />
                     <Legend />
                     <Line type="monotone" dataKey="network_rx" stroke="#8B5CF6" name="RX" />
                     <Line type="monotone" dataKey="network_tx" stroke="#EC4899" name="TX" />
@@ -245,7 +245,7 @@ export default function MetricsTab({ container }: MetricsTabProps) {
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="timestamp" stroke="#9CA3AF" tickFormatter={(value) => format(new Date(value), 'HH:mm')} />
                     <YAxis stroke="#9CA3AF" tickFormatter={(value) => formatBytes(value)} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} labelFormatter={(value) => format(new Date(value as string), 'PPpp')} formatter={(value, name?: string) => [formatBytes((value as number) || 0), name || '']} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} labelFormatter={(value) => format(new Date(value as string), 'PPpp')} formatter={(value, name) => [formatBytes((value as number) || 0), String(name ?? '')]} />
                     <Legend />
                     <Line type="monotone" dataKey="block_read" stroke="#F59E0B" name="Read" />
                     <Line type="monotone" dataKey="block_write" stroke="#EF4444" name="Write" />
