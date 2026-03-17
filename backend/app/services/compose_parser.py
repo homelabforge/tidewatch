@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.container import Container
 from app.services.docker_access import make_docker_client, resolve_docker_url
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_log_message, sanitize_path
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 

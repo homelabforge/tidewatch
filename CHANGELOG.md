@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Bumped PyJWT from 2.11.0 to 2.12.1 to address CVE for unknown `crit` header acceptance (Dependabot #3)
+- Removed unused `sanitize_path` import in compose_parser.py (CodeQL #659)
+- Fixed unused global variable writes in version.py (CodeQL #657, #658)
+
 ### Fixed
 - Docker cleanup notification now correctly counts removed images (previously overcounted by including `untagged:` lines alongside `deleted:` lines)
 - Mobile layout overflow on Dashboard (filter/button bar) and Settings (tab navigation) no longer bleeds outside the viewport

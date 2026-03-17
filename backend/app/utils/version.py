@@ -3,6 +3,7 @@
 import logging
 import tomllib
 from pathlib import Path
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +37,14 @@ def get_app_version() -> str:
                     data = tomllib.load(f)
                 version = data["project"]["version"]
                 _app_version = version
-                return version
+                return cast(str, _app_version)
         except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError) as e:
             logger.debug(f"Could not read version from {pyproject_path}: {e}")
             continue
 
     logger.warning("pyproject.toml not found in any candidate path")
     _app_version = "0.0.0-dev"
-    return "0.0.0-dev"
+    return cast(str, _app_version)
 
 
 def parse_version(version: str) -> tuple[int, int, int]:
