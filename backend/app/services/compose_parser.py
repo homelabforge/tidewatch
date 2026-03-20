@@ -2,6 +2,7 @@
 
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,24 @@ from app.services.settings_service import SettingsService
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+# Recursive compose file discovery constants
+_MAX_DEPTH = 3  # max subdirectory levels below compose_directory
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".cache", ".tox"}
+_COMPOSE_EXTENSIONS = {".yml", ".yaml"}
+_MAX_FILE_WARNINGS = 10  # cap per-file parse failure warnings
+
+
+@dataclass
+class SyncResult:
+    """Result of a container sync operation."""
+
+    added: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    total: int = 0
+    warnings: list[str] = field(default_factory=list)
+
 
 # Initialize ruamel.yaml with formatting preservation
 yaml = YAML()
@@ -133,48 +152,87 @@ class ComposeParser:
     """Parse docker-compose.yml files to discover containers."""
 
     @staticmethod
-    async def discover_containers(db: AsyncSession) -> list[Container]:
+    async def discover_containers(db: AsyncSession) -> tuple[list[Container], list[str]]:
         """Discover all containers from compose files.
+
+        Walks the compose directory recursively (up to ``_MAX_DEPTH`` subdirectory
+        levels), skipping well-known noise directories.  Returns both the
+        discovered containers and a list of user-facing warnings for any issues
+        encountered during discovery.
 
         Args:
             db: Database session
 
         Returns:
-            List of Container objects discovered
+            Tuple of (containers, warnings)
         """
+        warnings: list[str] = []
+
         compose_dir = await SettingsService.get(db, "compose_directory")
         if not compose_dir:
             logger.warning("Compose directory not configured")
-            return []
+            warnings.append("Compose directory not configured. Set it in Settings > Docker.")
+            return [], warnings
 
         # Validate compose directory path to prevent path traversal attacks.
         # Reject any path containing dangerous patterns before resolving.
         dangerous_patterns = ["..", "//", "\\", "\x00"]
         if any(pattern in compose_dir for pattern in dangerous_patterns):
             logger.warning(
-                f"Compose directory contains dangerous patterns: {sanitize_log_message(compose_dir)}"
+                f"Compose directory contains dangerous patterns: "
+                f"{sanitize_log_message(compose_dir)}"
             )
-            return []
+            warnings.append("Compose directory path is invalid.")
+            return [], warnings
 
         try:
             validated_dir = Path(compose_dir).resolve()
 
             if not validated_dir.exists():
                 logger.warning(f"Compose directory not found: {validated_dir}")
-                return []
+                warnings.append(f"Compose directory '{compose_dir}' does not exist.")
+                return [], warnings
 
             if not validated_dir.is_dir():
                 logger.warning(f"Compose directory is not a directory: {validated_dir}")
-                return []
+                warnings.append(f"Compose directory '{compose_dir}' is not a directory.")
+                return [], warnings
 
         except (OSError, RuntimeError) as e:
             logger.error(f"Invalid compose directory path: {sanitize_log_message(str(e))}")
-            return []
+            warnings.append("Compose directory path is invalid.")
+            return [], warnings
 
-        containers = []
-        compose_files = list(validated_dir.glob("*.yml")) + list(validated_dir.glob("*.yaml"))
+        # Bounded recursive walk — prunes skipped dirs before descent
+        compose_files: list[Path] = []
+        for dirpath, dirnames, filenames in validated_dir.walk():
+            depth = len(dirpath.relative_to(validated_dir).parts)
+            # Collect compose files at this level (depth 0 through _MAX_DEPTH inclusive)
+            if depth <= _MAX_DEPTH:
+                for fname in filenames:
+                    if Path(fname).suffix.lower() in _COMPOSE_EXTENSIONS:
+                        compose_files.append(dirpath / fname)
+            # Stop descending if we're at max depth (children would exceed it)
+            if depth >= _MAX_DEPTH:
+                dirnames.clear()
+            else:
+                # Prune noise dirs in-place so walk() never enters them
+                dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
 
-        logger.info(f"Found {len(compose_files)} compose files in {compose_dir}")
+        logger.info(
+            f"Found {len(compose_files)} compose files in {compose_dir} "
+            f"(recursive, max depth {_MAX_DEPTH})"
+        )
+
+        if not compose_files:
+            warnings.append(
+                f"No compose files (.yml/.yaml) found in '{compose_dir}' "
+                f"(searched up to {_MAX_DEPTH} subdirectory levels)."
+            )
+            return [], warnings
+
+        containers: list[Container] = []
+        file_errors = 0
 
         for compose_file in compose_files:
             try:
@@ -182,15 +240,32 @@ class ComposeParser:
                 containers.extend(file_containers)
             except YAMLError as e:
                 logger.error(f"YAML parsing error in {compose_file}: {e}")
+                file_errors += 1
+                if file_errors <= _MAX_FILE_WARNINGS:
+                    warnings.append(f"Failed to parse {compose_file.name}: YAML error")
             except (OSError, PermissionError) as e:
                 logger.error(f"File access error for {compose_file}: {e}")
+                file_errors += 1
+                if file_errors <= _MAX_FILE_WARNINGS:
+                    warnings.append(f"Failed to parse {compose_file.name}: file access error")
             except OperationalError as e:
                 logger.error(f"Database error parsing {compose_file}: {e}")
+                file_errors += 1
+                if file_errors <= _MAX_FILE_WARNINGS:
+                    warnings.append(f"Failed to parse {compose_file.name}: database error")
             except (ValueError, KeyError, AttributeError) as e:
                 logger.error(f"Invalid compose data in {compose_file}: {e}")
+                file_errors += 1
+                if file_errors <= _MAX_FILE_WARNINGS:
+                    warnings.append(f"Failed to parse {compose_file.name}: invalid data")
+
+        # Append overflow summary if warnings were capped
+        if file_errors > _MAX_FILE_WARNINGS:
+            overflow = file_errors - _MAX_FILE_WARNINGS
+            warnings.append(f"...and {overflow} more compose files failed to parse.")
 
         logger.info(f"Discovered {len(containers)} containers total")
-        return containers
+        return containers, warnings
 
     @staticmethod
     async def _parse_compose_file(file_path: str, db: AsyncSession) -> list[Container]:
@@ -520,7 +595,7 @@ class ComposeParser:
         return "auto"
 
     @staticmethod
-    async def sync_containers(db: AsyncSession) -> dict[str, int]:
+    async def sync_containers(db: AsyncSession) -> SyncResult:
         """Sync discovered containers with database.
 
         This will:
@@ -532,16 +607,11 @@ class ComposeParser:
             db: Database session
 
         Returns:
-            Stats dict with counts
+            SyncResult with counts and any discovery warnings
         """
-        discovered = await ComposeParser.discover_containers(db)
+        discovered, warnings = await ComposeParser.discover_containers(db)
 
-        stats = {
-            "added": 0,
-            "updated": 0,
-            "unchanged": 0,
-            "total": len(discovered),
-        }
+        sync = SyncResult(total=len(discovered), warnings=warnings)
 
         for container in discovered:
             # Check if container exists
@@ -551,7 +621,7 @@ class ComposeParser:
             if not existing:
                 # Add new container
                 db.add(container)
-                stats["added"] += 1
+                sync.added += 1
                 logger.info(f"Added new container: {container.name}")
             else:
                 # Update if changed
@@ -621,15 +691,15 @@ class ComposeParser:
                     changed = True
 
                 if changed:
-                    stats["updated"] += 1
+                    sync.updated += 1
                     logger.info(f"Updated container: {container.name}")
                 else:
-                    stats["unchanged"] += 1
+                    sync.unchanged += 1
 
         await db.commit()
         logger.info(
-            f"Container sync complete: {stats['added']} added, "
-            f"{stats['updated']} updated, {stats['unchanged']} unchanged"
+            f"Container sync complete: {sync.added} added, "
+            f"{sync.updated} updated, {sync.unchanged} unchanged"
         )
 
         # Remove stale updates for rediscovered containers
@@ -646,7 +716,7 @@ class ComposeParser:
 
         await db.commit()
 
-        return stats
+        return sync
 
     @staticmethod
     async def _sync_restart_policies(db: AsyncSession, discovered: list[Container]) -> None:

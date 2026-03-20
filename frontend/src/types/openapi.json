@@ -1133,6 +1133,70 @@
         "title": "ContainerSchema",
         "type": "object"
       },
+      "ContainerSyncResponse": {
+        "description": "Response from the container sync endpoint.",
+        "properties": {
+          "containers_found": {
+            "title": "Containers Found",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ContainerSyncStats"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "success",
+          "stats",
+          "containers_found",
+          "message"
+        ],
+        "title": "ContainerSyncResponse",
+        "type": "object"
+      },
+      "ContainerSyncStats": {
+        "description": "Statistics from a container sync operation.",
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "updated",
+          "unchanged",
+          "total"
+        ],
+        "title": "ContainerSyncStats",
+        "type": "object"
+      },
       "ContainerUpdate": {
         "description": "Container update request.",
         "properties": {
@@ -6368,16 +6432,14 @@
     },
     "/api/v1/containers/sync": {
       "post": {
-        "description": "Sync containers from compose files.\n\nDiscovers containers from docker-compose.yml files and adds/updates them\nin the database.\n\nReturns:\n    Sync statistics",
+        "description": "Sync containers from compose files.\n\nDiscovers containers from docker-compose.yml files and adds/updates them\nin the database.  Searches subdirectories recursively.\n\nReturns:\n    Sync statistics and any discovery warnings",
         "operationId": "sync_containers_api_v1_containers_sync_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Sync Containers Api V1 Containers Sync Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ContainerSyncResponse"
                 }
               }
             },

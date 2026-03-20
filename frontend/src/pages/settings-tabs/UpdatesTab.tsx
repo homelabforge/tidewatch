@@ -653,10 +653,7 @@ export default function UpdatesTab({ settings, saving, updateSetting, handleText
                   type="button"
                   onClick={async () => {
                     try {
-                      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/cleanup/run-now`, {
-                        method: 'POST',
-                      });
-                      const result = await response.json();
+                      const result = await api.cleanup.runNow();
                       if (result.success) {
                         toast.success(result.message || `Removed ${result.images_removed || 0} images and ${result.containers_removed || 0} containers, reclaimed ${result.space_reclaimed_formatted || '0 B'}`, {
                           duration: 5000,

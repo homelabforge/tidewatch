@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import HistoryTab from './HistoryTab';
+import { api } from '../../services/api';
 import type { Container, HistoryItem } from '../../types';
 
 // Mock dependencies
@@ -9,7 +10,10 @@ vi.mock('../StatusBadge', () => ({
   default: ({ status }: { status: string }) => <span>{status}</span>,
 }));
 vi.mock('../../services/api', () => ({
-  api: { history: { rollback: vi.fn() } },
+  api: {
+    history: { rollback: vi.fn() },
+    containers: { getDetails: vi.fn() },
+  },
 }));
 
 const mockContainer = { id: 1, name: 'nginx' } as Container;
@@ -31,13 +35,7 @@ function makeHistoryItem(overrides: Partial<HistoryItem> = {}): HistoryItem {
 }
 
 function mockFetchWithHistory(items: HistoryItem[]) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ history: items }),
-    }),
-  );
+  vi.mocked(api.containers.getDetails).mockResolvedValue({ history: items });
 }
 
 beforeEach(() => {

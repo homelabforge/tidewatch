@@ -61,8 +61,7 @@ class TestGetAppVersion:
         """
         result = get_app_version()
         assert result == version_module._app_version, (
-            "Return value must equal _app_version — "
-            "global write must be the value that is returned"
+            "Return value must equal _app_version — global write must be the value that is returned"
         )
 
     def test_warm_cache_skips_file_read(self) -> None:

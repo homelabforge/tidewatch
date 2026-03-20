@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Container, Update, FilterOptions, SortOption, AnalyticsSummary } from '../types';
+import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import ContainerCard from '../components/ContainerCard';
 import CheckProgressBar from '../components/CheckProgressBar';
@@ -73,6 +74,9 @@ export default function Dashboard() {
     setScanning(true);
     try {
       const result = await api.containers.sync();
+      if (result.warnings?.length) {
+        result.warnings.forEach((w: string) => toast.warning(w));
+      }
       toast.success(`Synced ${result.containers_found} containers: ${result.stats.added} added, ${result.stats.updated} updated`);
       await loadData();
     } catch {
@@ -368,14 +372,14 @@ export default function Dashboard() {
                       );
                     })}
                   </div>
-                ) : (
+                ) : containers.length > 0 ? (
                   <div className="text-center py-8 bg-tide-surface rounded-lg border border-tide-border border-dashed">
                     <FolderSearch className="mx-auto mb-3 text-tide-text-muted" size={32} />
                     <p className="text-tide-text-muted text-sm">
                       No projects discovered yet. Click &quot;Scan Projects&quot; to find containers in your projects directory.
                     </p>
                   </div>
-                )}
+                ) : null}
               </div>
             )}
 
@@ -400,18 +404,43 @@ export default function Dashboard() {
                   })}
                 </div>
               </div>
-            ) : !myProjectsEnabled && filteredContainers.length === 0 ? (
+            ) : null}
+
+            {/* True zero-discovery state — no containers in DB at all */}
+            {containers.length === 0 && (
+              <div className="text-center py-12 bg-tide-surface rounded-lg border border-tide-border border-dashed">
+                <Package className="mx-auto mb-4 text-gray-600" size={48} />
+                <p className="text-tide-text font-medium mb-2">No containers discovered</p>
+                <p className="text-tide-text-muted text-sm mb-6 max-w-md mx-auto">
+                  TideWatch finds containers by reading docker-compose files.
+                  Check that your compose directory is configured and contains
+                  .yml or .yaml files. Subdirectories are searched automatically.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <Link
+                    to="/settings?tab=docker"
+                    className="px-4 py-2 bg-tide-surface-light hover:bg-tide-border border border-tide-border text-tide-text rounded-lg font-medium transition-colors"
+                  >
+                    Configure Docker Settings
+                  </Link>
+                  <button
+                    onClick={handleScan}
+                    disabled={scanning}
+                    className="px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors disabled:opacity-50"
+                  >
+                    {scanning ? 'Scanning...' : 'Scan for Containers'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Filter-empty state — containers exist but are all filtered out */}
+            {containers.length > 0 && filteredContainers.length === 0 && (
               <div className="text-center py-12">
                 <Package className="mx-auto mb-4 text-gray-600" size={48} />
-                <p className="text-tide-text-muted">No containers found</p>
-                <button
-                  onClick={handleScan}
-                  className="mt-4 px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors"
-                >
-                  Scan for Containers
-                </button>
+                <p className="text-tide-text-muted">No containers match current filters</p>
               </div>
-            ) : null}
+            )}
           </>
         )}
       </div>

@@ -319,7 +319,7 @@ export default function DockerTab({ settings, saving, updateSetting, handleTextC
                   className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
                 />
                 <p className="text-xs text-tide-text-muted mt-1">
-                  Directory containing docker-compose files
+                  Directory containing your docker-compose files. Subdirectories are searched automatically up to 3 levels deep. Works with tools like Dockge that organize compose files in subfolders.
                 </p>
               </div>
 

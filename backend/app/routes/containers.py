@@ -21,6 +21,8 @@ from app.schemas.container import (
     AppDependenciesResponse,
     ContainerDetailsSchema,
     ContainerSchema,
+    ContainerSyncResponse,
+    ContainerSyncStats,
     ContainerUpdate,
     DockerfileDependenciesResponse,
     HistoryItemSchema,
@@ -304,26 +306,33 @@ async def update_container_policy(
     return container
 
 
-@router.post("/sync")
+@router.post("/sync", response_model=ContainerSyncResponse)
 async def sync_containers(
     _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> dict[str, Any]:
+) -> ContainerSyncResponse:
     """Sync containers from compose files.
 
     Discovers containers from docker-compose.yml files and adds/updates them
-    in the database.
+    in the database.  Searches subdirectories recursively.
 
     Returns:
-        Sync statistics
+        Sync statistics and any discovery warnings
     """
-    stats = await ComposeParser.sync_containers(db)
-    return {
-        "success": True,
-        "stats": stats,
-        "containers_found": stats["total"],
-        "message": f"Synced {stats['total']} containers: "
-        f"{stats['added']} added, {stats['updated']} updated",
-    }
+    result = await ComposeParser.sync_containers(db)
+    return ContainerSyncResponse(
+        success=True,
+        stats=ContainerSyncStats(
+            added=result.added,
+            updated=result.updated,
+            unchanged=result.unchanged,
+            total=result.total,
+        ),
+        containers_found=result.total,
+        message=(
+            f"Synced {result.total} containers: {result.added} added, {result.updated} updated"
+        ),
+        warnings=result.warnings,
+    )
 
 
 @router.delete("/{container_id}")
@@ -1308,6 +1317,16 @@ async def check_dockerfile_updates(
             f"Missing module checking Dockerfile dependencies for updates: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="Dockerfile parser not available")
+    except Exception as e:
+        # Catch-all for unexpected errors (e.g. RegistryCheckError, httpx errors)
+        # that weren't handled at the per-dependency level
+        logger.error(
+            f"Unexpected error checking Dockerfile dependencies: {sanitize_log_message(str(type(e).__name__))}: {sanitize_log_message(str(e))}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to check Dockerfile dependency updates",
+        )
 
 
 @router.post("/scan-my-projects")

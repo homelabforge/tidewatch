@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RotateCcw, Server, Plug, Bell, Database, RefreshCw, Cpu } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
@@ -7,7 +8,17 @@ import { SystemTab, UpdatesTab, DockerTab, IntegrationsTab, NotificationsTab, Ba
 
 type TabType = 'system' | 'updates' | 'docker' | 'integrations' | 'notifications' | 'backup';
 
+const tabs = [
+  { id: 'system', label: 'System', icon: Cpu },
+  { id: 'updates', label: 'Updates', icon: RotateCcw },
+  { id: 'docker', label: 'Docker', icon: Server },
+  { id: 'integrations', label: 'Integrations', icon: Plug },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'backup', label: 'Backup & Maintenance', icon: Database },
+];
+
 export default function Settings() {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('system');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -19,14 +30,12 @@ export default function Settings() {
   // Debounce timer for text inputs
   const debounceTimers = useRef<Record<string, number>>({});
 
-  const tabs = [
-    { id: 'system', label: 'System', icon: Cpu },
-    { id: 'updates', label: 'Updates', icon: RotateCcw },
-    { id: 'docker', label: 'Docker', icon: Server },
-    { id: 'integrations', label: 'Integrations', icon: Plug },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'backup', label: 'Backup & Maintenance', icon: Database },
-  ];
+  // Sync active tab from URL search params (e.g. /settings?tab=docker)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') as TabType | null;
+    const validTab = tabParam && tabs.some(t => t.id === tabParam) ? tabParam : 'system';
+    setActiveTab(validTab);
+  }, [searchParams]);
 
   // Load settings on mount
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import Settings from './Settings'
 import { api } from '../services/api'
 import { AuthContext, type AuthContextType } from '../contexts/AuthContext'
@@ -189,11 +190,13 @@ describe('Settings', () => {
     })
   })
 
-  const renderSettings = (authContext = createMockAuthContext()) => {
+  const renderSettings = (authContext = createMockAuthContext(), initialRoute = '/settings') => {
     return render(
-      <AuthContext.Provider value={authContext}>
-        <Settings />
-      </AuthContext.Provider>
+      <MemoryRouter initialEntries={[initialRoute]}>
+        <AuthContext.Provider value={authContext}>
+          <Settings />
+        </AuthContext.Provider>
+      </MemoryRouter>
     )
   }
 
@@ -629,6 +632,42 @@ describe('Settings', () => {
       await waitFor(() => {
         expect(screen.getByText('Settings')).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Tab deep-linking', () => {
+    it('opens Docker tab when ?tab=docker is in URL', async () => {
+      renderSettings(createMockAuthContext(), '/settings?tab=docker')
+
+      await waitFor(() => {
+        expect(screen.getByText('Docker')).toBeInTheDocument()
+      })
+
+      // Verify the Docker tab button has the active styling
+      const dockerTab = screen.getByText('Docker').closest('button')
+      expect(dockerTab?.className).toContain('border-primary')
+    })
+
+    it('defaults to System tab when no ?tab= param', async () => {
+      renderSettings(createMockAuthContext(), '/settings')
+
+      await waitFor(() => {
+        expect(screen.getByText('System')).toBeInTheDocument()
+      })
+
+      const systemTab = screen.getByText('System').closest('button')
+      expect(systemTab?.className).toContain('border-primary')
+    })
+
+    it('defaults to System tab when ?tab= is invalid', async () => {
+      renderSettings(createMockAuthContext(), '/settings?tab=nonexistent')
+
+      await waitFor(() => {
+        expect(screen.getByText('System')).toBeInTheDocument()
+      })
+
+      const systemTab = screen.getByText('System').closest('button')
+      expect(systemTab?.className).toContain('border-primary')
     })
   })
 })

@@ -971,10 +971,10 @@ export interface paths {
          * @description Sync containers from compose files.
          *
          *     Discovers containers from docker-compose.yml files and adds/updates them
-         *     in the database.
+         *     in the database.  Searches subdirectories recursively.
          *
          *     Returns:
-         *         Sync statistics
+         *         Sync statistics and any discovery warnings
          */
         post: operations["sync_containers_api_v1_containers_sync_post"];
         delete?: never;
@@ -4179,6 +4179,35 @@ export interface components {
             vulnforge_enabled: boolean;
         };
         /**
+         * ContainerSyncResponse
+         * @description Response from the container sync endpoint.
+         */
+        ContainerSyncResponse: {
+            /** Containers Found */
+            containers_found: number;
+            /** Message */
+            message: string;
+            stats: components["schemas"]["ContainerSyncStats"];
+            /** Success */
+            success: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * ContainerSyncStats
+         * @description Statistics from a container sync operation.
+         */
+        ContainerSyncStats: {
+            /** Added */
+            added: number;
+            /** Total */
+            total: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Updated */
+            updated: number;
+        };
+        /**
          * ContainerUpdate
          * @description Container update request.
          */
@@ -6603,9 +6632,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ContainerSyncResponse"];
                 };
             };
         };

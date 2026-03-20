@@ -243,3 +243,22 @@ class HttpServersResponse(BaseModel):
     with_updates: int = 0
     last_scan: datetime | None = None
     scan_status: str = "idle"  # idle, scanning, error
+
+
+class ContainerSyncStats(BaseModel):
+    """Statistics from a container sync operation."""
+
+    added: int
+    updated: int
+    unchanged: int
+    total: int
+
+
+class ContainerSyncResponse(BaseModel):
+    """Response from the container sync endpoint."""
+
+    success: bool
+    stats: ContainerSyncStats
+    containers_found: int
+    message: str
+    warnings: list[str] = Field(default_factory=list)

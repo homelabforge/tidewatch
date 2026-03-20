@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Recursive compose file discovery — subdirectories are now searched up to 3 levels deep, with automatic pruning of `.git`, `node_modules`, and other noise directories (#32)
+- Actionable warnings when container discovery fails (directory not configured, missing, empty, or containing broken compose files)
+- Settings tab deep-linking via `?tab=` query parameter (e.g. `/settings?tab=docker`)
+- Typed `ContainerSyncResponse` schema for the `/containers/sync` endpoint
+
+### Fixed
+- Users with Dockge-style layouts (compose files in subfolders) no longer see an empty dashboard (#32)
+- Empty dashboard now distinguishes between "no containers discovered" (with setup guidance) and "no containers match current filters"
+- "Run Cleanup Now" button now works (was bypassing CSRF protection via raw `fetch`)
+- Migrated all raw `fetch()` calls in components to use the centralized `apiCall` wrapper (fixes missing CSRF tokens, auth handling, and session expiry detection)
+- Fixed `detectHealthCheck` and `detectReleaseSource` API wrappers using wrong HTTP method (POST → GET to match backend)
+- Dockerfile dependency update check no longer crashes with 500 when Docker Hub rate-limits (429) — `RegistryCheckError` is now caught and counted as a per-dependency error
+
 ## [3.8.3] - 2026-03-17
 
 ### Security

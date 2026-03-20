@@ -136,7 +136,18 @@ export const containerApi = {
 
   getById: (id: number) => apiCall<Container>(`/containers/${id}`),
 
-  sync: () => apiCall<{ message: string; containers_found: number; stats: Record<string, unknown>; success: boolean }>('/containers/sync', {
+  getDetails: (id: number) => apiCall<Record<string, unknown>>(`/containers/${id}/details`),
+
+  getMetricsHistory: (id: number, period: string = '24h') =>
+    apiCall<Record<string, unknown>>(`/containers/${id}/metrics/history?period=${period}`),
+
+  sync: () => apiCall<{
+    message: string;
+    containers_found: number;
+    stats: { added: number; updated: number; unchanged: number; total: number };
+    success: boolean;
+    warnings: string[];
+  }>('/containers/sync', {
     method: 'POST',
   }),
 
@@ -194,14 +205,10 @@ export const containerApi = {
     }),
 
   detectHealthCheck: (id: number) =>
-    apiCall<{ health_check_url: string | null; method: string; confidence: string }>(`/containers/${id}/detect-health-check`, {
-      method: 'POST',
-    }),
+    apiCall<{ success: boolean; detected_url: string | null; health_check_url: string | null; method: string; confidence: string }>(`/containers/${id}/detect-health-check`),
 
   detectReleaseSource: (id: number) =>
-    apiCall<{ release_source: string | null; confidence: string; source_type: string }>(`/containers/${id}/detect-release-source`, {
-      method: 'POST',
-    }),
+    apiCall<{ success: boolean; release_source: string | null; confidence: string; source_type: string }>(`/containers/${id}/detect-release-source`),
 
   getAppDependencies: (id: number) =>
     apiCall<AppDependenciesResponse>(`/containers/${id}/app-dependencies`),
@@ -731,6 +738,16 @@ const dependenciesApi = {
 };
 
 // Export combined API
+export const cleanupApi = {
+  runNow: () => apiCall<{
+    success: boolean;
+    message?: string;
+    images_removed?: number;
+    containers_removed?: number;
+    space_reclaimed_formatted?: string;
+  }>('/cleanup/run-now', { method: 'POST' }),
+};
+
 export const api = {
   containers: containerApi,
   updates: updateApi,
@@ -742,6 +759,7 @@ export const api = {
   analytics: analyticsApi,
   auth: authApi,
   dependencies: dependenciesApi,
+  cleanup: cleanupApi,
 };
 
 export default api;

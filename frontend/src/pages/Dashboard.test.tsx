@@ -1,6 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import Dashboard from './Dashboard'
 import { api } from '../services/api'
 import { Container, Update, AnalyticsSummary } from '../types'
@@ -53,6 +54,7 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    warning: vi.fn(),
   },
 }))
 
@@ -220,12 +222,12 @@ describe('Dashboard', () => {
       vi.mocked(api.analytics.getSummary).mockReturnValue(new Promise(() => {}))
       vi.mocked(api.settings.getAll).mockReturnValue(new Promise(() => {}))
       vi.mocked(api.containers.getDependencySummary).mockReturnValue(new Promise(() => {}))
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
       expect(screen.getByText('Loading containers...')).toBeInTheDocument()
     })
 
     it('loads all data on mount', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(api.containers.getAll).toHaveBeenCalledTimes(1)
@@ -236,7 +238,7 @@ describe('Dashboard', () => {
     })
 
     it('displays containers after loading', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -250,7 +252,7 @@ describe('Dashboard', () => {
       const { toast } = await import('sonner')
       vi.mocked(api.containers.getAll).mockRejectedValue(new Error('Network error'))
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith('Failed to load data')
@@ -260,7 +262,7 @@ describe('Dashboard', () => {
 
   describe('Statistics display', () => {
     it('displays total containers count', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Total Containers')).toBeInTheDocument()
@@ -270,7 +272,7 @@ describe('Dashboard', () => {
     })
 
     it('displays running containers count', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const runningLabels = screen.getAllByText('Running')
@@ -282,7 +284,7 @@ describe('Dashboard', () => {
     })
 
     it('displays auto-update enabled count', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Auto-Update Enabled')).toBeInTheDocument()
@@ -297,7 +299,7 @@ describe('Dashboard', () => {
       ]
       vi.mocked(api.updates.getAll).mockResolvedValue(staleUpdates)
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Stale Containers')).toBeInTheDocument()
@@ -305,7 +307,7 @@ describe('Dashboard', () => {
     })
 
     it('displays pending updates count', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Pending Updates')).toBeInTheDocument()
@@ -317,7 +319,7 @@ describe('Dashboard', () => {
 
   describe('Analytics cards', () => {
     it('displays update frequency analytics', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Update Frequency')).toBeInTheDocument()
@@ -330,7 +332,7 @@ describe('Dashboard', () => {
     })
 
     it('shows average duration when available', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText(/Avg duration: 45s/)).toBeInTheDocument()
@@ -343,7 +345,7 @@ describe('Dashboard', () => {
         total_updates: 0,
       })
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText(/No analytics available yet/)).toBeInTheDocument()
@@ -351,7 +353,7 @@ describe('Dashboard', () => {
     })
 
     it('displays CVEs resolved when VulnForge enabled', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('CVEs Resolved')).toBeInTheDocument()
@@ -364,7 +366,7 @@ describe('Dashboard', () => {
         { ...mockSettings[0], value: 'false' },
       ])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.queryByText('CVEs Resolved')).not.toBeInTheDocument()
@@ -372,7 +374,7 @@ describe('Dashboard', () => {
     })
 
     it('displays policy distribution', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Policy Distribution')).toBeInTheDocument()
@@ -388,7 +390,7 @@ describe('Dashboard', () => {
 
   describe('Filtering', () => {
     it('filters containers by search term', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -404,7 +406,7 @@ describe('Dashboard', () => {
     })
 
     it('filters by auto-update enabled', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -420,7 +422,7 @@ describe('Dashboard', () => {
     })
 
     it('filters by auto-update disabled', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const postgresElements = screen.getAllByText('postgres')
@@ -436,7 +438,7 @@ describe('Dashboard', () => {
     })
 
     it('filters by has updates', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -452,7 +454,7 @@ describe('Dashboard', () => {
     })
 
     it('filters by no updates', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const postgresElements = screen.getAllByText('postgres')
@@ -470,7 +472,7 @@ describe('Dashboard', () => {
 
   describe('Action buttons', () => {
     it('renders Scan button', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Scan')).toBeInTheDocument()
@@ -483,10 +485,11 @@ describe('Dashboard', () => {
         message: 'Sync completed',
         success: true,
         containers_found: 5,
-        stats: { added: 2, updated: 1, removed: 0, unchanged: 2 },
+        stats: { added: 2, updated: 1, unchanged: 2, total: 5 },
+        warnings: [],
       })
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Scan')).toBeInTheDocument()
@@ -501,10 +504,34 @@ describe('Dashboard', () => {
       })
     })
 
+    it('shows warnings from sync as toast.warning', async () => {
+      const { toast } = await import('sonner')
+      vi.mocked(api.containers.sync).mockResolvedValue({
+        message: 'Sync completed',
+        success: true,
+        containers_found: 0,
+        stats: { added: 0, updated: 0, unchanged: 0, total: 0 },
+        warnings: ['Compose directory not configured. Set it in Settings > Docker.'],
+      })
+
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+      await waitFor(() => {
+        expect(screen.getByText('Scan')).toBeInTheDocument()
+      })
+
+      const scanButton = screen.getByText('Scan')
+      fireEvent.click(scanButton)
+
+      await waitFor(() => {
+        expect(toast.warning).toHaveBeenCalledWith('Compose directory not configured. Set it in Settings > Docker.')
+      })
+    })
+
     it('shows scanning state during sync', async () => {
       vi.mocked(api.containers.sync).mockImplementation(() => new Promise(() => {})) // Never resolves
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Scan')).toBeInTheDocument()
@@ -519,7 +546,7 @@ describe('Dashboard', () => {
     })
 
     it('renders Check Updates button', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Check Updates')).toBeInTheDocument()
@@ -536,7 +563,7 @@ describe('Dashboard', () => {
         already_running: false,
       })
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Check Updates')).toBeInTheDocument()
@@ -554,7 +581,7 @@ describe('Dashboard', () => {
     it('disables buttons during operations', async () => {
       vi.mocked(api.containers.sync).mockImplementation(() => new Promise(() => {}))
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('Scan')).toBeInTheDocument()
@@ -574,7 +601,7 @@ describe('Dashboard', () => {
 
   describe('Container sections', () => {
     it('separates My Projects from Community Containers', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         // The "★ My Projects" text is split across span elements, so use regex
@@ -587,7 +614,7 @@ describe('Dashboard', () => {
       const myProjectsOnly = mockContainers.map(c => ({ ...c, is_my_project: true }))
       vi.mocked(api.containers.getAll).mockResolvedValue(myProjectsOnly)
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText(/My Projects/)).toBeInTheDocument()
@@ -602,7 +629,7 @@ describe('Dashboard', () => {
         { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
       ])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.queryByText('★ My Projects')).not.toBeInTheDocument()
@@ -611,7 +638,7 @@ describe('Dashboard', () => {
     })
 
     it('shows Update Available badge for containers with pending updates', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         // nginx has a pending update
@@ -627,31 +654,44 @@ describe('Dashboard', () => {
         { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
       ])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('No containers found')).toBeInTheDocument()
       })
     })
 
-    it('shows my projects empty state when no containers', async () => {
+    it('shows global compose guidance when zero containers discovered', async () => {
       vi.mocked(api.containers.getAll).mockResolvedValue([])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
-        expect(screen.getByText(/No projects discovered yet/)).toBeInTheDocument()
+        expect(screen.getByText('No containers discovered')).toBeInTheDocument()
+        expect(screen.getByText('Configure Docker Settings')).toBeInTheDocument()
       })
     })
 
-    it('shows empty state when all containers filtered out', async () => {
+    it('does not show my projects empty card when globally empty', async () => {
+      vi.mocked(api.containers.getAll).mockResolvedValue([])
+
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+      await waitFor(() => {
+        expect(screen.getByText('No containers discovered')).toBeInTheDocument()
+      })
+
+      expect(screen.queryByText(/No projects discovered yet/)).not.toBeInTheDocument()
+    })
+
+    it('shows filter-empty state when all containers filtered out', async () => {
       const allCommunity = mockContainers.map(c => ({ ...c, is_my_project: false }))
       vi.mocked(api.containers.getAll).mockResolvedValue(allCommunity)
       vi.mocked(api.settings.getAll).mockResolvedValue([
         { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
       ])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -662,14 +702,14 @@ describe('Dashboard', () => {
       fireEvent.change(searchInput, { target: { value: 'nonexistent' } })
 
       await waitFor(() => {
-        expect(screen.getByText('No containers found')).toBeInTheDocument()
+        expect(screen.getByText('No containers match current filters')).toBeInTheDocument()
       })
     })
   })
 
   describe('Container modal', () => {
     it('opens modal when container card is clicked', async () => {
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -677,7 +717,7 @@ describe('Dashboard', () => {
       })
 
       // Click on the nginx container card - find the card by looking for the heading
-      const { container } = render(<Dashboard />)
+      const { container } = render(<MemoryRouter><Dashboard /></MemoryRouter>)
       await waitFor(() => {
         const headings = container.querySelectorAll('h3')
         const nginxHeading = Array.from(headings).find(h => h.textContent === 'nginx')
@@ -696,7 +736,7 @@ describe('Dashboard', () => {
     })
 
     it('closes modal when close button clicked', async () => {
-      const { container } = render(<Dashboard />)
+      const { container } = render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         const nginxElements = screen.getAllByText('nginx')
@@ -725,7 +765,7 @@ describe('Dashboard', () => {
     it('handles null analytics gracefully', async () => {
       vi.mocked(api.analytics.getSummary).mockResolvedValue(null as unknown as AnalyticsSummary)
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText(/No analytics available yet/)).toBeInTheDocument()
@@ -738,7 +778,7 @@ describe('Dashboard', () => {
         { ...mockSettingBase, key: 'vulnforge_enabled', value: 'true' },
       ])
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         expect(screen.getByText('No containers found')).toBeInTheDocument()
@@ -749,7 +789,7 @@ describe('Dashboard', () => {
       const containersNullPolicy = mockContainers.map(c => ({ ...c, policy: '' as unknown as Container['policy'] }))
       vi.mocked(api.containers.getAll).mockResolvedValue(containersNullPolicy)
 
-      render(<Dashboard />)
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
       await waitFor(() => {
         // Should default to 'monitor' policy

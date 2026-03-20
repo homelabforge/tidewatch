@@ -193,15 +193,14 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
 
   const handleAutoFillHealthCheck = async () => {
     try {
-      const response = await fetch(`/api/v1/containers/${container.id}/detect-health-check`);
-      const data = await response.json();
+      const data = await api.containers.detectHealthCheck(container.id);
 
       if (data.success && data.detected_url) {
         setHealthCheckUrl(data.detected_url);
         await saveSettings({ health_check_url: data.detected_url });
         toast.success(`Health check URL detected: ${data.detected_url}`);
       } else {
-        toast.error(data.message || 'No health check found in compose file');
+        toast.error('No health check found in compose file');
       }
     } catch (error) {
       console.error('Error detecting health check:', error);
@@ -211,15 +210,14 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
 
   const handleAutoFillReleaseSource = async () => {
     try {
-      const response = await fetch(`/api/v1/containers/${container.id}/detect-release-source`);
-      const data = await response.json();
+      const data = await api.containers.detectReleaseSource(container.id);
 
       if (data.success && data.release_source) {
         setReleaseSource(data.release_source);
         await saveSettings({ release_source: data.release_source });
         toast.success(`Release source detected: ${data.release_source}`);
       } else {
-        toast(data.message || 'Could not auto-detect release source. Please enter manually.');
+        toast('Could not auto-detect release source. Please enter manually.');
       }
     } catch (error) {
       console.error('Error detecting release source:', error);

@@ -59,10 +59,8 @@ export default function MetricsTab({ container }: MetricsTabProps) {
   const loadHistoricalData = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`/api/v1/containers/${container.id}/metrics/history?period=${timePeriod}`);
-      if (!response.ok) throw new Error('Failed to fetch history');
-      const data = await response.json();
-      setHistoryData(data);
+      const data = await api.containers.getMetricsHistory(container.id, timePeriod);
+      setHistoryData(data as unknown as MetricsHistoryDataPoint[]);
     } catch (error) {
       console.error('Failed to load historical data:', error);
       setHistoryData([]);

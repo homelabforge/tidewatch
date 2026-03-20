@@ -19,10 +19,8 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
   const loadHistoryItem = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`/api/v1/containers/${container.id}/details`);
-      if (!response.ok) throw new Error('Failed to fetch history');
-      const data = await response.json();
-      setHistory(data.history || []);
+      const data = await api.containers.getDetails(container.id);
+      setHistory((data as { history?: HistoryItem[] }).history || []);
     } catch (error) {
       console.error('Failed to load update history:', error);
       setHistory([]);

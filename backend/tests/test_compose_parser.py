@@ -807,10 +807,10 @@ class TestDiscoverContainersPathValidation:
                 "app.services.compose_parser.SettingsService.get",
                 new=AsyncMock(return_value=tmpdir),
             ):
-                result = await ComposeParser.discover_containers(mock_db)
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
 
-        assert len(result) == 1
-        assert result[0].name == "nginx"
+        assert len(containers) == 1
+        assert containers[0].name == "nginx"
 
     @pytest.mark.asyncio
     async def test_accepts_arbitrary_absolute_path(self, mock_db: AsyncMock) -> None:
@@ -833,13 +833,13 @@ class TestDiscoverContainersPathValidation:
                 "app.services.compose_parser.SettingsService.get",
                 new=AsyncMock(return_value=custom_dir),
             ):
-                result = await ComposeParser.discover_containers(mock_db)
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
 
-        assert len(result) == 1, (
-            f"Expected 1 container from {custom_dir!r}, got {len(result)}. "
+        assert len(containers) == 1, (
+            f"Expected 1 container from {custom_dir!r}, got {len(containers)}. "
             "This path was previously in the old hardcoded allowlist rejection zone."
         )
-        assert result[0].name == "nginx"
+        assert containers[0].name == "nginx"
 
     @pytest.mark.asyncio
     async def test_rejects_path_traversal(self, mock_db: AsyncMock) -> None:
@@ -848,28 +848,208 @@ class TestDiscoverContainersPathValidation:
             "app.services.compose_parser.SettingsService.get",
             new=AsyncMock(return_value="/tmp/../etc"),
         ):
-            result = await ComposeParser.discover_containers(mock_db)
+            containers, warnings = await ComposeParser.discover_containers(mock_db)
 
-        assert result == []
+        assert containers == []
+        assert any("invalid" in w.lower() for w in warnings)
 
     @pytest.mark.asyncio
     async def test_rejects_unconfigured_compose_directory(self, mock_db: AsyncMock) -> None:
-        """Missing compose_directory setting returns empty list."""
+        """Missing compose_directory setting returns empty list with warning."""
         with patch(
             "app.services.compose_parser.SettingsService.get",
             new=AsyncMock(return_value=None),
         ):
-            result = await ComposeParser.discover_containers(mock_db)
+            containers, warnings = await ComposeParser.discover_containers(mock_db)
 
-        assert result == []
+        assert containers == []
+        assert any("not configured" in w.lower() for w in warnings)
 
     @pytest.mark.asyncio
     async def test_rejects_nonexistent_directory(self, mock_db: AsyncMock) -> None:
-        """Nonexistent compose_directory returns empty list."""
+        """Nonexistent compose_directory returns empty list with warning."""
         with patch(
             "app.services.compose_parser.SettingsService.get",
             new=AsyncMock(return_value="/tmp/tidewatch-nonexistent-path-xyz"),
         ):
-            result = await ComposeParser.discover_containers(mock_db)
+            containers, warnings = await ComposeParser.discover_containers(mock_db)
 
-        assert result == []
+        assert containers == []
+        assert any("does not exist" in w for w in warnings)
+
+
+class TestRecursiveComposeDiscovery:
+    """Tests for recursive subdirectory compose file discovery (issue #32 followup).
+
+    Validates bounded Path.walk() with depth limits, directory pruning,
+    and user-facing warnings.
+    """
+
+    SIMPLE_COMPOSE = "services:\n  nginx:\n    image: nginx:latest\n"
+    REDIS_COMPOSE = "services:\n  redis:\n    image: redis:7\n"
+
+    @pytest.fixture
+    def mock_db(self) -> AsyncMock:
+        """Create mock database session."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_discovers_compose_files_in_subdirectories(self, mock_db: AsyncMock) -> None:
+        """Compose files in subdirectories (Dockge pattern) are discovered."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Dockge-style: subfolder/compose.yaml
+            sub1 = Path(tmpdir) / "app1"
+            sub1.mkdir()
+            (sub1 / "compose.yaml").write_text(self.SIMPLE_COMPOSE)
+
+            sub2 = Path(tmpdir) / "app2"
+            sub2.mkdir()
+            (sub2 / "compose.yml").write_text(self.REDIS_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        names = {c.name for c in containers}
+        assert "nginx" in names
+        assert "redis" in names
+        assert len(containers) == 2
+
+    @pytest.mark.asyncio
+    async def test_depth_limit_at_boundary(self, mock_db: AsyncMock) -> None:
+        """File at exactly depth 3 (a/b/c/compose.yaml) IS found."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            deep = Path(tmpdir) / "a" / "b" / "c"
+            deep.mkdir(parents=True)
+            (deep / "compose.yaml").write_text(self.SIMPLE_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert len(containers) == 1
+        assert containers[0].name == "nginx"
+
+    @pytest.mark.asyncio
+    async def test_depth_limit_exceeded(self, mock_db: AsyncMock) -> None:
+        """File at depth 4 (a/b/c/d/compose.yaml) is NOT found."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            too_deep = Path(tmpdir) / "a" / "b" / "c" / "d"
+            too_deep.mkdir(parents=True)
+            (too_deep / "compose.yaml").write_text(self.SIMPLE_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert len(containers) == 0
+        assert any("No compose files" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_skips_dotgit_and_node_modules(self, mock_db: AsyncMock) -> None:
+        """Compose files in .git/ and node_modules/ are never discovered."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for skip_dir in [".git", "node_modules"]:
+                d = Path(tmpdir) / skip_dir
+                d.mkdir()
+                (d / "compose.yaml").write_text(self.SIMPLE_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert len(containers) == 0
+
+    @pytest.mark.asyncio
+    async def test_warning_no_compose_files(self, mock_db: AsyncMock) -> None:
+        """Empty directory returns zero containers with descriptive warning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert containers == []
+        assert any("No compose files" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_warning_broken_yaml(self, mock_db: AsyncMock) -> None:
+        """Directory with invalid YAML returns warning about parse failure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "broken.yml").write_text("{{invalid yaml")
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert containers == []
+        assert any("Failed to parse" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_file_error_warnings_capped_with_overflow(self, mock_db: AsyncMock) -> None:
+        """More than 10 broken files produces capped warnings plus overflow summary."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for i in range(15):
+                (Path(tmpdir) / f"broken{i}.yml").write_text("{{invalid yaml")
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert containers == []
+        # 10 individual + 1 overflow summary
+        parse_warnings = [w for w in warnings if "Failed to parse" in w or "...and" in w]
+        assert len(parse_warnings) == 11
+        assert any("...and 5 more" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_mixed_valid_and_invalid_files(self, mock_db: AsyncMock) -> None:
+        """Valid compose files are still discovered alongside broken ones."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "good.yml").write_text(self.SIMPLE_COMPOSE)
+            (Path(tmpdir) / "broken.yml").write_text("{{invalid yaml")
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        assert len(containers) == 1
+        assert containers[0].name == "nginx"
+        assert any("Failed to parse" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_flat_and_nested_files_both_found(self, mock_db: AsyncMock) -> None:
+        """Files at depth 0 and in subdirectories are all discovered."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Root level
+            (Path(tmpdir) / "stack.yml").write_text(self.SIMPLE_COMPOSE)
+            # Subdirectory
+            sub = Path(tmpdir) / "myapp"
+            sub.mkdir()
+            (sub / "compose.yaml").write_text(self.REDIS_COMPOSE)
+
+            with patch(
+                "app.services.compose_parser.SettingsService.get",
+                new=AsyncMock(return_value=tmpdir),
+            ):
+                containers, warnings = await ComposeParser.discover_containers(mock_db)
+
+        names = {c.name for c in containers}
+        assert "nginx" in names
+        assert "redis" in names
+        assert len(containers) == 2

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
 from app.models.dockerfile_dependency import DockerfileDependency
+from app.services.registry_client import RegistryCheckError
 from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
@@ -380,6 +381,13 @@ class DockerfileParser:
                     dependency.update_available = False
                     dependency.severity = "info"
 
+        except RegistryCheckError as e:
+            logger.warning(
+                f"Registry error checking updates for "
+                f"{sanitize_log_message(str(dependency.full_image))}: "
+                f"{sanitize_log_message(str(e))}"
+            )
+            # Transient error (rate limit, timeout) — don't clear existing state
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(
                 f"Invalid data checking updates for {sanitize_log_message(str(dependency.full_image))}: {sanitize_log_message(str(e))}"
@@ -581,6 +589,13 @@ class DockerfileParser:
                     stats["total_scanned"] += 1
                     if dep.update_available:
                         stats["updates_found"] += 1
+                except RegistryCheckError as e:
+                    logger.warning(
+                        f"Registry error checking dependency "
+                        f"{sanitize_log_message(str(dep.id))}: "
+                        f"{sanitize_log_message(str(e))}"
+                    )
+                    stats["errors"] += 1
                 except (ValueError, KeyError, AttributeError) as e:
                     logger.error(
                         f"Invalid data checking dependency {sanitize_log_message(str(dep.id))}: {sanitize_log_message(str(e))}"
