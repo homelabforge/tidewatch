@@ -1,12 +1,12 @@
 # ==============================================================================
 # Dockerfile for TideWatch - Intelligent Docker Container Update Manager
 # Multi-stage production build with frontend built from source
-# Frontend: Bun 1.3.10
+# Frontend: Bun 1.3.11
 # Backend: Python 3.14
 # ==============================================================================
 
 # Stage 1: Build frontend with Bun
-FROM oven/bun:1.3.10-alpine AS frontend-builder
+FROM oven/bun:1.3.11-alpine AS frontend-builder
 
 # Set working directory
 WORKDIR /app/frontend
