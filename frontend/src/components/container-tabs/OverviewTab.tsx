@@ -121,6 +121,12 @@ export default function OverviewTab({ container, onUpdate }: OverviewTabProps) {
             <span className="text-tide-text-muted">Service Name</span>
             <span className="text-tide-text font-mono text-sm">{container.service_name}</span>
           </div>
+          {container.docker_name && (
+            <div className="flex justify-between">
+              <span className="text-tide-text-muted">Docker Name</span>
+              <span className="text-tide-text font-mono text-sm">{container.docker_name}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-tide-text-muted">Last Checked</span>
             <span className="text-tide-text text-sm">
