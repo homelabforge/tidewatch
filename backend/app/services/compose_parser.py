@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
@@ -264,8 +265,60 @@ class ComposeParser:
             overflow = file_errors - _MAX_FILE_WARNINGS
             warnings.append(f"...and {overflow} more compose files failed to parse.")
 
+        # Disambiguate duplicate display names (conflict-only prefixing)
+        containers = ComposeParser._disambiguate_names(containers)
+
         logger.info(f"Discovered {len(containers)} containers total")
         return containers, warnings
+
+    @staticmethod
+    def _disambiguate_names(containers: list[Container]) -> list[Container]:
+        """Prefix duplicate display names with compose file context.
+
+        Solo names stay bare. Duplicates get prefixed with the compose file's
+        parent directory name. If that still collides, the file stem is used.
+        Final fallback: parent-stem-service (guaranteed unique since compose_file is unique).
+        """
+        name_counts = Counter(c.name for c in containers)
+        duplicated = {name for name, count in name_counts.items() if count > 1}
+
+        if not duplicated:
+            return containers
+
+        for container in containers:
+            if container.name not in duplicated:
+                continue
+
+            svc = container.service_name
+            parent = Path(container.compose_file).parent.name
+            stem = Path(container.compose_file).stem
+
+            if parent and parent != ".":
+                container.name = f"{parent}-{svc}"
+            elif stem and stem not in ("compose", "docker-compose"):
+                container.name = f"{stem}-{svc}"
+            else:
+                container.name = svc  # fallback unchanged
+
+        # Check if prefixing created new collisions
+        name_counts2 = Counter(c.name for c in containers)
+        still_duped = {name for name, count in name_counts2.items() if count > 1}
+
+        if still_duped:
+            for container in containers:
+                if container.name not in still_duped:
+                    continue
+                parent = Path(container.compose_file).parent.name
+                stem = Path(container.compose_file).stem
+                svc = container.service_name
+                container.name = f"{parent}-{stem}-{svc}"
+
+        logger.info(
+            "Disambiguated %d duplicate name(s): %s",
+            len(duplicated),
+            ", ".join(sorted(duplicated)),
+        )
+        return containers
 
     @staticmethod
     async def _parse_compose_file(file_path: str, db: AsyncSession) -> list[Container]:
@@ -359,9 +412,12 @@ class ComposeParser:
                 or labels.get("tidewatch.healthcheck_method")
             )
 
+            # Use container_name directive if present (globally unique in Docker)
+            display_name = service_config.get("container_name") or service_name
+
             # Create container object
             container = Container(
-                name=service_name,
+                name=display_name,
                 image=image_name,
                 current_tag=tag,
                 registry=registry,
@@ -614,8 +670,13 @@ class ComposeParser:
         sync = SyncResult(total=len(discovered), warnings=warnings)
 
         for container in discovered:
-            # Check if container exists
-            result = await db.execute(select(Container).where(Container.name == container.name))
+            # Lookup by composite identity (service_name, compose_file)
+            result = await db.execute(
+                select(Container).where(
+                    Container.service_name == container.service_name,
+                    Container.compose_file == container.compose_file,
+                )
+            )
             existing = result.scalar_one_or_none()
 
             if not existing:
@@ -626,6 +687,14 @@ class ComposeParser:
             else:
                 # Update if changed
                 changed = False
+
+                # Display name may change due to conflict resolution
+                if existing.name != container.name:
+                    old_name = existing.name
+                    existing.name = container.name
+                    changed = True
+                    await ComposeParser._cascade_name_change(db, existing.id, container.name)
+                    logger.info(f"Renamed container display name: {old_name} -> {container.name}")
 
                 if existing.image != container.image:
                     existing.image = container.image
@@ -719,6 +788,59 @@ class ComposeParser:
         return sync
 
     @staticmethod
+    async def _cascade_name_change(db: AsyncSession, container_id: int, new_name: str) -> None:
+        """Cascade a display-name change to all denormalized container_name columns.
+
+        Uses stable container_id for safe, unambiguous updates.
+        """
+        from sqlalchemy import update as sa_update
+
+        from app.models.check_job import CheckJob
+        from app.models.history import UpdateHistory
+        from app.models.pending_scan_job import PendingScanJob
+        from app.models.restart_log import ContainerRestartLog
+        from app.models.restart_state import ContainerRestartState
+        from app.models.update import Update
+
+        # ID-keyed updates
+        await db.execute(
+            sa_update(Update)
+            .where(Update.container_id == container_id)
+            .values(container_name=new_name)
+        )
+        await db.execute(
+            sa_update(UpdateHistory)
+            .where(UpdateHistory.container_id == container_id)
+            .values(container_name=new_name)
+        )
+        await db.execute(
+            sa_update(ContainerRestartState)
+            .where(ContainerRestartState.container_id == container_id)
+            .values(container_name=new_name)
+        )
+        await db.execute(
+            sa_update(ContainerRestartLog)
+            .where(ContainerRestartLog.container_id == container_id)
+            .values(container_name=new_name)
+        )
+        # PendingScanJob: join through updates.id
+        await db.execute(
+            sa_update(PendingScanJob)
+            .where(
+                PendingScanJob.update_id.in_(
+                    select(Update.id).where(Update.container_id == container_id)
+                )
+            )
+            .values(container_name=new_name)
+        )
+        # CheckJob: has current_container_id
+        await db.execute(
+            sa_update(CheckJob)
+            .where(CheckJob.current_container_id == container_id)
+            .values(current_container_name=new_name)
+        )
+
+    @staticmethod
     async def _sync_restart_policies(db: AsyncSession, discovered: list[Container]) -> None:
         """Sync Docker restart policies from runtime to database.
 
@@ -734,7 +856,7 @@ class ComposeParser:
 
         for container in all_containers:
             # Get restart policy from Docker runtime
-            restart_policy = await DockerStatsService.get_restart_policy(container.name)
+            restart_policy = await DockerStatsService.get_restart_policy(container.runtime_name)
 
             # Update if different
             if container.restart_policy != restart_policy:
@@ -743,44 +865,96 @@ class ComposeParser:
 
     @staticmethod
     async def _sync_compose_projects(db: AsyncSession) -> None:
-        """Sync Docker Compose project names from container labels to database.
+        """Sync compose_project and docker_name from Docker runtime labels.
 
-        Docker Compose automatically adds a 'com.docker.compose.project' label
-        to each container. This method extracts that label and stores it in the
-        database so TideWatch can use the correct -p flag when running commands.
+        Uses label-based filtering (not name lookup) to correctly resolve
+        containers even when multiple services share the same name.
+        Always re-resolves so docker_name stays fresh after container recreations.
 
         Args:
             db: Database session
         """
         try:
-            from docker.errors import NotFound
-
             docker_url = await resolve_docker_url(db)
             client = make_docker_client(docker_url)
         except Exception as e:
             logger.warning(f"Could not connect to Docker for compose project sync: {e}")
             return
 
-        # Get all containers from database
-        result = await db.execute(select(Container))
-        all_containers = result.scalars().all()
+        try:
+            result = await db.execute(select(Container))
+            all_containers = result.scalars().all()
 
-        for container in all_containers:
-            # Skip if already has compose_project set
-            if container.compose_project:
+            for container in all_containers:
+                try:
+                    ComposeParser._resolve_runtime_info(client, container)
+                except Exception as e:
+                    logger.debug(f"Could not resolve runtime info for {container.name}: {e}")
+        finally:
+            client.close()
+
+    @staticmethod
+    def _resolve_runtime_info(client: Any, container: Container) -> None:
+        """Resolve compose_project and docker_name from Docker runtime labels.
+
+        Two-pass label filter: project-qualified first, service-only fallback.
+        Only accepts unambiguous (single) matches on service-only pass.
+        """
+        import docker as docker_lib  # noqa: F811
+
+        svc_label = f"com.docker.compose.service={container.service_name}"
+
+        # Build filter sets: precise first, broad second
+        filter_sets: list[dict[str, list[str]]] = []
+
+        if container.compose_project:
+            proj_label = f"com.docker.compose.project={container.compose_project}"
+            filter_sets.append({"label": [svc_label, proj_label]})
+        else:
+            # Infer project from compose file parent dir (Docker Compose default)
+            inferred = Path(container.compose_file).parent.name
+            if inferred and inferred != ".":
+                proj_label = f"com.docker.compose.project={inferred}"
+                filter_sets.append({"label": [svc_label, proj_label]})
+
+        # Broad fallback: service-only
+        filter_sets.append({"label": [svc_label]})
+
+        for i, filters in enumerate(filter_sets):
+            try:
+                matches = client.containers.list(all=True, filters=filters)
+            except docker_lib.errors.DockerException:
                 continue
 
-            try:
-                docker_container = client.containers.get(container.name)
-                compose_project = docker_container.labels.get("com.docker.compose.project")
+            if len(matches) == 1:
+                match = matches[0]
+                docker_name = match.name.lstrip("/")
+                if container.docker_name != docker_name:
+                    container.docker_name = docker_name
+                    logger.debug(f"Set docker_name={docker_name} for {container.name}")
 
-                if compose_project and container.compose_project != compose_project:
-                    container.compose_project = compose_project
-                    logger.info(f"Set compose_project={compose_project} for {container.name}")
-            except NotFound:
-                logger.debug(f"Container {container.name} not running, skipping project sync")
-            except Exception as e:
-                logger.debug(f"Could not get compose project for {container.name}: {e}")
+                project = match.labels.get("com.docker.compose.project")
+                if project and container.compose_project != project:
+                    container.compose_project = project
+                    logger.info(f"Set compose_project={project} for {container.name}")
+                return
+
+            if len(matches) > 1 and i == 0:
+                # Project-qualified returned multiple — take first
+                match = matches[0]
+                container.docker_name = match.name.lstrip("/")
+                project = match.labels.get("com.docker.compose.project")
+                if project and not container.compose_project:
+                    container.compose_project = project
+                return
+
+            # Service-only with multiple matches — ambiguous, skip
+            if len(matches) > 1:
+                logger.debug(
+                    "Ambiguous service lookup for %s: %d matches, skipping docker_name",
+                    container.name,
+                    len(matches),
+                )
 
     @staticmethod
     async def _cleanup_stale_updates(db: AsyncSession, discovered: list[Container]) -> None:

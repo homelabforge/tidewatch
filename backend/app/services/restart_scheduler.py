@@ -124,8 +124,8 @@ class RestartSchedulerService:
                 logger.debug(f"Circuit breaker open for {container.name}: {reason}")
                 return
 
-            # Check container status
-            container_state = await container_monitor.get_container_state(container.name)
+            # Check container status (use runtime name for Docker API)
+            container_state = await container_monitor.get_container_state(container.runtime_name)
 
             if not container_state:
                 logger.warning(f"Could not get state for {container.name}")

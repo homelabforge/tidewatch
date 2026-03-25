@@ -33,6 +33,7 @@ class ContainerSchema(BaseModel):
     registry: str
     compose_file: str
     service_name: str
+    docker_name: str | None = None
     policy: str
     scope: str
     include_prereleases: bool | None = None

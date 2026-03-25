@@ -125,8 +125,6 @@ def sample_container_data():
         "name": "test-container",
         "image": "nginx:1.20",
         "current_tag": "1.20",
-        "compose_file": "/compose/test.yml",
-        "service_name": "test-service",
         "registry": "docker.io",
         "policy": "monitor",
     }
@@ -148,13 +146,14 @@ def make_container():
     def _make_container(**kwargs):
         from app.models.container import Container
 
-        # Set defaults for required fields
+        # Derive service_name from name for composite uniqueness
+        name = kwargs.get("name", "test-service")
         defaults = {
             "image": "nginx",  # Default image if not provided
             "current_tag": "latest",  # Default tag if not provided
             "registry": "docker.io",
-            "compose_file": "/compose/test.yml",
-            "service_name": kwargs.get("name", "test-service"),
+            "compose_file": f"/compose/{name}.yml",
+            "service_name": name,
         }
 
         # Merge defaults with provided kwargs (kwargs take precedence)

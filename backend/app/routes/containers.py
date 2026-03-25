@@ -162,7 +162,7 @@ async def get_container_details(
     from app.services.container_monitor import ContainerMonitorService
 
     monitor = ContainerMonitorService()
-    health_check_result = await monitor.check_health_status(container.name)
+    health_check_result = await monitor.check_health_status(container.runtime_name)
 
     # Determine health status based on check result
     if health_check_result.get("healthy"):
@@ -734,7 +734,7 @@ async def get_container_metrics(
         Dict with container metrics
     """
     # Check if container is running
-    is_running = await docker_stats_service.check_container_running(container.name)
+    is_running = await docker_stats_service.check_container_running(container.runtime_name)
 
     if not is_running:
         raise HTTPException(
@@ -743,7 +743,7 @@ async def get_container_metrics(
         )
 
     # Get stats from Docker
-    stats = await docker_stats_service.get_container_stats(container.name)
+    stats = await docker_stats_service.get_container_stats(container.runtime_name)
 
     if not stats:
         raise HTTPException(status_code=500, detail="Failed to retrieve container metrics")
@@ -889,11 +889,11 @@ async def restart_container(
         validate_container_name,
     )
 
-    # Validate container name to prevent command injection
+    # Validate service name to prevent command injection (compose uses service_name)
     try:
-        validated_name = validate_container_name(container.name)
+        validated_name = validate_container_name(container.service_name)
     except ValidationError:
-        raise HTTPException(status_code=400, detail="Invalid container name")
+        raise HTTPException(status_code=400, detail="Invalid service name")
 
     # Get compose file path
     compose_file = container.compose_file
@@ -998,7 +998,7 @@ async def get_container_logs(
         client = make_docker_client(docker_url, timeout=10)
 
         # Get running container
-        docker_container = client.containers.get(container.name)
+        docker_container = client.containers.get(container.runtime_name)
 
         # Get logs
         logs = docker_container.logs(tail=tail, timestamps=False).decode("utf-8")
@@ -1501,7 +1501,7 @@ async def scan_http_servers(
         else:
             # Scan for HTTP servers (pass container model for Dockerfile detection)
             servers = await http_scanner.scan_container_http_servers(
-                container.name, container_model=container, db=db
+                container.runtime_name, container_model=container, db=db
             )
             # Persist to database
             persisted = await http_scanner.persist_http_servers(container.id, servers, db)

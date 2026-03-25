@@ -133,29 +133,29 @@ class UpdateEngine:
 
     @staticmethod
     async def _ensure_compose_project(db: AsyncSession, container: "Container") -> None:
-        """Populate compose_project from Docker if not already set.
+        """Populate compose_project and docker_name from Docker if not already set.
 
-        Docker Compose containers have a 'com.docker.compose.project' label
-        that indicates which project they belong to (e.g., 'homelab', 'proxies').
-        This method queries Docker for that label and stores it in the database.
+        Uses label-based resolution (not name lookup) for correctness with
+        duplicate service names across compose files.
 
         Args:
             db: Database session
             container: Container to check/update
         """
-        if container.compose_project:
+        if container.compose_project and container.docker_name:
             return
 
         try:
+            from app.services.compose_parser import ComposeParser
+
             docker_url = await resolve_docker_url(db)
             client = make_docker_client(docker_url)
-            docker_container = client.containers.get(container.name)
-            project = docker_container.labels.get("com.docker.compose.project")
-
-            if project:
-                container.compose_project = project
-                await db.commit()
-                logger.info(f"Auto-populated compose_project={project} for {container.name}")
+            try:
+                ComposeParser._resolve_runtime_info(client, container)
+                if container.compose_project or container.docker_name:
+                    await db.commit()
+            finally:
+                client.close()
         except Exception as e:
             logger.debug(f"Could not get compose_project for {container.name}: {e}")
 
@@ -300,7 +300,9 @@ class UpdateEngine:
 
                 backup_service = DataBackupService()
                 data_backup_result = await backup_service.create_backup(
-                    container.name, timeout_seconds=300
+                    container.runtime_name,
+                    timeout_seconds=300,
+                    storage_key=container.service_name,
                 )
                 history.data_backup_id = data_backup_result.backup_id
                 history.data_backup_status = data_backup_result.status
@@ -550,7 +552,12 @@ class UpdateEngine:
                 from app.services.data_backup_service import DataBackupService
 
                 backup_service = DataBackupService()
-                pruned = await asyncio.to_thread(backup_service.prune_backups, container.name, 3)
+                pruned = await asyncio.to_thread(
+                    backup_service.prune_backups,
+                    container.name,
+                    3,
+                    storage_key=container.service_name,
+                )
                 if pruned:
                     logger.info("Pruned %d old backup(s) for %s", pruned, container.name)
             except Exception as prune_err:
@@ -857,7 +864,9 @@ class UpdateEngine:
 
                     backup_service = DataBackupService()
                     restore_result = await backup_service.restore_backup(
-                        container.name, history.data_backup_id
+                        container.runtime_name,
+                        history.data_backup_id,
+                        storage_key=container.service_name,
                     )
                     data_restore_status = restore_result.status
                     if restore_result.status == "success":

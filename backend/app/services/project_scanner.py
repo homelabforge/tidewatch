@@ -82,14 +82,15 @@ class ProjectScanner:
         updated = 0
         skipped = 0
         errors = []
-        found_containers = set()  # Track containers we found during scan
+        # Track by composite identity (service_name, compose_file) for stale removal
+        found_containers: set[tuple[str, str]] = set()
 
         # Find all compose.yaml files in subdirectories
         for compose_file in projects_path.glob("*/compose.yaml"):
             try:
-                result, container_name = await self._process_compose_file(compose_file)
-                if container_name:
-                    found_containers.add(container_name)
+                result, container_identity = await self._process_compose_file(compose_file)
+                if container_identity:
+                    found_containers.add(container_identity)
                 if result == "added":
                     added += 1
                 elif result == "updated":
@@ -116,7 +117,7 @@ class ProjectScanner:
 
         removed = 0
         for container in all_my_projects:
-            if container.name not in found_containers:
+            if (container.service_name, container.compose_file) not in found_containers:
                 logger.info(f"Removing stale My Project container: {container.name}")
                 await self.db.delete(container)
                 removed += 1
@@ -216,12 +217,14 @@ class ProjectScanner:
                 logger.debug(f"No image defined for {service_name} in {compose_file}")
                 return ("skipped", None)
 
-            # Check if container already exists
-            stmt = select(Container).where(Container.name == container_name)
+            # Check if container already exists (composite key lookup)
+            compose_file_str = str(compose_file)
+            stmt = select(Container).where(
+                Container.service_name == service_name,
+                Container.compose_file == compose_file_str,
+            )
             result = await self.db.execute(stmt)
             existing = result.scalar_one_or_none()
-
-            compose_file_str = str(compose_file)
 
             if existing:
                 # Update existing container
@@ -238,7 +241,8 @@ class ProjectScanner:
 
                 await self.db.commit()
                 logger.info(f"Updated existing container: {container_name}")
-                return ("updated", container_name)
+                identity = (service_name, compose_file_str)
+                return ("updated", identity)
             else:
                 # Add new container
                 new_container = Container(
@@ -262,7 +266,8 @@ class ProjectScanner:
                 # Auto-scan Dockerfile if enabled
                 await self._auto_scan_dockerfile(new_container.id, compose_file.parent)
 
-                return ("added", container_name)
+                identity = (service_name, compose_file_str)
+                return ("added", identity)
 
         except YAMLError as e:
             logger.error(f"YAML parsing error in {compose_file}: {e}")

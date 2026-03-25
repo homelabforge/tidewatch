@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -15,9 +15,12 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     """Docker container tracked by TideWatch."""
 
     __tablename__ = "containers"
+    __table_args__ = (
+        UniqueConstraint("service_name", "compose_file", name="uq_container_service_file"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)  # Display label only
     image: Mapped[str] = mapped_column(String, nullable=False)  # e.g., "lscr.io/linuxserver/plex"
     current_tag: Mapped[str] = mapped_column(String, nullable=False)  # e.g., "1.40.0.8395"
     current_digest: Mapped[str | None] = mapped_column(
@@ -31,6 +34,9 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     compose_project: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # Docker Compose project name
+    docker_name: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # Actual Docker container name (e.g., "immich-redis-1")
 
     # Update policy fields are provided by UpdatePolicyMixin:
     # policy, scope, include_prereleases, version_track, update_window
@@ -87,6 +93,11 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def runtime_name(self) -> str:
+        """Name for Docker CLI/SDK calls. Prefers docker_name, falls back to name."""
+        return self.docker_name or self.name
 
     def __repr__(self) -> str:
         return f"<Container(name={self.name}, image={self.image}:{self.current_tag})>"

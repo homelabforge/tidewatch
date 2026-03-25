@@ -256,7 +256,7 @@ class HttpServerScanner:
 
         # Resolve project root
         compose_file = getattr(container_model, "compose_file", None) or ""
-        service_name = getattr(container_model, "name", "") or ""
+        service_name = getattr(container_model, "service_name", "") or ""
 
         project_root = find_project_root(compose_file, service_name, projects_directory)
         if not project_root:

@@ -220,29 +220,35 @@ class DataBackupService:
         self,
         container_name: str,
         timeout_seconds: int = 300,
+        storage_key: str | None = None,
     ) -> BackupResult:
         """Create a backup of all eligible mounts for a container.
 
         Args:
-            container_name: Name of the container to backup.
+            container_name: Docker runtime name for container inspection.
             timeout_seconds: Maximum time for the entire backup operation.
+            storage_key: Stable key for backup directory naming (defaults to
+                container_name for backward compatibility). Use service_name
+                to keep backup paths stable across display-name changes.
 
         Returns:
             BackupResult with backup metadata.
         """
-        lock = _get_container_lock(container_name)
+        key = storage_key or container_name
+        lock = _get_container_lock(key)
         async with lock:
-            return await self._create_backup_impl(container_name, timeout_seconds)
+            return await self._create_backup_impl(container_name, timeout_seconds, key)
 
     async def _create_backup_impl(
         self,
         container_name: str,
         timeout_seconds: int,
+        storage_key: str,
     ) -> BackupResult:
         """Internal backup implementation (runs under lock)."""
         start_time = time.monotonic()
         backup_id = uuid.uuid4().hex[:12]
-        backup_dir = self._get_backup_dir(container_name, backup_id)
+        backup_dir = self._get_backup_dir(storage_key, backup_id)
 
         try:
             # Check available space on backup volume
@@ -626,6 +632,7 @@ class DataBackupService:
         self,
         container_name: str,
         backup_id: str,
+        storage_key: str | None = None,
     ) -> RestoreResult:
         """Restore a previous backup for a container.
 
@@ -634,24 +641,28 @@ class DataBackupService:
         to be running and is handled separately.
 
         Args:
-            container_name: Name of the container to restore.
+            container_name: Docker runtime name for container operations.
             backup_id: ID of the backup to restore from.
+            storage_key: Stable key for backup directory lookup (defaults to
+                container_name for backward compatibility).
 
         Returns:
             RestoreResult with restore metadata.
         """
-        lock = _get_container_lock(container_name)
+        key = storage_key or container_name
+        lock = _get_container_lock(key)
         async with lock:
-            return await self._restore_backup_impl(container_name, backup_id)
+            return await self._restore_backup_impl(container_name, backup_id, key)
 
     async def _restore_backup_impl(
         self,
         container_name: str,
         backup_id: str,
+        storage_key: str,
     ) -> RestoreResult:
         """Internal restore implementation (runs under lock)."""
         start_time = time.monotonic()
-        backup_dir = self._get_backup_dir(container_name, backup_id)
+        backup_dir = self._get_backup_dir(storage_key, backup_id)
         metadata_path = backup_dir / "metadata.json"
 
         if not metadata_path.exists():
@@ -943,21 +954,25 @@ class DataBackupService:
 
         return backups
 
-    def prune_backups(self, container_name: str, keep: int = 3) -> int:
+    def prune_backups(
+        self, container_name: str, keep: int = 3, storage_key: str | None = None
+    ) -> int:
         """Remove old backups, keeping the most recent N.
 
         Also removes any backup directories without valid metadata.
 
         Args:
-            container_name: Name of the container.
+            container_name: Container identifier (used for logging).
             keep: Number of recent backups to keep.
+            storage_key: Stable key for backup directory lookup (defaults to
+                container_name for backward compatibility).
 
         Returns:
             Number of backup sets removed.
         """
         import shutil
 
-        container_dir = BACKUP_BASE_DIR / container_name
+        container_dir = BACKUP_BASE_DIR / (storage_key or container_name)
         if not container_dir.exists():
             return 0
 

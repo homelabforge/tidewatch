@@ -40,7 +40,9 @@ class MetricsCollector:
         for container in containers:
             try:
                 # Check if container is running
-                is_running = await docker_stats_service.check_container_running(container.name)
+                is_running = await docker_stats_service.check_container_running(
+                    container.runtime_name
+                )
 
                 if not is_running:
                     logger.debug(
@@ -50,7 +52,7 @@ class MetricsCollector:
                     continue
 
                 # Get current metrics
-                metrics = await docker_stats_service.get_container_stats(container.name)
+                metrics = await docker_stats_service.get_container_stats(container.runtime_name)
 
                 if not metrics:
                     logger.warning(f"Failed to get metrics for {container.name}")

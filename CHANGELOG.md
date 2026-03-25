@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Container updates failing on non-homelab systems with "Path traversal detected: No such file or directory: '/srv/raid0'" — host paths are now auto-detected from container mounts (#35)
+- Duplicate service names across compose files (e.g., two `redis` services) crashing with `IntegrityError` — container identity is now `(service_name, compose_file)`, display names are auto-disambiguated (#32)
+- Docker runtime operations (stats, logs, health checks, restarts) now use the actual Docker container name (`docker_name`) instead of the display name
+- Backup storage paths use stable `service_name` keys, preventing orphaned backups when display names change
+
+### Dev Dependencies
+- **@tailwindcss/vite**: 4.2.1 → 4.2.2
+- **@typescript-eslint/eslint-plugin**: 8.57.1 → 8.57.2
+- **@typescript-eslint/parser**: 8.57.1 → 8.57.2
+- **@vitest/coverage-v8**: 4.1.0 → 4.1.1
+- **@vitest/ui**: 4.1.0 → 4.1.1
+- **eslint**: 10.0.3 → 10.1.0
+- **jsdom**: 29.0.0 → 29.0.1
+- **pytest-cov**: 7.0.0 → 7.1.0
+- **ruff**: 0.15.4 → 0.15.7
+- **tailwindcss**: 4.2.1 → 4.2.2
+- **typescript**: 5.9.3 → 6.0.2
+- **typescript-eslint**: 8.57.1 → 8.57.2
+- **vite**: 8.0.0 → 8.0.2
+- **vitest**: 4.1.0 → 4.1.1
+
+### App Dependencies
+- **authlib**: 1.6.8 → 1.6.9
+- **fastapi**: 0.133.1 → 0.135.2
+- **lucide-react**: 0.577.0 → 1.6.0
+- **pyjwt**: 2.12.0 → 2.12.1
+- **react-router-dom**: 7.13.1 → 7.13.2
+- **sqlalchemy**: 2.0.47 → 2.0.48
+
+### Fixed
+- Container updates failing on non-homelab systems with "Path traversal detected: No such file or directory: '/srv/raid0'" — host paths are now auto-detected from container mounts (#35)
+
 ## [3.8.4] - 2026-03-20
 
 ### Added
