@@ -117,6 +117,35 @@ class TestPathTranslation:
 
         assert host_path == f"{MOCK_HOST_COMPOSE}/docker-compose.yml"
 
+    def test_host_path_not_existing_inside_container(self):
+        """Test that host paths that don't exist inside the container still work.
+
+        Regression test for #35: host paths like /mnt/Apps_SSD_128GB/docker_stacks
+        resolved via mount_resolver don't exist inside the container, so
+        resolve(strict=True) would raise OSError, falsely reported as path traversal.
+        """
+        nonexistent_host_base = "/mnt/Apps_SSD_128GB/docker_stacks"
+
+        with (
+            # Mock the initial validation (container path /compose/... exists in-container)
+            patch(
+                "app.services.update_engine.validate_compose_file_path",
+                return_value=Path("/compose/remote/compose.yaml"),
+            ),
+            # Mock mount resolver to return a host path that doesn't exist here
+            patch(
+                "app.services.mount_resolver.get_host_path",
+                return_value=nonexistent_host_base,
+            ),
+        ):
+            # This would raise "Path traversal detected: [Errno 2] No such file
+            # or directory: '/mnt/Apps_SSD_128GB'" before the fix
+            host_path = UpdateEngine._translate_container_path_to_host(
+                "/compose/remote/compose.yaml"
+            )
+
+        assert host_path == f"{nonexistent_host_base}/remote/compose.yaml"
+
 
 class TestBackupAndRestore:
     """Test suite for compose file backup and restore operations."""

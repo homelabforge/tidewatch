@@ -124,8 +124,9 @@ class UpdateEngine:
         host_path = host_base / rel_path
 
         # Final safety check: ensure resolved path is still within host base
+        # Use strict=False because host paths don't exist inside the container
         try:
-            host_path.resolve(strict=True).relative_to(host_base.resolve())
+            host_path.resolve(strict=False).relative_to(host_base.resolve(strict=False))
         except (ValueError, OSError) as e:
             raise ValidationError(f"Path traversal detected: {str(e)}")
 
