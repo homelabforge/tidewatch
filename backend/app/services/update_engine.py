@@ -113,8 +113,14 @@ class UpdateEngine:
         except ValueError:
             raise ValidationError(f"Path {container_path} is not within /compose directory")
 
-        # Construct safe host path
-        host_base = Path("/srv/raid0/docker/compose")
+        # Resolve host path from container mount (auto-detected, not hardcoded)
+        try:
+            from app.services.mount_resolver import get_host_path
+
+            host_base = Path(get_host_path("/compose"))
+        except RuntimeError as e:
+            raise ValidationError(f"Cannot resolve host compose path: {e}")
+
         host_path = host_base / rel_path
 
         # Final safety check: ensure resolved path is still within host base
@@ -1837,7 +1843,7 @@ class UpdateEngine:
                 else f"unix://{docker_socket}"
             )
             env = docker_subprocess_env(docker_host)
-            # Note: COMPOSE_ROOT uses host path from .env (/srv/raid0/docker/compose)
+            # Host compose path is auto-detected from TideWatch's own mounts.
             # TideWatch mounts this path at BOTH /compose AND the host path
             # This allows both env_file (client-side) and secrets (daemon-side) to work
 
@@ -2059,7 +2065,7 @@ class UpdateEngine:
             )
             env = os.environ.copy()
             env["DOCKER_HOST"] = docker_host
-            # COMPOSE_ROOT uses host path - TideWatch mounts it at both /compose and host path
+            # Host compose path is auto-detected from TideWatch's own mounts
 
             # Execute pull with 20 minute timeout (large images can be 1GB+)
             process = await asyncio.create_subprocess_exec(

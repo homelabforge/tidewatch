@@ -21,27 +21,16 @@ class DockerfileParser:
     """Parser for analyzing Dockerfiles and extracting base image dependencies."""
 
     def __init__(self, projects_directory: str = "/projects"):
-        # Validate projects directory path to prevent path traversal
-        # Allowed base directories: /projects (production), /tmp (tests), /srv/raid0/docker/build (homelab)
+        # Validate projects directory path to prevent path traversal.
+        # The configured directory itself is the trust boundary — sanitize against it.
         try:
-            if projects_directory.startswith("/projects"):
-                self.projects_directory = sanitize_path(
-                    projects_directory, "/projects", allow_symlinks=False
-                )
-            elif projects_directory.startswith("/tmp"):
-                self.projects_directory = sanitize_path(
-                    projects_directory, "/tmp", allow_symlinks=False
-                )
-            elif projects_directory.startswith("/srv/raid0/docker/build"):
-                self.projects_directory = sanitize_path(
-                    projects_directory, "/srv/raid0/docker/build", allow_symlinks=False
-                )
-            else:
-                logger.warning(
-                    f"Projects directory outside allowed paths: {sanitize_log_message(projects_directory)}"
-                )
-                # Fall back to default
-                self.projects_directory = Path("/projects").resolve()
+            base_dir = (
+                projects_directory.split("/")[1] if projects_directory.startswith("/") else ""
+            )
+            base_path = f"/{base_dir}" if base_dir else projects_directory
+            self.projects_directory = sanitize_path(
+                projects_directory, base_path, allow_symlinks=False
+            )
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Invalid projects directory path: {sanitize_log_message(str(e))}")
             # Fall back to default

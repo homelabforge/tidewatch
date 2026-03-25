@@ -50,27 +50,13 @@ class ProjectScanner:
         if not projects_dir:
             projects_dir = "/projects"
 
-        # Validate projects directory path to prevent path traversal
-        # Allowed base directories: /projects (production), /tmp (tests), /srv/raid0/docker/build (homelab)
+        # Validate projects directory path to prevent path traversal.
+        # The configured directory itself is the trust boundary — sanitize against it.
         try:
-            if projects_dir.startswith("/projects"):
-                projects_path = sanitize_path(projects_dir, "/projects", allow_symlinks=False)
-            elif projects_dir.startswith("/tmp"):
-                projects_path = sanitize_path(projects_dir, "/tmp", allow_symlinks=False)
-            elif projects_dir.startswith("/srv/raid0/docker/build"):
-                projects_path = sanitize_path(
-                    projects_dir, "/srv/raid0/docker/build", allow_symlinks=False
-                )
-            else:
-                logger.warning(
-                    f"Projects directory outside allowed paths: {sanitize_log_message(projects_dir)}"
-                )
-                return {
-                    "added": 0,
-                    "updated": 0,
-                    "skipped": 0,
-                    "error": "Invalid directory path",
-                }
+            # Resolve the base to use as the sanitization root
+            base_dir = projects_dir.split("/")[1] if projects_dir.startswith("/") else ""
+            base_path = f"/{base_dir}" if base_dir else projects_dir
+            projects_path = sanitize_path(projects_dir, base_path, allow_symlinks=False)
 
             if not projects_path.exists():
                 logger.warning(f"Projects directory does not exist: {projects_path}")

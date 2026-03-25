@@ -21,6 +21,8 @@ from app.models.history import UpdateHistory
 from app.services.update_engine import UpdateEngine
 from app.utils.validators import ValidationError
 
+MOCK_HOST_COMPOSE = "/mnt/user/docker/compose"
+
 
 @pytest.fixture
 def mock_filesystem():
@@ -34,6 +36,10 @@ def mock_filesystem():
         patch.object(Path, "exists", lambda self: True),
         patch.object(Path, "is_file", lambda self: True),
         patch.object(Path, "resolve", mock_resolve),
+        patch(
+            "app.services.mount_resolver.get_host_path",
+            return_value=MOCK_HOST_COMPOSE,
+        ),
     ):
         yield
 
@@ -42,12 +48,12 @@ class TestPathTranslation:
     """Test suite for container-to-host path translation."""
 
     def test_translates_container_path_to_host_path(self, mock_filesystem):
-        """Test path translation from /compose to /srv/raid0/docker/compose."""
+        """Test path translation uses auto-detected host mount path."""
         container_path = "/compose/media/sonarr.yml"
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert host_path == "/srv/raid0/docker/compose/media/sonarr.yml"
+        assert host_path == f"{MOCK_HOST_COMPOSE}/media/sonarr.yml"
 
     def test_preserves_nested_directory_structure(self, mock_filesystem):
         """Test nested directory paths are preserved."""
@@ -55,7 +61,7 @@ class TestPathTranslation:
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert host_path == "/srv/raid0/docker/compose/network/traefik/docker-compose.yml"
+        assert host_path == f"{MOCK_HOST_COMPOSE}/network/traefik/docker-compose.yml"
 
     def test_rejects_path_outside_compose_directory(self):
         """Test paths outside /compose are rejected."""
@@ -101,7 +107,7 @@ class TestPathTranslation:
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert host_path == "/srv/raid0/docker/compose/my services/docker-compose.yml"
+        assert host_path == f"{MOCK_HOST_COMPOSE}/my services/docker-compose.yml"
 
     def test_root_compose_directory_allowed(self, mock_filesystem):
         """Test /compose root directory is allowed."""
@@ -109,7 +115,7 @@ class TestPathTranslation:
 
         host_path = UpdateEngine._translate_container_path_to_host(container_path)
 
-        assert host_path == "/srv/raid0/docker/compose/docker-compose.yml"
+        assert host_path == f"{MOCK_HOST_COMPOSE}/docker-compose.yml"
 
 
 class TestBackupAndRestore:

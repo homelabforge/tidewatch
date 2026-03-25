@@ -30,16 +30,37 @@ BACKUP_VOLUME_NAME = "tidewatch_rollback_data"
 # Mount point inside TideWatch container for the backup volume
 BACKUP_BASE_DIR = Path("/rollback-data")
 
-# Host paths to skip when backing up container mounts
-SKIP_SOURCE_PREFIXES = (
+# Static host paths to always skip when backing up container mounts
+_STATIC_SKIP_PREFIXES = (
     "/var/run",
     "/run",
-    "/srv/raid0/docker/compose",
-    "/srv/raid0/docker/build",
-    "/srv/raid0/docker/env",
-    "/mnt/media",
-    "/mnt/backup",
 )
+
+# Cached full skip list (populated lazily with TideWatch's own mount sources)
+_skip_prefixes_cache: tuple[str, ...] | None = None
+
+
+def _get_skip_source_prefixes() -> tuple[str, ...]:
+    """Build skip-list from static prefixes + TideWatch's own mount sources.
+
+    TideWatch's own mounts (compose dir, projects dir, env dir, etc.) are
+    infrastructure paths that should never be backed up as container data.
+    """
+    global _skip_prefixes_cache
+    if _skip_prefixes_cache is not None:
+        return _skip_prefixes_cache
+
+    try:
+        from app.services.mount_resolver import get_all_host_mount_sources
+
+        dynamic = get_all_host_mount_sources()
+    except RuntimeError:
+        # Mount resolver unavailable (e.g. during tests) — use static only
+        dynamic = ()
+
+    _skip_prefixes_cache = _STATIC_SKIP_PREFIXES + dynamic
+    return _skip_prefixes_cache
+
 
 # Minimum free space (bytes) on backup volume before aborting
 MIN_FREE_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB
@@ -128,8 +149,8 @@ class DataBackupService:
         if source.endswith(".sock"):
             return True, "socket mount"
 
-        # Skip infrastructure/shared paths
-        for prefix in SKIP_SOURCE_PREFIXES:
+        # Skip infrastructure/shared paths (TideWatch's own mounts + static list)
+        for prefix in _get_skip_source_prefixes():
             if source.startswith(prefix):
                 return True, f"infrastructure path ({prefix})"
 
