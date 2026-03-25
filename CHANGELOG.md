@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.6] - 2026-03-25
+
 ### Fixed
 - Host path validation failing with "Path traversal detected" when compose paths don't exist inside the container (#35)
 
