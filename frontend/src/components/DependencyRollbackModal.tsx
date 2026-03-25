@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, RotateCcw, AlertCircle, Clock, User } from 'lucide-react';
+import { X, RotateCcw, CircleAlert, Clock, User } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { AppDependency, DockerfileDependency, HttpServer, RollbackHistoryItem, RollbackHistoryResponse } from '../types';
 import { api } from '../services/api';
@@ -134,7 +134,7 @@ export default function DependencyRollbackModal({
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <CircleAlert className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-red-400 mb-1">Error</p>
                     <p className="text-sm text-red-400/80">{error}</p>
@@ -200,7 +200,7 @@ export default function DependencyRollbackModal({
                 {selectedVersion && (
                   <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 mt-4">
                     <div className="flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                      <CircleAlert className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="text-sm font-medium text-orange-400 mb-1">Confirm Rollback</p>
                         <p className="text-sm text-orange-400/90">

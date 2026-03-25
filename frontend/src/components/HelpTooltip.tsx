@@ -2,7 +2,7 @@
  * HelpTooltip - A teal question mark icon that opens a help modal on click
  */
 
-import { HelpCircle, X } from "lucide-react";
+import { CircleQuestionMark, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 interface HelpTooltipProps {
@@ -55,7 +55,7 @@ export function HelpTooltip({ content, className = "" }: HelpTooltipProps) {
         aria-label="Help"
         aria-expanded={isOpen}
       >
-        <HelpCircle className="w-5 h-5 text-teal-500" />
+        <CircleQuestionMark className="w-5 h-5 text-teal-500" />
       </button>
 
       {isOpen && (

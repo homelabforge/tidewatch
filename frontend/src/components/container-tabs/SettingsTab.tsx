@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, RefreshCw, Zap, Eye, PowerOff, Wand2, RotateCw, Pause, Play, Network, Calendar, Star } from 'lucide-react';
+import { X, RefreshCw, Zap, Eye, PowerOff, WandSparkles, RotateCw, Pause, Play, Network, Calendar, Star } from 'lucide-react';
 import { Container, RestartState, EnableRestartConfig } from '../../types';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
@@ -760,7 +760,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
                   className="px-3 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg flex items-center gap-1"
                   title="Auto-fill from compose labels"
                 >
-                  <Wand2 className="w-4 h-4" />
+                  <WandSparkles className="w-4 h-4" />
                 </button>
                 <button
                   onClick={handleSaveHealthCheckUrl}
@@ -827,7 +827,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
               className="px-3 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text rounded-lg flex items-center gap-1"
               title="Auto-detect from image name"
             >
-              <Wand2 className="w-4 h-4" />
+              <WandSparkles className="w-4 h-4" />
             </button>
             <button
               onClick={handleSaveReleaseSource}

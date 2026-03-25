@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, XCircle, AlertCircle, ArrowRight, Undo2, EyeOff, Eye, History } from 'lucide-react';
+import { RefreshCw, CircleCheck, CircleX, CircleAlert, ArrowRight, Undo2, EyeOff, Eye, History } from 'lucide-react';
 import { Container, HistoryItem } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
@@ -124,13 +124,13 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                     <Eye className="w-5 h-5 text-teal-400 flex-shrink-0" />
                   )}
                   {item.status === 'completed' && !item.event_type?.includes('dependency') && (
-                    <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <CircleCheck className="w-5 h-5 text-green-500 flex-shrink-0" />
                   )}
                   {item.status === 'failed' && !item.event_type?.includes('dependency') && (
-                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                    <CircleX className="w-5 h-5 text-red-500 flex-shrink-0" />
                   )}
                   {item.status === 'rolled_back' && (
-                    <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                    <CircleAlert className="w-5 h-5 text-yellow-500 flex-shrink-0" />
                   )}
                   <div>
                     {item.event_type === 'dependency_ignore' || item.event_type === 'dependency_unignore' ? (

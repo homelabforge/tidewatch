@@ -1,4 +1,4 @@
-import { X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, CircleCheckBig, CircleAlert, LoaderCircle } from 'lucide-react';
 
 export interface DepScanJobState {
   jobId: number;
@@ -30,11 +30,11 @@ export default function DepScanProgressBar({ job, onCancel, onDismiss }: DepScan
   };
 
   const getStatusIcon = (): React.ReactNode => {
-    if (isRunning) return <Loader2 className="w-5 h-5 animate-spin text-purple-400" />;
-    if (isComplete) return <CheckCircle className="w-5 h-5 text-purple-400" />;
-    if (isFailed) return <AlertCircle className="w-5 h-5 text-red-500" />;
-    if (isCanceled) return <AlertCircle className="w-5 h-5 text-yellow-500" />;
-    return <Loader2 className="w-5 h-5 text-tide-text-muted" />;
+    if (isRunning) return <LoaderCircle className="w-5 h-5 animate-spin text-purple-400" />;
+    if (isComplete) return <CircleCheckBig className="w-5 h-5 text-purple-400" />;
+    if (isFailed) return <CircleAlert className="w-5 h-5 text-red-500" />;
+    if (isCanceled) return <CircleAlert className="w-5 h-5 text-yellow-500" />;
+    return <LoaderCircle className="w-5 h-5 text-tide-text-muted" />;
   };
 
   const getStatusText = (): string => {

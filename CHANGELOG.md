@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Docker runtime name (`docker_name`) shown in container overview tab when available
+
+### Changed
+- Migrated 9 deprecated lucide-react icon aliases to canonical names for lucide-react v1.x compatibility
+- Added explicit `types: ["node"]` to `tsconfig.node.json` for TypeScript 6.0 compatibility
+
 ### Fixed
 - Container updates failing on non-homelab systems with "Path traversal detected: No such file or directory: '/srv/raid0'" — host paths are now auto-detected from container mounts (#35)
 - Duplicate service names across compose files (e.g., two `redis` services) crashing with `IntegrityError` — container identity is now `(service_name, compose_file)`, display names are auto-disambiguated (#32)

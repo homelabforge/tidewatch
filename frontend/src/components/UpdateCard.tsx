@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Update, Container } from '../types';
 import StatusBadge from './StatusBadge';
-import { ArrowRight, Shield, AlertTriangle, ExternalLink, Check, X, Trash2, Clock, Archive, ChevronDown, ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { ArrowRight, Shield, TriangleAlert, ExternalLink, Check, X, Trash2, Clock, Archive, ChevronDown, ChevronRight, FileText, LoaderCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 
@@ -99,7 +99,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
   const getReasonIcon = (type: string) => {
     if (type === 'security') return <Shield size={16} className="text-red-400" />;
     if (type === 'stale') return <Archive size={16} className="text-orange-400" />;
-    return <AlertTriangle size={16} className="text-yellow-400" />;
+    return <TriangleAlert size={16} className="text-yellow-400" />;
   };
 
   const isAnyOperationInProgress = isApplying || isApproving || isRejecting;
@@ -109,7 +109,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
       {/* Loading Overlay */}
       {isAnyOperationInProgress && (
         <div className="absolute inset-0 bg-tide-surface/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
-          <Loader2 className="w-16 h-16 text-primary animate-spin" />
+          <LoaderCircle className="w-16 h-16 text-primary animate-spin" />
         </div>
       )}
 
@@ -146,7 +146,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
       {isScopeViolation && (
         <div className="mb-3 bg-orange-500/20 border border-orange-500/40 rounded-md p-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
+            <TriangleAlert size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-orange-400">
                 Major Update Blocked by Scope Policy
@@ -166,7 +166,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
        container.scope !== 'major' && (
         <div className="mb-3 bg-orange-500/10 border border-orange-500/30 rounded-md p-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
+            <TriangleAlert size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-orange-400">
                 Newer Major Version Available

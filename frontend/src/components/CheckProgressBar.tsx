@@ -1,4 +1,4 @@
-import { X, RefreshCw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, RefreshCw, CircleCheckBig, CircleAlert, LoaderCircle } from 'lucide-react';
 
 export interface CheckJobState {
   jobId: number;
@@ -33,10 +33,10 @@ export default function CheckProgressBar({ job, onCancel, onDismiss }: CheckProg
 
   // Determine status icon
   const getStatusIcon = () => {
-    if (isRunning) return <Loader2 className="w-5 h-5 animate-spin text-primary" />;
-    if (isComplete) return <CheckCircle className="w-5 h-5 text-primary" />;
-    if (isFailed) return <AlertCircle className="w-5 h-5 text-red-500" />;
-    if (isCanceled) return <AlertCircle className="w-5 h-5 text-yellow-500" />;
+    if (isRunning) return <LoaderCircle className="w-5 h-5 animate-spin text-primary" />;
+    if (isComplete) return <CircleCheckBig className="w-5 h-5 text-primary" />;
+    if (isFailed) return <CircleAlert className="w-5 h-5 text-red-500" />;
+    if (isCanceled) return <CircleAlert className="w-5 h-5 text-yellow-500" />;
     return <RefreshCw className="w-5 h-5 text-tide-text-muted" />;
   };
 

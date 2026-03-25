@@ -199,7 +199,7 @@ async def upgrade() -> None:
                                         {"deps": json.dumps(new_deps), "id": cid},
                                     )
                         except (json.JSONDecodeError, TypeError):
-                            pass
+                            logger.debug("Skipping malformed JSON in container %d", cid)
 
                     if dependents_json:
                         try:
@@ -219,7 +219,7 @@ async def upgrade() -> None:
                                         {"deps": json.dumps(new_deps), "id": cid},
                                     )
                         except (json.JSONDecodeError, TypeError):
-                            pass
+                            logger.debug("Skipping malformed JSON in container %d", cid)
 
             # ── Step 5: Rebuild containers table ──────────────────────
             # Get current columns to handle schema variations
@@ -361,10 +361,106 @@ async def upgrade() -> None:
             await conn.execute(text("ROLLBACK"))
             raise
 
-        # ── Step 7: Re-enable FK and verify integrity ─────────────
+        # ── Step 7: Clean up pre-existing orphans and verify FK integrity ─
+        # Orphaned rows (referencing deleted containers/updates) may exist from
+        # prior bugs. Clean them up rather than crashing on FK check.
+        orphan_cleanup = [
+            # (table, fk_column, parent_table) — DELETE orphaned rows
+            ("pending_scan_jobs", "update_id", "updates"),
+            ("metrics_history", "container_id", "containers"),
+            ("container_restart_state", "container_id", "containers"),
+            ("container_restart_log", "container_id", "containers"),
+            ("dockerfile_dependencies", "container_id", "containers"),
+            ("app_dependencies", "container_id", "containers"),
+            ("http_servers", "container_id", "containers"),
+            ("check_jobs", "current_container_id", "containers"),
+            ("vulnerability_scans", "container_id", "containers"),
+        ]
+
+        for tbl, fk_col, parent_tbl in orphan_cleanup:
+            tbl_exists = (
+                await conn.execute(
+                    text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:name"),
+                    {"name": tbl},
+                )
+            ).scalar_one()
+            if not tbl_exists:
+                continue
+
+            orphan_count = (
+                await conn.execute(
+                    text(
+                        f"SELECT COUNT(*) FROM {tbl} "  # noqa: S608
+                        f"WHERE {fk_col} IS NOT NULL "
+                        f"AND {fk_col} NOT IN (SELECT id FROM {parent_tbl})"
+                    )
+                )
+            ).scalar_one()
+
+            if orphan_count:
+                await conn.execute(
+                    text(
+                        f"DELETE FROM {tbl} "  # noqa: S608
+                        f"WHERE {fk_col} IS NOT NULL "
+                        f"AND {fk_col} NOT IN (SELECT id FROM {parent_tbl})"
+                    )
+                )
+                logger.warning("Cleaned up %d orphaned rows in %s", orphan_count, tbl)
+
+        # Also handle update_history (SET NULL instead of DELETE — audit trail)
+        uh_exists = (
+            await conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='update_history'"
+                ),
+            )
+        ).scalar_one()
+        if uh_exists:
+            orphan_uh = (
+                await conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM update_history "
+                        "WHERE container_id IS NOT NULL "
+                        "AND container_id NOT IN (SELECT id FROM containers)"
+                    )
+                )
+            ).scalar_one()
+            if orphan_uh:
+                await conn.execute(
+                    text(
+                        "UPDATE update_history SET container_id = NULL "
+                        "WHERE container_id NOT IN (SELECT id FROM containers)"
+                    )
+                )
+                logger.warning("Nulled container_id on %d orphaned update_history rows", orphan_uh)
+
+        # Updates: CASCADE delete orphans (transient state)
+        upd_exists = (
+            await conn.execute(
+                text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='updates'"),
+            )
+        ).scalar_one()
+        if upd_exists:
+            orphan_upd = (
+                await conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM updates "
+                        "WHERE container_id NOT IN (SELECT id FROM containers)"
+                    )
+                )
+            ).scalar_one()
+            if orphan_upd:
+                await conn.execute(
+                    text(
+                        "DELETE FROM updates WHERE container_id NOT IN (SELECT id FROM containers)"
+                    )
+                )
+                logger.warning("Deleted %d orphaned update rows", orphan_upd)
+
+        # Now verify — should be clean after orphan cleanup
         await conn.execute(text("PRAGMA foreign_keys=ON"))
 
-        referencing_tables = [
+        all_tables = [
             "updates",
             "update_history",
             "container_restart_state",
@@ -378,20 +474,19 @@ async def upgrade() -> None:
             "vulnerability_scans",
         ]
 
-        for tbl in referencing_tables:
-            # Table may not exist in all deployments
-            exists = (
+        for tbl in all_tables:
+            tbl_exists = (
                 await conn.execute(
                     text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:name"),
                     {"name": tbl},
                 )
             ).scalar_one()
-            if not exists:
+            if not tbl_exists:
                 continue
 
             violations = (await conn.execute(text(f"PRAGMA foreign_key_check({tbl})"))).fetchall()
             if violations:
-                logger.error("FK violations in %s after rebuild: %d rows", tbl, len(violations))
+                logger.error("FK violations in %s after cleanup: %d rows", tbl, len(violations))
                 raise RuntimeError(f"FK check failed on {tbl}: {len(violations)} violations")
 
         logger.info("Foreign key integrity verified across all referencing tables")

@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
 import CheckProgressBar from '../components/CheckProgressBar';
 import { useCheckJob } from '../hooks/useCheckJob';
-import { RefreshCw, CheckCircle, XCircle, AlertCircle, Archive } from 'lucide-react';
+import { RefreshCw, CircleCheckBig, CircleX, CircleAlert, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Updates() {
@@ -269,7 +269,7 @@ export default function Updates() {
                 <p className="text-sm text-tide-text-muted">Pending</p>
                 <p className="text-3xl font-bold text-yellow-400 mt-2">{pendingCount}</p>
               </div>
-              <AlertCircle className="text-yellow-400" size={32} />
+              <CircleAlert className="text-yellow-400" size={32} />
             </div>
           </div>
 
@@ -279,7 +279,7 @@ export default function Updates() {
                 <p className="text-sm text-tide-text-muted">Approved</p>
                 <p className="text-3xl font-bold text-blue-400 mt-2">{approvedCount}</p>
               </div>
-              <CheckCircle className="text-blue-400" size={32} />
+              <CircleCheckBig className="text-blue-400" size={32} />
             </div>
           </div>
 
@@ -289,7 +289,7 @@ export default function Updates() {
                 <p className="text-sm text-tide-text-muted">Rejected</p>
                 <p className="text-3xl font-bold text-tide-text-muted mt-2">{rejectedCount}</p>
               </div>
-              <XCircle className="text-tide-text-muted" size={32} />
+              <CircleX className="text-tide-text-muted" size={32} />
             </div>
           </div>
 
@@ -309,7 +309,7 @@ export default function Updates() {
                 <p className="text-sm text-tide-text-muted">Applied</p>
                 <p className="text-3xl font-bold text-green-400 mt-2">{appliedCount}</p>
               </div>
-              <CheckCircle className="text-green-400" size={32} />
+              <CircleCheckBig className="text-green-400" size={32} />
             </div>
           </div>
         </div>
@@ -324,7 +324,7 @@ export default function Updates() {
                 : 'bg-tide-surface text-tide-text-muted hover:bg-tide-surface'
             }`}
           >
-            <AlertCircle size={14} />
+            <CircleAlert size={14} />
             Needs Attention ({needsAttentionCount})
           </button>
           <button
@@ -370,7 +370,7 @@ export default function Updates() {
           <div className="text-center py-12">
             {filter === 'needs_attention' ? (
               <>
-                <CheckCircle className="mx-auto mb-4 text-green-500/50" size={48} />
+                <CircleCheckBig className="mx-auto mb-4 text-green-500/50" size={48} />
                 <p className="text-tide-text-muted">All containers are up to date</p>
                 <button
                   onClick={handleCheckAll}
@@ -381,7 +381,7 @@ export default function Updates() {
               </>
             ) : (
               <>
-                <AlertCircle className="mx-auto mb-4 text-gray-600" size={48} />
+                <CircleAlert className="mx-auto mb-4 text-gray-600" size={48} />
                 <p className="text-tide-text-muted">No {filter} updates</p>
               </>
             )}

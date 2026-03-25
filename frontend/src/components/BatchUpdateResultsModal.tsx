@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, CircleCheckBig, CircleX, ChevronDown, ChevronRight } from 'lucide-react';
 import type { BatchDependencyUpdateResponse } from '../types';
 
 interface BatchUpdateResultsModalProps {
@@ -50,11 +50,11 @@ export default function BatchUpdateResultsModal({
                 }`}
               >
                 {allSucceeded ? (
-                  <CheckCircle className="w-5 h-5 text-green-400" />
+                  <CircleCheckBig className="w-5 h-5 text-green-400" />
                 ) : allFailed ? (
-                  <XCircle className="w-5 h-5 text-red-400" />
+                  <CircleX className="w-5 h-5 text-red-400" />
                 ) : (
-                  <CheckCircle className="w-5 h-5 text-yellow-400" />
+                  <CircleCheckBig className="w-5 h-5 text-yellow-400" />
                 )}
               </div>
               <h2 className="text-xl font-bold text-tide-text">
@@ -111,7 +111,7 @@ export default function BatchUpdateResultsModal({
                       key={item.id}
                       className="flex items-center gap-3 p-2 bg-green-500/10 border border-green-500/20 rounded-lg"
                     >
-                      <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <CircleCheckBig className="w-4 h-4 text-green-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-tide-text truncate">
                           {item.name}
@@ -146,7 +146,7 @@ export default function BatchUpdateResultsModal({
                         onClick={() => toggleError(item.id)}
                         className="w-full flex items-center gap-3 p-2 text-left hover:bg-red-500/5 transition-colors"
                       >
-                        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                        <CircleX className="w-4 h-4 text-red-400 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-tide-text truncate">
                             {item.name}

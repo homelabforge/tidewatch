@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Waves, Shield, Database, RefreshCw, Bell, Sparkles, CheckCircle, Heart, ExternalLink } from 'lucide-react';
+import { Waves, Shield, Database, RefreshCw, Bell, Sparkles, CircleCheckBig, Heart, ExternalLink } from 'lucide-react';
 
 export default function About() {
   const [version, setVersion] = useState({ version: 'Loading...', docker_version: 'Loading...' });
@@ -103,21 +103,21 @@ export default function About() {
         </p>
         <ul className="space-y-2 text-tide-text-muted text-sm">
           <li className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <CircleCheckBig className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <span>
               <strong className="text-tide-text">Claude</strong> – Full-stack architecture,
               feature development, and production-ready code delivery.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <CircleCheckBig className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <span>
               <strong className="text-tide-text">Operator</strong> – Product vision, requirements
               definition, VulnForge integration direction, and homelab deployment expertise.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <CircleCheckBig className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <span>
               <strong className="text-tide-text">Codex</strong> – Bug fixing, security auditing,
               and code quality improvements.

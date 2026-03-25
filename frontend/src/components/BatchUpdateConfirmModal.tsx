@@ -1,4 +1,4 @@
-import { X, Download, AlertTriangle } from 'lucide-react';
+import { X, Download, TriangleAlert } from 'lucide-react';
 import type { AppDependency } from '../types';
 
 interface BatchUpdateConfirmModalProps {
@@ -54,7 +54,7 @@ export default function BatchUpdateConfirmModal({
           <div className="p-6">
             {hasSecurityIssues && (
               <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 mb-4 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                <TriangleAlert className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-orange-400">
                     Security Advisories

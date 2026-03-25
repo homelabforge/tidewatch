@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, CircleCheckBig, RefreshCw } from 'lucide-react';
+import { CircleAlert, CircleCheckBig, RefreshCw } from 'lucide-react';
 import { Container } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
@@ -48,7 +48,7 @@ export default function OverviewTab({ container, onUpdate }: OverviewTabProps) {
       {container.update_available ? (
         <div className="bg-tide-surface/50 rounded-lg p-4 border border-tide-border border-l-4 border-l-accent">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-8 h-8 text-accent" />
+            <CircleAlert className="w-8 h-8 text-accent" />
             <div>
               <h3 className="text-lg font-semibold text-tide-text">Update Available</h3>
               <p className="text-tide-text-muted text-sm mt-1">

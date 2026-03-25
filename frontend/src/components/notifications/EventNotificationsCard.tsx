@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, ChevronDown, ChevronRight, RefreshCw, AlertTriangle, ArrowUpCircle, Settings2 } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, RefreshCw, TriangleAlert, CircleArrowUp, Settings2 } from 'lucide-react';
 
 interface EventGroup {
   id: string;
@@ -19,7 +19,7 @@ const eventGroups: EventGroup[] = [
     id: 'updates',
     label: 'Updates',
     description: 'Container update notifications',
-    icon: ArrowUpCircle,
+    icon: CircleArrowUp,
     enabledKey: 'notify_updates_enabled',
     events: [
       { key: 'notify_updates_available', label: 'Update Available', description: 'When a new version is detected' },
@@ -45,7 +45,7 @@ const eventGroups: EventGroup[] = [
     id: 'system',
     label: 'System',
     description: 'System-level notifications',
-    icon: AlertTriangle,
+    icon: TriangleAlert,
     enabledKey: 'notify_system_enabled',
     events: [
       { key: 'notify_system_check_complete', label: 'Check Complete', description: 'When scheduled check finishes' },

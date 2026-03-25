@@ -1,5 +1,5 @@
 import { Container, DependencySummary } from '../types';
-import { Package, Calendar, Shield, ShieldAlert, AlertTriangle, RotateCw, Zap, Eye, PowerOff, Server, Layers, Wrench } from 'lucide-react';
+import { Package, Calendar, Shield, ShieldAlert, TriangleAlert, RotateCw, Zap, Eye, PowerOff, Server, Layers, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -146,7 +146,7 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
         <div className="flex flex-wrap gap-2 min-h-[24px]">
           {updateBadgeText && (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${updateBadgeColor}`}>
-              {!hasUpdate && <AlertTriangle size={12} className="mr-1" />}
+              {!hasUpdate && <TriangleAlert size={12} className="mr-1" />}
               {updateBadgeText}
             </span>
           )}
