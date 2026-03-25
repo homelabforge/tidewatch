@@ -4097,6 +4097,8 @@ export interface components {
             dependencies?: string[];
             /** Dependents */
             dependents?: string[];
+            /** Docker Name */
+            docker_name?: string | null;
             /**
              * Health Check Has Auth
              * @default false

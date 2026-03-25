@@ -929,6 +929,17 @@
             "title": "Dependents",
             "type": "array"
           },
+          "docker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docker Name"
+          },
           "health_check_has_auth": {
             "default": false,
             "title": "Health Check Has Auth",
