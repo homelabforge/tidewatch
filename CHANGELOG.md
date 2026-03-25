@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.5] - 2026-03-24
+
 ### Added
 - Docker runtime name (`docker_name`) shown in container overview tab when available
 
@@ -43,9 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **pyjwt**: 2.12.0 → 2.12.1
 - **react-router-dom**: 7.13.1 → 7.13.2
 - **sqlalchemy**: 2.0.47 → 2.0.48
-
-### Fixed
-- Container updates failing on non-homelab systems with "Path traversal detected: No such file or directory: '/srv/raid0'" — host paths are now auto-detected from container mounts (#35)
 
 ## [3.8.4] - 2026-03-20
 
