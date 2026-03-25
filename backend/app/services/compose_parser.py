@@ -1019,8 +1019,8 @@ class ComposeParser:
         result = await db.execute(select(Container))
         all_containers = result.scalars().all()
 
-        # Build set of discovered container names for quick lookup
-        discovered_names = {c.name for c in discovered}
+        # Build set of discovered identities for quick lookup
+        discovered_ids = {(c.service_name, c.compose_file) for c in discovered}
 
         # Current time for comparisons
         now = datetime.now(UTC)
@@ -1028,7 +1028,7 @@ class ComposeParser:
 
         for container in all_containers:
             # Skip if container is in compose files
-            if container.name in discovered_names:
+            if (container.service_name, container.compose_file) in discovered_ids:
                 continue
 
             # Exclude dev containers if configured
