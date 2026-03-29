@@ -27,7 +27,7 @@ def transform_update_to_event(update: UpdateHistory) -> UnifiedHistoryEventSchem
     return UnifiedHistoryEventSchema(
         id=update.id,
         event_type=update.event_type or "update",  # Use actual event_type from database
-        container_id=update.container_id,
+        container_id=update.container_id or 0,
         container_name=update.container_name,
         status=update.status,
         started_at=update.started_at,

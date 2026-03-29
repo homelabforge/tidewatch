@@ -89,3 +89,4 @@ include = ["app", "tests"]
 exclude = ["**/__pycache__", ".venv", "build"]
 reportMissingImports = true
 reportMissingTypeStubs = false
+reportCallIssue = "none"

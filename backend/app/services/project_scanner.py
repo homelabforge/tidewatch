@@ -140,12 +140,13 @@ class ProjectScanner:
 
         return result_dict
 
-    async def _process_compose_file(self, compose_file: Path) -> tuple[str, str | None]:
+    async def _process_compose_file(self, compose_file: Path) -> tuple[str, tuple[str, str] | None]:
         """
         Process a single compose file and add/update containers.
 
         Returns:
-            Tuple of (result, container_name) where result is "added", "updated", or "skipped"
+            Tuple of (result, identity) where result is "added", "updated", or "skipped"
+            and identity is (service_name, compose_file_str) or None
         """
         try:
             # Read compose file

@@ -900,7 +900,7 @@ class ComposeParser:
         Two-pass label filter: project-qualified first, service-only fallback.
         Only accepts unambiguous (single) matches on service-only pass.
         """
-        import docker as docker_lib  # noqa: F811
+        from docker.errors import DockerException as _DockerException
 
         svc_label = f"com.docker.compose.service={container.service_name}"
 
@@ -923,7 +923,7 @@ class ComposeParser:
         for i, filters in enumerate(filter_sets):
             try:
                 matches = client.containers.list(all=True, filters=filters)
-            except docker_lib.errors.DockerException:
+            except _DockerException:
                 continue
 
             if len(matches) == 1:
