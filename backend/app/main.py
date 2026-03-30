@@ -68,24 +68,26 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         from sqlalchemy import text
 
-        result = await db.execute(
+        check_result = await db.execute(
             text(
                 "UPDATE check_jobs SET status = 'failed', error_message = 'Interrupted by application restart' WHERE status IN ('queued', 'running')"
             )
         )
-        if result.rowcount:
-            logger.warning("Cleaned up %d stuck check job(s) from previous run", result.rowcount)
+        check_count: int = check_result.rowcount  # type: ignore[assignment]
+        if check_count:
+            logger.warning("Cleaned up %d stuck check job(s) from previous run", check_count)
             await db.commit()
 
         # Same for dependency scan jobs
-        result = await db.execute(
+        scan_result = await db.execute(
             text(
                 "UPDATE dependency_scan_jobs SET status = 'failed', error_message = 'Interrupted by application restart' WHERE status IN ('queued', 'running')"
             )
         )
-        if result.rowcount:
+        scan_count: int = scan_result.rowcount  # type: ignore[assignment]
+        if scan_count:
             logger.warning(
-                "Cleaned up %d stuck dependency scan job(s) from previous run", result.rowcount
+                "Cleaned up %d stuck dependency scan job(s) from previous run", scan_count
             )
             await db.commit()
 
