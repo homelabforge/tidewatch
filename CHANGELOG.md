@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.7] - 2026-03-29
+
 ### Fixed
 - Update apply failing for external users — compose commands now use container-internal paths instead of host paths for `-f` flag (#35)
 - Compose file backup restore failing with EPERM on root-owned files — switched to content-only copy
