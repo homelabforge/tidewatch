@@ -873,8 +873,12 @@ async def detect_release_source(
 async def restart_container(
     _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Restart a container using docker compose.
+
+    Delegates to RestartService for consistent multi-file compose support,
+    validated command parsing, and proper DOCKER_HOST env handling.
 
     Args:
         container_id: Container ID
@@ -882,55 +886,17 @@ async def restart_container(
     Returns:
         Success message
     """
-    from app.utils.validators import (
-        ValidationError,
-        build_docker_compose_command,
-        validate_compose_file_path,
-        validate_container_name,
-    )
+    from app.services.restart_service import RestartService
 
-    # Validate service name to prevent command injection (compose uses service_name)
-    try:
-        validated_name = validate_container_name(container.service_name)
-    except ValidationError:
-        raise HTTPException(status_code=400, detail="Invalid service name")
+    result = await RestartService._execute_docker_compose_restart(container, db)
 
-    # Get compose file path
-    compose_file = container.compose_file
-    if not compose_file:
-        raise HTTPException(status_code=400, detail="Container has no associated compose file")
-
-    # Validate compose file path to prevent path traversal
-    try:
-        compose_path = validate_compose_file_path(compose_file, allowed_base="/compose")
-    except ValidationError as e:
-        safe_error_response(logger, e, "Invalid compose file path", status_code=400)
-
-    try:
-        # Build safe command using list-based construction
-        # For restart action via docker compose
-        cmd = build_docker_compose_command(
-            compose_file=compose_path, service_name=validated_name, action="restart"
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to restart container: {result.get('error', 'Unknown error')}",
         )
 
-        # Execute restart
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-        if result.returncode != 0:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to restart container: {result.stderr}"
-            )
-
-        return {"message": f"Container {container.name} restarted successfully"}
-
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Restart command timed out")
-    except subprocess.CalledProcessError as e:
-        safe_error_response(logger, e, "Docker compose command failed", status_code=500)
-    except (OSError, PermissionError) as e:
-        safe_error_response(logger, e, "File system error", status_code=500)
-    except (ValueError, ValidationError) as e:
-        safe_error_response(logger, e, "Invalid input", status_code=400)
+    return {"message": f"Container {container.name} restarted successfully"}
 
 
 @router.post("/{container_id}/recheck-updates")

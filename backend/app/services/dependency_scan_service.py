@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 class DependencyScanService:
     """Service for managing background dependency scan jobs."""
 
+    # Strong references to fire-and-forget background tasks to prevent GC
+    _background_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
+
     @staticmethod
     async def get_active_job(db: AsyncSession) -> DependencyScanJob | None:
         """Get currently active (queued or running) job if any.
@@ -120,10 +123,15 @@ class DependencyScanService:
     def start_job_background(job_id: int) -> None:
         """Start a dependency scan job as a background task.
 
+        The task reference is stored in ``_background_tasks`` so the
+        garbage collector cannot reclaim it before completion.
+
         Args:
             job_id: ID of the job to run
         """
-        asyncio.create_task(DependencyScanService.run_job(job_id))
+        task = asyncio.create_task(DependencyScanService.run_job(job_id))
+        DependencyScanService._background_tasks.add(task)
+        task.add_done_callback(DependencyScanService._background_tasks.discard)
 
     @staticmethod
     async def run_job(job_id: int) -> None:

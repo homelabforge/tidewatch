@@ -42,7 +42,14 @@ class CheckJobService:
     - Concurrent (default): Multiple containers checked in parallel with
       rate limiting and deduplication
     - Sequential: Legacy mode, one container at a time (when concurrency=1)
+
+    Note: Background tasks are stored in ``_background_tasks`` to prevent
+    garbage collection.  The event loop only keeps weak references to tasks,
+    so an unreferenced task can vanish before completion (Python 3.12+).
     """
+
+    # Strong references to fire-and-forget background tasks to prevent GC
+    _background_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
 
     @staticmethod
     async def get_active_job(db: AsyncSession) -> CheckJob | None:
@@ -189,7 +196,13 @@ class CheckJobService:
                     {
                         "type": "check-job-started",
                         "job_id": job_id,
+                        "status": "running",
                         "total_count": job.total_count,
+                        "checked_count": 0,
+                        "updates_found": 0,
+                        "errors_count": 0,
+                        "current_container": None,
+                        "progress_percent": 0,
                     }
                 )
 
@@ -561,7 +574,12 @@ class CheckJobService:
         This should be called after creating a job to execute it
         asynchronously without blocking the API response.
 
+        The task reference is stored in ``_background_tasks`` so the
+        garbage collector cannot reclaim it before completion.
+
         Args:
             job_id: ID of the job to run
         """
-        asyncio.create_task(CheckJobService.run_job(job_id))
+        task = asyncio.create_task(CheckJobService.run_job(job_id))
+        CheckJobService._background_tasks.add(task)
+        task.add_done_callback(CheckJobService._background_tasks.discard)

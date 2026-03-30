@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Update apply failing for external users — compose commands now use container-internal paths instead of host paths for `-f` flag (#35)
+- Compose file backup restore failing with EPERM on root-owned files — switched to content-only copy
+- Backup filename collisions when multiple stacks use `compose.yaml` — backups now include the stack path
+- Update check progress bar stuck at 0/N — `check-job-started` SSE event now includes all required fields
+- Progress bar leaking stale counters across different check jobs — frontend handler is now job-id-safe
+- Background check jobs silently dying due to task garbage collection — task references are now retained until completion
+- Stuck check/dependency scan jobs blocking new runs after restart — startup now marks orphaned jobs as failed
+- Updates failing on multi-file compose stacks with "undefined service" — now passes all project compose files via `COMPOSE_FILE` order
+- Rollback missing compose project metadata — rollback now resolves compose_project before execution
+- Container restart route bypassing configured docker_compose_command and docker_socket settings — now delegates to RestartService
+
+### Docs
+- Added `/compose:rw` volume mount to all installation methods in wiki
+- Documented double-mount pattern for compose files using host-absolute secret/env paths
+
 ## [3.8.6] - 2026-03-25
 
 ### Fixed

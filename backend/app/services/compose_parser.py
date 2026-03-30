@@ -153,6 +153,95 @@ class ComposeParser:
     """Parse docker-compose.yml files to discover containers."""
 
     @staticmethod
+    async def resolve_project_compose_files(db: AsyncSession, container: Container) -> list[str]:
+        """Resolve the ordered list of compose files for a container's project.
+
+        Uses ``COMPOSE_FILE`` from the project ``.env`` as the canonical source
+        of both membership and order.  This is required for multi-file compose
+        projects where Docker Compose needs all files to validate cross-file
+        dependencies (e.g. ``depends_on`` referencing services in other files).
+
+        Args:
+            db: Database session
+            container: Container whose project files to resolve
+
+        Returns:
+            Ordered list of validated compose file paths
+
+        Raises:
+            ValidationError: If any listed file fails validation or if
+                the container's compose_file is not in the COMPOSE_FILE list
+        """
+        from app.utils.validators import (
+            ValidationError,
+        )
+        from app.utils.validators import (
+            validate_compose_file_path as validate_path_utils,
+        )
+
+        # Single-file fallback when no project is set
+        if not container.compose_project:
+            return [container.compose_file]
+
+        # Resolve compose root from settings (not hardcoded)
+        compose_dir = await SettingsService.get(db, "compose_directory") or "/compose"
+        compose_dir_path = Path(compose_dir)
+
+        # Read .env for COMPOSE_FILE
+        env_file = compose_dir_path / ".env"
+        compose_file_value: str | None = None
+        if env_file.exists():
+            try:
+                for line in env_file.read_text().splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("COMPOSE_FILE="):
+                        compose_file_value = stripped.split("=", 1)[1].strip()
+                        break
+            except OSError as e:
+                logger.warning("Failed to read %s: %s", env_file, e)
+
+        # If no COMPOSE_FILE defined, fall back to single-file
+        if not compose_file_value:
+            return [container.compose_file]
+
+        # Parse colon-separated file list and resolve relative paths
+        raw_files = [f.strip() for f in compose_file_value.split(":") if f.strip()]
+        resolved_files: list[str] = []
+        for raw in raw_files:
+            raw_path = Path(raw)
+            if raw_path.is_absolute():
+                resolved_files.append(str(raw_path))
+            else:
+                resolved_files.append(str(compose_dir_path / raw_path))
+
+        # Validate every file (strict=True — files must exist in-container)
+        invalid_files: list[str] = []
+        for file_path in resolved_files:
+            try:
+                validate_path_utils(file_path, allowed_base=compose_dir, strict=True)
+            except ValidationError:
+                invalid_files.append(file_path)
+
+        if invalid_files:
+            raise ValidationError(
+                f"COMPOSE_FILE references invalid/missing files: {invalid_files}. "
+                f"All files listed in COMPOSE_FILE must exist and be valid compose files."
+            )
+
+        # Verify the container's own compose_file is in the list
+        container_file = str(Path(container.compose_file).resolve())
+        resolved_abs = [str(Path(f).resolve()) for f in resolved_files]
+        if container_file not in resolved_abs:
+            raise ValidationError(
+                f"Configuration drift: container '{container.name}' references "
+                f"compose file '{container.compose_file}' which is not in "
+                f"COMPOSE_FILE ({compose_file_value}). "
+                f"Update COMPOSE_FILE in {env_file} to include this file."
+            )
+
+        return resolved_files
+
+    @staticmethod
     async def discover_containers(db: AsyncSession) -> tuple[list[Container], list[str]]:
         """Discover all containers from compose files.
 

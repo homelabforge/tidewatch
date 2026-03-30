@@ -64,6 +64,31 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await UpdateEngine.recover_stuck_records(db)
 
+    # Clean up stuck check jobs from previous crashes/GC
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy import text
+
+        result = await db.execute(
+            text(
+                "UPDATE check_jobs SET status = 'failed', error_message = 'Interrupted by application restart' WHERE status IN ('queued', 'running')"
+            )
+        )
+        if result.rowcount:
+            logger.warning("Cleaned up %d stuck check job(s) from previous run", result.rowcount)
+            await db.commit()
+
+        # Same for dependency scan jobs
+        result = await db.execute(
+            text(
+                "UPDATE dependency_scan_jobs SET status = 'failed', error_message = 'Interrupted by application restart' WHERE status IN ('queued', 'running')"
+            )
+        )
+        if result.rowcount:
+            logger.warning(
+                "Cleaned up %d stuck dependency scan job(s) from previous run", result.rowcount
+            )
+            await db.commit()
+
     # Recover any VulnForge scan jobs interrupted by previous shutdown
     from app.services.vulnforge_scan_worker import recover_interrupted_jobs
 

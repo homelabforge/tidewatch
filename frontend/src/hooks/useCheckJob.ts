@@ -16,15 +16,20 @@ export function useCheckJob(options: UseCheckJobOptions = {}) {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   const handleCheckJobProgress = useCallback((data: CheckJobProgressEvent) => {
-    setCheckJob({
-      jobId: data.job_id,
-      status: data.status as CheckJobState['status'],
-      totalCount: data.total_count,
-      checkedCount: data.checked_count,
-      updatesFound: data.updates_found,
-      errorsCount: data.errors_count || 0,
-      currentContainer: data.current_container || null,
-      progressPercent: data.progress_percent || 0,
+    setCheckJob(prev => {
+      // Only merge with previous state when it's the same job.
+      // A different job_id means a new check run — reset to defaults.
+      const sameJob = prev !== null && prev.jobId === data.job_id;
+      return {
+        jobId: data.job_id,
+        status: (data.status as CheckJobState['status']) ?? (sameJob ? prev.status : 'queued'),
+        totalCount: data.total_count ?? (sameJob ? prev.totalCount : 0),
+        checkedCount: data.checked_count ?? (sameJob ? prev.checkedCount : 0),
+        updatesFound: data.updates_found ?? (sameJob ? prev.updatesFound : 0),
+        errorsCount: data.errors_count ?? (sameJob ? prev.errorsCount : 0),
+        currentContainer: data.current_container ?? (sameJob ? prev.currentContainer : null),
+        progressPercent: data.progress_percent ?? (sameJob ? prev.progressPercent : 0),
+      };
     });
   }, []);
 

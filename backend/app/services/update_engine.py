@@ -86,10 +86,12 @@ class UpdateEngine:
 
     @staticmethod
     def _translate_container_path_to_host(container_path: str) -> str:
-        """Translate container-visible paths to host paths for docker compose.
+        """Translate container-visible paths to host paths.
 
-        Docker compose runs on the host (via socket), so it needs host paths,
-        not container paths.
+        NOTE: This method is no longer used for ``docker compose -f`` invocation.
+        The Docker CLI runs inside the TideWatch container and needs container-
+        internal paths to read compose files.  This utility remains available for
+        logging or diagnostics where the host-side path is informational.
 
         Args:
             container_path: Path as seen inside the Tidewatch container
@@ -161,6 +163,25 @@ class UpdateEngine:
             logger.debug(f"Could not get compose_project for {container.name}: {e}")
 
     @staticmethod
+    async def _ensure_compose_metadata(db: AsyncSession, container: "Container") -> list[str]:
+        """Ensure compose_project is populated and resolve all project compose files.
+
+        Combines label sync and multi-file resolution into a single call
+        used by apply_update(), rollback_update(), and restart paths.
+
+        Args:
+            db: Database session
+            container: Container to resolve
+
+        Returns:
+            Ordered list of compose file paths for the container's project
+        """
+        await UpdateEngine._ensure_compose_project(db, container)
+        from app.services.compose_parser import ComposeParser
+
+        return await ComposeParser.resolve_project_compose_files(db, container)
+
+    @staticmethod
     async def apply_update(db: AsyncSession, update_id: int, triggered_by: str = "user") -> dict:
         """Apply an approved update.
 
@@ -206,8 +227,8 @@ class UpdateEngine:
                 "message": f"Another operation is already in progress for {container.name}",
             }
 
-        # Ensure compose_project is populated from Docker labels
-        await UpdateEngine._ensure_compose_project(db, container)
+        # Ensure compose_project is populated and resolve all project compose files
+        compose_files = await UpdateEngine._ensure_compose_metadata(db, container)
 
         logger.info(f"Applying update for {container.name}: {update.from_tag} -> {update.to_tag}")
 
@@ -387,7 +408,7 @@ class UpdateEngine:
             )
 
             pull_result = await UpdateEngine._pull_docker_image(
-                container.compose_file,
+                compose_files,
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
@@ -428,7 +449,7 @@ class UpdateEngine:
                 )
 
             result = await UpdateEngine._execute_docker_compose(
-                container.compose_file,
+                compose_files,
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
@@ -907,6 +928,9 @@ class UpdateEngine:
                 or "docker compose"
             )
 
+            # Resolve multi-file compose project (ensures compose_project is populated)
+            compose_files = await UpdateEngine._ensure_compose_metadata(db, container)
+
             expected_image_id = None
             if is_proxy:
                 logger.warning(
@@ -918,7 +942,7 @@ class UpdateEngine:
                 )
 
             result = await UpdateEngine._execute_docker_compose(
-                container.compose_file,
+                compose_files,
                 container.service_name,
                 docker_socket,
                 docker_compose_cmd,
@@ -1725,25 +1749,31 @@ class UpdateEngine:
         """Create a backup of the compose file.
 
         Args:
-            compose_file: Path to compose file
+            compose_file: Path to compose file (container-internal, e.g. /compose/mariadb/compose.yaml)
 
         Returns:
             Path to backup file
         """
         import os
         import shutil
+        from pathlib import PurePosixPath
 
         # Store backups in /data directory (writable), not in /compose (read-only)
         backup_dir = "/data/backups"
         os.makedirs(backup_dir, exist_ok=True)
 
-        # Create backup filename from original path (single backup per file, overwrites previous)
-        compose_basename = os.path.basename(compose_file)
-        backup_filename = f"{compose_basename}.backup"
+        # Derive unique backup filename from the full relative path under /compose/
+        # e.g. /compose/mariadb/compose.yaml -> mariadb--compose.yaml.backup
+        # e.g. /compose/media.yml -> media.yml.backup
+        try:
+            rel = PurePosixPath(compose_file).relative_to("/compose")
+            backup_filename = str(rel).replace("/", "--") + ".backup"
+        except ValueError:
+            backup_filename = os.path.basename(compose_file) + ".backup"
         backup_path = os.path.join(backup_dir, backup_filename)
 
         try:
-            shutil.copy2(compose_file, backup_path)
+            shutil.copyfile(compose_file, backup_path)
             logger.info(f"Created backup: {backup_path}")
             return backup_path
         except PermissionError as e:
@@ -1757,6 +1787,9 @@ class UpdateEngine:
     async def _restore_compose_file(compose_file: str, backup_path: str):
         """Restore compose file from backup.
 
+        Uses copyfile (content only) instead of copy2 to avoid EPERM
+        when the destination file is owned by a different user (e.g. root).
+
         Args:
             compose_file: Path to compose file
             backup_path: Path to backup file
@@ -1764,7 +1797,7 @@ class UpdateEngine:
         try:
             import shutil
 
-            shutil.copy2(backup_path, compose_file)
+            shutil.copyfile(backup_path, compose_file)
             logger.info(f"Restored from backup: {backup_path}")
         except PermissionError as e:
             logger.error(f"Permission denied restoring backup: {e}")
@@ -1775,7 +1808,7 @@ class UpdateEngine:
 
     @staticmethod
     async def _execute_docker_compose(
-        compose_file: str,
+        compose_files: list[str],
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
@@ -1785,7 +1818,8 @@ class UpdateEngine:
         """Execute docker compose up for a service.
 
         Args:
-            compose_file: Path to compose file
+            compose_files: Ordered list of compose file paths (pre-validated
+                by ``resolve_project_compose_files``).
             service_name: Service name to update
             docker_socket: Docker socket path
             compose_command: Docker compose command template with placeholders
@@ -1810,29 +1844,12 @@ class UpdateEngine:
                 "stdout": "",
             }
 
-        # Validate compose file path
         try:
-            validated_compose_path = validate_compose_file_path(
-                compose_file, allowed_base="/compose"
-            )
-            # Translate container path to host path for docker daemon
-            host_compose_path = UpdateEngine._translate_container_path_to_host(
-                str(validated_compose_path)
-            )
-        except ValidationError as e:
-            logger.error(f"Invalid compose file path '{compose_file}': {str(e)}")
-            return {
-                "success": False,
-                "error": f"Invalid compose file path: {str(e)}",
-                "stdout": "",
-            }
-
-        try:
-            # Check for .env file in the same directory as compose file (use host path)
+            # Check for .env file in the same directory as the first compose file
             import os
 
-            host_compose_dir = os.path.dirname(host_compose_path)
-            env_file_path = os.path.join(host_compose_dir, ".env")
+            compose_dir = os.path.dirname(compose_files[0])
+            env_file_path = os.path.join(compose_dir, ".env")
             env_file = Path(env_file_path) if os.path.lexists(env_file_path) else None
 
             # Validate docker compose command template
@@ -1853,16 +1870,14 @@ class UpdateEngine:
                 else f"unix://{docker_socket}"
             )
             env = docker_subprocess_env(docker_host)
-            # Host compose path is auto-detected from TideWatch's own mounts.
-            # TideWatch mounts this path at BOTH /compose AND the host path
-            # This allows both env_file (client-side) and secrets (daemon-side) to work
 
             if not skip_stop:
                 # Stop the existing container to avoid name conflicts
                 stop_cmd = base_cmd.copy()
                 if compose_project:
                     stop_cmd.extend(["-p", compose_project])
-                stop_cmd.extend(["-f", host_compose_path])
+                for cf in compose_files:
+                    stop_cmd.extend(["-f", cf])
                 if env_file and env_file.exists():
                     stop_cmd.extend(["--env-file", str(env_file)])
                 stop_cmd.extend(["stop", validated_service])
@@ -1888,10 +1903,11 @@ class UpdateEngine:
             # Build command using list-based construction (safe)
             cmd = base_cmd.copy()
 
-            # Add project and compose file flags (use host path)
+            # Add project and compose file flags (container-internal paths)
             if compose_project:
                 cmd.extend(["-p", compose_project])
-            cmd.extend(["-f", host_compose_path])
+            for cf in compose_files:
+                cmd.extend(["-f", cf])
 
             # Add env file if it exists
             if env_file and env_file.exists():
@@ -1985,7 +2001,7 @@ class UpdateEngine:
 
     @staticmethod
     async def _pull_docker_image(
-        compose_file: str,
+        compose_files: list[str],
         service_name: str,
         docker_socket: str = "/var/run/docker.sock",
         compose_command: str = "docker compose",
@@ -1999,7 +2015,8 @@ class UpdateEngine:
         - Clearer error messages
 
         Args:
-            compose_file: Path to compose file
+            compose_files: Ordered list of compose file paths (pre-validated
+                by ``resolve_project_compose_files``).
             service_name: Service name to pull
             docker_socket: Docker socket path
             compose_command: Docker compose command template
@@ -2018,28 +2035,12 @@ class UpdateEngine:
                 "error": f"Invalid service name: {str(e)}",
             }
 
-        # Validate compose file path
         try:
-            validated_compose_path = validate_compose_file_path(
-                compose_file, allowed_base="/compose"
-            )
-            # Translate container path to host path for docker daemon
-            host_compose_path = UpdateEngine._translate_container_path_to_host(
-                str(validated_compose_path)
-            )
-        except ValidationError as e:
-            logger.error(f"Invalid compose file path '{compose_file}': {str(e)}")
-            return {
-                "success": False,
-                "error": f"Invalid compose file path: {str(e)}",
-            }
-
-        try:
-            # Check for .env file (use host path for docker daemon)
+            # Check for .env file in the same directory as the first compose file
             import os
 
-            host_compose_dir = os.path.dirname(host_compose_path)
-            env_file_path = os.path.join(host_compose_dir, ".env")
+            compose_dir = os.path.dirname(compose_files[0])
+            env_file_path = os.path.join(compose_dir, ".env")
             env_file = Path(env_file_path) if os.path.lexists(env_file_path) else None
 
             # Validate docker compose command
@@ -2055,10 +2056,11 @@ class UpdateEngine:
             # Build pull command
             cmd = base_cmd.copy()
 
-            # Add project and compose file flags (use host path)
+            # Add project and compose file flags (container-internal paths)
             if compose_project:
                 cmd.extend(["-p", compose_project])
-            cmd.extend(["-f", host_compose_path])
+            for cf in compose_files:
+                cmd.extend(["-f", cf])
 
             if env_file and env_file.exists():
                 cmd.extend(["--env-file", str(env_file)])
@@ -2067,15 +2069,13 @@ class UpdateEngine:
 
             logger.info(f"Pulling image: {' '.join(cmd)}")
 
-            # Set up environment
+            # Set up environment with DOCKER_HOST for subprocess calls
             docker_host = (
                 docker_socket
                 if docker_socket.startswith(("tcp://", "unix://"))
                 else f"unix://{docker_socket}"
             )
-            env = os.environ.copy()
-            env["DOCKER_HOST"] = docker_host
-            # Host compose path is auto-detected from TideWatch's own mounts
+            env = docker_subprocess_env(docker_host)
 
             # Execute pull with 20 minute timeout (large images can be 1GB+)
             process = await asyncio.create_subprocess_exec(

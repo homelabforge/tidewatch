@@ -539,24 +539,27 @@ class RestartService:
                 or "docker compose"
             )
 
-            # Build command with explicit project and file flags
-            cmd_parts = docker_compose_cmd.split()
+            # Resolve multi-file compose project and validate command
+            from app.services.docker_access import docker_subprocess_env
+            from app.services.update_engine import UpdateEngine
+            from app.utils.validators import validate_docker_compose_command
+
+            compose_files = await UpdateEngine._ensure_compose_metadata(db, container)
+            base_cmd = validate_docker_compose_command(docker_compose_cmd)
+            cmd_parts = base_cmd.copy()
             if container.compose_project:
                 cmd_parts.extend(["-p", container.compose_project])
-            cmd_parts.extend(["-f", container.compose_file, "restart", container.service_name])
+            for cf in compose_files:
+                cmd_parts.extend(["-f", cf])
+            cmd_parts.extend(["restart", container.service_name])
 
-            # Format docker socket to DOCKER_HOST environment variable
+            # Build env with DOCKER_HOST
             docker_host = (
                 docker_socket
                 if docker_socket.startswith(("tcp://", "unix://"))
                 else f"unix://{docker_socket}"
             )
-
-            # Execute with proper DOCKER_HOST environment variable
-            import os
-
-            env = os.environ.copy()
-            env["DOCKER_HOST"] = docker_host
+            env = docker_subprocess_env(docker_host)
 
             process = await asyncio.create_subprocess_exec(
                 *cmd_parts,

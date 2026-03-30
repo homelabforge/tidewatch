@@ -152,18 +152,16 @@ class TestBackupAndRestore:
 
     @pytest.mark.asyncio
     async def test_backup_creates_file_in_data_directory(self):
-        """Test backup creates file in /data/backups."""
+        """Test backup creates file in /data/backups with path-derived name."""
         compose_file = "/compose/media/sonarr.yml"
 
         with (
-            patch("shutil.copy2") as mock_copy,
+            patch("shutil.copyfile") as mock_copy,
             patch("os.makedirs") as mock_makedirs,
-            patch("os.path.basename", return_value="sonarr.yml"),
         ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
-            # Single backup file per compose (no timestamp)
-            assert backup_path == "/data/backups/sonarr.yml.backup"
+            assert backup_path == "/data/backups/media--sonarr.yml.backup"
             mock_makedirs.assert_called_once_with("/data/backups", exist_ok=True)
             mock_copy.assert_called_once()
 
@@ -173,14 +171,12 @@ class TestBackupAndRestore:
         compose_file = "/compose/media/sonarr.yml"
 
         with (
-            patch("shutil.copy2"),
+            patch("shutil.copyfile"),
             patch("os.makedirs"),
-            patch("os.path.basename", return_value="sonarr.yml"),
         ):
             backup_path = await UpdateEngine._backup_compose_file(compose_file)
 
-            # Should be a single file without timestamp
-            assert backup_path == "/data/backups/sonarr.yml.backup"
+            assert backup_path == "/data/backups/media--sonarr.yml.backup"
             assert ".backup." not in backup_path  # No timestamp separator
 
     @pytest.mark.asyncio
@@ -189,7 +185,7 @@ class TestBackupAndRestore:
         compose_file = "/compose/media/sonarr.yml"
 
         with (
-            patch("shutil.copy2", side_effect=PermissionError("Permission denied")),
+            patch("shutil.copyfile", side_effect=PermissionError("Permission denied")),
             patch("os.makedirs"),
         ):
             with pytest.raises(PermissionError) as exc_info:
@@ -199,11 +195,11 @@ class TestBackupAndRestore:
 
     @pytest.mark.asyncio
     async def test_restore_copies_backup_to_original_path(self):
-        """Test restore copies backup file back to original path."""
+        """Test restore uses copyfile (content only, no metadata)."""
         compose_file = "/compose/media/sonarr.yml"
-        backup_path = "/data/backups/sonarr.yml.backup"
+        backup_path = "/data/backups/media--sonarr.yml.backup"
 
-        with patch("shutil.copy2") as mock_copy:
+        with patch("shutil.copyfile") as mock_copy:
             await UpdateEngine._restore_compose_file(compose_file, backup_path)
 
             mock_copy.assert_called_once_with(backup_path, compose_file)
@@ -212,11 +208,45 @@ class TestBackupAndRestore:
     async def test_restore_raises_on_permission_error(self):
         """Test restore raises PermissionError when copy fails."""
         compose_file = "/compose/media/sonarr.yml"
-        backup_path = "/data/backups/sonarr.yml.backup"
+        backup_path = "/data/backups/media--sonarr.yml.backup"
 
-        with patch("shutil.copy2", side_effect=PermissionError("Permission denied")):
+        with patch("shutil.copyfile", side_effect=PermissionError("Permission denied")):
             with pytest.raises(PermissionError):
                 await UpdateEngine._restore_compose_file(compose_file, backup_path)
+
+    @pytest.mark.asyncio
+    async def test_backup_filename_uniqueness(self):
+        """Two stacks with same compose.yaml filename get different backups."""
+        with (
+            patch("shutil.copyfile"),
+            patch("os.makedirs"),
+        ):
+            path_a = await UpdateEngine._backup_compose_file("/compose/mariadb/compose.yaml")
+            path_b = await UpdateEngine._backup_compose_file("/compose/redis/compose.yaml")
+
+            assert path_a != path_b
+            assert path_a == "/data/backups/mariadb--compose.yaml.backup"
+            assert path_b == "/data/backups/redis--compose.yaml.backup"
+
+    @pytest.mark.asyncio
+    async def test_backup_filename_from_nested_path(self):
+        """Nested compose paths produce flat backup filenames."""
+        with (
+            patch("shutil.copyfile"),
+            patch("os.makedirs"),
+        ):
+            path = await UpdateEngine._backup_compose_file("/compose/a/b/compose.yaml")
+            assert path == "/data/backups/a--b--compose.yaml.backup"
+
+    @pytest.mark.asyncio
+    async def test_backup_filename_root_compose(self):
+        """Root-level compose files use basename directly."""
+        with (
+            patch("shutil.copyfile"),
+            patch("os.makedirs"),
+        ):
+            path = await UpdateEngine._backup_compose_file("/compose/media.yml")
+            assert path == "/data/backups/media.yml.backup"
 
 
 class TestDockerComposeExecution:
@@ -229,24 +259,34 @@ class TestDockerComposeExecution:
         service_name = "sonarr; rm -rf /"  # Malicious service name
 
         result = await UpdateEngine._execute_docker_compose(
-            compose_file, service_name, "/var/run/docker.sock", "docker compose"
+            [compose_file], service_name, "/var/run/docker.sock", "docker compose"
         )
 
         assert result["success"] is False
         assert "Invalid service name" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_validates_compose_file_path_before_execution(self):
-        """Test compose file path is validated."""
+    async def test_bad_compose_path_fails_at_docker(self):
+        """Paths not pre-validated still fail at Docker Compose level."""
         compose_file = "../../etc/passwd"  # Path traversal attempt
         service_name = "sonarr"
 
-        result = await UpdateEngine._execute_docker_compose(
-            compose_file, service_name, "/var/run/docker.sock", "docker compose"
-        )
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(b"", b"no such file"))
+        mock_process.returncode = 1
 
-        assert result["success"] is False
-        assert "Invalid compose file path" in result["error"]
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process),
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await UpdateEngine._execute_docker_compose(
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            assert result["success"] is False
 
     @pytest.mark.asyncio
     async def test_validates_docker_compose_command(self, mock_filesystem):
@@ -256,7 +296,7 @@ class TestDockerComposeExecution:
         malicious_cmd = "docker compose; curl http://evil.com"
 
         result = await UpdateEngine._execute_docker_compose(
-            compose_file, service_name, "/var/run/docker.sock", malicious_cmd
+            [compose_file], service_name, "/var/run/docker.sock", malicious_cmd
         )
 
         assert result["success"] is False
@@ -280,7 +320,7 @@ class TestDockerComposeExecution:
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             await UpdateEngine._execute_docker_compose(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             # Should have called subprocess twice: stop and up
@@ -308,7 +348,7 @@ class TestDockerComposeExecution:
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is True
@@ -335,7 +375,7 @@ class TestDockerComposeExecution:
             patch("asyncio.wait_for", side_effect=TimeoutError()),
         ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
@@ -359,11 +399,77 @@ class TestDockerComposeExecution:
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
             assert "Image not found" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_docker_compose_uses_container_path(self, mock_filesystem):
+        """Test -f flag uses container-internal /compose/ path, not host path.
+
+        Regression test for #35: external users don't have host paths
+        accessible inside the container.
+        """
+        compose_file = "/compose/mariadb/compose.yaml"
+        service_name = "MariaDB"
+
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(b"", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            await UpdateEngine._execute_docker_compose(
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            # Every subprocess call should use the container-internal path
+            for call in mock_exec.call_args_list:
+                call_args = call[0]
+                if "-f" in call_args:
+                    f_index = call_args.index("-f")
+                    f_value = call_args[f_index + 1]
+                    assert f_value.startswith("/compose/"), (
+                        f"Expected container path /compose/..., got {f_value}"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_execute_docker_compose_env_file_uses_container_path(self, mock_filesystem):
+        """Test --env-file uses container-internal path when .env exists."""
+        compose_file = "/compose/mariadb/compose.yaml"
+        service_name = "MariaDB"
+
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(b"", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+            patch("os.path.lexists", return_value=True),
+        ):
+            await UpdateEngine._execute_docker_compose(
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            # Check that --env-file uses container path
+            last_call_args = mock_exec.call_args_list[-1][0]
+            if "--env-file" in last_call_args:
+                ef_index = last_call_args.index("--env-file")
+                ef_value = last_call_args[ef_index + 1]
+                assert ef_value.startswith("/compose/"), (
+                    f"Expected container path /compose/..., got {ef_value}"
+                )
 
 
 class TestDockerComposeSkipStop:
@@ -387,7 +493,7 @@ class TestDockerComposeSkipStop:
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._execute_docker_compose(
-                compose_file,
+                [compose_file],
                 service_name,
                 "/var/run/docker.sock",
                 "docker compose",
@@ -424,7 +530,7 @@ class TestImagePulling:
             patch("asyncio.wait_for", side_effect=mock_wait_for),
         ):
             result = await UpdateEngine._pull_docker_image(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is True
@@ -452,7 +558,7 @@ class TestImagePulling:
             patch("asyncio.wait_for", side_effect=mock_wait_for_timeout),
         ):
             result = await UpdateEngine._pull_docker_image(
-                compose_file, service_name, "/var/run/docker.sock", "docker compose"
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
             )
 
             assert result["success"] is False
@@ -465,11 +571,46 @@ class TestImagePulling:
         service_name = "malicious; curl http://evil.com"
 
         result = await UpdateEngine._pull_docker_image(
-            compose_file, service_name, "/var/run/docker.sock", "docker compose"
+            [compose_file], service_name, "/var/run/docker.sock", "docker compose"
         )
 
         assert result["success"] is False
         assert "Invalid service name" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_pull_uses_container_path(self, mock_filesystem):
+        """Test pull -f flag uses container-internal /compose/ path.
+
+        Regression test for #35: the Docker CLI runs inside the container
+        and needs container-visible paths for -f.
+        """
+        compose_file = "/compose/redis/compose.yaml"
+        service_name = "redis"
+
+        mock_process = MagicMock()
+        mock_process.communicate = AsyncMock(return_value=(b"Pulling...", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await UpdateEngine._pull_docker_image(
+                [compose_file], service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            assert result["success"] is True
+
+            call_args = mock_exec.call_args[0]
+            if "-f" in call_args:
+                f_index = call_args.index("-f")
+                f_value = call_args[f_index + 1]
+                assert f_value.startswith("/compose/"), (
+                    f"Expected container path /compose/..., got {f_value}"
+                )
 
 
 class TestHealthCheckValidation:
@@ -1804,3 +1945,160 @@ class TestRestoreCommandFailureSemantics:
             container_name="sonarr",
             backup_id="20260206-120000-abc123",
         )
+
+
+class TestMultiFileCompose:
+    """Test multi-file compose project support."""
+
+    @pytest.mark.asyncio
+    async def test_multi_file_produces_ordered_f_flags(self, mock_filesystem):
+        """Multiple compose files produce multiple -f flags in order."""
+        compose_files = ["/compose/network.yml", "/compose/media.yml"]
+        service_name = "sonarr"
+
+        mock_process = AsyncMock()
+        mock_process.communicate = AsyncMock(return_value=(b"", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await UpdateEngine._execute_docker_compose(
+                compose_files, service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            assert result["success"] is True
+
+            # The up command (last call) should have both -f flags in order
+            last_call_args = mock_exec.call_args_list[-1][0]
+            f_indices = [i for i, a in enumerate(last_call_args) if a == "-f"]
+            assert len(f_indices) == 2
+            assert last_call_args[f_indices[0] + 1] == "/compose/network.yml"
+            assert last_call_args[f_indices[1] + 1] == "/compose/media.yml"
+
+    @pytest.mark.asyncio
+    async def test_pull_multi_file_produces_ordered_f_flags(self, mock_filesystem):
+        """Pull with multiple compose files uses multiple -f flags in order."""
+        compose_files = ["/compose/network.yml", "/compose/media.yml"]
+        service_name = "sonarr"
+
+        mock_process = MagicMock()
+        mock_process.communicate = AsyncMock(return_value=(b"Pulling...", b""))
+        mock_process.returncode = 0
+
+        async def mock_wait_for(coro, timeout):
+            return await coro
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec,
+            patch("asyncio.wait_for", side_effect=mock_wait_for),
+        ):
+            result = await UpdateEngine._pull_docker_image(
+                compose_files, service_name, "/var/run/docker.sock", "docker compose"
+            )
+
+            assert result["success"] is True
+
+            call_args = mock_exec.call_args[0]
+            f_indices = [i for i, a in enumerate(call_args) if a == "-f"]
+            assert len(f_indices) == 2
+            assert call_args[f_indices[0] + 1] == "/compose/network.yml"
+            assert call_args[f_indices[1] + 1] == "/compose/media.yml"
+
+    @pytest.mark.asyncio
+    async def test_single_file_when_no_compose_project(self):
+        """Container without compose_project resolves to single file."""
+        container = Container(
+            id=1,
+            name="standalone",
+            image="nginx",
+            current_tag="1.0",
+            registry="docker.io",
+            compose_file="/compose/standalone/compose.yaml",
+            service_name="nginx",
+            policy="monitor",
+            vulnforge_enabled=False,
+        )
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+
+        from app.services.compose_parser import ComposeParser
+
+        result = await ComposeParser.resolve_project_compose_files(mock_db, container)
+        assert result == ["/compose/standalone/compose.yaml"]
+
+    @pytest.mark.asyncio
+    async def test_compose_file_drift_raises_error(self, mock_filesystem):
+        """Container compose_file not in COMPOSE_FILE raises ValidationError."""
+        container = Container(
+            id=1,
+            name="test",
+            image="nginx",
+            current_tag="1.0",
+            registry="docker.io",
+            compose_file="/compose/orphan.yml",
+            service_name="nginx",
+            policy="monitor",
+            compose_project="homelab",
+            vulnforge_enabled=False,
+        )
+
+        mock_db = AsyncMock()
+
+        env_content = "COMPOSE_FILE=network.yml:media.yml\n"
+
+        with (
+            patch(
+                "app.services.compose_parser.SettingsService.get",
+                new_callable=AsyncMock,
+                return_value="/compose",
+            ),
+            patch("pathlib.Path.read_text", return_value=env_content),
+        ):
+            from app.services.compose_parser import ComposeParser
+
+            with pytest.raises(Exception, match="Configuration drift"):
+                await ComposeParser.resolve_project_compose_files(mock_db, container)
+
+    @pytest.mark.asyncio
+    async def test_resolve_preserves_compose_file_order(self, mock_filesystem):
+        """COMPOSE_FILE order is preserved in resolved list."""
+        container = Container(
+            id=1,
+            name="test",
+            image="nginx",
+            current_tag="1.0",
+            registry="docker.io",
+            compose_file="/compose/media.yml",
+            service_name="nginx",
+            policy="monitor",
+            compose_project="homelab",
+            vulnforge_enabled=False,
+        )
+
+        mock_db = AsyncMock()
+
+        env_content = "COMPOSE_FILE=network.yml:monitoring.yml:media.yml\n"
+
+        with (
+            patch(
+                "app.services.compose_parser.SettingsService.get",
+                new_callable=AsyncMock,
+                return_value="/compose",
+            ),
+            patch("pathlib.Path.read_text", return_value=env_content),
+        ):
+            from app.services.compose_parser import ComposeParser
+
+            result = await ComposeParser.resolve_project_compose_files(mock_db, container)
+
+        assert result == [
+            "/compose/network.yml",
+            "/compose/monitoring.yml",
+            "/compose/media.yml",
+        ]
