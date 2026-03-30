@@ -1530,6 +1530,9 @@ export interface paths {
          * Restart Container
          * @description Restart a container using docker compose.
          *
+         *     Delegates to RestartService for consistent multi-file compose support,
+         *     validated command parsing, and proper DOCKER_HOST env handling.
+         *
          *     Args:
          *         container_id: Container ID
          *

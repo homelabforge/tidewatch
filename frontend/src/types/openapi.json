@@ -7667,7 +7667,7 @@
     },
     "/api/v1/containers/{container_id}/restart": {
       "post": {
-        "description": "Restart a container using docker compose.\n\nArgs:\n    container_id: Container ID\n\nReturns:\n    Success message",
+        "description": "Restart a container using docker compose.\n\nDelegates to RestartService for consistent multi-file compose support,\nvalidated command parsing, and proper DOCKER_HOST env handling.\n\nArgs:\n    container_id: Container ID\n\nReturns:\n    Success message",
         "operationId": "restart_container_api_v1_containers__container_id__restart_post",
         "parameters": [
           {
