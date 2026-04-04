@@ -47,6 +47,12 @@ class UpdateSchema(BaseModel):
     update_kind: str | None = None
     change_type: str | None = None
 
+    # Supply chain anomaly detection
+    anomaly_score: int = 0
+    anomaly_flags: list[dict[str, Any]] = Field(default_factory=list)
+    anomaly_held: bool = False
+    expected_digest: str | None = None
+
     model_config = {"from_attributes": True}
 
     @field_validator("decision_trace", mode="before")

@@ -11,11 +11,6 @@
             "title": "Failed Updates",
             "type": "integer"
           },
-          "integrity_failed_updates": {
-            "default": 0,
-            "title": "Integrity Failed Updates",
-            "type": "integer"
-          },
           "period_days": {
             "title": "Period Days",
             "type": "integer"
@@ -1094,28 +1089,6 @@
             "title": "Service Name",
             "type": "string"
           },
-          "supply_chain_enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supply Chain Enabled"
-          },
-          "supply_chain_sensitivity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supply Chain Sensitivity"
-          },
           "update_available": {
             "title": "Update Available",
             "type": "boolean"
@@ -1325,28 +1298,6 @@
               }
             ],
             "title": "Scope"
-          },
-          "supply_chain_enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supply Chain Enabled"
-          },
-          "supply_chain_sensitivity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supply Chain Sensitivity"
           },
           "version_track": {
             "anyOf": [
@@ -9034,7 +8985,7 @@
             }
           },
           {
-            "description": "Filter by status (success, failed, rolled_back, integrity_failed)",
+            "description": "Filter by status (success, failed, rolled_back)",
             "in": "query",
             "name": "status",
             "required": false,
@@ -9047,7 +8998,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by status (success, failed, rolled_back, integrity_failed)",
+              "description": "Filter by status (success, failed, rolled_back)",
               "title": "Status"
             }
           },

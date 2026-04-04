@@ -3752,11 +3752,6 @@ export interface components {
             avg_update_duration_seconds: number;
             /** Failed Updates */
             failed_updates: number;
-            /**
-             * Integrity Failed Updates
-             * @default 0
-             */
-            integrity_failed_updates: number;
             /** Period Days */
             period_days: number;
             /** Policy Distribution */
@@ -4174,10 +4169,6 @@ export interface components {
             scope: string;
             /** Service Name */
             service_name: string;
-            /** Supply Chain Enabled */
-            supply_chain_enabled?: boolean | null;
-            /** Supply Chain Sensitivity */
-            supply_chain_sensitivity?: string | null;
             /** Update Available */
             update_available: boolean;
             /** Update Window */
@@ -4242,10 +4233,6 @@ export interface components {
             release_source?: string | null;
             /** Scope */
             scope?: string | null;
-            /** Supply Chain Enabled */
-            supply_chain_enabled?: boolean | null;
-            /** Supply Chain Sensitivity */
-            supply_chain_sensitivity?: string | null;
             /** Version Track */
             version_track?: ("semver" | "calver") | null;
             /** Vulnforge Enabled */
@@ -8179,7 +8166,7 @@ export interface operations {
         parameters: {
             query?: {
                 container_id?: number | null;
-                /** @description Filter by status (success, failed, rolled_back, integrity_failed) */
+                /** @description Filter by status (success, failed, rolled_back) */
                 status?: string | null;
                 /** @description Filter by start date (ISO format) */
                 start_date?: string | null;
