@@ -76,6 +76,10 @@ async def get_oidc_config(
         "provider_name": config.get("provider_name", ""),
         "scopes": config.get("scopes", "openid profile email"),
         "redirect_uri": config.get("redirect_uri", ""),
+        "username_claim": config.get("username_claim") or "preferred_username",
+        "email_claim": config.get("email_claim") or "email",
+        "link_token_expire_minutes": int(config.get("link_token_expire_minutes") or "5"),
+        "link_max_password_attempts": int(config.get("link_max_password_attempts") or "3"),
     }
 
 
@@ -126,6 +130,14 @@ async def update_oidc_config(
     await SettingsService.set(db, "oidc_provider_name", oidc_config.provider_name)
     await SettingsService.set(db, "oidc_scopes", oidc_config.scopes)
     await SettingsService.set(db, "oidc_redirect_uri", oidc_config.redirect_uri or "")
+    await SettingsService.set(db, "oidc_username_claim", oidc_config.username_claim)
+    await SettingsService.set(db, "oidc_email_claim", oidc_config.email_claim)
+    await SettingsService.set(
+        db, "oidc_link_token_expire_minutes", str(oidc_config.link_token_expire_minutes)
+    )
+    await SettingsService.set(
+        db, "oidc_link_max_password_attempts", str(oidc_config.link_max_password_attempts)
+    )
 
     logger.info(
         "OIDC configuration updated by admin: %s",

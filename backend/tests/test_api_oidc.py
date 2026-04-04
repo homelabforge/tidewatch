@@ -113,6 +113,44 @@ class TestUpdateOIDCConfigEndpoint:
         secret = await SettingsService.get(db, "oidc_client_secret")
         assert secret == "original-secret"
 
+    async def test_update_config_round_trips_all_fields(self, authenticated_client, db):
+        """Test all 11 config fields survive PUT → GET round-trip."""
+        config_data = {
+            "enabled": True,
+            "issuer_url": "https://auth.roundtrip.com",
+            "client_id": "rt-client-id",
+            "client_secret": "rt-secret",
+            "provider_name": "RoundTrip Provider",
+            "scopes": "openid profile",
+            "redirect_uri": "https://tidewatch.local/callback",
+            "username_claim": "sub",
+            "email_claim": "mail",
+            "link_token_expire_minutes": 10,
+            "link_max_password_attempts": 5,
+        }
+
+        put_response = await authenticated_client.put(
+            "/api/v1/auth/oidc/config", json=config_data
+        )
+        assert put_response.status_code == status.HTTP_200_OK
+
+        get_response = await authenticated_client.get("/api/v1/auth/oidc/config")
+        assert get_response.status_code == status.HTTP_200_OK
+        data = get_response.json()
+
+        assert data["enabled"] is True
+        assert data["issuer_url"] == "https://auth.roundtrip.com"
+        assert data["client_id"] == "rt-client-id"
+        assert data["provider_name"] == "RoundTrip Provider"
+        assert data["scopes"] == "openid profile"
+        assert data["redirect_uri"] == "https://tidewatch.local/callback"
+        assert data["username_claim"] == "sub"
+        assert data["email_claim"] == "mail"
+        assert data["link_token_expire_minutes"] == 10
+        assert data["link_max_password_attempts"] == 5
+        # Secret is masked on GET
+        assert "*" in data["client_secret"]
+
     async def test_update_config_requires_auth(self, client, db):
         """Test requires authentication."""
         from app.services.settings_service import SettingsService
