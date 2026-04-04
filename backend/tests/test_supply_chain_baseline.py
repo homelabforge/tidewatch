@@ -44,6 +44,7 @@ class TestBaselineBuilder:
         await db.commit()
 
         baseline = await BaselineBuilder.get_baseline(db, "dockerhub", "nginx", None)
+        assert baseline is not None
         assert baseline.last_trusted_tag == "1.26.0"
         assert baseline.last_trusted_digest == "sha256:def"
         assert baseline.last_trusted_size_bytes == 110_000_000

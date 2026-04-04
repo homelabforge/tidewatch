@@ -95,6 +95,8 @@ class TestDigestImmutabilityGate:
         current_digest = current_meta.get("digest")
 
         assert current_digest != update.expected_digest
+        assert update.expected_digest is not None
+        assert current_digest is not None
 
         # The actual error would be raised in apply_update
         with pytest.raises(DigestMutationError):
