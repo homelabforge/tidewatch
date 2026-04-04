@@ -129,9 +129,7 @@ class TestUpdateOIDCConfigEndpoint:
             "link_max_password_attempts": 5,
         }
 
-        put_response = await authenticated_client.put(
-            "/api/v1/auth/oidc/config", json=config_data
-        )
+        put_response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
         assert put_response.status_code == status.HTTP_200_OK
 
         get_response = await authenticated_client.get("/api/v1/auth/oidc/config")

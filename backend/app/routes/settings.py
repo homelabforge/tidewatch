@@ -9,11 +9,11 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.exceptions import SSRFProtectionError
 from app.schemas import SettingCategory, SettingSchema, SettingUpdate
 from app.services import SettingsService
 from app.services.auth import require_auth
 from app.services.docker_access import make_docker_client, resolve_docker_url
-from app.exceptions import SSRFProtectionError
 from app.utils.error_handling import safe_error_response
 from app.utils.url_validation import validate_integration_url, validate_smtp_host
 

@@ -263,9 +263,7 @@ def _is_trusted(hostname: str, trusted_hosts: set[str]) -> bool:
     return False
 
 
-def validate_integration_url(
-    url: str, trusted_hosts: set[str] | None = None
-) -> ParseResult:
+def validate_integration_url(url: str, trusted_hosts: set[str] | None = None) -> ParseResult:
     """Validate a URL for outbound integration requests.
 
     Used for webhooks, self-hosted APIs (VulnForge, ntfy, Gotify), and any
@@ -301,9 +299,7 @@ def validate_integration_url(
     )
 
 
-def validate_smtp_host(
-    hostname: str, trusted_hosts: set[str] | None = None
-) -> None:
+def validate_smtp_host(hostname: str, trusted_hosts: set[str] | None = None) -> None:
     """Validate an SMTP hostname is not a private IP (unless trusted).
 
     Args:
@@ -337,9 +333,7 @@ def validate_smtp_host(
         raise SSRFProtectionError(f"Cannot resolve SMTP host: {hostname}")
 
 
-def validate_oidc_url(
-    url: str, trusted_hosts: set[str] | None = None
-) -> ParseResult:
+def validate_oidc_url(url: str, trusted_hosts: set[str] | None = None) -> ParseResult:
     """Validate a URL for OIDC provider endpoints.
 
     Delegates to validate_integration_url with the same trusted-hosts policy.

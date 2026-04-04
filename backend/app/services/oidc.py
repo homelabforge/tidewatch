@@ -692,9 +692,7 @@ async def verify_pending_link(
 
     # Password verified - parse claims and delete token
     claims = json.loads(pending_link.oidc_claims)
-    userinfo = (
-        json.loads(pending_link.userinfo_claims) if pending_link.userinfo_claims else None
-    )
+    userinfo = json.loads(pending_link.userinfo_claims) if pending_link.userinfo_claims else None
     provider_name = pending_link.provider_name
 
     await db.delete(pending_link)

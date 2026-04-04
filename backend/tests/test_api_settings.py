@@ -8,7 +8,7 @@ Tests settings management endpoints:
 - DELETE /api/v1/settings/{key} - Reset to default
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import status
@@ -507,8 +507,6 @@ class TestVulnForgeClientFactorySSRF:
         await SettingsService.set(db, "vulnforge_enabled", "true")
         await SettingsService.set(db, "vulnforge_url", "http://192.168.1.100:8080")
 
-        with patch.dict(
-            "os.environ", {"TIDEWATCH_TRUSTED_HOSTS": "192.168.1.0/24"}
-        ):
+        with patch.dict("os.environ", {"TIDEWATCH_TRUSTED_HOSTS": "192.168.1.0/24"}):
             client = await create_vulnforge_client(db)
             assert client is not None
