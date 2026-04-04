@@ -1089,6 +1089,28 @@
             "title": "Service Name",
             "type": "string"
           },
+          "supply_chain_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Enabled"
+          },
+          "supply_chain_sensitivity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Sensitivity"
+          },
           "update_available": {
             "title": "Update Available",
             "type": "boolean"

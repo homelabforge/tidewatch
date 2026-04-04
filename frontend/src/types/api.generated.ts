@@ -4169,6 +4169,10 @@ export interface components {
             scope: string;
             /** Service Name */
             service_name: string;
+            /** Supply Chain Enabled */
+            supply_chain_enabled?: boolean | null;
+            /** Supply Chain Sensitivity */
+            supply_chain_sensitivity?: string | null;
             /** Update Available */
             update_available: boolean;
             /** Update Window */

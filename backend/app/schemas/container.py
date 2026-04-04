@@ -52,6 +52,8 @@ class ContainerSchema(BaseModel):
     health_check_method: str = "auto"
     health_check_has_auth: bool = False
     release_source: str | None = None
+    supply_chain_enabled: bool | None = None
+    supply_chain_sensitivity: str | None = None
     auto_restart_enabled: bool = False
     restart_policy: str = "manual"
     restart_max_attempts: int = 10
