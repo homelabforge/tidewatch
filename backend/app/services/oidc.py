@@ -622,7 +622,7 @@ async def verify_pending_link(
     db: AsyncSession,
     token: str,
     password: str,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Verify password and complete OIDC account linking.
 
     Args:
@@ -631,9 +631,22 @@ async def verify_pending_link(
         password: Admin password to verify
 
     Returns:
-        ID token claims if successful, None otherwise
+        Structured result dict with keys:
+        - success: Whether verification succeeded
+        - claims: ID token claims (on success)
+        - userinfo: Userinfo endpoint claims (on success, may be None)
+        - provider_name: OIDC provider display name (on success)
+        - error: Error description (on failure)
     """
     from app.services.auth import get_admin_password_hash, get_admin_profile, verify_password
+
+    _fail: dict[str, Any] = {
+        "success": False,
+        "claims": None,
+        "userinfo": None,
+        "provider_name": None,
+        "error": None,
+    }
 
     await _cleanup_expired_pending_links(db)
 
@@ -643,13 +656,13 @@ async def verify_pending_link(
 
     if not pending_link:
         logger.warning("Invalid or expired pending link token")
-        return None
+        return {**_fail, "error": "Invalid or expired token"}
 
     if pending_link.is_expired():
         logger.warning("Pending link token expired")
         await db.delete(pending_link)
         await db.commit()
-        return None
+        return {**_fail, "error": "Token expired"}
 
     # Check max attempts
     max_attempts = await SettingsService.get(db, "oidc_link_max_password_attempts", default="3")
@@ -657,33 +670,44 @@ async def verify_pending_link(
         logger.warning("Max password attempts exceeded for pending link")
         await db.delete(pending_link)
         await db.commit()
-        return None
+        return {**_fail, "error": "Maximum password attempts exceeded"}
 
     # Verify password
     profile = await get_admin_profile(db)
     if not profile:
         logger.error("Admin profile not found during pending link verification")
-        return None
+        return {**_fail, "error": "Admin profile not found"}
 
     password_hash = await get_admin_password_hash(db)
     if not password_hash:
         logger.error("No password hash found for admin")
-        return None
+        return {**_fail, "error": "Password not configured"}
 
     if not verify_password(password, password_hash):
         # Increment attempt count
         pending_link.attempt_count += 1
         await db.commit()
         logger.warning("Invalid password for pending link (attempt %d)", pending_link.attempt_count)
-        return None
+        return {**_fail, "error": "Invalid password"}
 
     # Password verified - parse claims and delete token
     claims = json.loads(pending_link.oidc_claims)
+    userinfo = (
+        json.loads(pending_link.userinfo_claims) if pending_link.userinfo_claims else None
+    )
+    provider_name = pending_link.provider_name
+
     await db.delete(pending_link)
     await db.commit()
 
     logger.info("Pending link verified successfully for username: %s", pending_link.username)
-    return claims
+    return {
+        "success": True,
+        "claims": claims,
+        "userinfo": userinfo,
+        "provider_name": provider_name,
+        "error": None,
+    }
 
 
 # ============================================================================

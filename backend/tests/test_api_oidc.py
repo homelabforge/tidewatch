@@ -312,29 +312,147 @@ class TestOIDCCallbackEndpoint:
 class TestOIDCLinkAccountEndpoint:
     """Test suite for POST /api/v1/auth/oidc/link-account endpoint."""
 
-    @pytest.mark.skip(
-        reason="Requires complete OIDC flow mocking and pending link token generation"
-    )
-    async def test_link_account_valid_token_password(self, client, db):
-        """Test links account with valid token and password."""
-        pass
+    _SUCCESS_RESULT = {
+        "success": True,
+        "claims": {"sub": "oidc-user-123", "preferred_username": "admin"},
+        "userinfo": {"email": "admin@example.com"},
+        "provider_name": "Test Provider",
+        "error": None,
+    }
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking")
+    _ADMIN_PROFILE = {
+        "username": "admin",
+        "full_name": "Admin User",
+    }
+
+    async def test_link_account_valid_token_password(self, client, db):
+        """Test links account with valid token and password, persists OIDC link."""
+        with (
+            patch(
+                "app.routes.oidc.oidc_service.verify_pending_link",
+                new_callable=AsyncMock,
+                return_value=self._SUCCESS_RESULT,
+            ) as mock_verify,
+            patch(
+                "app.routes.oidc.oidc_service.link_oidc_to_admin",
+                new_callable=AsyncMock,
+            ) as mock_link,
+            patch(
+                "app.services.auth.get_admin_profile",
+                new_callable=AsyncMock,
+                return_value=self._ADMIN_PROFILE,
+            ),
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                params={"token": "test-token", "password": "test-password"},
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+            assert data["token_type"] == "bearer"
+            assert "access_token" in data
+
+            # Verify the service was called correctly
+            mock_verify.assert_called_once_with(db, "test-token", "test-password")
+
+            # Verify link_oidc_to_admin was called to persist the link
+            mock_link.assert_called_once_with(
+                db,
+                self._SUCCESS_RESULT["claims"],
+                self._SUCCESS_RESULT["userinfo"],
+                {"provider_name": "Test Provider"},
+            )
+
     async def test_link_account_invalid_token(self, client):
         """Test invalid token returns 401."""
-        pass
+        with patch(
+            "app.routes.oidc.oidc_service.verify_pending_link",
+            new_callable=AsyncMock,
+            return_value={
+                "success": False,
+                "claims": None,
+                "userinfo": None,
+                "provider_name": None,
+                "error": "Invalid or expired token",
+            },
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                params={"token": "bad-token", "password": "test-password"},
+            )
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking")
-    async def test_link_account_invalid_password(self, client, db):
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+            assert "Invalid or expired token" in response.json()["detail"]
+
+    async def test_link_account_invalid_password(self, client):
         """Test invalid password returns 401."""
-        pass
+        with patch(
+            "app.routes.oidc.oidc_service.verify_pending_link",
+            new_callable=AsyncMock,
+            return_value={
+                "success": False,
+                "claims": None,
+                "userinfo": None,
+                "provider_name": None,
+                "error": "Invalid password",
+            },
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                params={"token": "test-token", "password": "wrong-password"},
+            )
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking")
-    async def test_link_account_max_attempts(self, client, db):
-        """Test max password attempts locks token."""
-        pass
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+            assert "Invalid password" in response.json()["detail"]
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking")
+    async def test_link_account_max_attempts(self, client):
+        """Test max password attempts returns 401."""
+        with patch(
+            "app.routes.oidc.oidc_service.verify_pending_link",
+            new_callable=AsyncMock,
+            return_value={
+                "success": False,
+                "claims": None,
+                "userinfo": None,
+                "provider_name": None,
+                "error": "Maximum password attempts exceeded",
+            },
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                params={"token": "test-token", "password": "test-password"},
+            )
+
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+            assert "Maximum password attempts exceeded" in response.json()["detail"]
+
     async def test_link_account_sets_jwt_cookie(self, client, db):
-        """Test sets JWT cookie on successful link."""
-        pass
+        """Test sets httponly JWT cookie on successful link."""
+        with (
+            patch(
+                "app.routes.oidc.oidc_service.verify_pending_link",
+                new_callable=AsyncMock,
+                return_value=self._SUCCESS_RESULT,
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.link_oidc_to_admin",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.auth.get_admin_profile",
+                new_callable=AsyncMock,
+                return_value=self._ADMIN_PROFILE,
+            ),
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                params={"token": "test-token", "password": "test-password"},
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+
+            # Check Set-Cookie header for httponly JWT
+            set_cookie = response.headers.get("set-cookie", "")
+            assert "tidewatch_token=" in set_cookie
+            assert "httponly" in set_cookie.lower()

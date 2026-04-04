@@ -465,17 +465,23 @@ async def link_oidc_account(
     """
     # Validate and consume pending link token
     result = await oidc_service.verify_pending_link(db, token, password)
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Link verification failed"
-        )
-
     if not result["success"]:
-        logger.warning("OIDC link failed: %s", result["error"])
+        error = result["error"] or "Link verification failed"
+        logger.warning("OIDC link failed: %s", error)
+        # Internal errors get generic message; client errors pass through
+        if error in ("Admin profile not found", "Password not configured"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Link verification failed",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=result["error"],
+            detail=error,
         )
+
+    # Link the OIDC identity to the admin account
+    config = {"provider_name": result["provider_name"] or "OIDC Provider"}
+    await oidc_service.link_oidc_to_admin(db, result["claims"], result["userinfo"], config)
 
     # Get admin profile
     from app.services.auth import get_admin_profile
