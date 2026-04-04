@@ -33,6 +33,16 @@ async def create_vulnforge_client(db: AsyncSession) -> "VulnForgeClient | None":
         logger.warning("VulnForge URL not configured")
         return None
 
+    # Validate URL against SSRF protection
+    from app.exceptions import SSRFProtectionError
+    from app.utils.url_validation import validate_integration_url
+
+    try:
+        validate_integration_url(vulnforge_url)
+    except (SSRFProtectionError, ValueError):
+        logger.error("VulnForge URL blocked by SSRF protection: %s", vulnforge_url)
+        return None
+
     auth_type = await SettingsService.get(db, "vulnforge_auth_type", "none")
     api_key = await SettingsService.get(db, "vulnforge_api_key")
 

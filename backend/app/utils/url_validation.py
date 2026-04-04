@@ -21,10 +21,14 @@ References:
 """
 
 import ipaddress
+import logging
+import os
 import socket
 from urllib.parse import ParseResult, urlparse
 
 from app.exceptions import SSRFProtectionError
+
+logger = logging.getLogger(__name__)
 
 # Private IP ranges (RFC 1918, RFC 4193, and other reserved ranges)
 PRIVATE_IP_RANGES = [
@@ -197,28 +201,158 @@ def validate_url_for_ssrf(
     return parsed
 
 
-def validate_oidc_url(url: str) -> ParseResult:
-    """Validate a URL for OIDC provider endpoints.
-
-    Convenience wrapper for OIDC-specific validation:
-    - Allows http and https schemes
-    - Blocks private IPs and localhost
-    - Performs DNS rebinding checks
-    - No domain whitelist (allows any public domain)
-
-    Args:
-        url: OIDC provider URL (e.g., issuer, token endpoint, userinfo endpoint)
+def _get_trusted_hosts() -> set[str]:
+    """Get trusted hosts from TIDEWATCH_TRUSTED_HOSTS env var.
 
     Returns:
-        Parsed URL object if validation passes
+        Set of trusted hostnames, IPs, or CIDR ranges.
+    """
+    raw = os.environ.get("TIDEWATCH_TRUSTED_HOSTS", "")
+    return {h.strip() for h in raw.split(",") if h.strip()} if raw else set()
+
+
+def _is_trusted(hostname: str, trusted_hosts: set[str]) -> bool:
+    """Check if a hostname matches any trusted host entry.
+
+    Supports exact hostname match, exact IP match, and CIDR range match.
+    Also resolves hostnames via DNS to check if resolved IPs match.
+
+    Args:
+        hostname: Hostname or IP to check.
+        trusted_hosts: Set of trusted hostnames, IPs, or CIDR strings.
+
+    Returns:
+        True if the hostname is trusted.
+    """
+    if not trusted_hosts:
+        return False
+
+    # Exact hostname/IP match
+    if hostname in trusted_hosts:
+        return True
+
+    # Check if hostname is an IP in a trusted CIDR
+    try:
+        ip = ipaddress.ip_address(hostname)
+        for trusted in trusted_hosts:
+            if "/" in trusted:
+                try:
+                    if ip in ipaddress.ip_network(trusted, strict=False):
+                        return True
+                except ValueError:
+                    continue
+    except ValueError:
+        pass
+
+    # DNS resolution — check if resolved IPs match trusted entries
+    try:
+        for _, _, _, _, addr in socket.getaddrinfo(hostname, None):
+            resolved_ip = ipaddress.ip_address(addr[0])
+            if str(resolved_ip) in trusted_hosts:
+                return True
+            for trusted in trusted_hosts:
+                if "/" in trusted:
+                    try:
+                        if resolved_ip in ipaddress.ip_network(trusted, strict=False):
+                            return True
+                    except ValueError:
+                        continue
+    except (socket.gaierror, ValueError, OSError):
+        pass
+
+    return False
+
+
+def validate_integration_url(
+    url: str, trusted_hosts: set[str] | None = None
+) -> ParseResult:
+    """Validate a URL for outbound integration requests.
+
+    Used for webhooks, self-hosted APIs (VulnForge, ntfy, Gotify), and any
+    admin-configured URL that triggers an outbound HTTP request. Blocks private
+    IPs unless the hostname/IP matches a trusted host from TIDEWATCH_TRUSTED_HOSTS.
+
+    Args:
+        url: Integration URL to validate.
+        trusted_hosts: Override for trusted hosts (defaults to env var).
+
+    Returns:
+        Parsed URL object if validation passes.
 
     Raises:
-        SSRFProtectionError: If URL fails SSRF validation
-        ValueError: If URL is malformed
+        SSRFProtectionError: If URL fails SSRF validation.
+        ValueError: If URL is malformed.
     """
+    if trusted_hosts is None:
+        trusted_hosts = _get_trusted_hosts()
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+    skip_private_block = _is_trusted(hostname, trusted_hosts)
+
+    if skip_private_block and trusted_hosts:
+        logger.debug("SSRF check: trusting %s (matched trusted hosts)", hostname)
+
     return validate_url_for_ssrf(
         url,
         allowed_schemes=["http", "https"],
-        block_private_ips=True,
+        block_private_ips=not skip_private_block,
         resolve_dns=True,
     )
+
+
+def validate_smtp_host(
+    hostname: str, trusted_hosts: set[str] | None = None
+) -> None:
+    """Validate an SMTP hostname is not a private IP (unless trusted).
+
+    Args:
+        hostname: SMTP server hostname or IP.
+        trusted_hosts: Override for trusted hosts (defaults to env var).
+
+    Raises:
+        SSRFProtectionError: If hostname resolves to a private IP and is not trusted.
+    """
+    if trusted_hosts is None:
+        trusted_hosts = _get_trusted_hosts()
+
+    if _is_trusted(hostname, trusted_hosts):
+        return
+
+    # Check if hostname itself is a private IP
+    try:
+        if is_private_ip(hostname):
+            raise SSRFProtectionError(f"SMTP host is a private IP: {hostname}")
+    except ValueError:
+        pass  # Not an IP literal — resolve it
+
+    try:
+        for _, _, _, _, addr in socket.getaddrinfo(hostname, None):
+            ip_str = str(addr[0])
+            if is_private_ip(ip_str):
+                raise SSRFProtectionError(
+                    f"SMTP host '{hostname}' resolves to private IP: {ip_str}"
+                )
+    except socket.gaierror:
+        raise SSRFProtectionError(f"Cannot resolve SMTP host: {hostname}")
+
+
+def validate_oidc_url(
+    url: str, trusted_hosts: set[str] | None = None
+) -> ParseResult:
+    """Validate a URL for OIDC provider endpoints.
+
+    Delegates to validate_integration_url with the same trusted-hosts policy.
+
+    Args:
+        url: OIDC provider URL (e.g., issuer, token endpoint, userinfo endpoint).
+        trusted_hosts: Override for trusted hosts (defaults to env var).
+
+    Returns:
+        Parsed URL object if validation passes.
+
+    Raises:
+        SSRFProtectionError: If URL fails SSRF validation.
+        ValueError: If URL is malformed.
+    """
+    return validate_integration_url(url, trusted_hosts)

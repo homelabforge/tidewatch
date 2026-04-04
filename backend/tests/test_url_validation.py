@@ -17,9 +17,12 @@ import pytest
 from app.exceptions import SSRFProtectionError
 from app.utils.url_validation import (
     LOCALHOST_HOSTNAMES,
+    _is_trusted,
     is_private_ip,
     resolve_hostname,
+    validate_integration_url,
     validate_oidc_url,
+    validate_smtp_host,
     validate_url_for_ssrf,
 )
 
@@ -454,3 +457,143 @@ class TestSSRFProtectionEdgeCases:
         with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
             parsed = validate_url_for_ssrf("HTTP://EXAMPLE.COM/")
             assert parsed.scheme == "http"  # urlparse normalizes to lowercase
+
+
+class TestIsTrusted:
+    """Test suite for _is_trusted() helper."""
+
+    def test_exact_hostname_match(self):
+        """Test exact hostname match against trusted hosts."""
+        assert _is_trusted("ntfy.local", {"ntfy.local", "gotify.local"}) is True
+
+    def test_exact_ip_match(self):
+        """Test exact IP match against trusted hosts."""
+        assert _is_trusted("192.168.1.100", {"192.168.1.100"}) is True
+
+    def test_cidr_match(self):
+        """Test CIDR range match against trusted hosts."""
+        assert _is_trusted("10.0.1.50", {"10.0.0.0/8"}) is True
+
+    def test_cidr_no_match(self):
+        """Test CIDR does not match when IP is outside range."""
+        assert _is_trusted("172.16.0.1", {"10.0.0.0/8"}) is False
+
+    def test_empty_trusted_hosts(self):
+        """Test returns False with empty trusted hosts."""
+        assert _is_trusted("192.168.1.1", set()) is False
+
+    def test_hostname_not_in_trusted(self):
+        """Test returns False when hostname is not trusted."""
+        assert _is_trusted("evil.com", {"ntfy.local"}) is False
+
+    def test_dns_resolved_ip_matches_trusted(self):
+        """Test hostname resolves to a trusted IP via DNS."""
+        with patch("socket.getaddrinfo") as mock_dns:
+            mock_dns.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.100", 0)),
+            ]
+            assert _is_trusted("ntfy.home.local", {"192.168.1.100"}) is True
+
+    def test_dns_resolved_ip_matches_trusted_cidr(self):
+        """Test hostname resolves to an IP within a trusted CIDR."""
+        with patch("socket.getaddrinfo") as mock_dns:
+            mock_dns.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.5.20", 0)),
+            ]
+            assert _is_trusted("internal.service", {"10.0.0.0/8"}) is True
+
+
+class TestValidateIntegrationUrl:
+    """Test suite for validate_integration_url()."""
+
+    def test_blocks_private_ip_by_default(self):
+        """Test blocks private IP when no trusted hosts set."""
+        with pytest.raises(SSRFProtectionError, match="Blocked private IP"):
+            validate_integration_url("http://192.168.1.1/api", trusted_hosts=set())
+
+    def test_allows_public_url(self):
+        """Test allows public URLs."""
+        with patch("app.utils.url_validation.resolve_hostname", return_value="93.184.216.34"):
+            parsed = validate_integration_url("https://hooks.slack.com/webhook")
+            assert parsed.scheme == "https"
+
+    def test_allows_private_ip_when_trusted(self):
+        """Test allows private IP when it matches a trusted host."""
+        parsed = validate_integration_url(
+            "http://192.168.1.100:8080/api",
+            trusted_hosts={"192.168.1.100"},
+        )
+        assert parsed.hostname == "192.168.1.100"
+
+    def test_allows_private_ip_in_trusted_cidr(self):
+        """Test allows private IP within a trusted CIDR range."""
+        parsed = validate_integration_url(
+            "http://10.0.1.50:9090/message",
+            trusted_hosts={"10.0.0.0/8"},
+        )
+        assert parsed.hostname == "10.0.1.50"
+
+    def test_still_blocks_untrusted_private_ip(self):
+        """Test blocks private IP not in trusted set."""
+        with pytest.raises(SSRFProtectionError):
+            validate_integration_url(
+                "http://172.16.0.1/api",
+                trusted_hosts={"192.168.1.100"},
+            )
+
+    def test_blocks_localhost(self):
+        """Test blocks localhost even with trusted hosts."""
+        with pytest.raises(SSRFProtectionError, match="Blocked private"):
+            validate_integration_url(
+                "http://localhost:8080/api",
+                trusted_hosts=set(),
+            )
+
+    def test_blocks_metadata_endpoint(self):
+        """Test blocks AWS metadata endpoint."""
+        with pytest.raises(SSRFProtectionError, match="Blocked private IP"):
+            validate_integration_url(
+                "http://169.254.169.254/latest/meta-data/",
+                trusted_hosts=set(),
+            )
+
+
+class TestValidateSmtpHost:
+    """Test suite for validate_smtp_host()."""
+
+    def test_blocks_private_ip_literal(self):
+        """Test blocks SMTP host that is a private IP."""
+        with pytest.raises(SSRFProtectionError, match="private IP"):
+            validate_smtp_host("192.168.1.1", trusted_hosts=set())
+
+    def test_blocks_loopback(self):
+        """Test blocks localhost SMTP host."""
+        with pytest.raises(SSRFProtectionError, match="private IP"):
+            validate_smtp_host("127.0.0.1", trusted_hosts=set())
+
+    def test_allows_trusted_private_ip(self):
+        """Test allows SMTP host when it matches trusted hosts."""
+        # Should not raise
+        validate_smtp_host("192.168.1.50", trusted_hosts={"192.168.1.50"})
+
+    def test_allows_trusted_cidr(self):
+        """Test allows SMTP host in trusted CIDR."""
+        validate_smtp_host("10.0.1.25", trusted_hosts={"10.0.0.0/8"})
+
+    def test_blocks_hostname_resolving_to_private(self):
+        """Test blocks hostname that resolves to private IP."""
+        with patch("socket.getaddrinfo") as mock_dns:
+            mock_dns.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 0)),
+            ]
+            with pytest.raises(SSRFProtectionError, match="resolves to private IP"):
+                validate_smtp_host("mail.internal", trusted_hosts=set())
+
+    def test_allows_public_hostname(self):
+        """Test allows hostname that resolves to public IP."""
+        with patch("socket.getaddrinfo") as mock_dns:
+            mock_dns.return_value = [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+            ]
+            # Should not raise
+            validate_smtp_host("smtp.gmail.com", trusted_hosts=set())

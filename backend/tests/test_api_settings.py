@@ -8,6 +8,8 @@ Tests settings management endpoints:
 - DELETE /api/v1/settings/{key} - Reset to default
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi import status
 
@@ -415,3 +417,98 @@ class TestSensitiveDataMasking:
             data = response.json()
             # Should be masked if marked as sensitive
             assert "super-secret-client-secret-value" not in data["value"]
+
+
+class TestSSRFProtectionOnTestEndpoints:
+    """Test SSRF validation on integration test-connection endpoints."""
+
+    async def test_vulnforge_test_blocks_private_ip(self, authenticated_client, db):
+        """Test /test/vulnforge blocks private IP URLs."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "vulnforge_url", "http://192.168.1.1:8080")
+        await SettingsService.set(db, "vulnforge_auth_type", "none")
+
+        response = await authenticated_client.post("/api/v1/settings/test/vulnforge")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["success"] is False
+        assert "SSRF" in data["message"]
+
+    async def test_ntfy_test_blocks_private_ip(self, authenticated_client, db):
+        """Test /test/ntfy blocks private IP URLs."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "ntfy_enabled", "true")
+        await SettingsService.set(db, "ntfy_server", "http://10.0.0.1:8080")
+        await SettingsService.set(db, "ntfy_topic", "test")
+
+        response = await authenticated_client.post("/api/v1/settings/test/ntfy")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["success"] is False
+        assert "SSRF" in data["message"]
+
+    async def test_slack_test_blocks_private_ip(self, authenticated_client, db):
+        """Test /test/slack blocks private IP URLs."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "slack_enabled", "true")
+        await SettingsService.set(db, "slack_webhook_url", "http://127.0.0.1:9090/webhook")
+
+        response = await authenticated_client.post("/api/v1/settings/test/slack")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["success"] is False
+        assert "SSRF" in data["message"]
+
+    async def test_smtp_blocks_private_host(self, authenticated_client, db):
+        """Test /test/email blocks private IP SMTP hosts."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "email_enabled", "true")
+        await SettingsService.set(db, "email_smtp_host", "192.168.1.1")
+        await SettingsService.set(db, "email_smtp_port", "587")
+        await SettingsService.set(db, "email_smtp_user", "user")
+        await SettingsService.set(db, "email_smtp_password", "pass")
+        await SettingsService.set(db, "email_from", "from@test.com")
+        await SettingsService.set(db, "email_to", "to@test.com")
+
+        response = await authenticated_client.post("/api/v1/settings/test/email")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["success"] is False
+        assert "SSRF" in data["message"]
+
+
+class TestVulnForgeClientFactorySSRF:
+    """Test SSRF validation in the VulnForge client factory."""
+
+    async def test_factory_blocks_private_ip(self, db):
+        """Test create_vulnforge_client returns None when URL is private."""
+        from app.services.settings_service import SettingsService
+        from app.services.vulnforge_client import create_vulnforge_client
+
+        await SettingsService.set(db, "vulnforge_enabled", "true")
+        await SettingsService.set(db, "vulnforge_url", "http://192.168.1.1:8080")
+
+        client = await create_vulnforge_client(db)
+        assert client is None
+
+    async def test_factory_allows_trusted_host(self, db):
+        """Test create_vulnforge_client allows URL when host is trusted."""
+        from app.services.settings_service import SettingsService
+        from app.services.vulnforge_client import create_vulnforge_client
+
+        await SettingsService.set(db, "vulnforge_enabled", "true")
+        await SettingsService.set(db, "vulnforge_url", "http://192.168.1.100:8080")
+
+        with patch.dict(
+            "os.environ", {"TIDEWATCH_TRUSTED_HOSTS": "192.168.1.0/24"}
+        ):
+            client = await create_vulnforge_client(db)
+            assert client is not None

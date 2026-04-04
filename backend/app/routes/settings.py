@@ -13,7 +13,9 @@ from app.schemas import SettingCategory, SettingSchema, SettingUpdate
 from app.services import SettingsService
 from app.services.auth import require_auth
 from app.services.docker_access import make_docker_client, resolve_docker_url
+from app.exceptions import SSRFProtectionError
 from app.utils.error_handling import safe_error_response
+from app.utils.url_validation import validate_integration_url, validate_smtp_host
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -256,6 +258,14 @@ async def test_vulnforge_connection(
 
         # Test connection with health endpoint
         base_url = vulnforge_url.rstrip("/")
+        try:
+            validate_integration_url(base_url)
+        except (SSRFProtectionError, ValueError) as e:
+            return {
+                "success": False,
+                "message": f"URL blocked by SSRF protection: {e}",
+                "details": {},
+            }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{base_url}/health", headers=headers)
             response.raise_for_status()
@@ -366,6 +376,14 @@ async def test_ntfy_connection(
         server_url = ntfy_server.rstrip("/")
         url = f"{server_url}/{ntfy_topic}"
 
+        try:
+            validate_integration_url(server_url)
+        except (SSRFProtectionError, ValueError) as e:
+            return {
+                "success": False,
+                "message": f"URL blocked by SSRF protection: {e}",
+                "details": {},
+            }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 url,
@@ -583,6 +601,14 @@ async def test_gotify_connection(
         server_url = gotify_server.rstrip("/")
         url = f"{server_url}/message"
 
+        try:
+            validate_integration_url(server_url)
+        except (SSRFProtectionError, ValueError) as e:
+            return {
+                "success": False,
+                "message": f"URL blocked by SSRF protection: {e}",
+                "details": {},
+            }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 url,
@@ -757,6 +783,14 @@ async def test_slack_connection(
             }
 
         # Send test notification
+        try:
+            validate_integration_url(slack_webhook_url)
+        except (SSRFProtectionError, ValueError) as e:
+            return {
+                "success": False,
+                "message": f"URL blocked by SSRF protection: {e}",
+                "details": {},
+            }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 slack_webhook_url,
@@ -837,6 +871,14 @@ async def test_discord_connection(
             }
 
         # Send test notification
+        try:
+            validate_integration_url(discord_webhook_url)
+        except (SSRFProtectionError, ValueError) as e:
+            return {
+                "success": False,
+                "message": f"URL blocked by SSRF protection: {e}",
+                "details": {},
+            }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 discord_webhook_url,
@@ -1030,6 +1072,16 @@ async def test_email_connection(
                     "from_address_configured": bool(from_address),
                     "to_address_configured": bool(to_address),
                 },
+            }
+
+        # Validate SMTP host against SSRF protection
+        try:
+            validate_smtp_host(smtp_host)
+        except SSRFProtectionError as e:
+            return {
+                "success": False,
+                "message": f"SMTP host blocked by SSRF protection: {e}",
+                "details": {},
             }
 
         # Send test email
