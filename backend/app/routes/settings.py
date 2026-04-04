@@ -1076,7 +1076,7 @@ async def test_email_connection(
 
         # Validate SMTP host against SSRF protection
         try:
-            validate_smtp_host(smtp_host)
+            validate_smtp_host(smtp_host or "")
         except SSRFProtectionError as e:
             return {
                 "success": False,
