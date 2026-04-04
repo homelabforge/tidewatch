@@ -397,3 +397,25 @@ class TestBackupStatsEndpoint:
 
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestUploadBackupSizeLimit:
+    """Test upload size limit enforcement."""
+
+    async def test_upload_exceeds_size_limit(self, authenticated_client):
+        """Test oversized upload returns 413."""
+        from io import BytesIO
+
+        from app.routes.backup import MAX_BACKUP_UPLOAD_BYTES
+
+        # Create content larger than the limit
+        oversized_content = b"x" * (MAX_BACKUP_UPLOAD_BYTES + 1)
+
+        with patch("app.routes.backup.ensure_backup_dir"):
+            response = await authenticated_client.post(
+                "/api/v1/backup/upload",
+                files={"file": ("big-backup.json", BytesIO(oversized_content), "application/json")},
+            )
+
+        assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+        assert "too large" in response.json()["detail"].lower()

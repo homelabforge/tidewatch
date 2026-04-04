@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Backup directory configuration
 BACKUP_DIR = Path("/data/backups")
+MAX_BACKUP_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 DATABASE_PATH = DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite+aiosqlite://", "")
 
 
@@ -450,8 +451,21 @@ async def upload_backup(
             safe_filename = f"{name_part}-uploaded-{timestamp}.json"
             backup_path = BACKUP_DIR / safe_filename
 
+        # Check Content-Length before reading into memory
+        if file.size is not None and file.size > MAX_BACKUP_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Backup file too large. Maximum size is {MAX_BACKUP_UPLOAD_BYTES // (1024 * 1024)} MB",
+            )
+
         # Read and validate file content
         content = await file.read()
+
+        if len(content) > MAX_BACKUP_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Backup file too large. Maximum size is {MAX_BACKUP_UPLOAD_BYTES // (1024 * 1024)} MB",
+            )
 
         # Validate it's valid JSON
         try:
