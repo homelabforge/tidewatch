@@ -180,6 +180,65 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
         </div>
       )}
 
+      {/* Supply Chain Hold Banner */}
+      {update.anomaly_held && update.status !== 'integrity_failed' && (() => {
+        const isGracePeriod = update.anomaly_flags?.some(
+          (flag) => String(flag.name) === 'github_grace_period'
+        );
+        return (
+          <div className={`mb-3 rounded-md p-3 border ${
+            isGracePeriod
+              ? 'bg-amber-500/20 border-amber-500/40'
+              : 'bg-orange-500/20 border-orange-500/40'
+          }`}>
+            <div className="flex items-start gap-2">
+              {isGracePeriod ? (
+                <Clock size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
+              ) : (
+                <Shield size={16} className="text-orange-400 mt-0.5 flex-shrink-0" />
+              )}
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${
+                  isGracePeriod ? 'text-amber-400' : 'text-orange-400'
+                }`}>
+                  {isGracePeriod ? 'GitHub Unreachable — Verified Recently' : 'Supply Chain Hold'}
+                </p>
+                {update.anomaly_flags && update.anomaly_flags.length > 0 && (
+                  <ul className="text-xs text-tide-text-muted mt-1 space-y-0.5">
+                    {update.anomaly_flags.map((flag, i: number) => (
+                      <li key={i}>• {String(flag.name ?? '?')}: {String(flag.detail ?? '?')}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-tide-text-muted mt-1">Held for manual review</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Supply Chain Integrity Failure Banner */}
+      {update.status === 'integrity_failed' && (
+        <div className="mb-3 bg-red-500/20 border border-red-500/40 rounded-md p-3">
+          <div className="flex items-start gap-2">
+            <Shield size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-400">Integrity Failure</p>
+              <p className="text-xs text-tide-text-muted mt-1">
+                Tag digest changed between detection and apply.
+                {update.expected_digest && (
+                  <> Expected: <span className="font-mono">{update.expected_digest.substring(0, 24)}...</span></>
+                )}
+              </p>
+              {update.last_error && (
+                <p className="text-xs text-red-400/80 mt-1">{update.last_error}</p>
+              )}
+              <p className="text-xs text-red-400 font-medium mt-1">This update has been permanently blocked.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reason */}
       <div className="flex items-start gap-2 mb-3">
         {getReasonIcon(update.reason_type)}
@@ -372,14 +431,27 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
           </div>
         )}
 
-        {update.status === 'approved' && onApply && (
-          <button
-            onClick={() => onApply(update.id)}
-            disabled={isAnyOperationInProgress}
-            className="w-full px-3 py-2 bg-accent hover:bg-accent-dark text-tide-text rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Apply Update
-          </button>
+        {update.status === 'approved' && (onApply || onReject) && (
+          <div className="flex gap-2">
+            {onApply && (
+              <button
+                onClick={() => onApply(update.id)}
+                disabled={isAnyOperationInProgress}
+                className="flex-1 px-3 py-2 bg-accent hover:bg-accent-dark text-tide-text rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Apply Update
+              </button>
+            )}
+            {onReject && (
+              <button
+                onClick={() => onReject(update.id)}
+                disabled={isAnyOperationInProgress || isRejecting}
+                className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRejecting ? 'Rejecting...' : 'Reject'}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Pending Retry Actions */}

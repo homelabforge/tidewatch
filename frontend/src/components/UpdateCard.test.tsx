@@ -308,4 +308,54 @@ describe('UpdateCard', () => {
       expect(container.querySelector('.text-orange-400')).toBeInTheDocument()
     })
   })
+
+  describe('Supply Chain Hold Banners', () => {
+    it('renders amber warning for grace period hold', () => {
+      const update = {
+        ...defaultUpdate,
+        anomaly_held: true,
+        anomaly_flags: [
+          { name: 'github_grace_period', score: 0, detail: 'GitHub unreachable but owner/repo verified 2h ago — manual approval required', tier: 'hard_hold' },
+        ],
+      }
+
+      render(<UpdateCard update={update} />)
+      expect(screen.getByText('GitHub Unreachable — Verified Recently')).toBeInTheDocument()
+      expect(screen.getByText('Held for manual review')).toBeInTheDocument()
+    })
+
+    it('renders orange hold for release_check_failed', () => {
+      const update = {
+        ...defaultUpdate,
+        anomaly_held: true,
+        anomaly_flags: [
+          { name: 'release_check_failed', score: 0, detail: 'GitHub API unreachable', tier: 'hard_hold' },
+        ],
+      }
+
+      render(<UpdateCard update={update} />)
+      expect(screen.getByText('Supply Chain Hold')).toBeInTheDocument()
+      expect(screen.getByText('Held for manual review')).toBeInTheDocument()
+    })
+
+    it('does not render supply chain banner when anomaly_held is false', () => {
+      render(<UpdateCard update={defaultUpdate} />)
+      expect(screen.queryByText('Supply Chain Hold')).not.toBeInTheDocument()
+      expect(screen.queryByText('GitHub Unreachable — Verified Recently')).not.toBeInTheDocument()
+    })
+
+    it('does not render supply chain banner when status is integrity_failed', () => {
+      const update = {
+        ...defaultUpdate,
+        status: 'integrity_failed' as const,
+        anomaly_held: true,
+        anomaly_flags: [
+          { name: 'release_check_failed', score: 0, detail: 'GitHub API unreachable', tier: 'hard_hold' },
+        ],
+      }
+
+      render(<UpdateCard update={update} />)
+      expect(screen.queryByText('Supply Chain Hold')).not.toBeInTheDocument()
+    })
+  })
 })

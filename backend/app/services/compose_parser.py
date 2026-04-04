@@ -1195,16 +1195,19 @@ class ComposeParser:
         service_name: str,
         new_tag: str,
         db: AsyncSession | None = None,
+        digest_pin: str | None = None,
     ) -> bool:
-        """Update a compose file with a new image tag.
+        """Update a compose file with a new image tag or digest pin.
 
         This method preserves all formatting, comments, anchors (x-common), and structure.
 
         Args:
             file_path: Path to compose file
             service_name: Service name to update
-            new_tag: New tag to set
+            new_tag: New tag to set (used when digest_pin is None)
             db: Optional database session for fetching allowed directory
+            digest_pin: Optional digest (e.g. "sha256:abc123") to pin image for pull.
+                When set, writes image@sha256:... format and skips tag validation.
 
         Returns:
             True if successful
@@ -1215,8 +1218,8 @@ class ComposeParser:
                 logger.error(f"Invalid service name format: {service_name}")
                 return False
 
-            # Validate tag format to prevent injection
-            if not validate_tag_format(new_tag):
+            # Validate tag format to prevent injection (skip when digest-pinning)
+            if not digest_pin and not validate_tag_format(new_tag):
                 logger.error(f"Invalid tag format: {new_tag}")
                 return False
 
@@ -1250,13 +1253,19 @@ class ComposeParser:
             service = compose_data["services"][service_name]
             old_image = service.get("image", "")
 
-            # Update tag in image string
-            if ":" in old_image:
+            # Digest-aware base image extraction
+            if "@sha256:" in old_image:
+                base_image = old_image.split("@sha256:", 1)[0]
+            elif ":" in old_image:
                 base_image = old_image.rsplit(":", 1)[0]
             else:
                 base_image = old_image
 
-            new_image = f"{base_image}:{new_tag}"
+            if digest_pin:
+                new_image = f"{base_image}@{digest_pin}"
+            else:
+                new_image = f"{base_image}:{new_tag}"
+
             service["image"] = new_image
 
             # Write back to file with ruamel.yaml (preserves everything)

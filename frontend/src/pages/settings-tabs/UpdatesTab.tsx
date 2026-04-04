@@ -316,6 +316,93 @@ export default function UpdatesTab({ settings, saving, updateSetting, handleText
             </div>
           </div>
 
+          {/* Supply Chain Detection Card */}
+          <div className="bg-tide-surface rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <SettingsIcon className="w-6 h-6 text-indigo-500" />
+                <div>
+                  <h2 className="text-xl font-semibold text-tide-text">Supply Chain Detection</h2>
+                  <p className="text-sm text-tide-text-muted">Anomaly detection for image integrity verification</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-6">
+              {/* Enable/Disable */}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-tide-text font-medium">Detection Enabled</span>
+                    <HelpTooltip content="When enabled, TideWatch verifies image digests, checks for GitHub releases, and detects size anomalies before applying updates." />
+                  </div>
+                  <p className="text-xs text-tide-text-muted mt-1">Verify image integrity before applying updates</p>
+                </div>
+                <button
+                  onClick={() => updateSetting('supply_chain_detection_enabled', !(settings.supply_chain_detection_enabled === 'true' || settings.supply_chain_detection_enabled === true))}
+                  disabled={saving}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    settings.supply_chain_detection_enabled === 'true' || settings.supply_chain_detection_enabled === true
+                      ? 'bg-primary'
+                      : 'bg-tide-border'
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    settings.supply_chain_detection_enabled === 'true' || settings.supply_chain_detection_enabled === true
+                      ? 'translate-x-6'
+                      : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Sensitivity */}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-tide-text font-medium">Default Sensitivity</span>
+                    <HelpTooltip content="Controls the threshold for holding updates. Low = fewer holds, High = more holds. Only affects enrichment signals like size anomaly." />
+                  </div>
+                  <p className="text-xs text-tide-text-muted mt-1">Threshold for anomaly detection holds</p>
+                </div>
+                <select
+                  value={String(settings.supply_chain_sensitivity || 'medium')}
+                  onChange={(e) => updateSetting('supply_chain_sensitivity', e.target.value)}
+                  disabled={saving}
+                  className="bg-tide-surface border border-tide-border rounded-md px-3 py-1.5 text-sm text-tide-text focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="low">Low (threshold: 40)</option>
+                  <option value="medium">Medium (threshold: 25)</option>
+                  <option value="high">High (threshold: 15)</option>
+                </select>
+              </div>
+
+              {/* Trust Current */}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-tide-text font-medium">Trust Current Deployments</span>
+                    <HelpTooltip content="When enabled, currently running images are used as the baseline for size anomaly detection. Baselines are seeded from the local Docker image, not the registry." />
+                  </div>
+                  <p className="text-xs text-tide-text-muted mt-1">Use running images to bootstrap trust baselines</p>
+                </div>
+                <button
+                  onClick={() => updateSetting('supply_chain_trust_current', !(settings.supply_chain_trust_current === 'true' || settings.supply_chain_trust_current === true))}
+                  disabled={saving}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    settings.supply_chain_trust_current === 'true' || settings.supply_chain_trust_current === true
+                      ? 'bg-primary'
+                      : 'bg-tide-border'
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    settings.supply_chain_trust_current === 'true' || settings.supply_chain_trust_current === true
+                      ? 'translate-x-6'
+                      : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Retry Configuration Card */}
           <div className="bg-tide-surface rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border">
             <div className="flex items-start justify-between mb-4">

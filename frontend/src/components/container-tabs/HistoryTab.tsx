@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CircleCheck, CircleX, CircleAlert, ArrowRight, Undo2, EyeOff, Eye, History } from 'lucide-react';
+import { RefreshCw, CircleCheck, CircleX, CircleAlert, ArrowRight, Undo2, EyeOff, Eye, History, Shield } from 'lucide-react';
 import { Container, HistoryItem } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
@@ -110,6 +110,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
               style={{
                 borderLeftColor:
                   item.status === 'completed' ? '#10B981' :
+                  item.status === 'integrity_failed' ? '#DC2626' :
                   item.status === 'failed' ? '#EF4444' :
                   item.status === 'rolled_back' ? '#F59E0B' : '#6B7280'
               }}
@@ -125,6 +126,9 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                   )}
                   {item.status === 'completed' && !item.event_type?.includes('dependency') && (
                     <CircleCheck className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  )}
+                  {item.status === 'integrity_failed' && (
+                    <Shield className="w-5 h-5 text-red-600 flex-shrink-0" />
                   )}
                   {item.status === 'failed' && !item.event_type?.includes('dependency') && (
                     <CircleX className="w-5 h-5 text-red-500 flex-shrink-0" />

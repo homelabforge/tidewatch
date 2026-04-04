@@ -366,10 +366,19 @@ class UpdateEngine:
                 history.data_backup_status = "failed"
                 await db.commit()
 
-            # Step 2: Update compose file
-            success = await ComposeParser.update_compose_file(
-                container.compose_file, container.service_name, update.to_tag, db
-            )
+            # Step 2: Update compose file (digest-pinned if expected_digest is set)
+            if getattr(update, "expected_digest", None):
+                success = await ComposeParser.update_compose_file(
+                    container.compose_file,
+                    container.service_name,
+                    update.to_tag,
+                    db,
+                    digest_pin=update.expected_digest,
+                )
+            else:
+                success = await ComposeParser.update_compose_file(
+                    container.compose_file, container.service_name, update.to_tag, db
+                )
 
             if not success:
                 raise Exception("Failed to update compose file")
@@ -417,6 +426,20 @@ class UpdateEngine:
 
             if not pull_result["success"]:
                 raise Exception(f"Image pull failed: {pull_result['error']}")
+
+            # Step 3.5: Restore tag format after digest-pinned pull
+            if getattr(update, "expected_digest", None):
+                tag_restore_ok = await ComposeParser.update_compose_file(
+                    container.compose_file, container.service_name, update.to_tag, db
+                )
+                if not tag_restore_ok:
+                    # CRITICAL: Do not leave @sha256: in compose — it poisons future scans
+                    await UpdateEngine._restore_compose_file(container.compose_file, backup_path)
+                    raise Exception(
+                        f"Failed to restore tag format in compose after digest-pinned pull. "
+                        f"Compose restored from backup. The pulled image is correct but the "
+                        f"compose file could not be updated to {update.to_tag}."
+                    )
 
             await event_bus.publish(
                 {

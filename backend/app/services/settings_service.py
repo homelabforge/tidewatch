@@ -118,6 +118,17 @@ class SettingsService:
             "category": "updates",
             "description": "Update window enforcement (strict: block outside window, advisory: warn but allow)",
         },
+        # Supply chain
+        "supply_chain_cache_ttl_hours": {
+            "value": "2",
+            "category": "updates",
+            "description": "TTL in hours for cached release corroboration EXISTS results",
+        },
+        "supply_chain_github_grace_period_hours": {
+            "value": "24",
+            "category": "updates",
+            "description": "Hours after last successful GitHub check before grace period expires",
+        },
         # Registry authentication
         "dockerhub_username": {
             "value": "",

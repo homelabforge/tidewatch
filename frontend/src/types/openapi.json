@@ -11,6 +11,11 @@
             "title": "Failed Updates",
             "type": "integer"
           },
+          "integrity_failed_updates": {
+            "default": 0,
+            "title": "Integrity Failed Updates",
+            "type": "integer"
+          },
           "period_days": {
             "title": "Period Days",
             "type": "integer"
@@ -1089,6 +1094,28 @@
             "title": "Service Name",
             "type": "string"
           },
+          "supply_chain_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Enabled"
+          },
+          "supply_chain_sensitivity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Sensitivity"
+          },
           "update_available": {
             "title": "Update Available",
             "type": "boolean"
@@ -1298,6 +1325,28 @@
               }
             ],
             "title": "Scope"
+          },
+          "supply_chain_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Enabled"
+          },
+          "supply_chain_sensitivity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply Chain Sensitivity"
           },
           "version_track": {
             "anyOf": [
@@ -4080,6 +4129,24 @@
       "UpdateSchema": {
         "description": "Update response schema.",
         "properties": {
+          "anomaly_flags": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Anomaly Flags",
+            "type": "array"
+          },
+          "anomaly_held": {
+            "default": false,
+            "title": "Anomaly Held",
+            "type": "boolean"
+          },
+          "anomaly_score": {
+            "default": 0,
+            "title": "Anomaly Score",
+            "type": "integer"
+          },
           "approved_at": {
             "anyOf": [
               {
@@ -4176,6 +4243,17 @@
               }
             ],
             "title": "Decision Trace"
+          },
+          "expected_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Digest"
           },
           "from_tag": {
             "title": "From Tag",
@@ -8956,7 +9034,7 @@
             }
           },
           {
-            "description": "Filter by status (success, failed, rolled_back)",
+            "description": "Filter by status (success, failed, rolled_back, integrity_failed)",
             "in": "query",
             "name": "status",
             "required": false,
@@ -8969,7 +9047,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by status (success, failed, rolled_back)",
+              "description": "Filter by status (success, failed, rolled_back, integrity_failed)",
               "title": "Status"
             }
           },

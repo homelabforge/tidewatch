@@ -1423,6 +1423,42 @@ class TestApplyDecisionRefactor:
         assert update.status == "approved"
         assert update.approved_by == "system"
 
+    @pytest.mark.asyncio
+    async def test_grace_period_blocks_auto_approval(self, mock_db, base_container):
+        """anomaly_held=True blocks auto-approval even with policy=auto and global enabled."""
+        base_container.policy = "auto"
+        decision = self._make_decision(base_container)
+        fetch = _make_fetch_response()
+
+        with (
+            patch("app.services.update_checker.SettingsService.get_bool", return_value=True),
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+                ".notify_update_available",
+                new=AsyncMock(),
+            ),
+        ):
+            update = await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert update is not None
+        # Now set anomaly_held on the update and re-run auto-approval
+        update.anomaly_held = True
+        update.anomaly_flags = [{"name": "github_grace_period", "score": 0, "detail": "test"}]
+        update.status = "pending"  # Reset status
+
+        should_approve, reason = await UpdateChecker._should_auto_approve(
+            base_container, update, auto_update_enabled=True
+        )
+        assert should_approve is False
+        assert "anomaly hold" in reason
+
 
 class TestCalverBlockedTagPersistence:
     """Test C: apply_decision() sets and clears calver_blocked_tag each run."""

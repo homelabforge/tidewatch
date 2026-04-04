@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { ConnectionStatus, CheckJobProgressEvent, DepScanProgressEvent } from '../hooks/useEventStream';
+import { useAuth } from '../hooks/useAuth';
 
 interface EventStreamEvent {
   type: string;
@@ -36,12 +37,29 @@ export function EventStreamProvider({ children, enableToasts = true }: EventStre
   const isMountedRef = useRef(true);
   const connectRef = useRef<(() => void) | undefined>(undefined);
   const subscribersRef = useRef<Set<EventCallback>>(new Set());
+  const { isAuthenticated, isLoading } = useAuth();
 
   const subscribe = useCallback((callback: EventCallback) => {
     subscribersRef.current.add(callback);
     return () => {
       subscribersRef.current.delete(callback);
     };
+  }, []);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    // Only update state if still mounted — avoids React state-update-on-unmount warning
+    if (isMountedRef.current) {
+      setConnectionStatus('disconnected');
+    }
+    reconnectDelayRef.current = INITIAL_RECONNECT_DELAY;
   }, []);
 
   const dispatchEvent = useCallback((event: EventStreamEvent & Record<string, unknown>) => {
@@ -178,21 +196,21 @@ export function EventStreamProvider({ children, enableToasts = true }: EventStre
 
   useEffect(() => {
     isMountedRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    connect();
+
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!isLoading && isAuthenticated) {
+      connect();
+    } else if (!isLoading && !isAuthenticated) {
+      disconnect();
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     return () => {
+      // disconnect() checks isMountedRef before setState, so order is safe
       isMountedRef.current = false;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      disconnect();
     };
-  }, [connect]);
+  }, [isAuthenticated, isLoading, connect, disconnect]);
 
   return (
     <EventStreamContext.Provider value={{ connectionStatus, reconnect: connect, subscribe }}>

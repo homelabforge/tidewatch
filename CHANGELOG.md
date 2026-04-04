@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Supply chain anomaly detection — digest verification, GitHub release corroboration, and image size anomaly detection between update discovery and apply
+- Per-container and global supply chain sensitivity settings (low/medium/high)
+- `integrity_failed` terminal status for updates where the tag digest changed between detection and apply
+- Supply chain hold and digest mismatch notifications
+- Baseline trust bootstrapping from locally running Docker images
+- Persistent corroboration cache — GitHub release EXISTS results cached in DB across check runs (TTL-gated)
+- GitHub outage grace period — recent successful checks shown as amber warning instead of red error
+- Digest-pinned compose pull — updates with `expected_digest` pull by `@sha256:` then restore tag format
+
+### Changed
+- Release corroboration now uses per-key task map — different repos checked concurrently, same repo deduplicated
+- `anomaly_held` now blocks auto-approval unconditionally regardless of container policy
+
 ## [3.8.7] - 2026-03-29
 
 ### Fixed

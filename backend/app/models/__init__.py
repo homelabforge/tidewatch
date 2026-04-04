@@ -11,6 +11,7 @@ from app.models.metrics_history import MetricsHistory
 from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
 from app.models.pending_scan_job import PendingScanJob
+from app.models.release_corroboration_cache import ReleaseCorroborationCache
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.models.secret_key import SecretKey
@@ -38,4 +39,5 @@ __all__ = [
     "CheckJob",
     "DependencyScanJob",
     "PendingScanJob",
+    "ReleaseCorroborationCache",
 ]

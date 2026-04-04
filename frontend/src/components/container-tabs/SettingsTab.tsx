@@ -740,6 +740,69 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
           </div>
         </div>
 
+        {/* Supply Chain Detection */}
+        <div className="bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border">
+          <h4 className="text-base font-semibold text-tide-text mb-3">Supply Chain Detection</h4>
+          <p className="text-sm text-tide-text-muted mb-4">Override global supply chain anomaly detection settings for this container.</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-tide-text">Detection</p>
+                <p className="text-xs text-tide-text-muted mt-1">
+                  {container.supply_chain_enabled === null || container.supply_chain_enabled === undefined
+                    ? 'Using global setting'
+                    : container.supply_chain_enabled
+                      ? 'Enabled for this container'
+                      : 'Disabled for this container'}
+                </p>
+              </div>
+              <select
+                value={container.supply_chain_enabled === null || container.supply_chain_enabled === undefined ? 'null' : String(container.supply_chain_enabled)}
+                onChange={async (e) => {
+                  const val = e.target.value === 'null' ? null : e.target.value === 'true';
+                  try {
+                    await api.containers.update(container.id, { supply_chain_enabled: val });
+                    toast.success('Supply chain detection updated');
+                    onUpdate?.();
+                  } catch { toast.error('Failed to update'); }
+                }}
+                className="bg-tide-surface border border-tide-border rounded-md px-3 py-1.5 text-sm text-tide-text focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="null">Inherit Global</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-tide-text">Sensitivity</p>
+                <p className="text-xs text-tide-text-muted mt-1">
+                  {!container.supply_chain_sensitivity
+                    ? 'Using global setting'
+                    : `${container.supply_chain_sensitivity.charAt(0).toUpperCase() + container.supply_chain_sensitivity.slice(1)}`}
+                </p>
+              </div>
+              <select
+                value={container.supply_chain_sensitivity || 'null'}
+                onChange={async (e) => {
+                  const val = e.target.value === 'null' ? null : e.target.value;
+                  try {
+                    await api.containers.update(container.id, { supply_chain_sensitivity: val });
+                    toast.success('Sensitivity updated');
+                    onUpdate?.();
+                  } catch { toast.error('Failed to update'); }
+                }}
+                className="bg-tide-surface border border-tide-border rounded-md px-3 py-1.5 text-sm text-tide-text focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="null">Inherit Global</option>
+                <option value="low">Low (threshold: 40)</option>
+                <option value="medium">Medium (threshold: 25)</option>
+                <option value="high">High (threshold: 15)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* Health Check */}
         <div className="bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border">
           <h4 className="text-base font-semibold text-tide-text mb-3">Health Check</h4>

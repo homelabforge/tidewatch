@@ -49,6 +49,8 @@ export const mockUpdate = {
   updated_at: '2025-01-01T00:00:00Z',
   update_kind: 'tag' as const,
   change_type: 'minor' as const,
+  anomaly_score: 0,
+  anomaly_held: false,
 }
 
 export const mockUpdates = [

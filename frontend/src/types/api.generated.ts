@@ -3752,6 +3752,11 @@ export interface components {
             avg_update_duration_seconds: number;
             /** Failed Updates */
             failed_updates: number;
+            /**
+             * Integrity Failed Updates
+             * @default 0
+             */
+            integrity_failed_updates: number;
             /** Period Days */
             period_days: number;
             /** Policy Distribution */
@@ -4169,6 +4174,10 @@ export interface components {
             scope: string;
             /** Service Name */
             service_name: string;
+            /** Supply Chain Enabled */
+            supply_chain_enabled?: boolean | null;
+            /** Supply Chain Sensitivity */
+            supply_chain_sensitivity?: string | null;
             /** Update Available */
             update_available: boolean;
             /** Update Window */
@@ -4233,6 +4242,10 @@ export interface components {
             release_source?: string | null;
             /** Scope */
             scope?: string | null;
+            /** Supply Chain Enabled */
+            supply_chain_enabled?: boolean | null;
+            /** Supply Chain Sensitivity */
+            supply_chain_sensitivity?: string | null;
             /** Version Track */
             version_track?: ("semver" | "calver") | null;
             /** Vulnforge Enabled */
@@ -5282,6 +5295,20 @@ export interface components {
          * @description Update response schema.
          */
         UpdateSchema: {
+            /** Anomaly Flags */
+            anomaly_flags?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Anomaly Held
+             * @default false
+             */
+            anomaly_held: boolean;
+            /**
+             * Anomaly Score
+             * @default 0
+             */
+            anomaly_score: number;
             /** Approved At */
             approved_at?: string | null;
             /** Approved By */
@@ -5314,6 +5341,8 @@ export interface components {
             decision_trace?: {
                 [key: string]: unknown;
             } | null;
+            /** Expected Digest */
+            expected_digest?: string | null;
             /** From Tag */
             from_tag: string;
             /** Id */
@@ -8150,7 +8179,7 @@ export interface operations {
         parameters: {
             query?: {
                 container_id?: number | null;
-                /** @description Filter by status (success, failed, rolled_back) */
+                /** @description Filter by status (success, failed, rolled_back, integrity_failed) */
                 status?: string | null;
                 /** @description Filter by start date (ISO format) */
                 start_date?: string | null;

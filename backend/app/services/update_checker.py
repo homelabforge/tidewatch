@@ -44,18 +44,22 @@ class UpdateChecker:
 
     @staticmethod
     async def _should_auto_approve(
-        container: Container, _update: Update, auto_update_enabled: bool
+        container: Container, update: Update, auto_update_enabled: bool
     ) -> tuple[bool, str]:
         """Determine if an update should be automatically approved.
 
         Args:
             container: Container being updated
-            _update: Update record (reserved for future severity-based rules)
+            update: Update record
             auto_update_enabled: Global auto-update setting
 
         Returns:
             tuple[bool, str]: (should_approve, reason)
         """
+        # Supply chain hold blocks auto-approval unconditionally
+        if getattr(update, "anomaly_held", False):
+            return False, "supply chain anomaly hold — manual approval required"
+
         # Check global setting
         if not auto_update_enabled:
             return False, "auto_update_enabled is disabled globally"

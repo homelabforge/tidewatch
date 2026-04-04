@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -95,6 +95,12 @@ class Update(Base):
     change_type: Mapped[str | None] = mapped_column(
         String, nullable=True, index=True
     )  # "major", "minor", "patch"
+
+    # Supply chain anomaly detection (Migration 053)
+    anomaly_score: Mapped[int] = mapped_column(Integer, default=0)
+    anomaly_flags: Mapped[list[Any]] = mapped_column(JSON, default=list, server_default="[]")
+    anomaly_held: Mapped[bool] = mapped_column(Boolean, default=False)
+    expected_digest: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

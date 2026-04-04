@@ -181,6 +181,8 @@ describe('Dashboard', () => {
       updated_at: '2025-01-01T00:00:00Z',
       update_kind: 'tag',
       change_type: 'patch',
+      anomaly_score: 0,
+      anomaly_held: false,
     },
   ]
 
@@ -189,6 +191,7 @@ describe('Dashboard', () => {
     total_updates: 10,
     successful_updates: 8,
     failed_updates: 2,
+    integrity_failed_updates: 0,
     update_frequency: [],
     vulnerability_trends: [],
     policy_distribution: [],
