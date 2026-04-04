@@ -271,7 +271,7 @@ async def security_headers_middleware(request: Request, call_next):
     # Note: This is a basic policy. Adjust based on your frontend requirements.
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  # Adjust based on React requirements
+        "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",  # Needed for inline styles
         "img-src 'self' data: https:",
         "font-src 'self' data:",
