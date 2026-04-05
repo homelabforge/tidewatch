@@ -7,16 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- SSRF validation on all integration test endpoints and VulnForge runtime client
-- `TIDEWATCH_TRUSTED_HOSTS` env var for homelab deployments with services on private networks
-- Backup upload size limit (10 MB)
-
-### Fixed
-- OIDC link-account endpoint crashing on successful password verification (KeyError on claims dict)
-- OIDC link-account not persisting the OIDC identity after password verification
-- OIDC config PUT silently dropping `username_claim`, `email_claim`, `link_token_expire_minutes`, and `link_max_password_attempts`
-- CSP `script-src` directive included unnecessary `unsafe-eval`
+## [3.9.0] - 2026-04-05
 
 ### Added
 - Supply chain anomaly detection — digest verification, GitHub release corroboration, and image size anomaly detection between update discovery and apply
@@ -27,10 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent corroboration cache — GitHub release EXISTS results cached in DB across check runs (TTL-gated)
 - GitHub outage grace period — recent successful checks shown as amber warning instead of red error
 - Digest-pinned compose pull — updates with `expected_digest` pull by `@sha256:` then restore tag format
+- SSRF validation on all integration test endpoints and VulnForge runtime client
+- `TIDEWATCH_TRUSTED_HOSTS` env var for homelab deployments with services on private networks
+- Backup upload size limit (10 MB)
 
 ### Changed
 - Release corroboration now uses per-key task map — different repos checked concurrently, same repo deduplicated
 - `anomaly_held` now blocks auto-approval unconditionally regardless of container policy
+
+### Fixed
+- OIDC link-account endpoint crashing on successful password verification (KeyError on claims dict)
+- OIDC link-account not persisting the OIDC identity after password verification
+- OIDC config PUT silently dropping `username_claim`, `email_claim`, `link_token_expire_minutes`, and `link_max_password_attempts`
+- CSP `script-src` directive included unnecessary `unsafe-eval`
 
 ## [3.8.7] - 2026-03-29
 
