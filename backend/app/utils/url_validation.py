@@ -27,6 +27,7 @@ import socket
 from urllib.parse import ParseResult, urlparse
 
 from app.exceptions import SSRFProtectionError
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +290,9 @@ def validate_integration_url(url: str, trusted_hosts: set[str] | None = None) ->
     skip_private_block = _is_trusted(hostname, trusted_hosts)
 
     if skip_private_block and trusted_hosts:
-        logger.debug("SSRF check: trusting %s (matched trusted hosts)", hostname)
+        logger.debug(
+            "SSRF check: trusting %s (matched trusted hosts)", sanitize_log_message(hostname)
+        )
 
     return validate_url_for_ssrf(
         url,

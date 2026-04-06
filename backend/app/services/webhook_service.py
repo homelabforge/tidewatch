@@ -24,6 +24,7 @@ from app.schemas.webhook import (
     WebhookUpdate,
 )
 from app.utils.encryption import decrypt_value, encrypt_value
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +62,17 @@ class WebhookService:
             # Check against blocked ranges
             for blocked_range in WebhookService.BLOCKED_IP_RANGES:
                 if ip in blocked_range:
-                    logger.warning(f"Blocked private IP: {hostname} -> {ip_str}")
+                    logger.warning(
+                        f"Blocked private IP: {sanitize_log_message(hostname)} -> {ip_str}"
+                    )
                     return True
 
             return False
 
         except (socket.gaierror, ValueError) as e:
-            logger.warning(f"Failed to resolve hostname {hostname}: {e}")
+            logger.warning(
+                f"Failed to resolve hostname {sanitize_log_message(hostname)}: {sanitize_log_message(str(e))}"
+            )
             # If we can't resolve, block it to be safe
             return True
 

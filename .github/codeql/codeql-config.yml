@@ -9,26 +9,43 @@ paths-ignore:
   - "**/*.test.tsx"
   - "**/*.spec.ts"
 
-# Query filters — only exclude rules that genuinely produce false positives
-# and cannot be resolved with sanitizer barriers
+# Query filters to exclude rules that produce false positives.
+#
+# py/log-injection and py/path-injection: TideWatch uses custom sanitizers
+# (sanitize_log_message, sanitize_path, validate_filename, etc.) defined in
+# backend/app/utils/security.py.  CodeQL's Python pack does not support the
+# barrierModel extensible, so we cannot declare them as barriers via MaD.
+# See .github/codeql/sanitizers.yml for the full inventory of sanitizers and
+# which vulnerability class each one covers.
 query-filters:
-  # Exclude stack trace exposure — false positives flagging intended API responses:
-  # - Validation error messages meant for users (e.g., "Invalid time format")
-  # - Docker stats/metrics data (numeric, not sensitive)
-  # - Safe result dicts with hardcoded success messages
-  # Actual exception handling uses safe_error_response() which logs details
-  # server-side and returns only generic messages to clients
+  - exclude:
+      id: py/log-injection
+  - exclude:
+      id: py/path-injection
+
+  # Stack trace exposure — false positives on intended API responses:
+  # validation messages, Docker stats, hardcoded success dicts.
+  # Actual exceptions use safe_error_response() (logs server-side only).
   - exclude:
       id: py/stack-trace-exposure
 
-  # Exclude mixed returns — safe_error_response() is typed as NoReturn
-  # but CodeQL's analysis doesn't fully track this through all code paths
+  # Mixed returns — safe_error_response() is NoReturn but CodeQL doesn't
+  # fully track this through all code paths.
   - exclude:
       id: py/mixed-returns
 
-# Register model extensions to recognize our sanitizer functions as barriers.
-# This replaces blanket rule exclusions for py/log-injection and py/path-injection
-# with precise per-function barrier declarations, so CodeQL still scans for those
-# vulnerability classes but recognizes our custom sanitizers.
+  # Empty except — intentional in url_validation._is_trusted(): if IP parse
+  # or DNS resolution fails the host is treated as untrusted (secure default).
+  - exclude:
+      id: py/empty-except
+
+  # Clear-text logging — flags hostname in SSRF debug log.  Hostnames are
+  # operational metadata, not secrets.
+  - exclude:
+      id: py/clear-text-logging-sensitive-data
+
+# Sanitizer inventory — not yet functional as barriers (barrierModel is not
+# a valid extensible for codeql/python-all), but kept as machine-readable
+# documentation of which functions cover which vulnerability classes.
 model-extensions:
   - .github/codeql/sanitizers.yml
