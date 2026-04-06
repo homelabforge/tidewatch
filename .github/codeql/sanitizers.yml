@@ -1,0 +1,25 @@
+extensions:
+  # Mark our sanitizer functions as barriers (sanitizers) for taint tracking
+  # This tells CodeQL that data passing through these functions is sanitized
+  #
+  # Functions defined in: backend/app/utils/security.py
+  # All usages are documented and reviewed. New code MUST use these functions.
+  - addsTo:
+      pack: codeql/python-all
+      extensible: barrierModel
+    data:
+      # Log injection barriers — sanitize_log_message() strips newlines and
+      # control characters (0x00-0x1f, 0x7f-0x9f) before values reach loggers
+      - ["app.utils.security", "Member[sanitize_log_message].ReturnValue", "log-injection"]
+      # mask_sensitive() replaces all but the last N chars with asterisks
+      - ["app.utils.security", "Member[mask_sensitive].ReturnValue", "log-injection"]
+      - ["app.utils.security", "Member[mask_sensitive].ReturnValue", "py/clear-text-logging-sensitive-data"]
+      # Path injection barriers — sanitize_path() resolves to absolute path,
+      # validates within base_dir, and optionally rejects symlinks
+      - ["app.utils.security", "Member[sanitize_path].ReturnValue", "path-injection"]
+      # is_safe_filename() rejects path separators, null bytes, control chars
+      - ["app.utils.security", "Member[is_safe_filename].ReturnValue", "path-injection"]
+      # validate_container_name() enforces [a-zA-Z0-9][a-zA-Z0-9_.-]* regex
+      - ["app.utils.security", "Member[validate_container_name].ReturnValue", "path-injection"]
+      # validate_image_name() rejects traversal patterns, control chars
+      - ["app.utils.security", "Member[validate_image_name].ReturnValue", "path-injection"]
