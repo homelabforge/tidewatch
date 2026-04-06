@@ -9,19 +9,13 @@ paths-ignore:
   - "**/*.test.tsx"
   - "**/*.spec.ts"
 
-# Query filters to exclude rules that produce false positives.
-#
-# py/log-injection and py/path-injection: TideWatch uses custom sanitizers
-# (sanitize_log_message, sanitize_path, validate_filename, etc.) defined in
-# backend/app/utils/security.py.  CodeQL's Python pack does not support the
-# barrierModel extensible, so we cannot declare them as barriers via MaD.
-# See .github/codeql/sanitizers.yml for the full inventory of sanitizers and
-# which vulnerability class each one covers.
+# Only run security-tagged queries — filters out code quality rules
+# (py/empty-except, py/mixed-returns, etc.) that are not actionable here.
+# Sanitizer barriers in sanitizers.yml handle the remaining false positives
+# for py/log-injection and py/path-injection.
 query-filters:
-  - exclude:
-      id: py/log-injection
-  - exclude:
-      id: py/path-injection
+  - include:
+      tags contain: security
 
   # Stack trace exposure — false positives on intended API responses:
   # validation messages, Docker stats, hardcoded success dicts.
@@ -29,23 +23,12 @@ query-filters:
   - exclude:
       id: py/stack-trace-exposure
 
-  # Mixed returns — safe_error_response() is NoReturn but CodeQL doesn't
-  # fully track this through all code paths.
-  - exclude:
-      id: py/mixed-returns
-
-  # Empty except — intentional in url_validation._is_trusted(): if IP parse
-  # or DNS resolution fails the host is treated as untrusted (secure default).
-  - exclude:
-      id: py/empty-except
-
   # Clear-text logging — flags hostname in SSRF debug log.  Hostnames are
-  # operational metadata, not secrets.
+  # operational metadata, not secrets.  Cannot be modelled as a barrier
+  # because the logged value is the hostname itself, not a sanitised form.
   - exclude:
       id: py/clear-text-logging-sensitive-data
 
-# Sanitizer inventory — not yet functional as barriers (barrierModel is not
-# a valid extensible for codeql/python-all), but kept as machine-readable
-# documentation of which functions cover which vulnerability classes.
+# Register model extensions to recognize our sanitizer functions as barriers
 model-extensions:
   - .github/codeql/sanitizers.yml
