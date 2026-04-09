@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "tidewatch"
 version = "3.9.0"
 description = "Intelligent Docker container update manager"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.135.2",
     "granian>=2.7.2",
@@ -84,7 +84,7 @@ ignore = ["E501"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
-pythonVersion = "3.13"
+pythonVersion = "3.14"
 include = ["app", "tests"]
 exclude = ["**/__pycache__", ".venv", "build"]
 reportMissingImports = true
