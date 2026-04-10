@@ -48,7 +48,7 @@ class CleanupService:
 
             multiplier = units.get(unit, 1)
             return int(number * multiplier)
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             return 0
 
     @staticmethod

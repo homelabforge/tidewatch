@@ -198,7 +198,7 @@ async def upgrade() -> None:
                                         ),
                                         {"deps": json.dumps(new_deps), "id": cid},
                                     )
-                        except (json.JSONDecodeError, TypeError):
+                        except json.JSONDecodeError, TypeError:
                             logger.debug("Skipping malformed JSON in container %d", cid)
 
                     if dependents_json:
@@ -218,7 +218,7 @@ async def upgrade() -> None:
                                         ),
                                         {"deps": json.dumps(new_deps), "id": cid},
                                     )
-                        except (json.JSONDecodeError, TypeError):
+                        except json.JSONDecodeError, TypeError:
                             logger.debug("Skipping malformed JSON in container %d", cid)
 
             # ── Step 5: Rebuild containers table ──────────────────────

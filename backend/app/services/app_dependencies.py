@@ -812,7 +812,7 @@ class DependencyScanner:
             # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"
-        except (ValueError, IndexError, TypeError):
+        except ValueError, IndexError, TypeError:
             # If version parsing fails, default to info severity
             return "info"
 

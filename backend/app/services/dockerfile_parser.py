@@ -649,7 +649,7 @@ class DockerfileParser:
             # Patch version change (backwards-compatible bug fixes)
             else:
                 return "info"  # Maps to "Patch Update" in UI
-        except (ValueError, IndexError, AttributeError):
+        except ValueError, IndexError, AttributeError:
             # If we can't parse versions, default to info
             return "info"
 

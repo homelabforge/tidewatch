@@ -135,7 +135,7 @@ class UpdateEngine:
         return str(host_path)
 
     @staticmethod
-    async def _ensure_compose_project(db: AsyncSession, container: "Container") -> None:
+    async def _ensure_compose_project(db: AsyncSession, container: Container) -> None:
         """Populate compose_project and docker_name from Docker if not already set.
 
         Uses label-based resolution (not name lookup) for correctness with
@@ -163,7 +163,7 @@ class UpdateEngine:
             logger.debug(f"Could not get compose_project for {container.name}: {e}")
 
     @staticmethod
-    async def _ensure_compose_metadata(db: AsyncSession, container: "Container") -> list[str]:
+    async def _ensure_compose_metadata(db: AsyncSession, container: Container) -> list[str]:
         """Ensure compose_project is populated and resolve all project compose files.
 
         Combines label sync and multi-file resolution into a single call

@@ -392,7 +392,7 @@ class RegistryClient(ABC):
         """
         return f"{self._registry_name}:{image}"
 
-    async def __aenter__(self) -> "RegistryClient":
+    async def __aenter__(self) -> RegistryClient:
         """Async context manager entry."""
         return self
 

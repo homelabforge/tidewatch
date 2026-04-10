@@ -344,7 +344,7 @@ class RateLimitedRequest:
         self._registry = registry
         self.wait_time: float = 0.0
 
-    async def __aenter__(self) -> "RateLimitedRequest":
+    async def __aenter__(self) -> RateLimitedRequest:
         """Acquire rate limit slot."""
         self.wait_time = await self._limiter.acquire(self._registry)
         return self

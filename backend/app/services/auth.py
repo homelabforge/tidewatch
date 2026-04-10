@@ -127,7 +127,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         ph.verify(hashed_password, plain_password)
         return True
-    except (VerifyMismatchError, InvalidHashError):
+    except VerifyMismatchError, InvalidHashError:
         return False
 
 

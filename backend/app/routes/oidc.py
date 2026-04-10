@@ -378,7 +378,7 @@ async def oidc_callback(
     if access_token:
         try:
             userinfo = await oidc_service.get_userinfo(access_token, metadata)
-        except (httpx.TimeoutException, httpx.ConnectError):
+        except httpx.TimeoutException, httpx.ConnectError:
             logger.warning("Failed to fetch userinfo, continuing with ID token claims only")
 
     # Link OIDC to admin account

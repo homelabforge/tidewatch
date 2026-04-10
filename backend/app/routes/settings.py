@@ -219,7 +219,7 @@ async def test_docker_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError, AttributeError):
+    except ValueError, KeyError, AttributeError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -327,7 +327,7 @@ async def test_vulnforge_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration or response",
@@ -437,7 +437,7 @@ async def test_ntfy_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -556,7 +556,7 @@ async def test_dockerhub_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration or response",
@@ -660,7 +660,7 @@ async def test_gotify_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -746,7 +746,7 @@ async def test_pushover_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -834,7 +834,7 @@ async def test_slack_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -927,7 +927,7 @@ async def test_discord_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -1022,7 +1022,7 @@ async def test_telegram_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -1152,7 +1152,7 @@ async def test_email_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration",
@@ -1292,7 +1292,7 @@ async def test_ghcr_connection(
             "message": "Database error",
             "details": {"error": "An error occurred"},
         }
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return {
             "success": False,
             "message": "Invalid configuration or response",

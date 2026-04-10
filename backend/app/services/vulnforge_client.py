@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 
-async def create_vulnforge_client(db: AsyncSession) -> "VulnForgeClient | None":
+async def create_vulnforge_client(db: AsyncSession) -> VulnForgeClient | None:
     """Create a VulnForge client from database settings.
 
     Shared factory used by scan_service and update_engine. Checks that
@@ -39,7 +39,7 @@ async def create_vulnforge_client(db: AsyncSession) -> "VulnForgeClient | None":
 
     try:
         validate_integration_url(vulnforge_url)
-    except (SSRFProtectionError, ValueError):
+    except SSRFProtectionError, ValueError:
         logger.error("VulnForge URL blocked by SSRF protection: %s", vulnforge_url)
         return None
 
@@ -235,7 +235,7 @@ class VulnForgeClient:
             return None
         except httpx.HTTPStatusError as e:
             logger.warning(f"VulnForge /by-image returned {e.response.status_code}, falling back")
-        except (ValueError, KeyError, AttributeError):
+        except ValueError, KeyError, AttributeError:
             pass  # malformed response → fall through to list-all
 
         # --- slow path: list all + client-side matching ---
@@ -607,7 +607,7 @@ class VulnForgeClient:
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(f"VulnForge connection error looking up container: {e}")
             return None
-        except (ValueError, KeyError, AttributeError):
+        except ValueError, KeyError, AttributeError:
             pass  # Fall through to list-all
 
         # Fallback: list all containers and search (O(N))

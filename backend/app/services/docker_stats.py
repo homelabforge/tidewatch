@@ -103,7 +103,7 @@ class DockerStatsService:
         """Parse percentage string like '12.34%' to float."""
         try:
             return float(percent_str.rstrip("%"))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             return 0.0
 
     @staticmethod
@@ -150,7 +150,7 @@ class DockerStatsService:
             multiplier = units.get(unit, 1)
 
             return int(number * multiplier)
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             return 0
 
     @staticmethod

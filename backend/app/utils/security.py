@@ -181,7 +181,7 @@ def sanitize_path(
             # lgtm[py/path-injection] - This is the path validation function itself
             if (base / user_path).exists() and (base / user_path).is_symlink():
                 raise ValueError(f"Symbolic links not allowed: {user_path}")
-        except (OSError, RuntimeError):
+        except OSError, RuntimeError:
             # Path might not exist yet, which is okay
             pass
 

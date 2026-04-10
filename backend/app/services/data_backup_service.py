@@ -564,7 +564,7 @@ class DataBackupService:
 
     async def _backup_postgresql(
         self,
-        container: "docker.models.containers.Container",  # type: ignore[attr-defined]
+        container: docker.models.containers.Container,  # type: ignore[attr-defined]
         backup_dir: Path,
         pg_user: str,
         _timeout: int,
@@ -601,7 +601,7 @@ class DataBackupService:
 
     async def _get_pg_version(
         self,
-        container: "docker.models.containers.Container",  # type: ignore[attr-defined]
+        container: docker.models.containers.Container,  # type: ignore[attr-defined]
     ) -> str | None:
         """Get PostgreSQL major version from container.
 
