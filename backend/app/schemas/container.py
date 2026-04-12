@@ -184,6 +184,23 @@ class ContainerUpdate(BaseModel):
         return v
 
 
+class SiblingDivergenceWarning(BaseModel):
+    """Warning returned when a container settings change causes it to diverge from siblings."""
+
+    sibling_names: list[str]
+    field: str
+    sibling_value: str | bool | None
+    new_value: str | bool | None
+    message: str
+
+
+class ContainerUpdateResponse(BaseModel):
+    """Wrapper response for PUT /containers/{id} that includes an optional sibling warning."""
+
+    container: ContainerSchema
+    sibling_warning: SiblingDivergenceWarning | None = None
+
+
 class PolicyUpdate(BaseModel):
     """Policy update request."""
 

@@ -32,6 +32,8 @@ export type CheckJobSummary = components['schemas']['CheckJobSummary'];
 export type RollbackHistoryItem = components['schemas']['RollbackHistoryItem'];
 export type RollbackHistoryResponse = components['schemas']['RollbackHistoryResponse'];
 export type RollbackResponse = components['schemas']['RollbackResponse'];
+export type ContainerUpdateResponse = components['schemas']['ContainerUpdateResponse'];
+export type SiblingDivergenceWarning = components['schemas']['SiblingDivergenceWarning'];
 
 /** @deprecated Use HistoryItem (container history) or UpdateHistoryDetail (single record) */
 export type UpdateHistory = HistoryItem;

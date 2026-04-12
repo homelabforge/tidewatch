@@ -176,48 +176,54 @@ export default function History() {
                         </td>
 
                         {/* Event Column - Conditional Rendering */}
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-6 py-4 max-w-[18rem]">
                           {item.event_type === 'update' ? (
-                            // Update Event: Show from → to tags
-                            <div className="flex items-center gap-2 text-sm text-tide-text">
-                              <span className="font-mono">{item.from_tag}</span>
-                              <ArrowRight size={14} className="text-tide-text-muted" />
-                              <span className="font-mono text-primary">{item.to_tag}</span>
+                            <div className="flex flex-col text-sm text-tide-text font-mono leading-tight">
+                              <span className="truncate" title={item.from_tag ?? undefined}>{item.from_tag}</span>
+                              <span className="flex items-center gap-1 text-primary min-w-0">
+                                <ArrowRight size={12} className="text-tide-text-muted shrink-0" />
+                                <span className="truncate" title={item.to_tag ?? undefined}>{item.to_tag}</span>
+                              </span>
                             </div>
                           ) : item.event_type === 'dependency_update' ? (
-                            // Dependency Update Event: Show dependency name and version change
-                            <div className="flex items-center gap-2 text-sm text-tide-text">
-                              <ArrowRight size={14} className="text-primary" />
-                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
-                              <span className="font-mono text-xs">{item.from_tag}</span>
-                              <ArrowRight size={12} className="text-tide-text-muted" />
-                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                            <div className="flex flex-col text-sm text-tide-text leading-tight min-w-0">
+                              <span className="font-medium truncate" title={item.dependency_name ?? undefined}>
+                                {item.dependency_name || 'Dependency'}
+                              </span>
+                              <span className="font-mono text-xs truncate" title={item.from_tag ?? undefined}>
+                                {item.from_tag}
+                              </span>
+                              <span className="flex items-center gap-1 text-primary min-w-0">
+                                <ArrowRight size={12} className="text-tide-text-muted shrink-0" />
+                                <span className="font-mono text-xs truncate" title={item.to_tag ?? undefined}>
+                                  {item.to_tag}
+                                </span>
+                              </span>
                             </div>
-                          ) : item.event_type === 'dependency_ignore' ? (
-                            // Dependency Ignore Event: Show dependency name and version change
-                            <div className="flex items-center gap-2 text-sm text-tide-text">
-                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
-                              <span className="font-mono text-xs">{item.from_tag}</span>
-                              <ArrowRight size={12} className="text-tide-text-muted" />
-                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
-                            </div>
-                          ) : item.event_type === 'dependency_unignore' ? (
-                            // Dependency Unignore Event: Show dependency name and version change
-                            <div className="flex items-center gap-2 text-sm text-tide-text">
-                              <span className="font-medium">{item.dependency_name || 'Dependency'}</span>
-                              <span className="font-mono text-xs">{item.from_tag}</span>
-                              <ArrowRight size={12} className="text-tide-text-muted" />
-                              <span className="font-mono text-xs text-primary">{item.to_tag}</span>
+                          ) : item.event_type === 'dependency_ignore' || item.event_type === 'dependency_unignore' ? (
+                            <div className="flex flex-col text-sm text-tide-text leading-tight min-w-0">
+                              <span className="font-medium truncate" title={item.dependency_name ?? undefined}>
+                                {item.dependency_name || 'Dependency'}
+                              </span>
+                              <span className="font-mono text-xs truncate" title={item.from_tag ?? undefined}>
+                                {item.from_tag}
+                              </span>
+                              <span className="flex items-center gap-1 text-primary min-w-0">
+                                <ArrowRight size={12} className="text-tide-text-muted shrink-0" />
+                                <span className="font-mono text-xs truncate" title={item.to_tag ?? undefined}>
+                                  {item.to_tag}
+                                </span>
+                              </span>
                             </div>
                           ) : (
                             // Restart Event: Show trigger reason
                             <div className="flex items-center gap-2 text-sm text-tide-text">
-                              <RefreshCw size={14} className="text-blue-400" />
-                              <span className="capitalize">
+                              <RefreshCw size={14} className="text-blue-400 shrink-0" />
+                              <span className="capitalize truncate">
                                 {formatTriggerReason(item.trigger_reason ?? undefined)}
                               </span>
                               {item.exit_code !== null && item.exit_code !== undefined && (
-                                <span className="text-xs text-tide-text-muted">
+                                <span className="text-xs text-tide-text-muted shrink-0">
                                   (exit {item.exit_code})
                                 </span>
                               )}

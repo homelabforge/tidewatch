@@ -396,6 +396,19 @@ class SettingsService:
             "category": "notifications",
             "description": "Notify when Dockerfile dependency updates are available",
         },
+        "notify_system_sibling_drift": {
+            "value": "true",
+            "category": "notifications",
+            "description": "Notify when sibling containers sharing an image drift out of sync",
+        },
+        "sibling_reconciliation_enabled": {
+            "value": "true",
+            "category": "checks",
+            "description": (
+                "Run a post-check safety-net reconciliation pass for containers sharing "
+                "an image; also emits drift warnings when siblings diverge"
+            ),
+        },
         # Update policies (defaults)
         "default_policy": {
             "value": "monitor",

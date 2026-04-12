@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { api } from '../services/api';
-import { useEventStream, type CheckJobProgressEvent } from './useEventStream';
+import { useEventStream, type CheckJobProgressEvent, type SiblingDriftEvent } from './useEventStream';
 import type { CheckJobState } from '../components/CheckProgressBar';
 import { toast } from 'sonner';
 
@@ -14,6 +14,7 @@ export function useCheckJob(options: UseCheckJobOptions = {}) {
 
   const [checkJob, setCheckJob] = useState<CheckJobState | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [siblingDrifts, setSiblingDrifts] = useState<SiblingDriftEvent[]>([]);
 
   const handleCheckJobProgress = useCallback((data: CheckJobProgressEvent) => {
     setCheckJob(prev => {
@@ -56,12 +57,17 @@ export function useCheckJob(options: UseCheckJobOptions = {}) {
     onCanceled?.();
   }, [onCanceled]);
 
+  const handleSiblingDrift = useCallback((data: SiblingDriftEvent) => {
+    setSiblingDrifts(prev => [...prev, data]);
+  }, []);
+
   useEventStream({
     onCheckJobStarted: handleCheckJobProgress,
     onCheckJobProgress: handleCheckJobProgress,
     onCheckJobCompleted: handleCheckJobCompleted,
     onCheckJobFailed: handleCheckJobFailed,
     onCheckJobCanceled: handleCheckJobCanceled,
+    onSiblingDriftDetected: handleSiblingDrift,
     enableToasts: false,
   });
 
@@ -116,11 +122,17 @@ export function useCheckJob(options: UseCheckJobOptions = {}) {
     setCheckJob(null);
   }, []);
 
+  const dismissSiblingDrifts = useCallback(() => {
+    setSiblingDrifts([]);
+  }, []);
+
   return {
     checkJob,
     checkingUpdates,
+    siblingDrifts,
     startCheckAll,
     cancelCheckJob,
     dismissCheckJob,
+    dismissSiblingDrifts,
   };
 }

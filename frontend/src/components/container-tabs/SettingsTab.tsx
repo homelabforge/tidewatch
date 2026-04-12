@@ -117,8 +117,11 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const saveSettings = async (updates: Record<string, unknown>) => {
     setSavingSettings(true);
     try {
-      await api.containers.update(container.id, updates);
+      const response = await api.containers.update(container.id, updates);
       toast.success('Settings saved successfully');
+      if (response.sibling_warning) {
+        toast.warning(response.sibling_warning.message, { duration: 8000 });
+      }
       onUpdate?.();
     } catch (error) {
       console.error('Failed to save settings:', error);

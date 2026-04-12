@@ -17,6 +17,19 @@ export interface CheckJobProgressEvent {
   error?: string;
 }
 
+// Sibling drift event data
+export interface SiblingDriftEvent {
+  job_id: number;
+  compose_file: string;
+  registry: string;
+  image: string;
+  sibling_names: string[];
+  dominant_tag: string;
+  per_container_tags: Record<string, string>;
+  settings_divergent: boolean;
+  reconciled_names: string[];
+}
+
 // Dependency scan progress event data
 export interface DepScanProgressEvent {
   job_id: number;
@@ -49,6 +62,8 @@ interface UseEventStreamOptions {
   onDepScanCompleted?: (data: DepScanProgressEvent) => void;
   onDepScanFailed?: (data: DepScanProgressEvent) => void;
   onDepScanCanceled?: (data: DepScanProgressEvent) => void;
+  // Sibling drift callback
+  onSiblingDriftDetected?: (data: SiblingDriftEvent) => void;
   enableToasts?: boolean;
 }
 
@@ -77,6 +92,7 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onDepScanCompleted,
     onDepScanFailed,
     onDepScanCanceled,
+    onSiblingDriftDetected,
   } = options;
 
   const { connectionStatus, reconnect, subscribe } = useEventStreamContext();
@@ -135,6 +151,9 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
       case 'dependency-scan-canceled':
         if (data) onDepScanCanceled?.(data as unknown as DepScanProgressEvent);
         break;
+      case 'sibling-drift-detected':
+        if (data) onSiblingDriftDetected?.(data as unknown as SiblingDriftEvent);
+        break;
     }
   }, [
     onUpdateAvailable,
@@ -153,6 +172,7 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
     onDepScanCompleted,
     onDepScanFailed,
     onDepScanCanceled,
+    onSiblingDriftDetected,
   ]);
 
   useEffect(() => {

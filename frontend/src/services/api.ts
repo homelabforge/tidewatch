@@ -27,6 +27,7 @@ import type {
   DependencySummary,
   RollbackHistoryResponse,
   RollbackResponse,
+  ContainerUpdateResponse,
 } from '../types';
 import type { PreviewData } from '../components/DependencyUpdatePreviewModal';
 import type {
@@ -152,7 +153,7 @@ export const containerApi = {
   }),
 
   update: (id: number, data: Partial<Container>) =>
-    apiCall<Container>(`/containers/${id}`, {
+    apiCall<ContainerUpdateResponse>(`/containers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),

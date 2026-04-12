@@ -37,6 +37,7 @@ EVENT_SETTINGS_MAP = {
     # System
     "check_complete": ("notify_system_enabled", "notify_system_check_complete"),
     "dockerfile_update": ("notify_system_enabled", "notify_system_dockerfile_updates"),
+    "sibling_drift": ("notify_system_enabled", "notify_system_sibling_drift"),
 }
 
 # Priority mapping for different event types
@@ -51,6 +52,7 @@ EVENT_PRIORITY_MAP = {
     "restart_max_retries": "urgent",
     "check_complete": "default",
     "dockerfile_update": "default",
+    "sibling_drift": "high",
 }
 
 # Tags mapping for different event types
@@ -65,6 +67,7 @@ EVENT_TAGS_MAP = {
     "restart_max_retries": ["rotating_light", "sos"],
     "check_complete": ["ocean", "mag"],
     "dockerfile_update": ["whale", "arrow_up"],
+    "sibling_drift": ["warning", "link"],
 }
 
 # Service-specific retry delay multipliers
@@ -444,5 +447,43 @@ class NotificationDispatcher:
         return await self.dispatch(
             event_type="dockerfile_update",
             title="Dockerfile Update Available",
+            message=message,
+        )
+
+    async def notify_sibling_drift(
+        self,
+        image: str,
+        sibling_names: list[str],
+        per_container_tags: dict[str, str],
+        settings_divergent: bool,
+    ) -> dict[str, bool]:
+        """Send notification that sibling containers have drifted out of sync.
+
+        Args:
+            image: Image path shared by the sibling group
+            sibling_names: Names of all containers in the sibling group
+            per_container_tags: Mapping of container name to its current_tag
+            settings_divergent: True if check settings (scope/version_track/
+                include_prereleases) differ across siblings in addition to
+                or instead of a tag drift
+        """
+        lines = [f"Image: {image}"]
+        for name in sibling_names:
+            tag = per_container_tags.get(name, "unknown")
+            lines.append(f"  - {name}: {tag}")
+        if settings_divergent:
+            lines.append(
+                "\nCheck settings diverge across siblings "
+                "(scope, version_track, or include_prereleases)."
+            )
+        lines.append(
+            "\nReview the affected containers and realign them via the container "
+            "settings page, or run POST /api/containers/sync to refresh from compose."
+        )
+        message = "\n".join(lines)
+        title = f"Sibling Drift: {', '.join(sibling_names)}"
+        return await self.dispatch(
+            event_type="sibling_drift",
+            title=title,
             message=message,
         )

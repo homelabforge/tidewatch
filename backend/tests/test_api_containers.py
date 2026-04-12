@@ -877,7 +877,7 @@ class TestVersionTrackNullableClear:
             json={"version_track": "semver"},
         )
         assert resp.status_code == 200
-        assert resp.json()["version_track"] == "semver"
+        assert resp.json()["container"]["version_track"] == "semver"
 
     @pytest.mark.asyncio
     async def test_version_track_clears_to_null(self, authenticated_client, db, make_container):
@@ -899,7 +899,7 @@ class TestVersionTrackNullableClear:
             json={"version_track": None},
         )
         assert resp.status_code == 200
-        assert resp.json()["version_track"] is None
+        assert resp.json()["container"]["version_track"] is None
 
     @pytest.mark.asyncio
     async def test_version_track_omitted_does_not_clear(
@@ -923,7 +923,7 @@ class TestVersionTrackNullableClear:
             json={},
         )
         assert resp.status_code == 200
-        assert resp.json()["version_track"] == "calver"  # Unchanged
+        assert resp.json()["container"]["version_track"] == "calver"  # Unchanged
 
     @pytest.mark.asyncio
     async def test_version_track_invalid_value_rejected(

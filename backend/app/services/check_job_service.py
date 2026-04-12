@@ -22,9 +22,11 @@ from app.models.check_job import CheckJob
 from app.models.container import Container
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
 from app.services.event_bus import event_bus
+from app.services.notifications.dispatcher import NotificationDispatcher
 from app.services.registry_client import is_non_semver_tag
 from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.settings_service import SettingsService
+from app.services.sibling_reconciliation import SiblingDrift, reconcile_siblings
 from app.services.tag_fetcher import TagFetcher
 from app.services.update_checker import UpdateChecker
 from app.services.update_decision_maker import UpdateDecisionMaker
@@ -283,6 +285,10 @@ class CheckJobService:
                 checked_count = 0
                 updates_found = 0
                 errors_count = 0
+                # IDs of containers that received an Update record via the
+                # main pass — reconcile_siblings skips these to avoid duplicate
+                # Update records being created during the safety-net pass.
+                updated_container_ids: set[int] = set()
 
                 # Cache total_count as local int for use in workers
                 total_count: int = int(job.total_count)  # type: ignore[attr-defined]
@@ -360,6 +366,7 @@ class CheckJobService:
                                             checked_count += 1
                                             if update_obj:
                                                 updates_found += 1
+                                                updated_container_ids.add(container_id)
                                                 run_context.metrics.record_update_found()
                                                 results.append(
                                                     {
@@ -473,6 +480,66 @@ class CheckJobService:
 
                 # Finalize metrics
                 metrics = run_context.finalize()
+
+                # Post-main-pass sibling drift detection + safety-net reconciliation.
+                # Runs in the parent db session (not a worker session) so all
+                # writes are visible in the same transaction scope the job uses
+                # for its final commit. Failures are logged but do not abort
+                # the job — reconciliation is best-effort.
+                sibling_drifts: list[SiblingDrift] = []
+                if not cancel_requested:
+                    try:
+                        sibling_drifts = await reconcile_siblings(
+                            db,
+                            run_context,
+                            rate_limiter,
+                            containers,
+                            updated_container_ids,
+                            global_include_prereleases,
+                        )
+                    except Exception as reconcile_error:
+                        logger.error(f"Sibling reconciliation failed: {reconcile_error}")
+
+                # Publish SSE events + dispatch notifications for any drift
+                # observed in the reconciliation pass. Done outside the try
+                # block above so a notification failure does not abort the
+                # SSE publish or vice versa.
+                if sibling_drifts:
+                    try:
+                        dispatcher = NotificationDispatcher(db)
+                    except Exception as dispatch_error:
+                        dispatcher = None
+                        logger.error(
+                            f"Failed to build notification dispatcher for drift: {dispatch_error}"
+                        )
+
+                    for drift in sibling_drifts:
+                        await event_bus.publish(
+                            {
+                                "type": "sibling-drift-detected",
+                                "job_id": job_id,
+                                "compose_file": drift.compose_file,
+                                "registry": drift.registry,
+                                "image": drift.image,
+                                "sibling_names": drift.sibling_names,
+                                "dominant_tag": drift.dominant_tag,
+                                "per_container_tags": drift.per_container_tags,
+                                "settings_divergent": drift.settings_divergent,
+                                "reconciled_names": drift.reconciled_names,
+                            }
+                        )
+                        if dispatcher is not None:
+                            try:
+                                await dispatcher.notify_sibling_drift(
+                                    image=drift.image,
+                                    sibling_names=drift.sibling_names,
+                                    per_container_tags=drift.per_container_tags,
+                                    settings_divergent=drift.settings_divergent,
+                                )
+                            except Exception as notify_error:
+                                logger.error(
+                                    f"Failed to notify drift for {drift.image}: {notify_error}"
+                                )
 
                 # Check final cancellation state
                 await db.refresh(job)

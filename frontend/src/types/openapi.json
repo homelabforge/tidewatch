@@ -1351,6 +1351,29 @@
         "title": "ContainerUpdate",
         "type": "object"
       },
+      "ContainerUpdateResponse": {
+        "description": "Wrapper response for PUT /containers/{id} that includes an optional sibling warning.",
+        "properties": {
+          "container": {
+            "$ref": "#/components/schemas/ContainerSchema"
+          },
+          "sibling_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiblingDivergenceWarning"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "container"
+        ],
+        "title": "ContainerUpdateResponse",
+        "type": "object"
+      },
       "DisableRestartRequest": {
         "description": "Request to disable auto-restart.",
         "properties": {
@@ -3300,6 +3323,63 @@
           "full_name"
         ],
         "title": "SetupResponse",
+        "type": "object"
+      },
+      "SiblingDivergenceWarning": {
+        "description": "Warning returned when a container settings change causes it to diverge from siblings.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "sibling_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sibling Names",
+            "type": "array"
+          },
+          "sibling_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sibling Value"
+          }
+        },
+        "required": [
+          "sibling_names",
+          "field",
+          "sibling_value",
+          "new_value",
+          "message"
+        ],
+        "title": "SiblingDivergenceWarning",
         "type": "object"
       },
       "TokenResponse": {
@@ -6615,7 +6695,7 @@
         ]
       },
       "put": {
-        "description": "Update container policy and settings.\n\nArgs:\n    container_id: Container ID\n    update: Update data\n\nReturns:\n    Updated container",
+        "description": "Update container policy and settings.\n\nArgs:\n    container_id: Container ID\n    update: Update data\n\nReturns:\n    Updated container with optional sibling divergence warning",
         "operationId": "update_container_api_v1_containers__container_id__put",
         "parameters": [
           {
@@ -6643,7 +6723,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContainerSchema"
+                  "$ref": "#/components/schemas/ContainerUpdateResponse"
                 }
               }
             },

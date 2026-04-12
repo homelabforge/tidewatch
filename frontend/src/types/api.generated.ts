@@ -1010,7 +1010,7 @@ export interface paths {
          *         update: Update data
          *
          *     Returns:
-         *         Updated container
+         *         Updated container with optional sibling divergence warning
          */
         put: operations["update_container_api_v1_containers__container_id__put"];
         post?: never;
@@ -4243,6 +4243,14 @@ export interface components {
             vulnforge_enabled?: boolean | null;
         };
         /**
+         * ContainerUpdateResponse
+         * @description Wrapper response for PUT /containers/{id} that includes an optional sibling warning.
+         */
+        ContainerUpdateResponse: {
+            container: components["schemas"]["ContainerSchema"];
+            sibling_warning?: components["schemas"]["SiblingDivergenceWarning"] | null;
+        };
+        /**
          * DisableRestartRequest
          * @description Request to disable auto-restart.
          */
@@ -5040,6 +5048,22 @@ export interface components {
             message: string;
             /** Username */
             username: string;
+        };
+        /**
+         * SiblingDivergenceWarning
+         * @description Warning returned when a container settings change causes it to diverge from siblings.
+         */
+        SiblingDivergenceWarning: {
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+            /** New Value */
+            new_value: string | boolean | null;
+            /** Sibling Names */
+            sibling_names: string[];
+            /** Sibling Value */
+            sibling_value: string | boolean | null;
         };
         /**
          * TokenResponse
@@ -6714,7 +6738,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ContainerSchema"];
+                    "application/json": components["schemas"]["ContainerUpdateResponse"];
                 };
             };
             /** @description Validation Error */

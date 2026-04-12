@@ -312,6 +312,33 @@ export default function Dashboard() {
           />
         )}
 
+        {/* Sibling Drift Warning Banner */}
+        {checkJobHook.siblingDrifts.length > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-yellow-400 mb-1">Sibling Drift Detected</h3>
+                {checkJobHook.siblingDrifts.map((drift, i) => (
+                  <p key={i} className="text-sm text-tide-text-muted">
+                    <span className="font-mono text-tide-text">{drift.sibling_names.join(', ')}</span>
+                    {' — '}
+                    {drift.settings_divergent
+                      ? 'check settings diverge across siblings'
+                      : `running different tags: ${Object.entries(drift.per_container_tags).map(([n, t]) => `${n}=${t}`).join(', ')}`
+                    }
+                  </p>
+                ))}
+              </div>
+              <button
+                onClick={checkJobHook.dismissSiblingDrifts}
+                className="text-tide-text-muted hover:text-tide-text text-xs ml-4 shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Container Grid */}
         {loading ? (
           <div className="text-center py-12">

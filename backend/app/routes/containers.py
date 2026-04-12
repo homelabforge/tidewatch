@@ -24,10 +24,12 @@ from app.schemas.container import (
     ContainerSyncResponse,
     ContainerSyncStats,
     ContainerUpdate,
+    ContainerUpdateResponse,
     DockerfileDependenciesResponse,
     HistoryItemSchema,
     HttpServersResponse,
     PolicyUpdate,
+    SiblingDivergenceWarning,
     UpdateInfoSchema,
     UpdateWindowUpdate,
 )
@@ -223,13 +225,13 @@ async def get_container_history(
     return [HistoryItemSchema.model_validate(h) for h in history]
 
 
-@router.put("/{container_id}", response_model=ContainerSchema)
+@router.put("/{container_id}", response_model=ContainerUpdateResponse)
 async def update_container(
     update: ContainerUpdate,
     _admin: dict | None = Depends(require_auth),
     container: Container = Depends(get_container_or_404),
     db: AsyncSession = Depends(get_db),
-) -> ContainerSchema:
+) -> ContainerUpdateResponse:
     """Update container policy and settings.
 
     Args:
@@ -237,7 +239,7 @@ async def update_container(
         update: Update data
 
     Returns:
-        Updated container
+        Updated container with optional sibling divergence warning
     """
     # Update fields if provided
     if update.policy is not None:
@@ -274,7 +276,63 @@ async def update_container(
     await db.commit()
     await db.refresh(container)
 
-    return container
+    # Check for sibling divergence on pairing-sensitive fields
+    sibling_warning: SiblingDivergenceWarning | None = None
+    pairing_fields = {"scope", "include_prereleases", "version_track"}
+    changed_pairing_fields = update.model_fields_set & pairing_fields
+    if changed_pairing_fields:
+        sibling_warning = await _check_sibling_divergence(
+            db, container, update, changed_pairing_fields
+        )
+
+    container_schema = ContainerSchema.model_validate(container)
+    return ContainerUpdateResponse(container=container_schema, sibling_warning=sibling_warning)
+
+
+async def _check_sibling_divergence(
+    db: AsyncSession,
+    container: Container,
+    update: ContainerUpdate,
+    changed_fields: set[str],
+) -> SiblingDivergenceWarning | None:
+    """Check if updating a pairing-sensitive field diverges from siblings.
+
+    Siblings are containers sharing (compose_file, registry, image) with this one.
+    """
+    result = await db.execute(
+        select(Container).where(
+            Container.compose_file == container.compose_file,
+            Container.registry == container.registry,
+            Container.image == container.image,
+            Container.id != container.id,
+            Container.policy != "disabled",
+        )
+    )
+    siblings = list(result.scalars().all())
+    if not siblings:
+        return None
+
+    for field_name in changed_fields:
+        new_value = getattr(update, field_name)
+        for sibling in siblings:
+            sibling_value = getattr(sibling, field_name)
+            # Normalize: None == None is fine, different means drift
+            if new_value != sibling_value:
+                sibling_names = [str(s.name) for s in siblings]
+                return SiblingDivergenceWarning(
+                    sibling_names=sibling_names,
+                    field=field_name,
+                    sibling_value=sibling_value,
+                    new_value=new_value,
+                    message=(
+                        f"This change makes {container.name}'s {field_name} "
+                        f"differ from {', '.join(sibling_names)}, which "
+                        f"{'run' if len(sibling_names) > 1 else 'runs'} the same image. "
+                        f"TideWatch pairs sibling containers for update checks — "
+                        f"they're usually kept in sync."
+                    ),
+                )
+    return None
 
 
 @router.put("/{container_id}/policy", response_model=ContainerSchema)
