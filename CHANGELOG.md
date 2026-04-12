@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.1] - 2026-04-11
+
+### Fixed
+- History table no longer side-scrolls when version strings are long (e.g. linuxserver hash-suffixed tags). Event cells stack old/new tags vertically with a compact arrow; long values truncate with a hover tooltip.
+- Sibling containers running the same image in the same compose file (e.g. authentik-server and authentik-worker) can drift out of sync on update checks without warning. v3.9.1 adds a save-time warning that flags divergent settings, a live notification when drift is detected post-hoc, and a narrow post-check safety-net reconciler that covers partial main-pass misses.
+
+### Added
+- `sibling_reconciliation_enabled` setting (default enabled) gates the post-check safety-net reconciliation pass.
+- `notify_system_sibling_drift` setting (default enabled) controls drift notifications via the existing notification dispatcher.
+- Save-time warning in the container Settings UI when changing version_track, scope, or include_prereleases to a value that diverges from a sibling running the same image.
+- Live SSE `sibling-drift-detected` event surfaced as a yellow banner on the Updates and Dashboard pages via the existing `useCheckJob` hook.
+
+### Recovery for existing users affected by the drift
+If sibling containers (e.g. authentik server/worker, any paired services sharing an image) have already drifted out of sync, run:
+1. `POST /api/containers/sync` — refresh DB metadata from compose files.
+2. Only if `GET /api/containers/{id}` shows a non-null `version_track` on a sibling that doesn't need one: `PUT /api/containers/{id}` with body `{"version_track": null}` to clear the override.
+3. `POST /api/updates/check` — re-run update discovery.
+
 ## [3.9.0] - 2026-04-05
 
 ### Added
