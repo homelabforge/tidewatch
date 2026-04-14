@@ -533,8 +533,8 @@ class RegistryClient(ABC):
             is_curr_calver = False  # Container pinned to SemVer; reject CalVer candidates
             is_cand_calver = _is_calver_tag(candidate)
         elif version_track == "calver":
-            is_curr_calver = True  # Container pinned to CalVer; reject SemVer candidates
-            is_cand_calver = _is_calver_tag(candidate)
+            is_curr_calver = True  # Container pinned to CalVer — trust explicit override
+            is_cand_calver = True
         else:
             is_curr_calver = _is_calver_tag(current)
             is_cand_calver = _is_calver_tag(candidate)

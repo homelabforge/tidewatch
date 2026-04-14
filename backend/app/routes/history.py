@@ -12,6 +12,7 @@ from sqlalchemy.orm import undefer
 from app.database import get_db
 from app.models.history import UpdateHistory
 from app.models.restart_log import ContainerRestartLog
+from app.models.sibling_drift_event import SiblingDriftEvent
 from app.schemas.history import UnifiedHistoryEventSchema, UpdateHistorySchema
 from app.services.auth import require_auth
 from app.services.update_engine import UpdateEngine
@@ -116,6 +117,41 @@ def transform_restart_to_event(
     )
 
 
+def transform_drift_to_event(
+    drift: SiblingDriftEvent,
+) -> UnifiedHistoryEventSchema:
+    """Transform SiblingDriftEvent model to unified event schema."""
+    import json
+
+    sibling_names_list: list[str] = json.loads(drift.sibling_names) if drift.sibling_names else []
+    per_container_dict: dict[str, str] = (
+        json.loads(drift.per_container_tags) if drift.per_container_tags else {}
+    )
+    reconciled_list: list[str] | None = (
+        json.loads(drift.reconciled_names) if drift.reconciled_names else None
+    )
+
+    return UnifiedHistoryEventSchema(
+        id=drift.id,
+        event_type="sibling_drift",
+        container_id=0,  # Sentinel — drift is multi-container
+        container_name=drift.image,
+        status="detected",
+        started_at=drift.detected_at,
+        completed_at=None,
+        duration_seconds=None,
+        error_message=None,
+        performed_by="System",
+        # Drift-specific fields
+        sibling_names=sibling_names_list,
+        dominant_tag=drift.dominant_tag,
+        per_container_tags=per_container_dict,
+        settings_divergent=drift.settings_divergent,
+        reconciliation_attempted=drift.reconciliation_attempted,
+        reconciled_names=reconciled_list,
+    )
+
+
 @router.get("/", response_model=list[UnifiedHistoryEventSchema])
 async def list_history(
     _admin: dict | None = Depends(require_auth),
@@ -127,81 +163,105 @@ async def list_history(
     limit: int = Query(50, ge=1, le=500, description="Maximum number of records to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[UnifiedHistoryEventSchema]:
-    """List unified history (updates + restarts) with pagination.
+    """List unified history (updates + restarts + drift) with pagination.
 
     Args:
-        container_id: Optional filter by container
-        status: Optional filter by status
-        start_date: Optional filter by start date
-        end_date: Optional filter by end date
+        container_id: Optional filter by container (drift excluded when set)
+        status: Optional filter by status. Use "detected" for drift-only.
+        start_date: Optional filter by start date (ISO format)
+        end_date: Optional filter by end date (ISO format)
         skip: Number of records to skip (default: 0)
         limit: Maximum number of records to return (default: 50, max: 500)
 
     Returns:
-        List of unified history events (updates and restarts)
+        List of unified history events (updates, restarts, and drift)
     """
     from datetime import datetime
 
     # Fetch more from each table to ensure we have enough after merging
     fetch_limit = min(limit * 3, 500)
 
-    # Query updates - undefer event_type to load it eagerly
-    update_query = (
-        select(UpdateHistory)
-        .options(
-            undefer(UpdateHistory.event_type),
-            undefer(UpdateHistory.dependency_type),
-            undefer(UpdateHistory.dependency_id),
-            undefer(UpdateHistory.dependency_name),
-        )
-        .order_by(UpdateHistory.created_at.desc())
-    )
-    if container_id:
-        update_query = update_query.where(UpdateHistory.container_id == container_id)
-    if status:
-        update_query = update_query.where(UpdateHistory.status == status)
-    if start_date:
-        start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-        update_query = update_query.where(UpdateHistory.started_at >= start_dt)
-    if end_date:
-        end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-        update_query = update_query.where(UpdateHistory.started_at <= end_dt)
+    # Determine which event sources to include based on filters.
+    # Drift events use status="detected" — exclude them when a different
+    # status is requested, and exclude updates/restarts when status="detected".
+    include_drift = not container_id and (status is None or status == "detected")
+    include_updates_restarts = status is None or status != "detected"
 
-    # Exclude dependency events from global history (only show in container-specific history)
-    if not container_id:
-        dependency_event_types = {"dependency_update", "dependency_ignore", "dependency_unignore"}
-        update_query = update_query.where(
-            (UpdateHistory.event_type.is_(None))
-            | (~UpdateHistory.event_type.in_(dependency_event_types))
-        )
-
-    update_query = update_query.limit(fetch_limit)
-
-    # Query restarts (only completed ones)
-    restart_query = (
-        select(ContainerRestartLog)
-        .where(ContainerRestartLog.completed_at.isnot(None))
-        .order_by(ContainerRestartLog.created_at.desc())
-    )
-    if container_id:
-        restart_query = restart_query.where(ContainerRestartLog.container_id == container_id)
-    restart_query = restart_query.limit(fetch_limit)
-
-    # Execute queries
-    update_result = await db.execute(update_query)
-    restart_result = await db.execute(restart_query)
-
-    updates = update_result.scalars().all()
-    restarts = restart_result.scalars().all()
-
-    # Transform to unified events
     unified_events: list[UnifiedHistoryEventSchema] = []
 
-    for update in updates:
-        unified_events.append(transform_update_to_event(update))
+    if include_updates_restarts:
+        # Query updates - undefer event_type to load it eagerly
+        update_query = (
+            select(UpdateHistory)
+            .options(
+                undefer(UpdateHistory.event_type),
+                undefer(UpdateHistory.dependency_type),
+                undefer(UpdateHistory.dependency_id),
+                undefer(UpdateHistory.dependency_name),
+            )
+            .order_by(UpdateHistory.created_at.desc())
+        )
+        if container_id:
+            update_query = update_query.where(UpdateHistory.container_id == container_id)
+        if status:
+            update_query = update_query.where(UpdateHistory.status == status)
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            update_query = update_query.where(UpdateHistory.started_at >= start_dt)
+        if end_date:
+            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            update_query = update_query.where(UpdateHistory.started_at <= end_dt)
 
-    for restart in restarts:
-        unified_events.append(transform_restart_to_event(restart))
+        # Exclude dependency events from global history
+        if not container_id:
+            dependency_event_types = {
+                "dependency_update",
+                "dependency_ignore",
+                "dependency_unignore",
+            }
+            update_query = update_query.where(
+                (UpdateHistory.event_type.is_(None))
+                | (~UpdateHistory.event_type.in_(dependency_event_types))
+            )
+
+        update_query = update_query.limit(fetch_limit)
+
+        # Query restarts (only completed ones)
+        restart_query = (
+            select(ContainerRestartLog)
+            .where(ContainerRestartLog.completed_at.isnot(None))
+            .order_by(ContainerRestartLog.created_at.desc())
+        )
+        if container_id:
+            restart_query = restart_query.where(ContainerRestartLog.container_id == container_id)
+        restart_query = restart_query.limit(fetch_limit)
+
+        # Execute queries
+        update_result = await db.execute(update_query)
+        restart_result = await db.execute(restart_query)
+
+        for update in update_result.scalars().all():
+            unified_events.append(transform_update_to_event(update))
+        for restart in restart_result.scalars().all():
+            unified_events.append(transform_restart_to_event(restart))
+
+    # Query sibling drift events (global only — excluded when container_id is set)
+    if include_drift:
+        drift_query = (
+            select(SiblingDriftEvent)
+            .order_by(SiblingDriftEvent.detected_at.desc())
+            .limit(fetch_limit)
+        )
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            drift_query = drift_query.where(SiblingDriftEvent.detected_at >= start_dt)
+        if end_date:
+            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            drift_query = drift_query.where(SiblingDriftEvent.detected_at <= end_dt)
+
+        drift_result = await db.execute(drift_query)
+        for drift in drift_result.scalars().all():
+            unified_events.append(transform_drift_to_event(drift))
 
     # Sort by started_at descending
     unified_events.sort(key=lambda e: e.started_at or datetime.min, reverse=True)

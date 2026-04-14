@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- CalVer containers with explicit `version_track=calver` silently missing updates when tags use single-digit months
+- Python 2 exception syntax in `security.py` blocking test suite
+
+### Added
+- Persisted sibling drift history — drift events now appear in the unified History page
+- Savepoint-isolated drift row persistence per sibling group
+
+### Dev Dependencies
+- **pyright**: 1.1.400 → 1.1.408
+- **pytest**: 9.0.2 → 9.0.3
+
+### App Dependencies
+- **authlib**: 1.6.9 → 1.6.10
+- **cryptography**: 46.0.6 → 46.0.7
+- **fastapi**: 0.135.2 → 0.135.3
+- **prometheus-client**: 0.24.1 → 0.25.0
+- **pydantic**: 2.12.5 → 2.13.0
+- **python-multipart**: 0.0.22 → 0.0.26
+- **requests**: 2.33.0 → 2.33.1
+- **sqlalchemy**: 2.0.48 → 2.0.49
+
+### Dockerfile Dependencies
+- **oven/bun**: 1.3.11-alpine → 1.3.12-alpine
+
+### HTTP Servers
+- **granian**: 2.7.2 → 2.7.3
+
 ## [3.9.1] - 2026-04-12
 
 ### Fixed

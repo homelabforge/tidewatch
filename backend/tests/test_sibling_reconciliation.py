@@ -81,9 +81,19 @@ def _make_container(
 
 @pytest.fixture
 def mock_db():
+    import contextlib
+
     db = AsyncMock()
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    @contextlib.asynccontextmanager
+    async def fake_begin_nested():
+        yield
+
+    db.begin_nested = fake_begin_nested
     return db
 
 
@@ -484,3 +494,178 @@ class TestReconcileSiblings:
 
         assert drifts == []
         apply_decision_mock.assert_not_called()
+
+
+class TestDriftPersistence:
+    """Tests for SiblingDriftEvent persistence via savepoint isolation."""
+
+    @pytest.mark.asyncio
+    async def test_drift_persists_sibling_drift_event(
+        self, mock_db, mock_run_context, mock_rate_limiter
+    ):
+        """When drift is detected, a SiblingDriftEvent row is persisted."""
+        from app.models.sibling_drift_event import SiblingDriftEvent
+
+        server = _make_container(1, "authentik-server", current_tag="2026.2.2")
+        worker = _make_container(2, "authentik-worker", current_tag="2026.2.1")
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch_tags_for_container = AsyncMock(return_value=FakeFetchResponse())
+        mock_decision_maker = MagicMock()
+        mock_decision_maker.make_decision = MagicMock(return_value=FakeDecision(has_update=True))
+
+        with (
+            patch(
+                "app.services.sibling_reconciliation.SettingsService.get_bool",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.sibling_reconciliation.TagFetcher",
+                return_value=mock_fetcher,
+            ),
+            patch(
+                "app.services.sibling_reconciliation.UpdateDecisionMaker",
+                return_value=mock_decision_maker,
+            ),
+            patch(
+                "app.services.sibling_reconciliation.UpdateChecker.apply_decision",
+                new=AsyncMock(),
+            ),
+        ):
+            drifts = await reconcile_siblings(
+                mock_db,
+                mock_run_context,
+                mock_rate_limiter,
+                [server, worker],
+                updated_ids={1},
+                global_prereleases=False,
+                job_id=42,
+            )
+
+        assert len(drifts) == 1
+        # Verify db.add was called with a SiblingDriftEvent
+        assert mock_db.add.call_count == 1
+        event = mock_db.add.call_args.args[0]
+        assert isinstance(event, SiblingDriftEvent)
+        assert event.image == "goauthentik/server"
+        assert event.job_id == 42
+        assert event.settings_divergent is False
+        assert event.reconciliation_attempted is True
+
+    @pytest.mark.asyncio
+    async def test_drift_reconciliation_attempted_false_for_divergent_settings(
+        self, mock_db, mock_run_context, mock_rate_limiter
+    ):
+        """When settings diverge, reconciliation_attempted should be False."""
+        from app.models.sibling_drift_event import SiblingDriftEvent
+
+        server = _make_container(1, "authentik-server", current_tag="2026.2.1", version_track=None)
+        worker = _make_container(
+            2, "authentik-worker", current_tag="2026.2.1", version_track="calver"
+        )
+
+        with (
+            patch(
+                "app.services.sibling_reconciliation.SettingsService.get_bool",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.sibling_reconciliation.TagFetcher",
+                MagicMock(),
+            ),
+            patch(
+                "app.services.sibling_reconciliation.UpdateChecker.apply_decision",
+                new=AsyncMock(),
+            ),
+        ):
+            drifts = await reconcile_siblings(
+                mock_db,
+                mock_run_context,
+                mock_rate_limiter,
+                [server, worker],
+                updated_ids=set(),
+                global_prereleases=False,
+                job_id=99,
+            )
+
+        assert len(drifts) == 1
+        assert drifts[0].settings_divergent is True
+        event = mock_db.add.call_args.args[0]
+        assert isinstance(event, SiblingDriftEvent)
+        assert event.reconciliation_attempted is False
+        assert event.job_id == 99
+
+    @pytest.mark.asyncio
+    async def test_drift_persistence_failure_does_not_abort_subsequent_groups(
+        self, mock_run_context, mock_rate_limiter
+    ):
+        """A failed drift insert for one group should not prevent processing
+        of subsequent groups (savepoint isolation).
+        """
+        import contextlib
+
+        db = AsyncMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
+        db.add = MagicMock()
+
+        call_count = 0
+
+        @contextlib.asynccontextmanager
+        async def failing_then_ok():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Simulated savepoint failure")
+            yield
+
+        db.begin_nested = failing_then_ok
+        db.flush = AsyncMock()
+
+        # Two groups with drift: different compose files
+        group_a = [
+            _make_container(1, "app-server", current_tag="1.0.0", compose_file="/a.yml"),
+            _make_container(2, "app-worker", current_tag="1.0.1", compose_file="/a.yml"),
+        ]
+        group_b = [
+            _make_container(3, "db-primary", current_tag="2.0.0", compose_file="/b.yml"),
+            _make_container(4, "db-replica", current_tag="2.0.1", compose_file="/b.yml"),
+        ]
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch_tags_for_container = AsyncMock(return_value=FakeFetchResponse())
+        mock_decision_maker = MagicMock()
+        mock_decision_maker.make_decision = MagicMock(return_value=FakeDecision(has_update=False))
+
+        with (
+            patch(
+                "app.services.sibling_reconciliation.SettingsService.get_bool",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.sibling_reconciliation.TagFetcher",
+                return_value=mock_fetcher,
+            ),
+            patch(
+                "app.services.sibling_reconciliation.UpdateDecisionMaker",
+                return_value=mock_decision_maker,
+            ),
+            patch(
+                "app.services.sibling_reconciliation.UpdateChecker.apply_decision",
+                new=AsyncMock(),
+            ),
+        ):
+            drifts = await reconcile_siblings(
+                db,
+                mock_run_context,
+                mock_rate_limiter,
+                group_a + group_b,
+                updated_ids=set(),
+                global_prereleases=False,
+                job_id=77,
+            )
+
+        # Both groups should still produce drift entries
+        assert len(drifts) == 2
+        # The second group's persistence should have succeeded
+        assert db.add.call_count >= 1

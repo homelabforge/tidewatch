@@ -81,6 +81,14 @@ class UnifiedHistoryEventSchema(BaseModel):
     dependency_id: int | None = None
     dependency_name: str | None = None
 
+    # Sibling-drift-specific fields (nullable for non-drift events)
+    sibling_names: list[str] | None = None
+    dominant_tag: str | None = None
+    per_container_tags: dict[str, str] | None = None
+    settings_divergent: bool | None = None
+    reconciliation_attempted: bool | None = None
+    reconciled_names: list[str] | None = None
+
     model_config = {"from_attributes": True}
 
 

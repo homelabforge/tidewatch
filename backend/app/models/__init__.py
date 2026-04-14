@@ -16,6 +16,7 @@ from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.models.secret_key import SecretKey
 from app.models.setting import Setting
+from app.models.sibling_drift_event import SiblingDriftEvent
 from app.models.update import Update
 from app.models.vulnerability_scan import VulnerabilityScan
 from app.models.webhook import Webhook
@@ -40,4 +41,5 @@ __all__ = [
     "DependencyScanJob",
     "PendingScanJob",
     "ReleaseCorroborationCache",
+    "SiblingDriftEvent",
 ]

@@ -374,6 +374,66 @@ class TestVersionComparison:
         assert mock_client._compare_versions("1.2.3", "1.2.3", "major") is False
 
 
+class TestCompareVersionsExplicitCalVer:
+    """Test explicit version_track='calver' override in _compare_versions.
+
+    When a user sets version_track='calver', both current and candidate
+    are treated as CalVer regardless of whether _is_calver_tag() would
+    auto-detect them. This intentionally overrides structural detection
+    for tags with non-zero-padded months (e.g. '2026.2.1').
+    """
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create mock registry client."""
+        from app.services.registry_client import DockerHubClient
+
+        return DockerHubClient()
+
+    def test_explicit_calver_single_digit_month_patch(self, mock_client):
+        """Explicit calver override accepts patch bump with single-digit month."""
+        assert (
+            mock_client._compare_versions("2026.2.1", "2026.2.2", "patch", version_track="calver")
+            is True
+        )
+
+    def test_explicit_calver_single_digit_month_major(self, mock_client):
+        """Explicit calver override accepts cross-month bump under major scope."""
+        assert (
+            mock_client._compare_versions("2026.2.1", "2026.3.0", "major", version_track="calver")
+            is True
+        )
+
+    def test_explicit_calver_no_cross_scheme_rejection(self, mock_client):
+        """Explicit calver override must not trigger cross-scheme rejection."""
+        mock_client._compare_versions("2026.2.1", "2026.2.2", "major", version_track="calver")
+        assert mock_client._best_cross_scheme_rejected is None
+
+    def test_explicit_calver_rejects_downgrade(self, mock_client):
+        """Explicit calver override still rejects downgrades."""
+        assert (
+            mock_client._compare_versions("2026.3.1", "2026.2.2", "major", version_track="calver")
+            is False
+        )
+
+    def test_explicit_calver_respects_scope(self, mock_client):
+        """Explicit calver override still respects scope restrictions."""
+        # 2026.2.1 -> 2026.3.0 is a minor bump; patch scope should reject it
+        assert (
+            mock_client._compare_versions("2026.2.1", "2026.3.0", "patch", version_track="calver")
+            is False
+        )
+
+    def test_explicit_calver_does_not_affect_autodetect(self, mock_client):
+        """Auto-detect mode (version_track=None) still uses strict _is_calver_tag."""
+        from app.services.registry_client import _is_calver_tag
+
+        # Single-digit month should NOT match strict CalVer regex in auto mode
+        assert _is_calver_tag("2026.2.1") is False
+        # Zero-padded month should match
+        assert _is_calver_tag("2026.02.1") is True
+
+
 class TestWindowsImageDetection:
     """Test suite for Windows image detection."""
 

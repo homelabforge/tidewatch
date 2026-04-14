@@ -1998,18 +1998,18 @@ export interface paths {
         };
         /**
          * List History
-         * @description List unified history (updates + restarts) with pagination.
+         * @description List unified history (updates + restarts + drift) with pagination.
          *
          *     Args:
-         *         container_id: Optional filter by container
-         *         status: Optional filter by status
-         *         start_date: Optional filter by start date
-         *         end_date: Optional filter by end date
+         *         container_id: Optional filter by container (drift excluded when set)
+         *         status: Optional filter by status. Use "detected" for drift-only.
+         *         start_date: Optional filter by start date (ISO format)
+         *         end_date: Optional filter by end date (ISO format)
          *         skip: Number of records to skip (default: 0)
          *         limit: Maximum number of records to return (default: 50, max: 500)
          *
          *     Returns:
-         *         List of unified history events (updates and restarts)
+         *         List of unified history events (updates, restarts, and drift)
          */
         get: operations["list_history_api_v1_history__get"];
         put?: never;
@@ -5114,6 +5114,8 @@ export interface components {
             dependency_name?: string | null;
             /** Dependency Type */
             dependency_type?: string | null;
+            /** Dominant Tag */
+            dominant_tag?: string | null;
             /** Duration Seconds */
             duration_seconds?: number | null;
             /** Error Message */
@@ -5130,6 +5132,10 @@ export interface components {
             health_check_passed?: boolean | null;
             /** Id */
             id: number;
+            /** Per Container Tags */
+            per_container_tags?: {
+                [key: string]: string;
+            } | null;
             /** Performed By */
             performed_by: string;
             /** Reason */
@@ -5138,6 +5144,10 @@ export interface components {
             reason_summary?: string | null;
             /** Reason Type */
             reason_type?: string | null;
+            /** Reconciled Names */
+            reconciled_names?: string[] | null;
+            /** Reconciliation Attempted */
+            reconciliation_attempted?: boolean | null;
             /**
              * Rollback Available
              * @default false
@@ -5145,6 +5155,10 @@ export interface components {
             rollback_available: boolean;
             /** Rolled Back At */
             rolled_back_at?: string | null;
+            /** Settings Divergent */
+            settings_divergent?: boolean | null;
+            /** Sibling Names */
+            sibling_names?: string[] | null;
             /** Started At */
             started_at?: string | null;
             /** Status */

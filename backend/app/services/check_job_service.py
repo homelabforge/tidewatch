@@ -496,6 +496,7 @@ class CheckJobService:
                             containers,
                             updated_container_ids,
                             global_include_prereleases,
+                            job_id=job_id,
                         )
                     except Exception as reconcile_error:
                         logger.error(f"Sibling reconciliation failed: {reconcile_error}")

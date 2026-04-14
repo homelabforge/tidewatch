@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { UnifiedHistoryEvent } from '../types';
 import { api } from '../services/api';
 import StatusBadge from '../components/StatusBadge';
-import { RefreshCw, History as HistoryIcon, RotateCcw, ArrowRight } from 'lucide-react';
+import { RefreshCw, History as HistoryIcon, RotateCcw, ArrowRight, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -214,6 +214,37 @@ export default function History() {
                                   {item.to_tag}
                                 </span>
                               </span>
+                            </div>
+                          ) : item.event_type === 'sibling_drift' ? (
+                            <div className="flex flex-col text-sm text-tide-text leading-tight min-w-0 gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <GitBranch size={14} className="text-amber-400 shrink-0" />
+                                <span className="font-medium truncate" title={item.container_name}>
+                                  {item.container_name}
+                                </span>
+                              </div>
+                              {item.per_container_tags && (
+                                <div className="text-xs text-tide-text-muted space-y-0.5 pl-5">
+                                  {Object.entries(item.per_container_tags).map(([name, tag]) => (
+                                    <div key={name} className="flex items-center gap-1 min-w-0">
+                                      <span className="truncate">{name}:</span>
+                                      <span className="font-mono text-tide-text">{tag}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 pl-5">
+                                {item.settings_divergent && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                    Settings differ
+                                  </span>
+                                )}
+                                {item.reconciled_names && item.reconciled_names.length > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                                    Reconciled: {item.reconciled_names.join(', ')}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             // Restart Event: Show trigger reason

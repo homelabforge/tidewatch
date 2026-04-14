@@ -9,6 +9,9 @@ export default function StatusBadge({ status, className = '', event_type }: Stat
     const normalizedStatus = status.toLowerCase();
     const normalizedEventType = eventType?.toLowerCase();
 
+    // Sibling drift
+    if (normalizedEventType === 'sibling_drift') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+
     // Dependency ignore/unignore statuses
     if (normalizedEventType === 'dependency_ignore') return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     if (normalizedEventType === 'dependency_unignore') return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
@@ -37,7 +40,8 @@ export default function StatusBadge({ status, className = '', event_type }: Stat
   const getStatusLabel = (status: string, eventType?: string) => {
     const normalizedEventType = eventType?.toLowerCase();
 
-    // Special labels for dependency ignore/unignore
+    // Special labels for event types
+    if (normalizedEventType === 'sibling_drift') return 'Drift Detected';
     if (normalizedEventType === 'dependency_ignore') return 'Ignored';
     if (normalizedEventType === 'dependency_unignore') return 'Unignored';
 

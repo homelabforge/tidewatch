@@ -28,6 +28,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.container import Container
+from app.models.sibling_drift_event import SiblingDriftEvent
 from app.services.check_run_context import CheckRunContext
 from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.settings_service import SettingsService
@@ -102,6 +104,7 @@ async def reconcile_siblings(
     all_containers: list[Container],
     updated_ids: set[int],
     global_prereleases: bool,
+    job_id: int = 0,
 ) -> list[SiblingDrift]:
     """Run the post-main-pass sibling drift detection + safety-net reconciliation.
 
@@ -116,6 +119,7 @@ async def reconcile_siblings(
             the main pass; reconciliation skips these.
         global_prereleases: Global include_prereleases default (used to
             resolve per-container None values).
+        job_id: Check job ID for correlating drift events with runs.
 
     Returns:
         A list of :class:`SiblingDrift` entries, one per sibling group that
@@ -175,72 +179,109 @@ async def reconcile_siblings(
         # across divergent-settings siblings would reuse latest_tag /
         # latest_major_tag that were computed for one signature, which is the
         # exact bug Codex flagged.
+        recon_attempted = False
+
         if not settings_homogeneous:
-            continue
-
-        representative = next(c for c in group if str(c.current_tag) == dominant_tag)  # type: ignore[attr-defined]
-        try:
-            tag_fetcher = TagFetcher(db, rate_limiter, run_context)
-            fetch_response = await tag_fetcher.fetch_tags_for_container(representative)
-        except Exception as exc:
-            logger.warning(
-                "Sibling reconciliation fetch failed for image %s: %s",
-                image,
-                exc,
-            )
-            continue
-
-        if fetch_response.error:
-            logger.warning(
-                "Sibling reconciliation skipped for image %s: %s",
-                image,
-                fetch_response.error,
-            )
-            continue
-
-        decision_maker = UpdateDecisionMaker()
-        decision = decision_maker.make_decision(
-            representative,
-            fetch_response,
-            _effective_prereleases(representative, global_prereleases),
-        )
-
-        if not decision.has_update:
-            continue
-
-        for sibling in group:
-            sibling_id: int = int(sibling.id)  # type: ignore[attr-defined]
-            sibling_name: str = str(sibling.name)  # type: ignore[attr-defined]
-
-            if sibling_id in updated_ids:
-                continue
-
-            # Drifted-tag siblings: the main pass would have computed a
-            # DIFFERENT decision for them (from_tag = their own current_tag,
-            # which differs from the representative's). Auto-creating an
-            # Update from the representative's decision would persist a
-            # wrong from_tag. This is the bug that started the incident.
-            if str(sibling.current_tag) != dominant_tag:  # type: ignore[attr-defined]
-                continue
-
+            pass  # Skip reconciliation; recon_attempted stays False
+        else:
+            representative = next(c for c in group if str(c.current_tag) == dominant_tag)  # type: ignore[attr-defined]
             try:
-                await UpdateChecker.apply_decision(db, sibling, decision, fetch_response)
-                await db.commit()
-                if drift is not None:
-                    drift.reconciled_names.append(sibling_name)
-                updated_ids.add(sibling_id)
-                logger.info(
-                    "Sibling reconciliation created Update for %s (%s -> %s)",
-                    sibling_name,
-                    sibling.current_tag,  # type: ignore[attr-defined]
-                    decision.latest_tag,
-                )
+                tag_fetcher = TagFetcher(db, rate_limiter, run_context)
+                fetch_response = await tag_fetcher.fetch_tags_for_container(representative)
             except Exception as exc:
-                logger.error(
-                    "Sibling reconciliation apply failed for %s: %s",
-                    sibling_name,
+                logger.warning(
+                    "Sibling reconciliation fetch failed for image %s: %s",
+                    image,
                     exc,
                 )
-                await db.rollback()
+                fetch_response = None
+
+            if fetch_response is not None and not fetch_response.error:
+                recon_attempted = True
+                decision_maker = UpdateDecisionMaker()
+                decision = decision_maker.make_decision(
+                    representative,
+                    fetch_response,
+                    _effective_prereleases(representative, global_prereleases),
+                )
+
+                if decision.has_update:
+                    for sibling in group:
+                        sibling_id: int = int(sibling.id)  # type: ignore[attr-defined]
+                        sibling_name: str = str(sibling.name)  # type: ignore[attr-defined]
+
+                        if sibling_id in updated_ids:
+                            continue
+
+                        # Drifted-tag siblings: the main pass would have computed a
+                        # DIFFERENT decision for them (from_tag = their own current_tag,
+                        # which differs from the representative's). Auto-creating an
+                        # Update from the representative's decision would persist a
+                        # wrong from_tag. This is the bug that started the incident.
+                        if str(sibling.current_tag) != dominant_tag:  # type: ignore[attr-defined]
+                            continue
+
+                        try:
+                            await UpdateChecker.apply_decision(
+                                db, sibling, decision, fetch_response
+                            )
+                            await db.commit()
+                            if drift is not None:
+                                drift.reconciled_names.append(sibling_name)
+                            updated_ids.add(sibling_id)
+                            logger.info(
+                                "Sibling reconciliation created Update for %s (%s -> %s)",
+                                sibling_name,
+                                sibling.current_tag,  # type: ignore[attr-defined]
+                                decision.latest_tag,
+                            )
+                        except Exception as exc:
+                            logger.error(
+                                "Sibling reconciliation apply failed for %s: %s",
+                                sibling_name,
+                                exc,
+                            )
+                            await db.rollback()
+            elif fetch_response is not None and fetch_response.error:
+                logger.warning(
+                    "Sibling reconciliation skipped for image %s: %s",
+                    image,
+                    fetch_response.error,
+                )
+
+        # Persist drift event with savepoint isolation — a failed insert
+        # rolls back only the savepoint and does not poison the session
+        # for subsequent groups.
+        if drift is not None:
+            try:
+                async with db.begin_nested():
+                    event = SiblingDriftEvent(
+                        compose_file=drift.compose_file,
+                        registry=drift.registry,
+                        image=drift.image,
+                        sibling_names=json.dumps(drift.sibling_names),
+                        dominant_tag=drift.dominant_tag,
+                        per_container_tags=json.dumps(drift.per_container_tags),
+                        settings_divergent=drift.settings_divergent,
+                        reconciliation_attempted=recon_attempted,
+                        reconciled_names=(
+                            json.dumps(drift.reconciled_names) if drift.reconciled_names else None
+                        ),
+                        job_id=job_id,
+                    )
+                    db.add(event)
+                    await db.flush()
+                logger.debug(
+                    "Persisted drift event for image %s (job_id=%d, recon_attempted=%s)",
+                    drift.image,
+                    job_id,
+                    recon_attempted,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to persist drift event for %s",
+                    drift.image,
+                    exc_info=True,
+                )
 
     return drifts

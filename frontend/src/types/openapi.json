@@ -3529,6 +3529,17 @@
             ],
             "title": "Dependency Type"
           },
+          "dominant_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dominant Tag"
+          },
           "duration_seconds": {
             "anyOf": [
               {
@@ -3603,6 +3614,20 @@
             "title": "Id",
             "type": "integer"
           },
+          "per_container_tags": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Container Tags"
+          },
           "performed_by": {
             "title": "Performed By",
             "type": "string"
@@ -3640,6 +3665,31 @@
             ],
             "title": "Reason Type"
           },
+          "reconciled_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciled Names"
+          },
+          "reconciliation_attempted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Attempted"
+          },
           "rollback_available": {
             "default": false,
             "title": "Rollback Available",
@@ -3656,6 +3706,31 @@
               }
             ],
             "title": "Rolled Back At"
+          },
+          "settings_divergent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settings Divergent"
+          },
+          "sibling_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sibling Names"
           },
           "started_at": {
             "anyOf": [
@@ -9067,7 +9142,7 @@
     },
     "/api/v1/history/": {
       "get": {
-        "description": "List unified history (updates + restarts) with pagination.\n\nArgs:\n    container_id: Optional filter by container\n    status: Optional filter by status\n    start_date: Optional filter by start date\n    end_date: Optional filter by end date\n    skip: Number of records to skip (default: 0)\n    limit: Maximum number of records to return (default: 50, max: 500)\n\nReturns:\n    List of unified history events (updates and restarts)",
+        "description": "List unified history (updates + restarts + drift) with pagination.\n\nArgs:\n    container_id: Optional filter by container (drift excluded when set)\n    status: Optional filter by status. Use \"detected\" for drift-only.\n    start_date: Optional filter by start date (ISO format)\n    end_date: Optional filter by end date (ISO format)\n    skip: Number of records to skip (default: 0)\n    limit: Maximum number of records to return (default: 50, max: 500)\n\nReturns:\n    List of unified history events (updates, restarts, and drift)",
         "operationId": "list_history_api_v1_history__get",
         "parameters": [
           {
