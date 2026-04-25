@@ -29,6 +29,8 @@ query-filters:
   - exclude:
       id: py/clear-text-logging-sensitive-data
 
-# Register model extensions to recognize our sanitizer functions as barriers
-model-extensions:
-  - .github/codeql/sanitizers.yml
+# Sanitizer barriers in homelabforge/tidewatch-models/sanitizers.yml
+# handle remaining false positives. The pack is registered via
+# --additional-packs and --extension-packs in the workflow's
+# CODEQL_ACTION_EXTRA_OPTIONS env var (the codeql-action packs: key
+# only accepts published packs, not local paths).
