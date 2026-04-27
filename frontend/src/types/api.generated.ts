@@ -11,11 +11,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Serve Index
-         * @description Serve frontend index.html at root.
-         */
-        get: operations["serve_index__get"];
+        /** Root */
+        get: operations["root__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5605,7 +5602,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    serve_index__get: {
+    root__get: {
         parameters: {
             query?: never;
             header?: never;
