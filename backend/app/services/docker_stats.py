@@ -18,6 +18,145 @@ class DockerStatsService:
     """Service for getting Docker container metrics."""
 
     @staticmethod
+    async def list_running_container_names() -> set[str] | None:
+        """Return the set of currently-running container names (host docker view).
+
+        One subprocess call (~10ms) — used by metrics_collector to pre-filter
+        before the batched ``docker stats`` call (which aborts the entire
+        batch if any name is unknown).
+
+        Returns:
+            Set of container names, or None on error.
+        """
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "docker",
+                "ps",
+                "--format",
+                "{{.Names}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
+            if process.returncode != 0:
+                logger.warning(
+                    "docker ps failed: %s",
+                    stderr.decode("utf-8", errors="replace").strip(),
+                )
+                return None
+            names = {
+                line.strip()
+                for line in stdout.decode("utf-8", errors="replace").splitlines()
+                if line.strip()
+            }
+            return names
+        except TimeoutError:
+            logger.warning("Timeout listing running containers")
+            return None
+        except (OSError, PermissionError) as e:
+            logger.warning("Process error listing running containers: %s", e)
+            return None
+
+    @staticmethod
+    async def get_batched_stats(container_names: list[str]) -> dict[str, dict]:
+        """Get stats for many containers in ONE ``docker stats`` subprocess.
+
+        Massively faster than per-container calls — 42 containers in ~2s vs
+        ~22s with 4-way concurrency. The trade-off: ``docker stats`` aborts
+        the whole batch if ANY name is missing/stopped, so callers MUST
+        pre-filter using :meth:`list_running_container_names`.
+
+        Args:
+            container_names: Names of currently-running containers. Must be
+                a non-empty list of names that exist; otherwise the entire
+                call fails and an empty dict is returned.
+
+        Returns:
+            Dict mapping container name → parsed stats dict. Containers that
+            failed to parse are simply omitted. Empty dict on subprocess
+            failure (with a warning logged).
+        """
+        if not container_names:
+            return {}
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "docker",
+                "stats",
+                *container_names,
+                "--no-stream",
+                "--format",
+                "{{json .}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=_DOCKER_ENV,
+            )
+            # Each container needs ~2s of sample window; allow generous timeout
+            # for very large batches but not unbounded.
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60.0)
+            if process.returncode != 0:
+                logger.warning(
+                    "Batched docker stats failed (the batch aborted — typically a "
+                    "container in the list disappeared between ps and stats): %s",
+                    stderr.decode("utf-8", errors="replace").strip(),
+                )
+                return {}
+            out: dict[str, dict] = {}
+            for line in stdout.decode("utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw = json.loads(line)
+                except json.JSONDecodeError as e:
+                    logger.warning("Skipping unparseable stats line: %s — %r", e, line)
+                    continue
+                name = raw.get("Name") or raw.get("Container")
+                if not name:
+                    continue
+                mem_usage_str = raw.get("MemUsage", "0B / 0B")
+                net_io_str = raw.get("NetIO", "0B / 0B")
+                block_io_str = raw.get("BlockIO", "0B / 0B")
+                try:
+                    out[name] = {
+                        "cpu_percent": DockerStatsService._parse_percent(raw.get("CPUPerc", "0%")),
+                        "memory_usage": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_memory_usage(mem_usage_str)
+                        ),
+                        "memory_percent": DockerStatsService._parse_percent(
+                            raw.get("MemPerc", "0%")
+                        ),
+                        "memory_limit": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_memory_limit(mem_usage_str)
+                        ),
+                        "network_rx": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_network_rx(net_io_str)
+                        ),
+                        "network_tx": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_network_tx(net_io_str)
+                        ),
+                        "block_read": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_block_read(block_io_str)
+                        ),
+                        "block_write": DockerStatsService._parse_bytes(
+                            DockerStatsService._extract_block_write(block_io_str)
+                        ),
+                        "pids": int(raw.get("PIDs", "0") or 0),
+                    }
+                except (ValueError, KeyError, AttributeError) as e:
+                    logger.warning("Invalid stats data for %s: %s", name, e)
+                    continue
+            return out
+        except TimeoutError:
+            logger.warning(
+                "Timeout running batched docker stats for %d containers", len(container_names)
+            )
+            return {}
+        except (OSError, PermissionError) as e:
+            logger.warning("Process error running batched docker stats: %s", e)
+            return {}
+
+    @staticmethod
     async def get_container_stats(container_name: str) -> dict | None:
         """Get real-time stats for a container.
 

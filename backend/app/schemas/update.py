@@ -53,6 +53,12 @@ class UpdateSchema(BaseModel):
     anomaly_held: bool = False
     expected_digest: str | None = None
 
+    # Self-managed infrastructure carve-out — populated by
+    # app.services.update_serializer.enrich_updates. Cannot be derived from
+    # the Update row alone (needs a Container join).
+    self_managed: bool = False
+    manual_update_instructions: str | None = None
+
     model_config = {"from_attributes": True}
 
     @field_validator("decision_trace", mode="before")

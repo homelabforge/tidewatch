@@ -4406,6 +4406,17 @@
             ],
             "title": "Last Error"
           },
+          "manual_update_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Update Instructions"
+          },
           "max_retries": {
             "default": 3,
             "title": "Max Retries",
@@ -4512,6 +4523,11 @@
             "default": 0,
             "title": "Scope Violation",
             "type": "integer"
+          },
+          "self_managed": {
+            "default": false,
+            "title": "Self Managed",
+            "type": "boolean"
           },
           "snoozed_until": {
             "anyOf": [
@@ -5019,7 +5035,8 @@
   "paths": {
     "/": {
       "get": {
-        "operationId": "root__get",
+        "description": "Serve frontend index.html at root.",
+        "operationId": "serve_index__get",
         "responses": {
           "200": {
             "content": {
@@ -5030,7 +5047,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Root"
+        "summary": "Serve Index"
       }
     },
     "/api/v1/analytics/summary": {

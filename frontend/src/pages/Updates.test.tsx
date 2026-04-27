@@ -4,27 +4,51 @@ import Updates from './Updates'
 import { api } from '../services/api'
 
 // Mock the API
-vi.mock('../services/api', () => ({
-  api: {
-    updates: {
-      getAll: vi.fn(),
-      get: vi.fn(),
-      approve: vi.fn(),
-      reject: vi.fn(),
-      apply: vi.fn(),
-      snooze: vi.fn(),
-      removeContainer: vi.fn(),
-      cancelRetry: vi.fn(),
-      delete: vi.fn(),
-      checkAll: vi.fn(),
-      getCheckJob: vi.fn(),
-      cancelCheckJob: vi.fn(),
+vi.mock('../services/api', () => {
+  // Updates page does `error instanceof ApiError` checks for the self-managed
+  // carve-out, so the mock must export a real class.
+  class ApiError extends Error {
+    constructor(public status: number, public detail: unknown, public rawBody: string) {
+      super(typeof detail === 'object' && detail !== null && 'message' in detail
+        ? String((detail as { message: unknown }).message)
+        : `HTTP ${status}`);
+      this.name = 'ApiError';
+    }
+    get isSelfManaged(): boolean {
+      return typeof this.detail === 'object'
+        && this.detail !== null
+        && 'error' in this.detail
+        && (this.detail as { error: string }).error === 'self_managed_infrastructure';
+    }
+    get manualInstructions(): string | null {
+      if (!this.isSelfManaged) return null;
+      const d = this.detail as { manual_update_instructions?: string };
+      return d.manual_update_instructions ?? null;
+    }
+  }
+  return {
+    ApiError,
+    api: {
+      updates: {
+        getAll: vi.fn(),
+        get: vi.fn(),
+        approve: vi.fn(),
+        reject: vi.fn(),
+        apply: vi.fn(),
+        snooze: vi.fn(),
+        removeContainer: vi.fn(),
+        cancelRetry: vi.fn(),
+        delete: vi.fn(),
+        checkAll: vi.fn(),
+        getCheckJob: vi.fn(),
+        cancelCheckJob: vi.fn(),
+      },
+      containers: {
+        getAll: vi.fn(),
+      },
     },
-    containers: {
-      getAll: vi.fn(),
-    },
-  },
-}))
+  };
+})
 
 // Mock toast
 vi.mock('sonner', () => ({

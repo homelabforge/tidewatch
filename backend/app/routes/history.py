@@ -15,6 +15,7 @@ from app.models.restart_log import ContainerRestartLog
 from app.models.sibling_drift_event import SiblingDriftEvent
 from app.schemas.history import UnifiedHistoryEventSchema, UpdateHistorySchema
 from app.services.auth import require_auth
+from app.services.protected_infra import SelfManagedInfraError
 from app.services.update_engine import UpdateEngine
 from app.utils.security import sanitize_log_message
 
@@ -402,6 +403,23 @@ async def rollback_update(
             "message": "Rollback completed successfully",
         }
 
+    except SelfManagedInfraError as e:
+        # Self-managed infrastructure carve-out — surface manual instructions.
+        # 409 Conflict: the rollback target exists but cannot be performed
+        # by TideWatch policy.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "self_managed_infrastructure",
+                "message": str(e),
+                "container": e.container_name,
+                "operation": e.operation,
+                "target_tag": e.target_tag,
+                "compose_file": e.compose_file,
+                "service_name": e.service_name,
+                "manual_update_instructions": e.manual_update_instructions,
+            },
+        )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid request")
     except OperationalError as e:

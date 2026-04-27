@@ -51,6 +51,8 @@ export const mockUpdate = {
   change_type: 'minor' as const,
   anomaly_score: 0,
   anomaly_held: false,
+  self_managed: false,
+  manual_update_instructions: null,
 }
 
 export const mockUpdates = [

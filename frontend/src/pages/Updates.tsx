@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Update, Container } from '../types';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
 import CheckProgressBar from '../components/CheckProgressBar';
 import { useCheckJob } from '../hooks/useCheckJob';
@@ -58,6 +58,15 @@ export default function Updates() {
       toast.success('Update approved');
       loadUpdates();
     } catch (error) {
+      // Self-managed infrastructure: surface the manual instructions.
+      if (error instanceof ApiError && error.isSelfManaged) {
+        toast.error('Self-managed infrastructure', {
+          description: error.manualInstructions ?? 'Apply manually via dcp.',
+          duration: 20000,
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Failed to approve update';
 
       // Check for concurrent modification errors
@@ -147,6 +156,16 @@ export default function Updates() {
       toast.success('Update applied successfully');
       loadUpdates();
     } catch (error: unknown) {
+      // Self-managed infrastructure: surface the manual instructions in a
+      // longer-lived toast so the user can copy them.
+      if (error instanceof ApiError && error.isSelfManaged) {
+        toast.error('Self-managed infrastructure', {
+          description: error.manualInstructions ?? 'Apply manually via dcp.',
+          duration: 20000,
+        });
+        return;
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Failed to apply update';
 
       // Enhanced error handling for race conditions

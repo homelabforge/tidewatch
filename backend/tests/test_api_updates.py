@@ -1380,3 +1380,169 @@ class TestBatchOperations:
         # Test batch reject without auth
         response = await client.post("/api/v1/updates/batch/reject", json={"update_ids": [1, 2]})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestSelfManagedRouteHandlers:
+    """Test that update routes return HTTP 409 with structured detail for self-managed infrastructure.
+
+    The engine raises SelfManagedInfraError; the route must catch it and map to
+    409 with a body the frontend can parse via ApiError.isSelfManaged.
+    """
+
+    async def _seed_proxy_update(self, db, make_container, make_update, status_value="approved"):
+        container = make_container(
+            name="socket-proxy-rw",
+            service_name="socket-proxy-rw",
+            image="lscr.io/linuxserver/socket-proxy",
+            current_tag="3.2.15",
+            compose_file="/compose/proxies.yml",
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        update = make_update(
+            container_id=container.id,
+            container_name=container.name,
+            from_tag="3.2.15",
+            to_tag="3.2.16",
+            status=status_value,
+        )
+        db.add(update)
+        await db.commit()
+        await db.refresh(update)
+        return container, update
+
+    async def test_apply_returns_409_for_self_managed(
+        self, authenticated_client, db, make_container, make_update
+    ):
+        """POST /updates/{id}/apply for socket-proxy returns 409 with manual instructions."""
+        _, update = await self._seed_proxy_update(db, make_container, make_update)
+
+        response = await authenticated_client.post(f"/api/v1/updates/{update.id}/apply")
+
+        assert response.status_code == status.HTTP_409_CONFLICT, response.text
+        detail = response.json()["detail"]
+        assert detail["error"] == "self_managed_infrastructure"
+        assert detail["container"] == "socket-proxy-rw"
+        assert detail["operation"] == "apply"
+        assert detail["target_tag"] == "3.2.16"
+        assert detail["compose_file"] == "/compose/proxies.yml"
+        assert detail["service_name"] == "socket-proxy-rw"
+        assert "3.2.16" in detail["manual_update_instructions"]
+        assert "Edit compose file" in detail["manual_update_instructions"]
+
+    async def test_approve_returns_409_for_self_managed(
+        self, authenticated_client, db, make_container, make_update
+    ):
+        """POST /updates/{id}/approve for socket-proxy returns 409 (not 200/400/500)."""
+        _, update = await self._seed_proxy_update(
+            db, make_container, make_update, status_value="pending"
+        )
+
+        response = await authenticated_client.post(
+            f"/api/v1/updates/{update.id}/approve",
+            json={"approved": True, "approved_by": "user"},
+        )
+
+        assert response.status_code == status.HTTP_409_CONFLICT, response.text
+        detail = response.json()["detail"]
+        assert detail["error"] == "self_managed_infrastructure"
+        assert detail["operation"] == "approve"
+        assert "3.2.16" in detail["manual_update_instructions"]
+
+    async def test_approve_does_not_flip_status_for_self_managed(
+        self, authenticated_client, db, make_container, make_update
+    ):
+        """Verify the rejected approve attempt did NOT mutate the update row."""
+        _, update = await self._seed_proxy_update(
+            db, make_container, make_update, status_value="pending"
+        )
+
+        await authenticated_client.post(
+            f"/api/v1/updates/{update.id}/approve",
+            json={"approved": True, "approved_by": "user"},
+        )
+
+        # Re-fetch and check status is still pending
+        await db.refresh(update)
+        assert update.status == "pending"
+
+    async def test_batch_approve_partially_skips_self_managed(
+        self, authenticated_client, db, make_container, make_update
+    ):
+        """Batch approve with mixed proxy + normal containers preserves shape AND skips proxy."""
+        _, proxy_update = await self._seed_proxy_update(
+            db, make_container, make_update, status_value="pending"
+        )
+
+        normal = make_container(name="nginx-app", service_name="nginx-app", current_tag="1.0")
+        db.add(normal)
+        await db.commit()
+        await db.refresh(normal)
+
+        normal_update = make_update(
+            container_id=normal.id,
+            container_name=normal.name,
+            from_tag="1.0",
+            to_tag="1.1",
+            status="pending",
+        )
+        db.add(normal_update)
+        await db.commit()
+        await db.refresh(normal_update)
+
+        response = await authenticated_client.post(
+            "/api/v1/updates/batch/approve",
+            json={"update_ids": [proxy_update.id, normal_update.id]},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        # Existing contract preserved
+        assert "approved" in data and "failed" in data and "summary" in data
+        assert data["summary"]["total"] == 2
+        # New additive fields
+        assert "skipped_self_managed" in data
+        assert data["summary"]["skipped_self_managed_count"] == 1
+        # Normal update was approved
+        approved_ids = [a["id"] for a in data["approved"]]
+        assert normal_update.id in approved_ids
+        assert proxy_update.id not in approved_ids
+        # Proxy update appears in skipped_self_managed with manual instructions
+        skipped = data["skipped_self_managed"]
+        assert len(skipped) == 1
+        assert skipped[0]["id"] == proxy_update.id
+        assert skipped[0]["container_name"] == "socket-proxy-rw"
+        assert "3.2.16" in skipped[0]["manual_update_instructions"]
+
+    async def test_list_updates_includes_self_managed_fields(
+        self, authenticated_client, db, make_container, make_update
+    ):
+        """GET /updates includes self_managed=True for socket-proxy and False for normal."""
+        await self._seed_proxy_update(db, make_container, make_update)
+
+        normal = make_container(name="nginx-app", service_name="nginx-app")
+        db.add(normal)
+        await db.commit()
+        await db.refresh(normal)
+
+        normal_update = make_update(
+            container_id=normal.id,
+            container_name=normal.name,
+            from_tag="1.0",
+            to_tag="1.1",
+            status="pending",
+        )
+        db.add(normal_update)
+        await db.commit()
+
+        response = await authenticated_client.get("/api/v1/updates")
+        assert response.status_code == status.HTTP_200_OK
+
+        items = response.json()
+        by_container = {u["container_name"]: u for u in items}
+        assert by_container["socket-proxy-rw"]["self_managed"] is True
+        assert "3.2.16" in by_container["socket-proxy-rw"]["manual_update_instructions"]
+        assert by_container["nginx-app"]["self_managed"] is False
+        assert by_container["nginx-app"]["manual_update_instructions"] is None

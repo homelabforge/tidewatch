@@ -758,6 +758,18 @@ class UpdateChecker:
             container, update, auto_update_enabled
         )
 
+        # Self-managed infrastructure carve-out: never auto-approve. Apply path
+        # would be blocked anyway, but skipping approval here avoids the
+        # "approved forever, never applied" dangling state.
+        from app.services.protected_infra import is_self_managed_infrastructure
+
+        if should_approve and is_self_managed_infrastructure(container):
+            logger.info(
+                "Skipping auto-approve for %s: self-managed infrastructure (manual update required)",
+                container.name,
+            )
+            should_approve = False
+
         if should_approve:
             logger.info(f"Auto-approving update for {container.name}: {approval_reason}")
             update.status = "approved"
@@ -765,8 +777,23 @@ class UpdateChecker:
             update.approved_at = datetime.now(UTC)
 
         from app.services.notifications.dispatcher import NotificationDispatcher
+        from app.services.protected_infra import SelfManagedInfraError
 
         dispatcher = NotificationDispatcher(db)
+
+        # Self-managed: include the manual command in the notification body so
+        # the user knows what to run without opening the UI.
+        manual_instructions: str | None = None
+        if is_self_managed_infrastructure(container):
+            manual_instructions = SelfManagedInfraError(
+                container.name,
+                operation="apply",
+                target_tag=update.to_tag,
+                compose_file=container.compose_file,
+                compose_project=container.compose_project,
+                service_name=container.service_name,
+            ).manual_update_instructions
+
         if update.reason_type == "security" and update.cves_fixed:
             await dispatcher.notify_security_update(
                 container.name,
@@ -774,6 +801,7 @@ class UpdateChecker:
                 update.to_tag,
                 update.cves_fixed,
                 update.vuln_delta or 0,
+                manual_update_instructions=manual_instructions,
             )
         else:
             await dispatcher.notify_update_available(
@@ -781,6 +809,7 @@ class UpdateChecker:
                 update.from_tag,
                 update.to_tag,
                 update.reason_summary or "New version available",
+                manual_update_instructions=manual_instructions,
             )
 
     @staticmethod

@@ -30,6 +30,8 @@ describe('UpdateCard', () => {
     last_error: null,
     backoff_multiplier: 3,
     snoozed_until: null,
+    self_managed: false,
+    manual_update_instructions: null,
   }
 
   describe('Basic rendering', () => {

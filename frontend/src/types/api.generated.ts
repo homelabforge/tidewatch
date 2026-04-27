@@ -11,8 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Root */
-        get: operations["root__get"];
+        /**
+         * Serve Index
+         * @description Serve frontend index.html at root.
+         */
+        get: operations["serve_index__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5380,6 +5383,8 @@ export interface components {
             image_size_delta: number;
             /** Last Error */
             last_error?: string | null;
+            /** Manual Update Instructions */
+            manual_update_instructions?: string | null;
             /**
              * Max Retries
              * @default 3
@@ -5415,6 +5420,11 @@ export interface components {
              * @default 0
              */
             scope_violation: number;
+            /**
+             * Self Managed
+             * @default false
+             */
+            self_managed: boolean;
             /** Snoozed Until */
             snoozed_until?: string | null;
             /** Status */
@@ -5595,7 +5605,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    root__get: {
+    serve_index__get: {
         parameters: {
             query?: never;
             header?: never;

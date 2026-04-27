@@ -22,9 +22,14 @@ from app.schemas.check_job import (
 from app.schemas.update import UpdateApply, UpdateApproval, UpdateSchema
 from app.services.auth import require_auth
 from app.services.check_job_service import CheckJobService
+from app.services.protected_infra import (
+    SelfManagedInfraError,
+    is_self_managed_infrastructure,
+)
 from app.services.scheduler import scheduler_service
 from app.services.update_checker import UpdateChecker
 from app.services.update_engine import UpdateEngine
+from app.services.update_serializer import enrich_update, enrich_updates
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -68,31 +73,34 @@ async def list_updates(
 
     result = await db.execute(query)
     updates = result.scalars().all()
-    return list(updates)
+    return await enrich_updates(db, list(updates))
 
 
 @router.get("/pending", response_model=list[UpdateSchema])
 async def get_pending_updates(
     _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[Update]:
+) -> list[UpdateSchema]:
     """Get all pending updates."""
-    return await UpdateChecker.get_pending_updates(db)
+    updates = await UpdateChecker.get_pending_updates(db)
+    return await enrich_updates(db, list(updates))
 
 
 @router.get("/auto-approvable", response_model=list[UpdateSchema])
 async def get_auto_approvable_updates(
     _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[Update]:
+) -> list[UpdateSchema]:
     """Get updates that can be auto-approved."""
-    return await UpdateChecker.get_auto_approvable_updates(db)
+    updates = await UpdateChecker.get_auto_approvable_updates(db)
+    return await enrich_updates(db, list(updates))
 
 
 @router.get("/security", response_model=list[UpdateSchema])
 async def get_security_updates(
     _admin: dict | None = Depends(require_auth), db: AsyncSession = Depends(get_db)
-) -> list[Update]:
+) -> list[UpdateSchema]:
     """Get security-related updates."""
-    return await UpdateChecker.get_security_updates(db)
+    updates = await UpdateChecker.get_security_updates(db)
+    return await enrich_updates(db, list(updates))
 
 
 @router.post("/check", response_model=CheckJobStartResponse)
@@ -263,7 +271,7 @@ async def check_container_update(
         return {
             "success": True,
             "update_available": True,
-            "update": UpdateSchema.model_validate(update),
+            "update": await enrich_update(db, update),
         }
     else:
         return {
@@ -397,7 +405,7 @@ async def get_update(
     if not update:
         raise HTTPException(status_code=404, detail="Update not found")
 
-    return update
+    return await enrich_update(db, update)
 
 
 @router.post("/{update_id}/approve")
@@ -423,6 +431,37 @@ async def approve_update(
 
         if not update:
             raise HTTPException(status_code=404, detail="Update not found")
+
+        # Self-managed infrastructure carve-out — block approval to avoid
+        # the "approved forever, never applied" dangling state.
+        container_result = await db.execute(
+            select(Container).where(Container.id == update.container_id)
+        )
+        container = container_result.scalar_one_or_none()
+        if container and is_self_managed_infrastructure(container):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "self_managed_infrastructure",
+                    "message": (
+                        f"{container.name} is self-managed infrastructure. "
+                        f"Approve+apply is blocked; update manually."
+                    ),
+                    "container": container.name,
+                    "operation": "approve",
+                    "target_tag": update.to_tag,
+                    "compose_file": container.compose_file,
+                    "service_name": container.service_name,
+                    "manual_update_instructions": SelfManagedInfraError(
+                        container.name,
+                        operation="approve",
+                        target_tag=update.to_tag,
+                        compose_file=container.compose_file,
+                        compose_project=container.compose_project,
+                        service_name=container.service_name,
+                    ).manual_update_instructions,
+                },
+            )
 
         # Idempotency check - already approved is OK
         if update.status == "approved":
@@ -489,6 +528,23 @@ async def apply_update(
             "history_id": result.get("history_id"),
         }
 
+    except SelfManagedInfraError as e:
+        # Self-managed infrastructure carve-out — surface manual instructions
+        # to the user. 409 Conflict: the update exists but cannot be applied
+        # by TideWatch policy.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "self_managed_infrastructure",
+                "message": str(e),
+                "container": e.container_name,
+                "operation": e.operation,
+                "target_tag": e.target_tag,
+                "compose_file": e.compose_file,
+                "service_name": e.service_name,
+                "manual_update_instructions": e.manual_update_instructions,
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OperationalError as e:
@@ -584,7 +640,7 @@ async def cancel_retry(
     await db.commit()
     await db.refresh(update)
 
-    return update
+    return await enrich_update(db, update)
 
 
 @router.delete("/{update_id}")

@@ -92,6 +92,15 @@ class SettingsService:
             "category": "scheduling",
             "description": "Enable container deduplication (check shared images once)",
         },
+        "metrics_concurrency": {
+            "value": "4",
+            "category": "scheduling",
+            "description": (
+                "Maximum concurrent docker stats calls during metrics collection (1-16). "
+                "Lower = gentler on the docker socket proxy; higher = faster collection. "
+                "Tune down if you see 'database is locked' or socket-proxy connection errors."
+            ),
+        },
         # Update reliability
         "update_retry_max_attempts": {
             "value": "3",

@@ -183,6 +183,8 @@ describe('Dashboard', () => {
       change_type: 'patch',
       anomaly_score: 0,
       anomaly_held: false,
+      self_managed: false,
+      manual_update_instructions: null,
     },
   ]
 

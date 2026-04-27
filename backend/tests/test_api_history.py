@@ -586,6 +586,51 @@ class TestRollbackEndpoint:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
+class TestRollbackSelfManagedRouteHandler:
+    """POST /api/v1/history/{id}/rollback for self-managed infrastructure must
+    return HTTP 409 with the manual instructions in the detail body — NOT a
+    generic 500 — so the frontend can show the correct rollback command."""
+
+    async def test_rollback_returns_409_for_self_managed(
+        self, authenticated_client, db, make_container
+    ):
+        from app.models.history import UpdateHistory
+
+        container = make_container(
+            name="socket-proxy-rw",
+            service_name="socket-proxy-rw",
+            image="lscr.io/linuxserver/socket-proxy",
+            current_tag="3.2.16",  # Currently on the new tag
+            compose_file="/compose/proxies.yml",
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        history = UpdateHistory(
+            container_id=container.id,
+            container_name=container.name,
+            from_tag="3.2.15",  # Roll back TO this
+            to_tag="3.2.16",
+            status="success",
+        )
+        db.add(history)
+        await db.commit()
+        await db.refresh(history)
+
+        response = await authenticated_client.post(f"/api/v1/history/{history.id}/rollback")
+
+        assert response.status_code == status.HTTP_409_CONFLICT, response.text
+        detail = response.json()["detail"]
+        assert detail["error"] == "self_managed_infrastructure"
+        assert detail["container"] == "socket-proxy-rw"
+        assert detail["operation"] == "rollback"
+        # target_tag for rollback is the from_tag (the version we'd restore to)
+        assert detail["target_tag"] == "3.2.15"
+        assert detail["compose_file"] == "/compose/proxies.yml"
+        assert "3.2.15" in detail["manual_update_instructions"]
+
+
 class TestHistoryStatsEndpoint:
     """Test suite for GET /api/v1/history/stats endpoint."""
 

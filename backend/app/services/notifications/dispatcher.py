@@ -281,12 +281,24 @@ class NotificationDispatcher:
         from_tag: str,
         to_tag: str,
         reason: str,
+        manual_update_instructions: str | None = None,
     ) -> dict[str, bool]:
-        """Send notification about available update."""
+        """Send notification about available update.
+
+        Args:
+            manual_update_instructions: If set, this update is self-managed
+                infrastructure that TideWatch cannot auto-apply. The
+                instructions get appended to the body.
+        """
+        title = f"Update Available: {container_name}"
+        message = f"{container_name}: {from_tag} → {to_tag}\n\n{reason}"
+        if manual_update_instructions:
+            title = f"Manual Update Required: {container_name}"
+            message += f"\n\n⚠ Self-managed — apply manually:\n{manual_update_instructions}"
         return await self.dispatch(
             event_type="update_available",
-            title=f"Update Available: {container_name}",
-            message=f"{container_name}: {from_tag} → {to_tag}\n\n{reason}",
+            title=title,
+            message=message,
         )
 
     async def notify_security_update(
@@ -296,8 +308,15 @@ class NotificationDispatcher:
         to_tag: str,
         cves_fixed: list[str],
         vuln_delta: int,
+        manual_update_instructions: str | None = None,
     ) -> dict[str, bool]:
-        """Send notification about security update."""
+        """Send notification about security update.
+
+        Args:
+            manual_update_instructions: If set, this update is self-managed
+                infrastructure that TideWatch cannot auto-apply. The
+                instructions get appended to the body.
+        """
         cve_list = ", ".join(cves_fixed[:5])
         if len(cves_fixed) > 5:
             cve_list += f" +{len(cves_fixed) - 5} more"
@@ -306,9 +325,14 @@ class NotificationDispatcher:
         message += f"Fixes {len(cves_fixed)} CVE(s): {cve_list}\n"
         message += f"Vulnerability delta: {vuln_delta}"
 
+        title = f"Security Update: {container_name}"
+        if manual_update_instructions:
+            title = f"Manual Security Update Required: {container_name}"
+            message += f"\n\n⚠ Self-managed — apply manually:\n{manual_update_instructions}"
+
         return await self.dispatch(
             event_type="update_available",
-            title=f"Security Update: {container_name}",
+            title=title,
             message=message,
             priority="high",
             tags=["shield", "rotating_light"],

@@ -50,6 +50,46 @@ const API_BASE = '/api/v1';
 // Store CSRF token in memory (captured from response headers)
 let csrfToken: string | null = null;
 
+// Structured error for non-OK API responses. Replaces the previous pattern
+// of throwing `new Error(response.text())`, which left callers stringifying
+// JSON to extract structured fields like the self-managed infrastructure
+// manual instructions.
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public detail: unknown,
+    public rawBody: string,
+  ) {
+    const detailObj =
+      typeof detail === 'object' && detail !== null
+        ? (detail as Record<string, unknown>)
+        : null;
+    const msg =
+      (detailObj && typeof detailObj.message === 'string' && detailObj.message) ||
+      (typeof detail === 'string' ? detail : null) ||
+      `HTTP ${status}`;
+    super(msg);
+    this.name = 'ApiError';
+  }
+
+  /** True if this is a 409 from the self-managed infrastructure carve-out. */
+  get isSelfManaged(): boolean {
+    return (
+      typeof this.detail === 'object' &&
+      this.detail !== null &&
+      'error' in this.detail &&
+      (this.detail as { error: string }).error === 'self_managed_infrastructure'
+    );
+  }
+
+  /** Multi-line manual update instructions, only set for self-managed errors. */
+  get manualInstructions(): string | null {
+    if (!this.isSelfManaged) return null;
+    const d = this.detail as { manual_update_instructions?: string };
+    return d.manual_update_instructions ?? null;
+  }
+}
+
 // Helper function to get CSRF token
 function getCsrfToken(): string | null {
   return csrfToken;
@@ -100,31 +140,33 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   updateCsrfToken(response);
 
   if (!response.ok) {
-    // Handle 404 on auth endpoints - silently fail to allow auth-disabled mode
-    if (response.status === 404 && endpoint.startsWith('/auth/')) {
-      const error = await response.text();
-      throw new Error(error || `API call failed: ${response.statusText}`);
+    const rawBody = await response.text();
+    let detail: unknown = rawBody;
+    try {
+      const parsed = JSON.parse(rawBody);
+      // FastAPI envelopes errors as {"detail": ...} — unwrap if present
+      detail = parsed && typeof parsed === 'object' && 'detail' in parsed
+        ? (parsed as { detail: unknown }).detail
+        : parsed;
+    } catch {
+      // Not JSON — keep rawBody as detail
     }
 
-    // Handle 401 Unauthorized - session expired
+    // Handle 401 Unauthorized - session expired (side-effect, then throw)
     if (response.status === 401) {
-      // Check if user was previously authenticated
       const wasAuthenticated = sessionStorage.getItem('wasAuthenticated') === 'true';
-
       if (wasAuthenticated) {
         // Import toast dynamically to avoid circular dependency
         import('sonner').then(({ toast }) => {
           toast.error('Your session has expired. Please log in again.');
         });
       }
-
       // Signal auth context via sessionStorage (triggers across tabs)
       sessionStorage.setItem('auth:401', Date.now().toString());
       sessionStorage.removeItem('wasAuthenticated');
     }
 
-    const error = await response.text();
-    throw new Error(error || `API call failed: ${response.statusText}`);
+    throw new ApiError(response.status, detail, rawBody);
   }
 
   return response.json();

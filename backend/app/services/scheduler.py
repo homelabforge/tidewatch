@@ -459,16 +459,19 @@ class SchedulerService:
         start_time = datetime.now()
 
         try:
-            async with AsyncSessionLocal() as db:
-                from app.services.metrics_collector import metrics_collector
+            from app.services.metrics_collector import metrics_collector
 
-                stats = await metrics_collector.collect_all_metrics(db)
+            # Collector now manages its own short-lived sessions per phase
+            # (read containers → fetch docker stats concurrently → bulk insert)
+            # so the DB connection isn't held across the slow per-container
+            # docker calls.
+            stats = await metrics_collector.collect_all_metrics()
 
-                duration = (datetime.now() - start_time).total_seconds()
-                logger.debug(
-                    f"Metrics collection completed in {duration:.2f}s: "
-                    f"{stats['collected']} collected, {stats['skipped']} skipped"
-                )
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.debug(
+                f"Metrics collection completed in {duration:.2f}s: "
+                f"{stats['collected']} collected, {stats['skipped']} skipped"
+            )
         except OperationalError as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Database error during metrics collection after {duration:.2f}s: {e}")

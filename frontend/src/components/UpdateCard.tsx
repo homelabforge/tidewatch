@@ -133,6 +133,14 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
           )}
         </div>
         <div className="flex items-center gap-2">
+          {update.self_managed && (
+            <span
+              className="px-2 py-0.5 text-xs font-medium rounded border bg-amber-500/20 text-amber-300 border-amber-500/40"
+              title="TideWatch cannot auto-apply this update — manual update required"
+            >
+              self-managed
+            </span>
+          )}
           {changeTypeBadge && (
             <span className={`px-2 py-0.5 text-xs font-medium rounded border ${changeTypeBadge.color}`}>
               {changeTypeBadge.label}
@@ -141,6 +149,18 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
           <StatusBadge status={update.status} />
         </div>
       </div>
+
+      {/* Self-managed instructions banner */}
+      {update.self_managed && update.manual_update_instructions && (
+        <div className="mb-3 bg-amber-500/10 border border-amber-500/30 rounded-md p-3">
+          <p className="text-sm font-medium text-amber-300">
+            Self-managed infrastructure — apply manually
+          </p>
+          <pre className="mt-2 text-xs text-tide-text-muted whitespace-pre-wrap font-mono">
+            {update.manual_update_instructions}
+          </pre>
+        </div>
+      )}
 
       {/* Scope Violation Banner - for scope-violation updates */}
       {isScopeViolation && (
