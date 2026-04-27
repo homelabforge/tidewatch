@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # End-to-end release gate for TideWatch.
-# See tests/e2e/README.md for details.
+# See tests/release-smoke/README.md for details.
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 COMPOSE_FILE="$HERE/compose.yml"
-PROJECT="tidewatch-e2e"
-IMAGE="tidewatch:e2e"
+PROJECT="tidewatch-release-smoke"
+IMAGE="tidewatch:release-smoke"
 APP_PORT=8788
 
 dc() { docker compose -p "$PROJECT" -f "$COMPOSE_FILE" "$@"; }

@@ -10,7 +10,7 @@
 services:
   docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
-    container_name: tidewatch-e2e-docker-proxy
+    container_name: tidewatch-release-smoke-docker-proxy
     environment:
       CONTAINERS: 1
       IMAGES: 1
@@ -22,7 +22,7 @@ services:
 
   app:
     image: tidewatch:e2e
-    container_name: tidewatch-e2e-app
+    container_name: tidewatch-release-smoke-app
     depends_on:
       - docker-proxy
     environment:
@@ -39,7 +39,7 @@ services:
 
   smoke:
     image: python:3.14-slim
-    container_name: tidewatch-e2e-smoke
+    container_name: tidewatch-release-smoke-smoke
     depends_on:
       app:
         condition: service_healthy
