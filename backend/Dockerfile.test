@@ -1,0 +1,40 @@
+# ==============================================================================
+# Test image for TideWatch backend
+#
+# Why a separate image: production tidewatch:latest does NOT include pytest /
+# pytest-asyncio / httpx / docker CLI. Per the project memo, tests must run
+# inside a Python 3.14 container (the host runs 3.13). This image provides
+# that runtime + all dev deps + docker CLI for tests that shell out (e.g.
+# _check_container_runtime, _resolve_container_runtime_name).
+#
+# Build:
+#   docker build -t tidewatch-test:local -f Dockerfile.test .
+#
+# Run a focused subset:
+#   docker run --rm -v "$PWD:/app" -w /app -v /var/run/docker.sock:/var/run/docker.sock \
+#     tidewatch-test:local sh -c "PYTHONPATH=/app pytest tests/test_protected_infra.py --no-cov -v"
+#
+# Or use the wrapper at backend/scripts/run-tests.sh for the common case.
+# ==============================================================================
+
+FROM python:3.14-slim
+
+# docker-cli for the few tests that exercise real `docker inspect` / `docker ps`
+# subprocess paths. Without it, `_check_container_runtime` raises FileNotFoundError.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends docker-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# uv for fast dep install
+RUN pip install --quiet uv
+
+# Install runtime + dev deps from the lockfile. The actual app source is
+# expected to be bind-mounted at runtime so tests pick up live edits.
+COPY pyproject.toml uv.lock ./
+RUN uv pip install --system -r pyproject.toml --extra dev
+
+# Default to running pytest with the no-coverage shortcut. Override at
+# `docker run` time for a more targeted invocation.
+CMD ["sh", "-c", "PYTHONPATH=/app pytest --no-cov"]

@@ -39,6 +39,19 @@ Intelligent Docker Container Update Management
 
 📖 **[Complete Installation Guide](https://github.com/homelabforge/tidewatch/wiki/Installation)**
 
+## Development
+
+Backend tests run inside a Python 3.14 container (the host typically runs 3.13, and the production image has no pytest). A wrapper handles the build + mount + docker socket plumbing:
+
+```bash
+backend/scripts/run-tests.sh                    # full suite
+backend/scripts/run-tests.sh tests/test_foo.py  # subset
+backend/scripts/run-tests.sh -k self_managed    # filter
+backend/scripts/run-tests.sh --build            # force rebuild test image
+```
+
+See `backend/Dockerfile.test` for the test image definition.
+
 ## Support
 
 - **📚 Documentation**: [GitHub Wiki](https://github.com/homelabforge/tidewatch/wiki)
