@@ -36,7 +36,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        'rm -f /tmp/tidewatch-e2e.db* && cd ../backend && python3 -m granian --interface asgi --host 0.0.0.0 --port 8788 app.main:app',
+        'rm -f /tmp/tidewatch-e2e.db* && cd ../backend && uv run python -m granian --interface asgi --host 0.0.0.0 --port 8788 app.main:app',
       port: 8788,
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
