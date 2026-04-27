@@ -7,13 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- CalVer containers with explicit `version_track=calver` silently missing updates when tags use single-digit months
-- Python 2 exception syntax in `security.py` blocking test suite
+## [3.9.2] - 2026-04-26
 
 ### Added
+- Self-managed infrastructure carve-out for the Docker socket proxies TideWatch depends on — updates show in the UI with a `self-managed` badge and manual instructions, but auto-apply/approve/rollback are blocked
+- New `metrics_concurrency` setting (default 4, range 1–16) for tuning concurrent `docker stats` calls during metrics collection
+- `self_managed` and `manual_update_instructions` fields on `UpdateSchema`
+- Frontend `ApiError` class with `isSelfManaged` / `manualInstructions` accessors for parsing structured 409 responses
+- Self-managed badge and copyable manual-instructions panel on the update card
+- Ntfy notifications include the manual command in the body when an update is self-managed
 - Persisted sibling drift history — drift events now appear in the unified History page
 - Savepoint-isolated drift row persistence per sibling group
+- Test image (`backend/Dockerfile.test`) and runner script (`backend/scripts/run-tests.sh`) for running the Python 3.14 test suite reliably
+
+### Changed
+- Metrics collection batched into one `docker ps` + one `docker stats c1 c2 …` call (was: serial per-container loop), dropping a 43-container cycle from ~91s to ~2s. Per-container concurrent fallback (`asyncio.gather` + semaphore) when `docker ps` is unavailable
+- Metrics collection no longer holds a database session across the docker subprocess calls — keeps the SQLite connection free for API requests during the cycle
+- Blocked self-managed apply/rollback/approve return **HTTP 409 Conflict** with structured body (was: generic HTTP 500)
+- `batch_approve` response gained additive `skipped_self_managed` array and `summary.skipped_self_managed_count` — existing `approved` / `failed` / `summary` shape preserved
+
+### Removed
+- Dead proxy self-update machinery in `update_engine` (`_PROXY_LOSS_PATTERNS`, `_is_proxy_loss`, `_is_docker_api_dependency`, `_get_local_image_id`, `_verify_proxy_update`, `skip_stop`, and the `is_proxy`/`proxy_lost` branches in apply/rollback) — superseded by the carve-out
+
+### Fixed
+- Dashboard "Loading containers..." spinner could hang for 60–90 s during metrics collection on large container sets — pool starvation caused by the collector holding the SQLite connection across the full serial loop
+- One slow `docker inspect` could abort the entire metrics collection cycle — bare `TimeoutError` from `asyncio.wait_for` was not in the per-container exception tuple
+- `cancel_retry` and `check_container_update` routes returned unenriched UpdateSchema (no `self_managed` field)
+- `_resolve_container_runtime_name` now catches `FileNotFoundError` so it doesn't crash when the docker CLI is absent (test environments)
+- Pre-update data backup runaway on containers with NAS-mounted bind mounts — `/mnt` and `/media` are skipped by default (override via `TIDEWATCH_BACKUP_SKIP_PREFIXES`), and any mount source larger than `TIDEWATCH_BACKUP_MAX_MOUNT_SIZE_GB` (default 10 GB) is skipped with a warning
+- CalVer containers with explicit `version_track=calver` silently missing updates when tags use single-digit months
+- Python 2 exception syntax in `security.py` blocking test suite
 
 ### Dev Dependencies
 - **pyright**: 1.1.400 → 1.1.408
