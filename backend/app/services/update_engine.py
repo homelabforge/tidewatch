@@ -6,6 +6,7 @@ import logging
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
@@ -1904,9 +1905,7 @@ class UpdateEngine:
         return await create_vulnforge_client(db)
 
     @staticmethod
-    async def batch_approve(
-        db: AsyncSession, update_ids: list[int]
-    ) -> dict[str, list[dict] | dict]:
+    async def batch_approve(db: AsyncSession, update_ids: list[int]) -> dict[str, Any]:
         """Approve multiple updates in batch.
 
         Uses nested transactions for atomicity per update. Idempotent — already-approved

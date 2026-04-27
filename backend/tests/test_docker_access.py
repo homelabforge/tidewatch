@@ -1,14 +1,12 @@
-"""Tests for Docker access centralization and proxy self-update.
+"""Tests for Docker access centralization.
 
 Tests:
 - Docker URL resolution (DB vs env)
 - URL normalization
-- Proxy detection (_is_docker_api_dependency)
-- Proxy loss detection (_is_proxy_loss)
-- Image ID capture
+- Subprocess env injection
 - Container monitor ConnectionError handling
 - Scheduler ConnectionError handling
-- Subprocess env injection
+- Scanner ConnectionError handling
 """
 
 import os
@@ -24,7 +22,6 @@ from app.services.docker_access import (
     resolve_docker_url,
     resolve_docker_url_sync,
 )
-from app.services.update_engine import UpdateEngine
 
 
 class TestResolveDockerUrl:
@@ -107,63 +104,6 @@ class TestDockerSubprocessEnv:
         assert os.environ.get("DOCKER_HOST") == original
 
 
-class TestIsDockerApiDependency:
-    """Test proxy detection logic."""
-
-    def test_tcp_matching_container_name(self):
-        assert UpdateEngine._is_docker_api_dependency(
-            "socket-proxy-rw", "socket-proxy-rw", "tcp://socket-proxy-rw:2375"
-        )
-
-    def test_tcp_matching_service_name(self):
-        assert UpdateEngine._is_docker_api_dependency(
-            "proxies-socket-proxy-rw-1", "socket-proxy-rw", "tcp://socket-proxy-rw:2375"
-        )
-
-    def test_tcp_no_match(self):
-        assert not UpdateEngine._is_docker_api_dependency(
-            "sonarr", "sonarr", "tcp://socket-proxy-rw:2375"
-        )
-
-    def test_unix_socket_always_false(self):
-        """Local socket mode has no proxy to protect."""
-        assert not UpdateEngine._is_docker_api_dependency(
-            "socket-proxy-rw", "socket-proxy-rw", "unix:///var/run/docker.sock"
-        )
-
-    def test_invalid_url_returns_false(self):
-        assert not UpdateEngine._is_docker_api_dependency("test", "test", "not-a-url")
-
-
-class TestIsProxyLoss:
-    """Test proxy-loss stderr pattern detection."""
-
-    def test_connection_refused(self):
-        assert UpdateEngine._is_proxy_loss("Error: connection refused")
-
-    def test_name_resolution(self):
-        assert UpdateEngine._is_proxy_loss("Name or service not known")
-
-    def test_broken_pipe(self):
-        assert UpdateEngine._is_proxy_loss("write: broken pipe")
-
-    def test_connection_reset(self):
-        assert UpdateEngine._is_proxy_loss("Connection reset by peer")
-
-    def test_eof(self):
-        assert UpdateEngine._is_proxy_loss("unexpected EOF")
-
-    def test_normal_error_not_proxy_loss(self):
-        """Permission denied is not a proxy loss."""
-        assert not UpdateEngine._is_proxy_loss("permission denied")
-
-    def test_image_not_found_not_proxy_loss(self):
-        assert not UpdateEngine._is_proxy_loss("Error: image not found")
-
-    def test_empty_stderr(self):
-        assert not UpdateEngine._is_proxy_loss("")
-
-
 class TestContainerMonitorConnectionError:
     """Test that ContainerMonitor handles ConnectionError gracefully."""
 
@@ -200,40 +140,6 @@ class TestContainerMonitorConnectionError:
         assert monitor.client is not old_client
 
 
-class TestGetLocalImageId:
-    """Test image ID capture before proxy update."""
-
-    @pytest.mark.asyncio
-    async def test_captures_image_id(self):
-        """Should return the image ID from the local daemon."""
-        mock_client = MagicMock()
-        mock_img = MagicMock()
-        mock_img.id = "sha256:abc123"
-        mock_client.images.get.return_value = mock_img
-
-        with patch(
-            "app.services.update_engine.make_docker_client",
-            return_value=mock_client,
-        ):
-            result = await UpdateEngine._get_local_image_id(
-                "lscr.io/linuxserver/socket-proxy", "3.2.14", "tcp://proxy:2375"
-            )
-
-        assert result == "sha256:abc123"
-        mock_client.images.get.assert_called_once_with("lscr.io/linuxserver/socket-proxy:3.2.14")
-
-    @pytest.mark.asyncio
-    async def test_returns_none_on_failure(self):
-        """Should return None if image lookup fails."""
-        with patch(
-            "app.services.update_engine.make_docker_client",
-            side_effect=Exception("connection failed"),
-        ):
-            result = await UpdateEngine._get_local_image_id("test", "latest", "tcp://proxy:2375")
-
-        assert result is None
-
-
 class TestSchedulerExceptionHandling:
     """Test that scheduler methods handle Docker connection errors."""
 
@@ -264,222 +170,6 @@ class TestSchedulerExceptionHandling:
 
             # Should not raise
             await scheduler._monitor_loop()
-
-
-class TestVerifyProxyUpdate:
-    """Test _verify_proxy_update verification logic."""
-
-    def _make_container(self):
-        """Create a minimal Container model for verification tests."""
-        return Container(
-            id=1,
-            name="socket-proxy-rw",
-            image="lscr.io/linuxserver/socket-proxy",
-            current_tag="3.2.14",
-            registry="lscr.io",
-            compose_file="/compose/proxies.yml",
-            service_name="socket-proxy-rw",
-        )
-
-    def _mock_docker_container(self, image_id, status="running", repo_tags=None):
-        """Create a mock Docker container with image info."""
-        mock_container = MagicMock()
-        mock_container.status = status
-        mock_container.reload = MagicMock()
-        mock_image = MagicMock()
-        mock_image.id = image_id
-        mock_image.attrs = {"RepoTags": repo_tags or []}
-        mock_container.image = mock_image
-        return mock_container
-
-    @pytest.mark.asyncio
-    async def test_verify_proxy_update_success(self):
-        """Proxy responds, image ID matches → success."""
-        container = self._make_container()
-        mock_docker_container = self._mock_docker_container("sha256:abc123")
-        mock_client = MagicMock()
-        mock_client.containers.get.return_value = mock_docker_container
-
-        mock_http_response = MagicMock()
-        mock_http_response.status_code = 200
-
-        with (
-            patch("app.services.update_engine.httpx.AsyncClient") as mock_httpx,
-            patch(
-                "app.services.update_engine.make_docker_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "app.services.update_engine.UpdateEngine._resolve_container_runtime_name",
-                return_value="socket-proxy-rw",
-            ),
-            patch("app.services.container_monitor.container_monitor") as mock_monitor,
-            patch("asyncio.sleep", new_callable=AsyncMock),
-        ):
-            mock_monitor.reconnect = MagicMock()
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_http_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            mock_httpx.return_value = mock_async_client
-
-            result = await UpdateEngine._verify_proxy_update(
-                container, "sha256:abc123", "3.2.14", "tcp://socket-proxy-rw:2375", timeout=5
-            )
-
-        assert result["success"] is True
-        assert result["image_id"] == "sha256:abc123"
-        assert result["running"] is True
-
-    @pytest.mark.asyncio
-    async def test_verify_proxy_update_wrong_image(self):
-        """Proxy responds but image ID doesn't match → failure."""
-        container = self._make_container()
-        mock_docker_container = self._mock_docker_container("sha256:wrong")
-        mock_client = MagicMock()
-        mock_client.containers.get.return_value = mock_docker_container
-
-        mock_http_response = MagicMock()
-        mock_http_response.status_code = 200
-
-        with (
-            patch("app.services.update_engine.httpx.AsyncClient") as mock_httpx,
-            patch(
-                "app.services.update_engine.make_docker_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "app.services.update_engine.UpdateEngine._resolve_container_runtime_name",
-                return_value="socket-proxy-rw",
-            ),
-            patch("app.services.container_monitor.container_monitor") as mock_monitor,
-            patch("asyncio.sleep", new_callable=AsyncMock),
-        ):
-            mock_monitor.reconnect = MagicMock()
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_http_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            mock_httpx.return_value = mock_async_client
-
-            result = await UpdateEngine._verify_proxy_update(
-                container, "sha256:expected", "3.2.14", "tcp://socket-proxy-rw:2375", timeout=5
-            )
-
-        assert result["success"] is False
-        assert "mismatch" in result["error"].lower()
-        assert result["running"] is True
-
-    @pytest.mark.asyncio
-    async def test_verify_proxy_update_timeout(self):
-        """Proxy never responds within timeout → failure."""
-        container = self._make_container()
-
-        with (
-            patch("app.services.update_engine.httpx.AsyncClient") as mock_httpx,
-            patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("asyncio.get_event_loop") as mock_loop,
-        ):
-            # Simulate time always past timeout
-            mock_loop.return_value.time.side_effect = [0, 0, 100, 100]
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(side_effect=ConnectionError("refused"))
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            mock_httpx.return_value = mock_async_client
-
-            result = await UpdateEngine._verify_proxy_update(
-                container, "sha256:abc", "3.2.14", "tcp://socket-proxy-rw:2375", timeout=1
-            )
-
-        assert result["success"] is False
-        assert "did not respond" in result["error"].lower()
-        assert result["running"] is False
-
-    @pytest.mark.asyncio
-    async def test_verify_proxy_update_no_expected_id_match(self):
-        """No expected_image_id, but RepoTags match → success."""
-        container = self._make_container()
-        mock_docker_container = self._mock_docker_container(
-            "sha256:abc123",
-            repo_tags=["lscr.io/linuxserver/socket-proxy:3.2.14"],
-        )
-        mock_client = MagicMock()
-        mock_client.containers.get.return_value = mock_docker_container
-
-        mock_http_response = MagicMock()
-        mock_http_response.status_code = 200
-
-        with (
-            patch("app.services.update_engine.httpx.AsyncClient") as mock_httpx,
-            patch(
-                "app.services.update_engine.make_docker_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "app.services.update_engine.UpdateEngine._resolve_container_runtime_name",
-                return_value="socket-proxy-rw",
-            ),
-            patch("app.services.container_monitor.container_monitor") as mock_monitor,
-            patch("asyncio.sleep", new_callable=AsyncMock),
-        ):
-            mock_monitor.reconnect = MagicMock()
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_http_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            mock_httpx.return_value = mock_async_client
-
-            result = await UpdateEngine._verify_proxy_update(
-                container, None, "3.2.14", "tcp://socket-proxy-rw:2375", timeout=5
-            )
-
-        assert result["success"] is True
-        assert result["image_id"] == "sha256:abc123"
-        assert "warning" not in result
-
-    @pytest.mark.asyncio
-    async def test_verify_proxy_update_no_expected_id_mismatch(self):
-        """No expected_image_id and RepoTags don't match → permissive success with warning."""
-        container = self._make_container()
-        mock_docker_container = self._mock_docker_container(
-            "sha256:abc123",
-            repo_tags=["lscr.io/linuxserver/socket-proxy:3.2.13"],  # Old tag
-        )
-        mock_client = MagicMock()
-        mock_client.containers.get.return_value = mock_docker_container
-
-        mock_http_response = MagicMock()
-        mock_http_response.status_code = 200
-
-        with (
-            patch("app.services.update_engine.httpx.AsyncClient") as mock_httpx,
-            patch(
-                "app.services.update_engine.make_docker_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "app.services.update_engine.UpdateEngine._resolve_container_runtime_name",
-                return_value="socket-proxy-rw",
-            ),
-            patch("app.services.container_monitor.container_monitor") as mock_monitor,
-            patch("asyncio.sleep", new_callable=AsyncMock),
-        ):
-            mock_monitor.reconnect = MagicMock()
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_http_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=False)
-            mock_httpx.return_value = mock_async_client
-
-            result = await UpdateEngine._verify_proxy_update(
-                container, None, "3.2.14", "tcp://socket-proxy-rw:2375", timeout=5
-            )
-
-        # Permissive: container is running, accept with warning
-        assert result["success"] is True
-        assert result["image_id"] == "sha256:abc123"
-        assert "warning" in result
 
 
 class TestScannerConnectionError:

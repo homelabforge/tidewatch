@@ -1028,8 +1028,10 @@ class DataBackupService:
                 return True
             else:
                 error_output = ""
-                if output and output[1]:
-                    error_output = output[1].decode("utf-8", errors="replace")
+                # demux=True returns (stdout_bytes, stderr_bytes) at runtime,
+                # but the docker SDK stubs type `output` as `Iterator[bytes]`.
+                if output and output[1]:  # type: ignore[index]
+                    error_output = output[1].decode("utf-8", errors="replace")  # type: ignore[index,union-attr]
                 logger.error(
                     "PostgreSQL restore failed for %s (exit %d): %s",
                     container_name,

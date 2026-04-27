@@ -19,10 +19,12 @@
 
 FROM python:3.14-slim
 
-# docker-cli for the few tests that exercise real `docker inspect` / `docker ps`
-# subprocess paths. Without it, `_check_container_runtime` raises FileNotFoundError.
+# docker-cli: tests that exercise real `docker inspect` / `docker ps` subprocess
+#   paths (e.g. _check_container_runtime). Without it, FileNotFoundError.
+# libatomic1: pyright bundles its own node runtime which links against
+#   libatomic.so.1; debian:slim doesn't ship it by default.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends docker-cli \
+    && apt-get install -y --no-install-recommends docker-cli libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
