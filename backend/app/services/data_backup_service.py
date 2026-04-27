@@ -8,6 +8,7 @@ for crash-safe rollback.
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -36,12 +37,47 @@ _STATIC_SKIP_PREFIXES = (
     "/run",
 )
 
+# FHS-standard mount points for user data and removable / network media.
+# By convention these are not container state and should not be tar'd into
+# rollback snapshots. Override with ``TIDEWATCH_BACKUP_SKIP_PREFIXES``.
+_DEFAULT_USER_DATA_PREFIXES = ("/mnt", "/media")
+
+# Default per-mount size cap. Bind/volume mounts whose source exceeds this
+# are skipped during backup. Override with ``TIDEWATCH_BACKUP_MAX_MOUNT_SIZE_GB``.
+_DEFAULT_MAX_MOUNT_SIZE_GB = 10.0
+
+# Time budget for the per-mount ``du`` size pre-flight (seconds).
+_SIZE_MEASUREMENT_TIMEOUT_SECONDS = 30
+
 # Cached full skip list (populated lazily with TideWatch's own mount sources)
 _skip_prefixes_cache: tuple[str, ...] | None = None
 
 
+def _env_user_data_prefixes() -> tuple[str, ...]:
+    """Return user-data skip prefixes from env, or the FHS defaults."""
+    raw = os.environ.get("TIDEWATCH_BACKUP_SKIP_PREFIXES", "").strip()
+    if not raw:
+        return _DEFAULT_USER_DATA_PREFIXES
+    return tuple(p.strip() for p in raw.split(":") if p.strip())
+
+
+def _env_max_mount_size_bytes() -> int:
+    """Return the per-mount size cap in bytes, from env or the default."""
+    raw = os.environ.get("TIDEWATCH_BACKUP_MAX_MOUNT_SIZE_GB", "").strip()
+    try:
+        gb = float(raw) if raw else _DEFAULT_MAX_MOUNT_SIZE_GB
+    except ValueError:
+        logger.warning(
+            "Invalid TIDEWATCH_BACKUP_MAX_MOUNT_SIZE_GB=%r; using default %.1f GB",
+            raw,
+            _DEFAULT_MAX_MOUNT_SIZE_GB,
+        )
+        gb = _DEFAULT_MAX_MOUNT_SIZE_GB
+    return int(gb * 1024 * 1024 * 1024)
+
+
 def _get_skip_source_prefixes() -> tuple[str, ...]:
-    """Build skip-list from static prefixes + TideWatch's own mount sources.
+    """Build skip-list from static prefixes + user-data + TideWatch's own mounts.
 
     TideWatch's own mounts (compose dir, projects dir, env dir, etc.) are
     infrastructure paths that should never be backed up as container data.
@@ -58,8 +94,14 @@ def _get_skip_source_prefixes() -> tuple[str, ...]:
         # Mount resolver unavailable (e.g. during tests) — use static only
         dynamic = ()
 
-    _skip_prefixes_cache = _STATIC_SKIP_PREFIXES + dynamic
+    _skip_prefixes_cache = _STATIC_SKIP_PREFIXES + _env_user_data_prefixes() + dynamic
     return _skip_prefixes_cache
+
+
+def _reset_skip_prefixes_cache() -> None:
+    """Clear the cached skip-prefix list (intended for tests)."""
+    global _skip_prefixes_cache
+    _skip_prefixes_cache = None
 
 
 # Minimum free space (bytes) on backup volume before aborting
@@ -123,6 +165,91 @@ class DataBackupService:
 
     def __init__(self) -> None:
         self.client = make_docker_client(resolve_docker_url_sync())
+
+    async def _measure_mount_size(
+        self,
+        source: str,
+        is_volume: bool,
+        timeout: int = _SIZE_MEASUREMENT_TIMEOUT_SECONDS,
+    ) -> int | None:
+        """Measure total bytes under a mount source via a temp alpine helper.
+
+        Returns the apparent size in bytes, or ``None`` if measurement fails
+        (timeout, permission denied, missing path, etc.). Callers should treat
+        ``None`` as "do not back up" to fail safe.
+        """
+        volumes: dict[str, dict[str, str]] = (
+            {source: {"bind": "/source", "mode": "ro"}}
+            if is_volume
+            else {source: {"bind": "/source", "mode": "ro"}}
+        )
+        helper = None
+        try:
+            helper = await asyncio.to_thread(
+                self.client.containers.run,
+                "alpine:latest",
+                command="sh -c 'du -sb /source 2>/dev/null | awk \"{print \\$1}\"'",
+                volumes=volumes,
+                detach=True,
+                auto_remove=False,
+                name=f"tw-measure-{uuid.uuid4().hex[:8]}",
+            )
+            result = await asyncio.to_thread(helper.wait, timeout=timeout)
+            if result["StatusCode"] != 0:
+                return None
+            output = await asyncio.to_thread(helper.logs)
+            text = output.decode("utf-8", errors="replace").strip()
+            return int(text) if text else None
+        except Exception as exc:
+            logger.debug("Size measurement failed for %s: %s", source, exc)
+            return None
+        finally:
+            if helper is not None:
+                try:
+                    await asyncio.to_thread(helper.remove, force=True)
+                except Exception:
+                    pass
+
+    async def _filter_oversized_mounts(
+        self,
+        mounts: list[dict],
+        container_name: str,
+    ) -> list[dict]:
+        """Drop mounts whose source exceeds the configured size cap.
+
+        Mounts whose size cannot be measured are also dropped (fail-safe), so
+        a runaway path like a NAS-mounted media library cannot fill the
+        rollback volume even if the prefix skip-list misses it.
+        """
+        max_bytes = _env_max_mount_size_bytes()
+        kept: list[dict] = []
+        for mount in mounts:
+            source = mount.get("Source", "")
+            volume_name = mount.get("Name", "")
+            mount_type = mount.get("Type", "bind")
+            measure_target = volume_name if mount_type == "volume" and volume_name else source
+            size = await self._measure_mount_size(
+                measure_target,
+                is_volume=mount_type == "volume",
+            )
+            if size is None:
+                logger.warning(
+                    "Skipping mount %s for %s: size could not be measured",
+                    source or volume_name,
+                    container_name,
+                )
+                continue
+            if size > max_bytes:
+                logger.warning(
+                    "Skipping mount %s for %s: %.2f GB exceeds cap of %.2f GB",
+                    source or volume_name,
+                    container_name,
+                    size / (1024**3),
+                    max_bytes / (1024**3),
+                )
+                continue
+            kept.append(mount)
+        return kept
 
     def _get_backup_dir(self, container_name: str, backup_id: str) -> Path:
         """Get the backup directory path for a container backup."""
@@ -289,6 +416,11 @@ class DataBackupService:
                     logger.debug("Skipping mount %s: %s", mount.get("Source", "?"), reason)
                 else:
                     eligible_mounts.append(mount)
+
+            # Defense-in-depth: drop anything still oversized after the
+            # prefix/file/socket filters. Catches NAS-mounted media libraries
+            # and other runaway sources the static skip-list can miss.
+            eligible_mounts = await self._filter_oversized_mounts(eligible_mounts, container_name)
 
             if not eligible_mounts:
                 logger.info("No eligible mounts for %s after filtering", container_name)
