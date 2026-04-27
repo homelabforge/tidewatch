@@ -10,11 +10,9 @@
 # Build:
 #   docker build -t tidewatch-test:local -f Dockerfile.test .
 #
-# Run a focused subset:
+# Run via the bin/ci-check wrapper at the repo root, or direct:
 #   docker run --rm -v "$PWD:/app" -w /app -v /var/run/docker.sock:/var/run/docker.sock \
-#     tidewatch-test:local sh -c "PYTHONPATH=/app pytest tests/test_protected_infra.py --no-cov -v"
-#
-# Or use the wrapper at backend/scripts/run-tests.sh for the common case.
+#     tidewatch-test:local sh -c "PYTHONPATH=/app pytest tests/test_protected_infra.py -v"
 # ==============================================================================
 
 FROM python:3.14-slim
@@ -22,21 +20,35 @@ FROM python:3.14-slim
 # docker-cli: tests that exercise real `docker inspect` / `docker ps` subprocess
 #   paths (e.g. _check_container_runtime). Without it, FileNotFoundError.
 # libatomic1: pyright bundles its own node runtime which links against
-#   libatomic.so.1; debian:slim doesn't ship it by default.
+#   libatomic.so.1; debian:slim doesn't ship it by default. Without this,
+#   pyright exits 0 silently in local dev. CI's ubuntu-latest runner ships it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends docker-cli libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Place the venv at /opt/venv, NOT inside /app. The bin/ci-check runner
+# bind-mounts the host's backend/ over /app at runtime; if the venv lived
+# at /app/.venv it would be masked by that mount. /opt/venv survives.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
 
-# uv for fast dep install
 RUN pip install --quiet uv
 
-# Install runtime + dev deps from the lockfile. The actual app source is
-# expected to be bind-mounted at runtime so tests pick up live edits.
+WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv pip install --system -r pyproject.toml --extra dev
+# Lockfile-driven, dependencies only — same resolution as CI's
+# `uv sync --frozen --all-extras`. The --no-install-project flag is critical:
+# without it, uv tries to install the project package itself, which needs
+# the source tree (not yet present in this layer). With it, only the
+# locked dependency closure is installed; the source comes in via the
+# runtime bind-mount, with PYTHONPATH=/app putting it on the import path.
+# This also gives optimal Docker layer caching: deps invalidate only when
+# uv.lock changes, not when source changes.
+RUN uv sync --frozen --all-extras --no-install-project
 
-# Default to running pytest with the no-coverage shortcut. Override at
-# `docker run` time for a more targeted invocation.
-CMD ["sh", "-c", "PYTHONPATH=/app pytest --no-cov"]
+# Source tree is bind-mounted at /app at runtime; PYTHONPATH=/app puts the
+# project on the import path without needing it installed into the venv.
+# CMD does NOT pass --no-cov: repos without pytest-cov in dev extras
+# (e.g. collectionsync) will reject an unknown flag. Coverage is also no
+# longer collected by default after Step A+B strips --cov from addopts.
+CMD ["sh", "-c", "PYTHONPATH=/app pytest"]

@@ -24,8 +24,14 @@ backend/venv/
 backend/.venv/
 backend/env/
 backend/.pytest_cache/
-backend/.ruff_cache/
+.ruff_cache/
 backend/htmlcov/
+
+# Stale frontend build artifacts written into backend/static/ during local
+# dev. The production Dockerfile copies these from the frontend-builder
+# stage (see Dockerfile, COPY --from=frontend-builder), never from disk.
+# Pattern recurred enough to warrant ignoring: see commit 534e858.
+backend/static/
 backend/.coverage
 backend/coverage.xml
 backend/*.cover
