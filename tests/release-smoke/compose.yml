@@ -21,7 +21,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   app:
-    image: tidewatch:e2e
+    image: tidewatch:release-smoke
     container_name: tidewatch-release-smoke-app
     depends_on:
       - docker-proxy
