@@ -82,8 +82,9 @@ class SchedulerService:
                 cleanup_enabled = await SettingsService.get_bool(
                     db, "cleanup_old_images", default=False
                 )
-                cleanup_schedule = await SettingsService.get(
-                    db, "cleanup_schedule", default="0 4 * * *"
+                cleanup_schedule = (
+                    await SettingsService.get(db, "cleanup_schedule", default="0 4 * * *")
+                    or "0 4 * * *"
                 )
 
             if not self._enabled:
