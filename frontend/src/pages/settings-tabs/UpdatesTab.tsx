@@ -246,11 +246,15 @@ export default function UpdatesTab({ settings, saving, updateSetting, handleText
                   value={String(settings.check_schedule || '')}
                   onChange={(e) => handleTextChange('check_schedule', e.target.value)}
                   disabled={saving}
-                  className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none"
+                  className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none font-mono text-sm"
                   placeholder="0 */6 * * *"
                 />
                 <p className="text-xs text-tide-text-muted mt-1">
-                  Cron expression for update checks
+                  Standard 5-field cron expression (minute hour day month weekday).
+                  Examples: <code className="font-mono">0 */6 * * *</code> every 6 hours,{' '}
+                  <code className="font-mono">0 3 * * *</code> daily at 3 AM,{' '}
+                  <code className="font-mono">0 0 */2 * *</code> every 2 days.
+                  Note: hour field is 0–23, so <code className="font-mono">*/48</code> is invalid.
                 </p>
               </div>
             </div>
@@ -712,7 +716,7 @@ export default function UpdatesTab({ settings, saving, updateSetting, handleText
                   className="w-full px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm"
                 />
                 <p className="text-xs text-tide-text-muted mt-1">
-                  Cron schedule for automatic cleanup (default: 4 AM daily)
+                  5-field cron expression. Default <code className="font-mono">0 4 * * *</code> runs daily at 4 AM.
                 </p>
               </div>
 

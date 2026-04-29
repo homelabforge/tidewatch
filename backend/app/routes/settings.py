@@ -114,7 +114,10 @@ async def update_setting(
     db: AsyncSession = Depends(get_db),
 ) -> SettingSchema:
     """Update a setting value."""
-    setting = await SettingsService.set(db, key, update.value)
+    try:
+        setting = await SettingsService.set(db, key, update.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return setting
 
 
@@ -147,7 +150,10 @@ async def batch_update_settings(
         # Apply all updates in transaction
         updated_settings = []
         for update in updates:
-            setting = await SettingsService.set(db, update["key"], update["value"])
+            try:
+                setting = await SettingsService.set(db, update["key"], update["value"])
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
             updated_settings.append(setting)
 
         return updated_settings

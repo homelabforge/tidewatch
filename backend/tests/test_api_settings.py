@@ -155,10 +155,44 @@ class TestUpdateSettingEndpoint:
         assert data["key"] == "check_interval"
         assert data["value"] == "180"
 
-    @pytest.mark.skip(reason="Settings validation not enforced at API level")
-    async def test_update_setting_invalid_value(self, authenticated_client):
-        """Test invalid value returns 400 validation error."""
-        pass
+    async def test_update_setting_invalid_cron_returns_400(self, authenticated_client):
+        """Invalid cron values for check_schedule must be rejected with 400.
+
+        Regression: a user saved '*/48' (intending 'every 48 hours') and the
+        next container start crashed on CronTrigger.from_crontab during
+        scheduler startup, bricking the app.
+        """
+        response = await authenticated_client.put(
+            "/api/v1/settings/check_schedule", json={"value": "*/48"}
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "check_schedule" in response.json()["detail"]
+
+    async def test_update_setting_valid_cron_accepted(self, authenticated_client):
+        """A valid 5-field cron expression is accepted."""
+        response = await authenticated_client.put(
+            "/api/v1/settings/check_schedule", json={"value": "0 0 */2 * *"}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["value"] == "0 0 */2 * *"
+
+    async def test_update_setting_empty_cron_rejected(self, authenticated_client):
+        """Empty cron expression is rejected."""
+        response = await authenticated_client.put(
+            "/api/v1/settings/check_schedule", json={"value": ""}
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    async def test_update_setting_invalid_cleanup_schedule_returns_400(self, authenticated_client):
+        """cleanup_schedule is also validated as cron."""
+        response = await authenticated_client.put(
+            "/api/v1/settings/cleanup_schedule", json={"value": "garbage"}
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     @pytest.mark.skip(reason="Encryption implementation details not testable at API level")
     async def test_update_setting_sensitive_encrypted(self, authenticated_client, db):

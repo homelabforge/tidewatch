@@ -214,12 +214,47 @@ class TestSchedulerLifecycle:
         with pytest.raises(OperationalError):
             await scheduler_instance.start()
 
-    async def test_handles_invalid_cron_schedule(self, scheduler_instance, mock_settings):
-        """Test handles invalid cron schedule format."""
-        mock_settings._get_values["check_schedule"] = "invalid cron"
+    async def test_invalid_cron_schedule_falls_back_to_default(
+        self, scheduler_instance, mock_settings, caplog
+    ):
+        """A persisted bad cron value must not crash startup — fall back to default.
 
-        with pytest.raises(ValueError):
+        The settings API now validates cron at write time (so bad values can't be
+        saved by users), but defending in depth at startup ensures that a
+        previously-persisted bad value (or hand-edited DB) can't brick the app.
+        """
+        import logging
+
+        mock_settings._get_values["check_schedule"] = "*/48"  # invalid: step > range
+
+        with caplog.at_level(logging.ERROR):
             await scheduler_instance.start()
+
+        assert scheduler_instance.scheduler is not None
+        assert scheduler_instance.scheduler.running is True
+        assert any(
+            "Invalid cron expression for check_schedule" in record.message
+            for record in caplog.records
+        )
+
+    async def test_invalid_cleanup_schedule_falls_back_to_default(
+        self, scheduler_instance, mock_settings, caplog
+    ):
+        """A bad cleanup_schedule must not crash startup either."""
+        import logging
+
+        mock_settings._get_bool_values["cleanup_old_images"] = True
+        mock_settings._get_values["cleanup_schedule"] = "not a cron"
+
+        with caplog.at_level(logging.ERROR):
+            await scheduler_instance.start()
+
+        assert scheduler_instance.scheduler is not None
+        assert scheduler_instance.scheduler.running is True
+        assert any(
+            "Invalid cron expression for cleanup_schedule" in record.message
+            for record in caplog.records
+        )
 
     async def test_handles_import_error_during_start(self, scheduler_instance, mock_settings):
         """Test handles import error during scheduler start."""
@@ -1168,11 +1203,13 @@ class TestSchedulerEdgeCases:
             assert scheduler_instance.scheduler.running is False
 
     async def test_handles_cron_trigger_creation_error(self, scheduler_instance, mock_settings):
-        """Test handles error creating CronTrigger."""
+        """Bad persisted cron must not crash startup — fall back to default."""
         mock_settings._get_values["check_schedule"] = "99 99 99 99 99"  # Invalid cron
 
-        with pytest.raises(ValueError):
-            await scheduler_instance.start()
+        await scheduler_instance.start()
+
+        assert scheduler_instance.scheduler is not None
+        assert scheduler_instance.scheduler.running is True
 
     async def test_handles_database_integrity_error(
         self, scheduler_instance, mock_settings, mock_check_job_service

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RotateCcw, Server, Plug, Bell, Database, RefreshCw, Cpu } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import type { SettingCategory } from '../types';
 import { SystemTab, UpdatesTab, DockerTab, IntegrationsTab, NotificationsTab, BackupTab } from './settings-tabs';
 
@@ -77,7 +77,13 @@ export default function Settings() {
       toast.success('Setting updated successfully');
     } catch (error) {
       console.error(`Failed to update ${key}:`, error);
-      toast.error('Failed to update setting');
+      // Surface server-side validation messages (e.g. invalid cron) to the user
+      // instead of a generic "Failed to update setting" toast.
+      const message =
+        error instanceof ApiError && error.status === 400
+          ? error.message
+          : 'Failed to update setting';
+      toast.error(message);
       await loadSettings();
     } finally {
       setSaving(false);

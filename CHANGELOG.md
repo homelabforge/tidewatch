@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.3] - 2026-04-29
+
+### Fixed
+- Invalid cron expressions in `check_schedule` / `cleanup_schedule` no longer crash the app on startup — saved values are validated at the API (returning HTTP 400 on bad input), and the scheduler falls back to defaults if a previously-saved value is invalid (#51)
+
 ## [3.9.2] - 2026-04-26
 
 ### Added

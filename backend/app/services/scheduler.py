@@ -17,6 +17,26 @@ from app.services.settings_service import SettingsService
 logger = logging.getLogger(__name__)
 
 
+def _safe_cron_trigger(expr: str, fallback: str, label: str) -> CronTrigger:
+    """Build a CronTrigger from expr, falling back to a known-good default.
+
+    A bad cron value persisted in settings would otherwise raise during
+    scheduler startup and crash the FastAPI lifespan, leaving the user
+    unable to reach the UI to fix it. We validate at the settings API
+    boundary, but defend in depth here so existing bad values can't brick
+    the app — we log loudly and use the default instead.
+    """
+    try:
+        return CronTrigger.from_crontab(expr)
+    except ValueError as e:
+        logger.error(
+            f"Invalid cron expression for {label}: {expr!r} ({e}). "
+            f"Falling back to default {fallback!r}. "
+            f"Update the value in Settings to silence this error."
+        )
+        return CronTrigger.from_crontab(fallback)
+
+
 class SchedulerService:
     """Service for managing background scheduled tasks."""
 
@@ -73,7 +93,7 @@ class SchedulerService:
             # Add update check job
             self.scheduler.add_job(
                 self._run_update_check,
-                CronTrigger.from_crontab(self._check_schedule),
+                _safe_cron_trigger(self._check_schedule, "0 */6 * * *", "check_schedule"),
                 id="update_check",
                 name="Automatic Container Update Check",
                 replace_existing=True,
@@ -126,7 +146,7 @@ class SchedulerService:
             if cleanup_enabled:
                 self.scheduler.add_job(
                     self._run_docker_cleanup,
-                    CronTrigger.from_crontab(cleanup_schedule),
+                    _safe_cron_trigger(cleanup_schedule, "0 4 * * *", "cleanup_schedule"),
                     id="docker_cleanup",
                     name="Docker Resource Cleanup",
                     replace_existing=True,

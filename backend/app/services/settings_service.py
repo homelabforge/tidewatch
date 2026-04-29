@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any
 
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,18 @@ from app.utils.encryption import get_encryption_service, is_encryption_configure
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+# Settings whose values must parse as a 5-field cron expression. A bad value
+# here will crash scheduler startup and brick the container, so we validate
+# at the API boundary using the same parser the scheduler uses.
+CRON_SETTINGS: frozenset[str] = frozenset({"check_schedule", "cleanup_schedule"})
+
+
+def validate_cron_expression(expr: str) -> None:
+    """Raise ValueError if expr is not a valid 5-field cron expression."""
+    if not expr or not expr.strip():
+        raise ValueError("Cron expression cannot be empty")
+    CronTrigger.from_crontab(expr.strip())
 
 
 class SettingsService:
@@ -697,6 +710,12 @@ class SettingsService:
         Returns:
             Updated Setting object
         """
+        if key in CRON_SETTINGS:
+            try:
+                validate_cron_expression(value)
+            except ValueError as e:
+                raise ValueError(f"Invalid cron expression for '{key}': {e}") from e
+
         result = await db.execute(select(Setting).where(Setting.key == key))
         setting = result.scalar_one_or_none()
 
