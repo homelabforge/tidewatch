@@ -17,7 +17,7 @@ from app.services.settings_service import SettingsService
 logger = logging.getLogger(__name__)
 
 
-def _safe_cron_trigger(expr: str, fallback: str, label: str) -> CronTrigger:
+def _safe_cron_trigger(expr: str, fallback: str, label: str) -> tuple[CronTrigger, str]:
     """Build a CronTrigger from expr, falling back to a known-good default.
 
     A bad cron value persisted in settings would otherwise raise during
@@ -25,16 +25,19 @@ def _safe_cron_trigger(expr: str, fallback: str, label: str) -> CronTrigger:
     unable to reach the UI to fix it. We validate at the settings API
     boundary, but defend in depth here so existing bad values can't brick
     the app — we log loudly and use the default instead.
+
+    Returns the trigger and the cron expression actually used (either expr
+    or fallback) so callers can log honestly.
     """
     try:
-        return CronTrigger.from_crontab(expr)
+        return CronTrigger.from_crontab(expr), expr
     except ValueError as e:
         logger.error(
             f"Invalid cron expression for {label}: {expr!r} ({e}). "
             f"Falling back to default {fallback!r}. "
             f"Update the value in Settings to silence this error."
         )
-        return CronTrigger.from_crontab(fallback)
+        return CronTrigger.from_crontab(fallback), fallback
 
 
 class SchedulerService:
@@ -91,9 +94,12 @@ class SchedulerService:
             self.scheduler = AsyncIOScheduler()
 
             # Add update check job
+            check_trigger, effective_check_schedule = _safe_cron_trigger(
+                self._check_schedule, "0 */6 * * *", "check_schedule"
+            )
             self.scheduler.add_job(
                 self._run_update_check,
-                _safe_cron_trigger(self._check_schedule, "0 */6 * * *", "check_schedule"),
+                check_trigger,
                 id="update_check",
                 name="Automatic Container Update Check",
                 replace_existing=True,
@@ -144,15 +150,18 @@ class SchedulerService:
 
             # Add Docker cleanup job (runs on configured schedule, default 4 AM daily)
             if cleanup_enabled:
+                cleanup_trigger, effective_cleanup_schedule = _safe_cron_trigger(
+                    cleanup_schedule, "0 4 * * *", "cleanup_schedule"
+                )
                 self.scheduler.add_job(
                     self._run_docker_cleanup,
-                    _safe_cron_trigger(cleanup_schedule, "0 4 * * *", "cleanup_schedule"),
+                    cleanup_trigger,
                     id="docker_cleanup",
                     name="Docker Resource Cleanup",
                     replace_existing=True,
                     max_instances=1,
                 )
-                logger.info(f"Docker cleanup scheduled: {cleanup_schedule}")
+                logger.info(f"Docker cleanup scheduled: {effective_cleanup_schedule}")
 
             # Add VulnForge scan worker (runs every 15 seconds)
             from app.services.vulnforge_scan_worker import process_pending_scan_jobs
@@ -178,7 +187,7 @@ class SchedulerService:
 
             # Start the scheduler
             self.scheduler.start()
-            logger.info(f"Background scheduler started with schedule: {self._check_schedule}")
+            logger.info(f"Background scheduler started with schedule: {effective_check_schedule}")
 
             # Log next run time
             job = self.scheduler.get_job("update_check")
