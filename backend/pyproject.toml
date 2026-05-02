@@ -23,7 +23,7 @@ dependencies = [
     "prometheus-client>=0.25.0",
     "aiosmtplib>=5.1.0",
     # Authentication dependencies
-    "authlib>=1.6.11",
+    "authlib>=1.7.0",
     "argon2-cffi>=25.1.0",
     "pyjwt>=2.12.1",
     "itsdangerous>=2.2.0",
