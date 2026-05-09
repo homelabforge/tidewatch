@@ -9,11 +9,11 @@ description = "Intelligent Docker container update manager"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.135.3",
-    "granian>=2.7.3",
+    "granian>=2.7.4",
     "sqlalchemy>=2.0.49",
     "aiosqlite>=0.22.1",
-    "pydantic>=2.13.0",
-    "python-multipart>=0.0.27",
+    "pydantic>=2.13.3",
+    "python-multipart>=0.0.26",
     "ruamel.yaml>=0.19.1",
     "httpx>=0.28.1",
     "python-dateutil>=2.9.0.post0",
