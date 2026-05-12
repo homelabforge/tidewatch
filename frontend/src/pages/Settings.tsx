@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw, Server, Plug, Bell, Database, RefreshCw, Cpu } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '../services/api';
-import type { SettingCategory } from '../types';
+import type { SettingValue, SettingCategory } from '../types';
 import { SystemTab, UpdatesTab, DockerTab, IntegrationsTab, NotificationsTab, BackupTab } from './settings-tabs';
 
 type TabType = 'system' | 'updates' | 'docker' | 'integrations' | 'notifications' | 'backup';
@@ -17,100 +18,132 @@ const tabs = [
   { id: 'backup', label: 'Backup & Maintenance', icon: Database },
 ];
 
+const SETTINGS_KEY = ['settings', 'all'] as const;
+const EMPTY_CATEGORIES: SettingCategory[] = [];
+
+// Coerce backend's stringified values to the JS types the UI expects.
+function coerceSettings(raw: SettingValue[] | undefined): Record<string, unknown> {
+  const map: Record<string, unknown> = {};
+  if (!Array.isArray(raw)) return map;
+  for (const setting of raw) {
+    let value: unknown = setting.value;
+    if (setting.value === 'true') value = true;
+    else if (setting.value === 'false') value = false;
+    else if (!isNaN(Number(setting.value)) && setting.value !== '') {
+      value = Number(setting.value);
+    }
+    map[setting.key] = value;
+  }
+  return map;
+}
+
 export default function Settings() {
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabType>('system');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  // Settings state
-  const [settings, setSettings] = useState<Record<string, unknown>>({});
-  const [categories, setCategories] = useState<SettingCategory[]>([]);
-
-  // Debounce timer for text inputs
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const debounceTimers = useRef<Record<string, number>>({});
 
-  // Sync active tab from URL search params (e.g. /settings?tab=docker)
+  // Pattern D: derive activeTab directly from URL — no state mirror.
+  const tabParam = searchParams.get('tab') as TabType | null;
+  const activeTab: TabType =
+    tabParam && tabs.some((t) => t.id === tabParam) ? tabParam : 'system';
+
+  const setActiveTab = useCallback(
+    (next: TabType) => {
+      const sp = new URLSearchParams(searchParams);
+      sp.set('tab', next);
+      setSearchParams(sp);
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const settingsQuery = useQuery({
+    queryKey: SETTINGS_KEY,
+    queryFn: () => api.settings.getAll(),
+  });
+
+  const settings = useMemo(
+    () => coerceSettings(settingsQuery.data),
+    [settingsQuery.data],
+  );
+  const loading = settingsQuery.isLoading;
+
+  const settingsError = settingsQuery.error;
   useEffect(() => {
-    const tabParam = searchParams.get('tab') as TabType | null;
-    const validTab = tabParam && tabs.some(t => t.id === tabParam) ? tabParam : 'system';
-    setActiveTab(validTab);
-  }, [searchParams]);
+    if (settingsError) toast.error('Failed to load settings');
+  }, [settingsError]);
 
-  // Load settings on mount
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  const invalidateSettings = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: SETTINGS_KEY }),
+    [queryClient],
+  );
 
-  const loadSettings = async () => {
-    try {
-      setLoading(true);
-      const settingsData = await api.settings.getAll();
-      setCategories([]); // Disable categories to show card-based UI
-      const settingsMap: Record<string, unknown> = {};
-      settingsData.forEach((setting) => {
-        let value: unknown = setting.value;
-        if (setting.value === 'true') value = true;
-        else if (setting.value === 'false') value = false;
-        else if (!isNaN(Number(setting.value)) && setting.value !== '') {
-          value = Number(setting.value);
-        }
-        settingsMap[setting.key] = value;
-      });
-      setSettings(settingsMap);
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-      toast.error('Failed to load settings');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Optimistically patch a single key in the cache so toggles and text inputs
+  // update immediately without waiting for the server round-trip + refetch.
+  const patchSettingInCache = useCallback(
+    (key: string, value: unknown) => {
+      queryClient.setQueryData<SettingValue[] | undefined>(
+        SETTINGS_KEY,
+        (old) =>
+          old?.map((s) => (s.key === key ? { ...s, value: String(value) } : s)),
+      );
+    },
+    [queryClient],
+  );
 
-  const updateSetting = async (key: string, value: unknown, updateState: boolean = true) => {
-    try {
-      setSaving(true);
-      const apiValue = String(value);
-      await api.settings.update(key, apiValue);
-      if (updateState) {
-        setSettings((prev) => ({ ...prev, [key]: value }));
-      }
+  const updateMutation = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: unknown }) =>
+      api.settings.update(key, String(value)),
+    onSuccess: (_data, { key }) => {
       toast.success('Setting updated successfully');
-    } catch (error) {
+      // Special case: reloading the scheduler when its schedule changed.
+      if (key === 'check_schedule') {
+        api.updates
+          .reloadScheduler()
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ['scheduler', 'status'] });
+          })
+          .catch(() => toast.error('Failed to reload scheduler'));
+      }
+      invalidateSettings();
+    },
+    onError: (error, { key }) => {
       console.error(`Failed to update ${key}:`, error);
-      // Surface server-side validation messages (e.g. invalid cron) to the user
-      // instead of a generic "Failed to update setting" toast.
       const message =
         error instanceof ApiError && error.status === 400
           ? error.message
           : 'Failed to update setting';
       toast.error(message);
-      await loadSettings();
-    } finally {
-      setSaving(false);
-    }
-  };
+      // Refetch reverts the optimistic patch.
+      invalidateSettings();
+    },
+  });
 
-  const handleTextChange = (key: string, value: string) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+  const saving = updateMutation.isPending;
 
-    if (debounceTimers.current[key]) {
-      clearTimeout(debounceTimers.current[key]);
-    }
+  const updateSetting = useCallback(
+    async (key: string, value: unknown, updateState: boolean = true) => {
+      if (updateState) patchSettingInCache(key, value);
+      await updateMutation.mutateAsync({ key, value });
+    },
+    [patchSettingInCache, updateMutation],
+  );
 
-    debounceTimers.current[key] = setTimeout(async () => {
-      await updateSetting(key, value, false);
-
-      if (key === 'check_schedule') {
-        try {
-          await api.updates.reloadScheduler();
-          toast.success('Scheduler reloaded with new schedule');
-        } catch (error) {
-          console.error('Failed to reload scheduler:', error);
-          toast.error('Failed to reload scheduler');
-        }
+  const handleTextChange = useCallback(
+    (key: string, value: string) => {
+      patchSettingInCache(key, value);
+      if (debounceTimers.current[key]) {
+        clearTimeout(debounceTimers.current[key]);
       }
-    }, 1000);
-  };
+      debounceTimers.current[key] = setTimeout(() => {
+        updateMutation.mutate({ key, value });
+      }, 1000) as unknown as number;
+    },
+    [patchSettingInCache, updateMutation],
+  );
+
+  const loadSettings = useCallback(async () => {
+    await invalidateSettings();
+  }, [invalidateSettings]);
 
   if (loading) {
     return (
@@ -120,16 +153,19 @@ export default function Settings() {
     );
   }
 
+  // The categories feature was never wired to a real source (loadSettings used
+  // to `setCategories([])` unconditionally). Kept as a stable empty array so
+  // child tabs that take a SettingCategory[] prop don't have to be reworked.
+  const categories: SettingCategory[] = EMPTY_CATEGORIES;
+
   return (
     <div className="min-h-screen bg-tide-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-tide-text mb-2">Settings</h1>
           <p className="text-tide-text-muted">Configure TideWatch to match your needs</p>
         </div>
 
-        {/* Tabs */}
         <div className="border-b border-tide-border mb-6 overflow-x-auto">
           <nav className="-mb-px flex space-x-6 sm:space-x-8 min-w-max">
             {tabs.map((tab) => {
@@ -153,25 +189,7 @@ export default function Settings() {
           </nav>
         </div>
 
-        {/* Content */}
         <div className="bg-tide-surface-light rounded-lg p-6 mt-6">
-          {/* Category View Toggle (if categories available) */}
-          {categories.length > 0 && (
-            <div className="mb-6 pb-6 border-b border-tide-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-tide-text mb-1">Settings Organization</h3>
-                  <p className="text-xs text-tide-text-muted">
-                    Settings are grouped by category. Click to expand/collapse sections.
-                  </p>
-                </div>
-                <div className="text-xs text-teal-400 bg-teal-500/10 px-3 py-1 rounded-full border border-teal-500/30">
-                  EXPERIMENTAL
-                </div>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'system' && (
             <SystemTab
               settings={settings}

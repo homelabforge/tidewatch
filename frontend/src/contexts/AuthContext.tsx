@@ -125,18 +125,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, []);
 
-  // Listen for 401 errors from API calls (session expired)
+  // Listen for 401 errors from API calls (session expired). Same-tab events
+  // come via the custom `auth:401` event dispatched from `services/api.ts`;
+  // the `storage` listener is kept for any future cross-tab signal (today's
+  // sessionStorage write doesn't fire it in the writing tab).
   useEffect(() => {
+    const clearSession = () => {
+      setIsAuthenticated(false);
+      setUser(null);
+      // ProtectedRoute will handle redirect
+    };
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth:401') {
-        setIsAuthenticated(false);
-        setUser(null);
-        // ProtectedRoute will handle redirect
-      }
+      if (e.key === 'auth:401') clearSession();
     };
 
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('auth:401', clearSession);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('auth:401', clearSession);
+    };
   }, []);
 
   // ============================================================================

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders as render } from '../__tests__/test-utils'
 import History from './History'
 import { api } from '../services/api'
 import { UnifiedHistoryEvent } from '../types'
@@ -10,6 +11,11 @@ vi.mock('../services/api', () => ({
     history: {
       getAll: vi.fn(),
       rollback: vi.fn(),
+    },
+    dependencies: {
+      unignoreDockerfile: vi.fn(),
+      unignoreHttpServer: vi.fn(),
+      unignoreAppDependency: vi.fn(),
     },
   },
 }))
@@ -708,6 +714,67 @@ describe('History', () => {
       // postgres has null exit_code, should not show exit code
       const postgresRow = screen.getByText('postgres').closest('tr')
       expect(postgresRow?.textContent).not.toContain('exit')
+    })
+  })
+
+  describe('Cache invalidation', () => {
+    it('rollback mutation invalidates history AND containers', async () => {
+      vi.mocked(api.history.rollback).mockResolvedValue({ success: true } as never)
+      const originalConfirm = window.confirm
+      window.confirm = vi.fn(() => true)
+
+      const { queryClient } = render(<History />)
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText('nginx')).toBeInTheDocument()
+      })
+
+      const rollbackBtn = screen.getAllByText(/Rollback/)[0]
+      fireEvent.click(rollbackBtn)
+
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['history'] })
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+      })
+
+      window.confirm = originalConfirm
+    })
+
+    it('unignore mutation invalidates history + dep summary + dep type key', async () => {
+      // Inject a dependency_ignore event with an unignore-actionable dep.
+      const depIgnore: UnifiedHistoryEvent = {
+        ...mockUpdateHistory[0],
+        id: 99,
+        event_type: 'dependency_ignore',
+        dependency_id: 7,
+        dependency_type: 'http_server',
+        dependency_name: 'caddy',
+        container_id: 42,
+        rollback_available: false,
+      } as UnifiedHistoryEvent
+      vi.mocked(api.history.getAll).mockResolvedValue([depIgnore])
+      vi.mocked(api.dependencies.unignoreHttpServer).mockResolvedValue({} as never)
+
+      const { queryClient } = render(<History />)
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Unignore/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByText(/Unignore/))
+
+      await waitFor(() => {
+        expect(api.dependencies.unignoreHttpServer).toHaveBeenCalledWith(7)
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['history'] })
+        expect(spy).toHaveBeenCalledWith({
+          queryKey: ['containers', 'dependencySummary'],
+        })
+        expect(spy).toHaveBeenCalledWith({
+          queryKey: ['dependencies', 'httpServer', 42],
+        })
+      })
     })
   })
 })

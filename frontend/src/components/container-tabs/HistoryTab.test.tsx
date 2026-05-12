@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderWithProviders as render } from '../../__tests__/test-utils';
 import HistoryTab from './HistoryTab';
 import { api } from '../../services/api';
 import type { Container, HistoryItem } from '../../types';
@@ -13,6 +14,11 @@ vi.mock('../../services/api', () => ({
   api: {
     history: { rollback: vi.fn() },
     containers: { getDetails: vi.fn() },
+    dependencies: {
+      unignoreDockerfile: vi.fn(),
+      unignoreHttpServer: vi.fn(),
+      unignoreAppDependency: vi.fn(),
+    },
   },
 }));
 
@@ -83,5 +89,53 @@ describe('HistoryTab — data_backup_status badge', () => {
     });
 
     expect(screen.queryByText('Data Backup:')).not.toBeInTheDocument();
+  });
+});
+
+describe('HistoryTab — cache invalidation', () => {
+  it('unignore invalidates details + history + dep summary + dep type key', async () => {
+    const item = makeHistoryItem({
+      id: 11,
+      event_type: 'dependency_ignore',
+      status: 'success',
+      dependency_id: 5,
+      dependency_type: 'app_dependency',
+      dependency_name: 'fastapi',
+    });
+    mockFetchWithHistory([item]);
+    vi.mocked(api.dependencies.unignoreAppDependency).mockResolvedValue(
+      {} as never,
+    );
+
+    const onUpdate = vi.fn();
+    const { queryClient } = render(
+      <HistoryTab
+        container={mockContainer}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    );
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unignore/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Unignore/));
+
+    await waitFor(() => {
+      expect(api.dependencies.unignoreAppDependency).toHaveBeenCalledWith(5);
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: ['containers', 'details', mockContainer.id],
+      });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['history'] });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: ['containers', 'dependencySummary'],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: ['dependencies', 'app', mockContainer.id],
+      });
+      expect(onUpdate).toHaveBeenCalled();
+    });
   });
 });

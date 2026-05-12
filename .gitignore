@@ -12,6 +12,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Frontend source uses src/lib/ for app code; not the Python lib/ build dir.
+!frontend/src/lib/
 parts/
 sdist/
 var/

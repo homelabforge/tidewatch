@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Update, Container } from '../types';
 import { api, ApiError } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
@@ -8,57 +9,69 @@ import { RefreshCw, CircleCheckBig, CircleX, CircleAlert, Archive } from 'lucide
 import { toast } from 'sonner';
 
 export default function Updates() {
-  const [updates, setUpdates] = useState<Update[]>([]);
-  const [containers, setContainers] = useState<Map<number, Container>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('needs_attention');
   const [applyingUpdateIds, setApplyingUpdateIds] = useState<Set<number>>(new Set());
   const [approvingUpdateIds, setApprovingUpdateIds] = useState<Set<number>>(new Set());
   const [rejectingUpdateIds, setRejectingUpdateIds] = useState<Set<number>>(new Set());
 
-  const loadUpdates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [allData, containersData] = await Promise.all([
-        api.updates.getAll(),
-        api.containers.getAll()
-      ]);
-
-      setUpdates(allData);
-
-      const containerMap = new Map(
-        containersData.map(c => [c.id, c])
-      );
-      setContainers(containerMap);
-    } catch {
-      toast.error('Failed to load updates');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUpdates();
-  }, [loadUpdates]);
-
-  const { checkJob, siblingDrifts, startCheckAll, cancelCheckJob, dismissCheckJob, dismissSiblingDrifts } = useCheckJob({
-    onCompleted: loadUpdates,
-    onCanceled: loadUpdates,
+  const updatesQuery = useQuery({
+    queryKey: ['updates', 'all'] as const,
+    queryFn: () => api.updates.getAll(),
   });
 
-  const handleApprove = async (id: number) => {
-    // Prevent duplicate clicks
-    if (approvingUpdateIds.has(id)) {
-      return;
-    }
+  const containersQuery = useQuery({
+    queryKey: ['containers', 'all'] as const,
+    queryFn: () => api.containers.getAll(),
+  });
 
-    setApprovingUpdateIds(prev => new Set(prev).add(id));
-    try {
-      await api.updates.approve(id);
+  const updates: Update[] = updatesQuery.data ?? [];
+  const containers: Map<number, Container> = (() => {
+    const map = new Map<number, Container>();
+    for (const c of containersQuery.data ?? []) map.set(c.id, c);
+    return map;
+  })();
+  const loading = updatesQuery.isLoading || containersQuery.isLoading;
+
+  const updatesError = updatesQuery.error;
+  useEffect(() => {
+    if (updatesError) toast.error('Failed to load updates');
+  }, [updatesError]);
+
+  const invalidateUpdates = () =>
+    queryClient.invalidateQueries({ queryKey: ['updates', 'all'] });
+  const invalidateContainers = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+  const invalidateHistory = () =>
+    queryClient.invalidateQueries({ queryKey: ['history'] });
+
+  const onCheckJobDone = () => {
+    invalidateUpdates();
+    invalidateContainers();
+  };
+
+  const { checkJob, siblingDrifts, startCheckAll, cancelCheckJob, dismissCheckJob, dismissSiblingDrifts } = useCheckJob({
+    onCompleted: onCheckJobDone,
+    onCanceled: onCheckJobDone,
+  });
+
+  // Shared concurrent-modification toast — preserves the today's pre-existing
+  // "refresh and try again" wording when the backend returns a write conflict.
+  const surfaceConflict = (message: string, fallback: string) => {
+    if (message.includes('concurrent modification') || message.includes('Database conflict')) {
+      toast.error('This update was modified by another action. Please refresh and try again.');
+    } else {
+      toast.error(message || fallback);
+    }
+  };
+
+  const approveMutation = useMutation({
+    mutationFn: (id: number) => api.updates.approve(id),
+    onSuccess: () => {
       toast.success('Update approved');
-      loadUpdates();
-    } catch (error) {
-      // Self-managed infrastructure: surface the manual instructions.
+      invalidateUpdates();
+    },
+    onError: (error) => {
       if (error instanceof ApiError && error.isSelfManaged) {
         toast.error('Self-managed infrastructure', {
           description: error.manualInstructions ?? 'Apply manually via dcp.',
@@ -66,98 +79,59 @@ export default function Updates() {
         });
         return;
       }
-
       const message = error instanceof Error ? error.message : 'Failed to approve update';
+      surfaceConflict(message, 'Failed to approve update');
+    },
+  });
 
-      // Check for concurrent modification errors
-      if (message.includes('concurrent modification') || message.includes('Database conflict')) {
-        toast.error('This update was modified by another action. Please refresh and try again.');
-      } else {
-        toast.error(message);
-      }
-    } finally {
-      setApprovingUpdateIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleReject = async (id: number) => {
-    // Prevent duplicate clicks
-    if (rejectingUpdateIds.has(id)) {
-      return;
-    }
-
-    const reason = prompt('Reason for rejection (optional):');
-
-    setRejectingUpdateIds(prev => new Set(prev).add(id));
-    try {
-      await api.updates.reject(id, reason || undefined);
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      api.updates.reject(id, reason),
+    onSuccess: () => {
       toast.success('Update rejected');
-      loadUpdates();
-    } catch (error) {
+      invalidateUpdates();
+    },
+    onError: (error) => {
       const message = error instanceof Error ? error.message : 'Failed to reject update';
+      surfaceConflict(message, 'Failed to reject update');
+    },
+  });
 
-      // Check for concurrent modification errors
-      if (message.includes('concurrent modification') || message.includes('Database conflict')) {
-        toast.error('This update was modified by another action. Please refresh and try again.');
-      } else {
-        toast.error(message);
-      }
-    } finally {
-      setRejectingUpdateIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleApply = async (id: number) => {
-    // Prevent duplicate clicks
-    if (applyingUpdateIds.has(id)) {
-      return;
-    }
-
-    if (!confirm('Are you sure you want to apply this update?')) return;
-
-    setApplyingUpdateIds(prev => new Set(prev).add(id));
-    try {
+  const applyMutation = useMutation({
+    mutationFn: async (id: number) => {
       await api.updates.apply(id);
 
-      // Poll to ensure the update has fully completed
-      // The backend returns success, but we need to wait for the update record to reflect completion
+      // Backend returns success on apply trigger, but the update record may
+      // not yet reflect terminal state. Poll until terminal (or timeout) so
+      // the post-apply UI shows the right status.
       let attempts = 0;
-      const maxAttempts = 30; // 30 seconds max polling
-
+      const maxAttempts = 30;
       while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         try {
-          const refreshedUpdate = await api.updates.get(id);
-
-          // Check if update is in a terminal state
-          if (refreshedUpdate.status === 'applied' ||
-              refreshedUpdate.status === 'rejected' ||
-              refreshedUpdate.status === 'failed' ||
-              refreshedUpdate.status === 'rolled_back') {
+          const refreshed = await api.updates.get(id);
+          if (
+            refreshed.status === 'applied' ||
+            refreshed.status === 'rejected' ||
+            refreshed.status === 'failed' ||
+            refreshed.status === 'rolled_back'
+          ) {
             break;
           }
         } catch {
           // Update might be deleted, break polling
           break;
         }
-
         attempts++;
       }
-
+    },
+    onSuccess: () => {
       toast.success('Update applied successfully');
-      loadUpdates();
-    } catch (error: unknown) {
-      // Self-managed infrastructure: surface the manual instructions in a
-      // longer-lived toast so the user can copy them.
+      invalidateUpdates();
+      invalidateContainers();
+      invalidateHistory();
+    },
+    onError: (error) => {
       if (error instanceof ApiError && error.isSelfManaged) {
         toast.error('Self-managed infrastructure', {
           description: error.manualInstructions ?? 'Apply manually via dcp.',
@@ -165,68 +139,112 @@ export default function Updates() {
         });
         return;
       }
-
-      const errorMessage = error instanceof Error ? error.message : 'Failed to apply update';
-
-      // Enhanced error handling for race conditions
-      if (errorMessage.includes('concurrent modification') ||
-          errorMessage.includes('Database conflict') ||
-          errorMessage.includes('status changed during application')) {
+      const message = error instanceof Error ? error.message : 'Failed to apply update';
+      if (
+        message.includes('concurrent modification') ||
+        message.includes('Database conflict') ||
+        message.includes('status changed during application')
+      ) {
         toast.error('This update was modified during application. Please check its current status.');
       } else {
-        toast.error(errorMessage);
+        toast.error(message);
       }
-    } finally {
-      setApplyingUpdateIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
+    },
+  });
 
-  const handleSnooze = async (id: number) => {
-    try {
-      const result = await api.updates.snooze(id);
+  const snoozeMutation = useMutation({
+    mutationFn: (id: number) => api.updates.snooze(id),
+    onSuccess: (result) => {
       toast.success(result.message);
-      loadUpdates();
-    } catch {
-      toast.error('Failed to snooze notification');
-    }
-  };
+      invalidateUpdates();
+    },
+    onError: () => toast.error('Failed to snooze notification'),
+  });
 
-  const handleRemoveContainer = async (id: number) => {
-    if (!confirm('Are you sure you want to permanently remove this container from the database? This action cannot be undone.')) return;
-
-    try {
-      const result = await api.updates.removeContainer(id);
+  const removeContainerMutation = useMutation({
+    mutationFn: (id: number) => api.updates.removeContainer(id),
+    onSuccess: (result) => {
       toast.success(result.message);
-      loadUpdates();
-    } catch {
-      toast.error('Failed to remove container');
-    }
-  };
+      invalidateUpdates();
+      invalidateContainers();
+    },
+    onError: () => toast.error('Failed to remove container'),
+  });
 
-  const handleCancelRetry = async (id: number) => {
-    try {
-      await api.updates.cancelRetry(id);
+  const cancelRetryMutation = useMutation({
+    mutationFn: (id: number) => api.updates.cancelRetry(id),
+    onSuccess: () => {
       toast.success('Retry cancelled, update reset to pending');
-      loadUpdates();
-    } catch {
-      toast.error('Failed to cancel retry');
-    }
+      invalidateUpdates();
+    },
+    onError: () => toast.error('Failed to cancel retry'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.updates.delete(id),
+    onSuccess: (result) => {
+      toast.success(result.message);
+      invalidateUpdates();
+    },
+    onError: () => toast.error('Failed to delete update'),
+  });
+
+  const handleApprove = (id: number) => {
+    if (approvingUpdateIds.has(id)) return;
+    setApprovingUpdateIds((prev) => new Set(prev).add(id));
+    approveMutation.mutate(id, {
+      onSettled: () =>
+        setApprovingUpdateIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        }),
+    });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this update? This action cannot be undone.')) return;
+  const handleReject = (id: number) => {
+    if (rejectingUpdateIds.has(id)) return;
+    const reason = prompt('Reason for rejection (optional):');
+    setRejectingUpdateIds((prev) => new Set(prev).add(id));
+    rejectMutation.mutate(
+      { id, reason: reason || undefined },
+      {
+        onSettled: () =>
+          setRejectingUpdateIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          }),
+      },
+    );
+  };
 
-    try {
-      const result = await api.updates.delete(id);
-      toast.success(result.message);
-      loadUpdates();
-    } catch {
-      toast.error('Failed to delete update');
-    }
+  const handleApply = (id: number) => {
+    if (applyingUpdateIds.has(id)) return;
+    if (!confirm('Are you sure you want to apply this update?')) return;
+    setApplyingUpdateIds((prev) => new Set(prev).add(id));
+    applyMutation.mutate(id, {
+      onSettled: () =>
+        setApplyingUpdateIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        }),
+    });
+  };
+
+  const handleSnooze = (id: number) => snoozeMutation.mutate(id);
+
+  const handleRemoveContainer = (id: number) => {
+    if (!confirm('Are you sure you want to permanently remove this container from the database? This action cannot be undone.')) return;
+    removeContainerMutation.mutate(id);
+  };
+
+  const handleCancelRetry = (id: number) => cancelRetryMutation.mutate(id);
+
+  const handleDelete = (id: number) => {
+    if (!confirm('Are you sure you want to delete this update? This action cannot be undone.')) return;
+    deleteMutation.mutate(id);
   };
 
   const handleCheckAll = startCheckAll;

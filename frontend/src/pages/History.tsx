@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UnifiedHistoryEvent } from '../types';
 import { api } from '../services/api';
 import StatusBadge from '../components/StatusBadge';
+import {
+  dependencyTypeToQueryKey,
+  type DepTypeRaw,
+} from '../hooks/useDependencyQueries';
 import { RefreshCw, History as HistoryIcon, RotateCcw, ArrowRight, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -29,73 +34,89 @@ const formatTriggerReason = (reason?: string): string => {
   return reasonMap[reason] || reason.replace(/_/g, ' ');
 };
 
+const DEP_TYPE_VARIANTS: ReadonlySet<DepTypeRaw> = new Set([
+  'app',
+  'app_dependency',
+  'dockerfile',
+  'httpServer',
+  'http_server',
+]);
+
+const isDepTypeRaw = (t: unknown): t is DepTypeRaw =>
+  typeof t === 'string' && DEP_TYPE_VARIANTS.has(t as DepTypeRaw);
+
 export default function History() {
-  const [history, setHistory] = useState<UnifiedHistoryEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
+  const historyQuery = useQuery({
+    queryKey: ['history'] as const,
+    queryFn: () => api.history.getAll(),
+  });
+
+  const history: UnifiedHistoryEvent[] = historyQuery.data ?? [];
+  const loading = historyQuery.isLoading || historyQuery.isFetching;
+
+  const historyError = historyQuery.error;
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (historyError) toast.error('Failed to load history');
+  }, [historyError]);
 
-  const loadHistory = async () => {
-    setLoading(true);
-    try {
-      const data = await api.history.getAll();
-      setHistory(data);
-    } catch {
-      toast.error('Failed to load history');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const invalidateHistory = () =>
+    queryClient.invalidateQueries({ queryKey: ['history'] });
+  const invalidateContainers = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+  const invalidateDepSummary = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'dependencySummary'] });
 
-  const handleRollback = async (id: number, dataBackupStatus?: string | null) => {
+  const rollbackMutation = useMutation({
+    mutationFn: (id: number) => api.history.rollback(id),
+    onSuccess: () => {
+      toast.success('Rollback initiated successfully');
+      invalidateHistory();
+      invalidateContainers();
+    },
+    onError: () => toast.error('Failed to rollback update'),
+  });
+
+  const unignoreMutation = useMutation({
+    mutationFn: async (item: UnifiedHistoryEvent) => {
+      // Caller has already validated dependency_id/type/container_id below.
+      if (item.dependency_type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile(item.dependency_id!);
+      } else if (item.dependency_type === 'http_server') {
+        await api.dependencies.unignoreHttpServer(item.dependency_id!);
+      } else if (item.dependency_type === 'app_dependency') {
+        await api.dependencies.unignoreAppDependency(item.dependency_id!);
+      }
+      return item;
+    },
+    onSuccess: (item) => {
+      toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      invalidateHistory();
+      invalidateDepSummary();
+      if (isDepTypeRaw(item.dependency_type) && item.container_id != null) {
+        queryClient.invalidateQueries({
+          queryKey: dependencyTypeToQueryKey(item.dependency_type, item.container_id),
+        });
+      }
+    },
+    onError: () => toast.error('Failed to unignore dependency'),
+  });
+
+  const handleRollback = (id: number, dataBackupStatus?: string | null) => {
     const confirmMessage = dataBackupStatus === 'success'
       ? 'This will restore both the container image and data from the pre-update backup. Continue?'
       : 'This will revert the container image only. Database/config changes from the update will remain. Continue?';
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
-    try {
-      await api.history.rollback(id);
-      toast.success('Rollback initiated successfully');
-      loadHistory();
-    } catch {
-      toast.error('Failed to rollback update');
-    }
+    if (!confirm(confirmMessage)) return;
+    rollbackMutation.mutate(id);
   };
 
-  const handleUnignore = async (item: UnifiedHistoryEvent) => {
-    console.log('Unignore clicked - Full item:', item);
-    console.log('Dependency fields:', {
-      id: item.dependency_id,
-      type: item.dependency_type,
-      container: item.container_id,
-      name: item.dependency_name
-    });
-
+  const handleUnignore = (item: UnifiedHistoryEvent) => {
     if (!item.dependency_id || !item.dependency_type || !item.container_id) {
       toast.error(`Missing dependency information (ID: ${item.dependency_id}, Type: ${item.dependency_type}, Container: ${item.container_id})`);
       return;
     }
-
-    try {
-      // Call the appropriate unignore endpoint based on dependency type
-      if (item.dependency_type === 'dockerfile') {
-        await api.dependencies.unignoreDockerfile(item.dependency_id);
-      } else if (item.dependency_type === 'http_server') {
-        await api.dependencies.unignoreHttpServer(item.dependency_id);
-      } else if (item.dependency_type === 'app_dependency') {
-        await api.dependencies.unignoreAppDependency(item.dependency_id);
-      }
-
-      toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
-      loadHistory();
-    } catch (error) {
-      console.error('Unignore error:', error);
-      toast.error('Failed to unignore dependency');
-    }
+    unignoreMutation.mutate(item);
   };
 
   return (
@@ -108,7 +129,7 @@ export default function History() {
             <p className="text-tide-text-muted mt-2">View container updates and restart events</p>
           </div>
           <button
-            onClick={loadHistory}
+            onClick={() => historyQuery.refetch()}
             disabled={loading}
             className="px-4 py-2 bg-primary hover:bg-primary-dark text-tide-text rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
           >

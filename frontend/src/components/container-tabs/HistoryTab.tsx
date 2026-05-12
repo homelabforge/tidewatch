@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, CircleCheck, CircleX, CircleAlert, ArrowRight, Undo2, EyeOff, Eye, History, Shield } from 'lucide-react';
 import { Container, HistoryItem } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
 import StatusBadge from '../StatusBadge';
+import {
+  dependencyTypeToQueryKey,
+  type DepTypeRaw,
+} from '../../hooks/useDependencyQueries';
 
 interface HistoryTabProps {
   container: Container;
@@ -12,70 +16,99 @@ interface HistoryTabProps {
   onUpdate?: () => void;
 }
 
+const DEP_TYPE_VARIANTS: ReadonlySet<DepTypeRaw> = new Set([
+  'app',
+  'app_dependency',
+  'dockerfile',
+  'httpServer',
+  'http_server',
+]);
+
+const isDepTypeRaw = (t: unknown): t is DepTypeRaw =>
+  typeof t === 'string' && DEP_TYPE_VARIANTS.has(t as DepTypeRaw);
+
 export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabProps) {
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const queryClient = useQueryClient();
 
-  const loadHistoryItem = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const data = await api.containers.getDetails(container.id);
-      setHistory((data as { history?: HistoryItem[] }).history || []);
-    } catch (error) {
-      console.error('Failed to load update history:', error);
-      setHistory([]);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [container.id]);
+  const detailsQuery = useQuery({
+    queryKey: ['containers', 'details', container.id] as const,
+    queryFn: () => api.containers.getDetails(container.id),
+    select: (data) =>
+      ((data as { history?: HistoryItem[] }).history ?? []) as HistoryItem[],
+  });
 
-  useEffect(() => {
-    loadHistoryItem();
-  }, [loadHistoryItem]);
+  const history: HistoryItem[] = detailsQuery.data ?? [];
+  const loadingHistory = detailsQuery.isLoading || detailsQuery.isFetching;
 
-  const handleRollback = async (historyId: number, dataBackupStatus?: string | null) => {
+  const invalidateDetails = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['containers', 'details', container.id],
+    });
+  const invalidateHistory = () =>
+    queryClient.invalidateQueries({ queryKey: ['history'] });
+  const invalidateContainers = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+  const invalidateDepSummary = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'dependencySummary'] });
+
+  const rollbackMutation = useMutation({
+    mutationFn: (id: number) => api.history.rollback(id),
+    onSuccess: () => {
+      toast.success('Rollback initiated successfully');
+      invalidateDetails();
+      invalidateHistory();
+      invalidateContainers();
+      onClose();
+    },
+    onError: (error) => {
+      console.error('Rollback error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to rollback');
+    },
+  });
+
+  const unignoreMutation = useMutation({
+    mutationFn: async (item: HistoryItem) => {
+      if (item.dependency_type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile(item.dependency_id!);
+      } else if (item.dependency_type === 'http_server') {
+        await api.dependencies.unignoreHttpServer(item.dependency_id!);
+      } else if (item.dependency_type === 'app_dependency') {
+        await api.dependencies.unignoreAppDependency(item.dependency_id!);
+      }
+      return item;
+    },
+    onSuccess: (item) => {
+      toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
+      invalidateDetails();
+      invalidateHistory();
+      invalidateDepSummary();
+      if (isDepTypeRaw(item.dependency_type)) {
+        queryClient.invalidateQueries({
+          queryKey: dependencyTypeToQueryKey(item.dependency_type, container.id),
+        });
+      }
+      onUpdate?.();
+    },
+    onError: (error) => {
+      console.error('Unignore error:', error);
+      toast.error('Failed to unignore dependency');
+    },
+  });
+
+  const handleRollback = (historyId: number, dataBackupStatus?: string | null) => {
     const confirmMessage = dataBackupStatus === 'success'
       ? 'This will restore both the container image and data from the pre-update backup. Continue?'
       : 'This will revert the container image only. Database/config changes from the update will remain. Continue?';
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
-    try {
-      await api.history.rollback(historyId);
-      toast.success('Rollback initiated successfully');
-      await loadHistoryItem();
-      onClose();
-    } catch (error) {
-      console.error('Rollback error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to rollback');
-    }
+    if (!confirm(confirmMessage)) return;
+    rollbackMutation.mutate(historyId);
   };
 
-  const handleUnignoreFromHistory = async (item: HistoryItem) => {
+  const handleUnignoreFromHistory = (item: HistoryItem) => {
     if (!item.dependency_id || !item.dependency_type) {
       toast.error('Missing dependency information');
       return;
     }
-
-    try {
-      if (item.dependency_type === 'dockerfile') {
-        await api.dependencies.unignoreDockerfile(item.dependency_id);
-        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
-      } else if (item.dependency_type === 'http_server') {
-        await api.dependencies.unignoreHttpServer(item.dependency_id);
-        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
-      } else if (item.dependency_type === 'app_dependency') {
-        await api.dependencies.unignoreAppDependency(item.dependency_id);
-        toast.success(`Unignored ${item.dependency_name || 'dependency'}`);
-      }
-
-      await loadHistoryItem();
-      onUpdate?.();
-    } catch (error) {
-      console.error('Unignore error:', error);
-      toast.error('Failed to unignore dependency');
-    }
+    unignoreMutation.mutate(item);
   };
 
   return (
@@ -83,7 +116,7 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-tide-text">Update History</h3>
         <button
-          onClick={loadHistoryItem}
+          onClick={() => detailsQuery.refetch()}
           disabled={loadingHistory}
           className="px-3 py-1 bg-tide-surface-light hover:bg-gray-500 text-tide-text rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
         >

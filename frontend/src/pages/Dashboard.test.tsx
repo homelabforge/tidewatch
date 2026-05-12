@@ -1,8 +1,14 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../__tests__/test-utils'
 import { MemoryRouter } from 'react-router-dom'
 import Dashboard from './Dashboard'
+
+// Tests in this file supply their own MemoryRouter, so opt out of the
+// helper's default BrowserRouter wrap to avoid nested routers.
+const render = (ui: React.ReactElement) =>
+  renderWithProviders(ui, { withRouter: false })
 import { api } from '../services/api'
 import { Container, Update, AnalyticsSummary } from '../types'
 
@@ -252,9 +258,20 @@ describe('Dashboard', () => {
       })
     })
 
-    it('shows error toast when data loading fails', async () => {
+    it('shows error toast when containers load fails', async () => {
       const { toast } = await import('sonner')
       vi.mocked(api.containers.getAll).mockRejectedValue(new Error('Network error'))
+
+      render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Failed to load containers')
+      })
+    })
+
+    it('shows error toast when supporting data load fails', async () => {
+      const { toast } = await import('sonner')
+      vi.mocked(api.updates.getAll).mockRejectedValue(new Error('Network error'))
 
       render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
@@ -798,6 +815,73 @@ describe('Dashboard', () => {
       await waitFor(() => {
         // Should default to 'monitor' policy
         expect(screen.getByText('monitor')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('Cache invalidation', () => {
+    it('container sync mutation invalidates containers + updates + depSummary', async () => {
+      vi.mocked(api.containers.sync).mockResolvedValue({
+        message: 'ok',
+        containers_found: 1,
+        stats: { added: 1, updated: 0, unchanged: 0, total: 1 },
+        success: true,
+        warnings: [],
+      })
+
+      const { queryClient } = render(
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>,
+      )
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Scan/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getAllByText(/Scan/)[0])
+
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+        expect(spy).toHaveBeenCalledWith({
+          queryKey: ['containers', 'dependencySummary'],
+        })
+      })
+    })
+
+    it('scanMyProjects mutation invalidates containers + updates + depSummary', async () => {
+      vi.mocked(api.containers.scanMyProjects).mockResolvedValue({
+        success: true,
+        results: { added: 2, updated: 1, skipped: 0 },
+      })
+      // Force my_projects_enabled so the "Scan Projects" button renders.
+      vi.mocked(api.settings.getAll).mockResolvedValue([
+        { key: 'my_projects_enabled', value: 'true' },
+      ] as never)
+      vi.mocked(api.containers.getAll).mockResolvedValue([mockContainers[0]])
+
+      const { queryClient } = render(
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>,
+      )
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Scan Projects/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByText(/Scan Projects/))
+
+      await waitFor(() => {
+        expect(api.containers.scanMyProjects).toHaveBeenCalled()
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+        expect(spy).toHaveBeenCalledWith({
+          queryKey: ['containers', 'dependencySummary'],
+        })
       })
     })
   })

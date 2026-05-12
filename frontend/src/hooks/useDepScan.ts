@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useEventStream, type DepScanProgressEvent } from './useEventStream';
 import type { DepScanJobState } from '../components/DepScanProgressBar';
 import type { DependencySummary } from '../types';
+import { useDependencySummaryQuery } from './useDependencyQueries';
 import { toast } from 'sonner';
 
 interface UseDepScanOptions {
@@ -10,17 +12,22 @@ interface UseDepScanOptions {
   onCanceled?: () => void;
 }
 
+const EMPTY_SUMMARY: Record<string, DependencySummary> = {};
+
 export function useDepScan(options: UseDepScanOptions = {}) {
   const { onCompleted, onCanceled } = options;
 
+  const queryClient = useQueryClient();
   const [depScanJob, setDepScanJob] = useState<DepScanJobState | null>(null);
-  const [depSummary, setDepSummary] = useState<Record<string, DependencySummary>>({});
+  const depSummaryQuery = useDependencySummaryQuery();
+  const depSummary: Record<string, DependencySummary> = useMemo(
+    () => depSummaryQuery.data?.summaries ?? EMPTY_SUMMARY,
+    [depSummaryQuery.data],
+  );
 
   const refreshSummary = useCallback(() => {
-    api.containers.getDependencySummary()
-      .then((res) => setDepSummary(res.summaries))
-      .catch(() => {});
-  }, []);
+    queryClient.invalidateQueries({ queryKey: ['containers', 'dependencySummary'] });
+  }, [queryClient]);
 
   const handleDepScanProgress = useCallback((data: DepScanProgressEvent) => {
     setDepScanJob({
@@ -120,7 +127,6 @@ export function useDepScan(options: UseDepScanOptions = {}) {
   return {
     depScanJob,
     depSummary,
-    setDepSummary,
     startDepScan,
     cancelDepScan,
     dismissDepScan,

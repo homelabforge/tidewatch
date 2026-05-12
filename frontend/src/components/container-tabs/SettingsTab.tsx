@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, RefreshCw, Zap, Eye, PowerOff, WandSparkles, RotateCw, Pause, Play, Network, Calendar, Star } from 'lucide-react';
-import { Container, RestartState, EnableRestartConfig } from '../../types';
+import { Container, EnableRestartConfig, RestartState } from '../../types';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
 
@@ -9,7 +10,167 @@ interface SettingsTabProps {
   onUpdate?: () => void;
 }
 
+const DEFAULT_RESTART_CONFIG: EnableRestartConfig = {
+  max_attempts: 10,
+  backoff_strategy: 'exponential',
+  base_delay_seconds: 2,
+  max_delay_seconds: 300,
+  success_window_seconds: 300,
+  health_check_enabled: true,
+  health_check_timeout: 60,
+  rollback_on_health_fail: false,
+};
+
+const restartStateToConfig = (state: RestartState): EnableRestartConfig => ({
+  max_attempts: state.max_attempts,
+  backoff_strategy: state.backoff_strategy as 'exponential' | 'linear' | 'fixed',
+  base_delay_seconds: state.base_delay_seconds,
+  max_delay_seconds: state.max_delay_seconds,
+  success_window_seconds: state.success_window_seconds,
+  health_check_enabled: state.health_check_enabled,
+  health_check_timeout: state.health_check_timeout,
+  rollback_on_health_fail: state.rollback_on_health_fail,
+});
+
+const formatDuration = (seconds: number) => {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
+};
+
+// Pattern E: keyed sub-component for the restart config form. Lazy useState
+// initializer seeds from the `initialState` prop on mount; the parent only
+// renders this when restart state is loaded, and a container change remounts
+// via the `key` so the seed re-runs.
+interface RestartConfigFormProps {
+  initialState: RestartState;
+  onSave: (config: EnableRestartConfig) => Promise<void>;
+}
+
+function RestartConfigForm({ initialState, onSave }: RestartConfigFormProps) {
+  const [config, setConfig] = useState<EnableRestartConfig>(() =>
+    restartStateToConfig(initialState),
+  );
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs text-tide-text-muted mb-1">Backoff Strategy</label>
+        <select
+          value={config.backoff_strategy}
+          onChange={(e) => setConfig({ ...config, backoff_strategy: e.target.value as 'exponential' | 'linear' | 'fixed' })}
+          className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="exponential">Exponential</option>
+          <option value="linear">Linear</option>
+          <option value="fixed">Fixed</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs text-tide-text-muted mb-1">Max Attempts ({config.max_attempts})</label>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          value={config.max_attempts}
+          onChange={(e) => setConfig({ ...config, max_attempts: parseInt(e.target.value) })}
+          className="w-full accent-teal-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs text-tide-text-muted mb-1">Base Delay ({config.base_delay_seconds}s)</label>
+        <input
+          type="range"
+          min="1"
+          max="60"
+          value={config.base_delay_seconds}
+          onChange={(e) => setConfig({ ...config, base_delay_seconds: parseFloat(e.target.value) })}
+          className="w-full accent-teal-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs text-tide-text-muted mb-1">Max Delay ({formatDuration(config.max_delay_seconds)})</label>
+        <input
+          type="range"
+          min="60"
+          max="3600"
+          value={config.max_delay_seconds}
+          onChange={(e) => setConfig({ ...config, max_delay_seconds: parseFloat(e.target.value) })}
+          className="w-full accent-teal-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs text-tide-text-muted mb-1">Success Window ({formatDuration(config.success_window_seconds)})</label>
+        <input
+          type="range"
+          min="60"
+          max="1800"
+          value={config.success_window_seconds}
+          onChange={(e) => setConfig({ ...config, success_window_seconds: parseInt(e.target.value) })}
+          className="w-full accent-teal-500"
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-tide-text">Health Check Enabled</span>
+        <button
+          onClick={() => setConfig({ ...config, health_check_enabled: !config.health_check_enabled })}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            config.health_check_enabled ? 'bg-primary' : 'bg-tide-surface-light'
+          }`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            config.health_check_enabled ? 'translate-x-6' : 'translate-x-1'
+          }`} />
+        </button>
+      </div>
+
+      {config.health_check_enabled && (
+        <div>
+          <label className="block text-xs text-tide-text-muted mb-1">Health Check Timeout ({config.health_check_timeout}s)</label>
+          <input
+            type="number"
+            min="10"
+            max="300"
+            value={config.health_check_timeout}
+            onChange={(e) => setConfig({ ...config, health_check_timeout: parseInt(e.target.value) })}
+            className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text text-sm"
+          />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-tide-text">Rollback on Health Fail</span>
+        <button
+          onClick={() => setConfig({ ...config, rollback_on_health_fail: !config.rollback_on_health_fail })}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            config.rollback_on_health_fail ? 'bg-primary' : 'bg-tide-surface-light'
+          }`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            config.rollback_on_health_fail ? 'translate-x-6' : 'translate-x-1'
+          }`} />
+        </button>
+      </div>
+
+      <button
+        onClick={() => onSave(config)}
+        className="w-full px-4 py-2 bg-primary text-tide-text rounded-lg hover:bg-primary/80 transition-colors"
+      >
+        Save Configuration
+      </button>
+    </div>
+  );
+}
+
 export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
+  const queryClient = useQueryClient();
+
   const [policy, setPolicy] = useState(container.policy);
   const [scope, setScope] = useState(container.scope);
   const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases ?? null);
@@ -22,97 +183,65 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const [autoRestartEnabled, setAutoRestartEnabled] = useState(container.auto_restart_enabled);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Restart state
-  const [restartState, setRestartState] = useState<RestartState | null>(null);
-  const [loadingRestartState, setLoadingRestartState] = useState(false);
-  const [restartConfig, setRestartConfig] = useState<EnableRestartConfig>({
-    max_attempts: 10,
-    backoff_strategy: 'exponential',
-    base_delay_seconds: 2,
-    max_delay_seconds: 300,
-    success_window_seconds: 300,
-    health_check_enabled: true,
-    health_check_timeout: 60,
-    rollback_on_health_fail: false,
-  });
-
-  // Dependency state
-  const [dependencies, setDependencies] = useState<string[]>(container.dependencies || []);
-  const [dependents, setDependents] = useState<string[]>(container.dependents || []);
-  const [allContainers, setAllContainers] = useState<Container[]>([]);
   const [selectedDependency, setSelectedDependency] = useState<string>('');
 
-  // Update window state
   const [updateWindow, setUpdateWindow] = useState<string>(container.update_window || '');
   const [updateWindowInput, setUpdateWindowInput] = useState<string>(container.update_window || '');
 
-  // My Projects setting
-  const [myProjectsEnabled, setMyProjectsEnabled] = useState(true);
+  // ── Queries ──────────────────────────────────────────────────────────────
+  const settingsQuery = useQuery({
+    queryKey: ['settings', 'all'] as const,
+    queryFn: () => api.settings.getAll(),
+  });
+  const myProjectsEnabled = useMemo(
+    () =>
+      settingsQuery.data?.find((s) => s.key === 'my_projects_enabled')?.value === 'true',
+    [settingsQuery.data],
+  );
 
-  // Load My Projects setting
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const settings = await api.settings.getAll();
-        const myProjectsSetting = settings.find(s => s.key === 'my_projects_enabled');
-        setMyProjectsEnabled(myProjectsSetting?.value === 'true');
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-      }
-    };
-    loadSettings();
-  }, []);
+  const restartStateQuery = useQuery({
+    queryKey: ['restartState', container.id] as const,
+    queryFn: () => api.restarts.getState(container.id),
+    enabled: autoRestartEnabled,
+  });
+  const restartState = restartStateQuery.data ?? null;
+  const loadingRestartState = restartStateQuery.isLoading;
 
-  const loadRestartState = useCallback(async () => {
-    setLoadingRestartState(true);
-    try {
-      const state = await api.restarts.getState(container.id);
-      setRestartState(state);
-      if (state) {
-        setRestartConfig({
-          max_attempts: state.max_attempts,
-          backoff_strategy: state.backoff_strategy as 'exponential' | 'linear' | 'fixed',
-          base_delay_seconds: state.base_delay_seconds,
-          max_delay_seconds: state.max_delay_seconds,
-          success_window_seconds: state.success_window_seconds,
-          health_check_enabled: state.health_check_enabled,
-          health_check_timeout: state.health_check_timeout,
-          rollback_on_health_fail: state.rollback_on_health_fail,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load restart state:', error);
-    } finally {
-      setLoadingRestartState(false);
-    }
-  }, [container.id]);
+  const containerDependenciesQuery = useQuery({
+    queryKey: ['containers', 'dependencies', container.id] as const,
+    queryFn: () => api.containers.getDependencies(container.id),
+  });
+  const dependencies = containerDependenciesQuery.data?.dependencies ?? [];
+  const dependents = containerDependenciesQuery.data?.dependents ?? [];
 
-  const loadDependencies = useCallback(async () => {
-    try {
-      const deps = await api.containers.getDependencies(container.id);
-      setDependencies(deps.dependencies);
-      setDependents(deps.dependents);
-    } catch (error) {
-      console.error('Failed to load dependencies:', error);
-    }
-  }, [container.id]);
+  const allContainersQuery = useQuery({
+    queryKey: ['containers', 'all'] as const,
+    queryFn: () => api.containers.getAll(),
+    select: (list) => list.filter((c) => c.id !== container.id),
+  });
+  const allContainers = allContainersQuery.data ?? [];
 
-  const loadAllContainers = useCallback(async () => {
-    try {
-      const containers = await api.containers.getAll();
-      setAllContainers(containers.filter(c => c.id !== container.id));
-    } catch (error) {
-      console.error('Failed to load containers:', error);
-    }
-  }, [container.id]);
+  const invalidateContainers = () =>
+    queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+  const invalidateContainerDependencies = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['containers', 'dependencies', container.id],
+    });
+  const invalidateRestartState = () =>
+    queryClient.invalidateQueries({ queryKey: ['restartState', container.id] });
 
-  useEffect(() => {
-    if (autoRestartEnabled) {
-      loadRestartState();
-    }
-    loadDependencies();
-    loadAllContainers();
-  }, [autoRestartEnabled, loadRestartState, loadDependencies, loadAllContainers]);
+  // Pattern F: my-project toggle is a real mutation; no prop mutation.
+  const toggleMyProjectMutation = useMutation({
+    mutationFn: (newValue: boolean) =>
+      api.containers.update(container.id, { is_my_project: newValue }),
+    onSuccess: (_data, newValue) => {
+      toast.success(newValue ? 'Added to My Projects' : 'Removed from My Projects');
+      invalidateContainers();
+      onUpdate?.();
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Failed to update My Project status'),
+  });
 
   const saveSettings = async (updates: Record<string, unknown>) => {
     setSavingSettings(true);
@@ -233,8 +362,9 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
 
     try {
       if (newValue) {
-        const result = await api.restarts.enable(container.id, restartConfig);
-        setRestartState(result.state);
+        // First enable uses defaults; users can tune via the form afterward.
+        const result = await api.restarts.enable(container.id, DEFAULT_RESTART_CONFIG);
+        queryClient.setQueryData(['restartState', container.id], result.state);
         setAutoRestartEnabled(true);
         toast.success('Auto-restart enabled');
       } else {
@@ -249,10 +379,10 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     }
   };
 
-  const handleSaveRestartConfig = async () => {
+  const handleSaveRestartConfig = async (config: EnableRestartConfig) => {
     try {
-      const result = await api.restarts.enable(container.id, restartConfig);
-      setRestartState(result.state);
+      const result = await api.restarts.enable(container.id, config);
+      queryClient.setQueryData(['restartState', container.id], result.state);
       toast.success('Restart configuration saved');
       onUpdate?.();
     } catch (error) {
@@ -266,7 +396,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
 
     try {
       await api.restarts.reset(container.id);
-      await loadRestartState();
+      invalidateRestartState();
       toast.success('Restart state reset');
     } catch (error) {
       console.error('Error resetting restart state:', error);
@@ -286,7 +416,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
 
     try {
       await api.restarts.pause(container.id, duration);
-      await loadRestartState();
+      invalidateRestartState();
       toast.success(`Auto-restart paused for ${hours} hours`);
     } catch (error) {
       console.error('Error pausing restart:', error);
@@ -297,7 +427,7 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const handleResumeRestart = async () => {
     try {
       await api.restarts.resume(container.id);
-      await loadRestartState();
+      invalidateRestartState();
       toast.success('Auto-restart resumed');
     } catch (error) {
       console.error('Error resuming restart:', error);
@@ -305,33 +435,33 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     }
   };
 
-  const handleAddDependency = async () => {
-    if (!selectedDependency) return;
-
-    const newDeps = [...dependencies, selectedDependency];
-    try {
-      await api.containers.updateDependencies(container.id, newDeps);
-      setDependencies(newDeps);
-      setSelectedDependency('');
-      toast.success('Dependency added');
+  const updateContainerDependenciesMutation = useMutation({
+    mutationFn: ({ newDeps }: { newDeps: string[]; successMsg: string }) =>
+      api.containers.updateDependencies(container.id, newDeps),
+    onSuccess: (_data, { successMsg }) => {
+      toast.success(successMsg);
+      invalidateContainerDependencies();
       onUpdate?.();
-    } catch (error) {
-      console.error('Error adding dependency:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to add dependency');
-    }
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Failed to update dependencies'),
+  });
+
+  const handleAddDependency = () => {
+    if (!selectedDependency) return;
+    const newDeps = [...dependencies, selectedDependency];
+    updateContainerDependenciesMutation.mutate(
+      { newDeps, successMsg: 'Dependency added' },
+      { onSuccess: () => setSelectedDependency('') },
+    );
   };
 
-  const handleRemoveDependency = async (dep: string) => {
-    const newDeps = dependencies.filter(d => d !== dep);
-    try {
-      await api.containers.updateDependencies(container.id, newDeps);
-      setDependencies(newDeps);
-      toast.success('Dependency removed');
-      onUpdate?.();
-    } catch (error) {
-      console.error('Error removing dependency:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to remove dependency');
-    }
+  const handleRemoveDependency = (dep: string) => {
+    const newDeps = dependencies.filter((d) => d !== dep);
+    updateContainerDependenciesMutation.mutate({
+      newDeps,
+      successMsg: 'Dependency removed',
+    });
   };
 
   const handleSaveUpdateWindow = async () => {
@@ -346,24 +476,8 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     }
   };
 
-  const handleToggleMyProject = async () => {
-    try {
-      const newValue = !container.is_my_project;
-      await api.containers.update(container.id, { is_my_project: newValue });
-      container.is_my_project = newValue;
-      toast.success(newValue ? 'Added to My Projects' : 'Removed from My Projects');
-      onUpdate?.();
-    } catch (error) {
-      console.error('Error toggling My Project:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to update My Project status');
-    }
-  };
-
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-    return `${Math.floor(seconds / 86400)}d`;
+  const handleToggleMyProject = () => {
+    toggleMyProjectMutation.mutate(!container.is_my_project);
   };
 
   return (
@@ -455,120 +569,15 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
                 </div>
               </div>
 
-              {/* Configuration */}
+              {/* Configuration — Pattern E: keyed sub-component with lazy
+                  useState initializer seeded from the loaded restartState. */}
               <div>
                 <h5 className="text-sm font-medium text-tide-text mb-3">Configuration</h5>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-tide-text-muted mb-1">Backoff Strategy</label>
-                    <select
-                      value={restartConfig.backoff_strategy}
-                      onChange={(e) => setRestartConfig({ ...restartConfig, backoff_strategy: e.target.value as 'exponential' | 'linear' | 'fixed' })}
-                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="exponential">Exponential</option>
-                      <option value="linear">Linear</option>
-                      <option value="fixed">Fixed</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-tide-text-muted mb-1">Max Attempts ({restartConfig.max_attempts})</label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="100"
-                      value={restartConfig.max_attempts}
-                      onChange={(e) => setRestartConfig({ ...restartConfig, max_attempts: parseInt(e.target.value) })}
-                      className="w-full accent-teal-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-tide-text-muted mb-1">Base Delay ({restartConfig.base_delay_seconds}s)</label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="60"
-                      value={restartConfig.base_delay_seconds}
-                      onChange={(e) => setRestartConfig({ ...restartConfig, base_delay_seconds: parseFloat(e.target.value) })}
-                      className="w-full accent-teal-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-tide-text-muted mb-1">Max Delay ({formatDuration(restartConfig.max_delay_seconds)})</label>
-                    <input
-                      type="range"
-                      min="60"
-                      max="3600"
-                      value={restartConfig.max_delay_seconds}
-                      onChange={(e) => setRestartConfig({ ...restartConfig, max_delay_seconds: parseFloat(e.target.value) })}
-                      className="w-full accent-teal-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-tide-text-muted mb-1">Success Window ({formatDuration(restartConfig.success_window_seconds)})</label>
-                    <input
-                      type="range"
-                      min="60"
-                      max="1800"
-                      value={restartConfig.success_window_seconds}
-                      onChange={(e) => setRestartConfig({ ...restartConfig, success_window_seconds: parseInt(e.target.value) })}
-                      className="w-full accent-teal-500"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-tide-text">Health Check Enabled</span>
-                    <button
-                      onClick={() => setRestartConfig({ ...restartConfig, health_check_enabled: !restartConfig.health_check_enabled })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        restartConfig.health_check_enabled ? 'bg-primary' : 'bg-tide-surface-light'
-                      }`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        restartConfig.health_check_enabled ? 'translate-x-6' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-
-                  {restartConfig.health_check_enabled && (
-                    <div>
-                      <label className="block text-xs text-tide-text-muted mb-1">Health Check Timeout ({restartConfig.health_check_timeout}s)</label>
-                      <input
-                        type="number"
-                        min="10"
-                        max="300"
-                        value={restartConfig.health_check_timeout}
-                        onChange={(e) => setRestartConfig({ ...restartConfig, health_check_timeout: parseInt(e.target.value) })}
-                        className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text text-sm"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-tide-text">Rollback on Health Fail</span>
-                    <button
-                      onClick={() => setRestartConfig({ ...restartConfig, rollback_on_health_fail: !restartConfig.rollback_on_health_fail })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        restartConfig.rollback_on_health_fail ? 'bg-primary' : 'bg-tide-surface-light'
-                      }`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        restartConfig.rollback_on_health_fail ? 'translate-x-6' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={handleSaveRestartConfig}
-                    className="w-full px-4 py-2 bg-primary text-tide-text rounded-lg hover:bg-primary/80 transition-colors"
-                  >
-                    Save Configuration
-                  </button>
-                </div>
+                <RestartConfigForm
+                  key={container.id}
+                  initialState={restartState}
+                  onSave={handleSaveRestartConfig}
+                />
               </div>
 
               {/* Action Buttons */}

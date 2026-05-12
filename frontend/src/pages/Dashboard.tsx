@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { Container, Update, FilterOptions, SortOption, AnalyticsSummary } from '../types';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Container, FilterOptions, SortOption } from '../types';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import ContainerCard from '../components/ContainerCard';
@@ -16,15 +17,8 @@ import { toast } from 'sonner';
 const ContainerModal = lazy(() => import('../components/ContainerModal'));
 
 export default function Dashboard() {
-  const [containers, setContainers] = useState<Container[]>([]);
-  const [updates, setUpdates] = useState<Update[]>([]);
-  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
+  const queryClient = useQueryClient();
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
-  const [vulnforgeEnabled, setVulnforgeEnabled] = useState(false);
-  const [myProjectsEnabled, setMyProjectsEnabled] = useState(false);
-  const [scanningProjects, setScanningProjects] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     status: 'all',
@@ -33,78 +27,120 @@ export default function Dashboard() {
   });
   const [sort] = useState<SortOption>({ field: 'name', direction: 'asc' });
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [containersData, updatesData, analyticsData, settingsData, depSummaryData] = await Promise.all([
-        api.containers.getAll(),
-        api.updates.getAll(),
-        api.analytics.getSummary(30),
-        api.settings.getAll(),
-        api.containers.getDependencySummary().catch(() => ({ summaries: {} })),
-      ]);
-      setContainers(containersData);
-      setUpdates(updatesData);
-      setAnalytics(analyticsData);
-      depScan.setDepSummary(depSummaryData.summaries);
-
-      const vulnforgeSetting = settingsData.find((s) => s.key === 'vulnforge_enabled');
-      setVulnforgeEnabled(vulnforgeSetting?.value === 'true');
-
-      const myProjectsSetting = settingsData.find((s) => s.key === 'my_projects_enabled');
-      setMyProjectsEnabled(myProjectsSetting?.value === 'true');
-    } catch {
-      toast.error('Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Check job hook
-  const checkJobHook = useCheckJob({
-    onCompleted: loadData,
-    onCanceled: loadData,
-  });
-
-  // Dep scan hook
   const depScan = useDepScan();
 
-  const handleScan = useCallback(async () => {
-    setScanning(true);
-    try {
-      const result = await api.containers.sync();
+  const containersQuery = useQuery({
+    queryKey: ['containers', 'all'] as const,
+    queryFn: () => api.containers.getAll(),
+  });
+  const updatesQuery = useQuery({
+    queryKey: ['updates', 'all'] as const,
+    queryFn: () => api.updates.getAll(),
+  });
+  const analyticsQuery = useQuery({
+    queryKey: ['analytics', 'summary', 30] as const,
+    queryFn: () => api.analytics.getSummary(30),
+  });
+  const settingsQuery = useQuery({
+    queryKey: ['settings', 'all'] as const,
+    queryFn: () => api.settings.getAll(),
+  });
+
+  const containers: Container[] = useMemo(
+    () => containersQuery.data ?? [],
+    [containersQuery.data],
+  );
+  const updates = useMemo(() => updatesQuery.data ?? [], [updatesQuery.data]);
+  const analytics = analyticsQuery.data ?? null;
+  const settings = settingsQuery.data;
+  const vulnforgeEnabled = useMemo(
+    () => settings?.find((s) => s.key === 'vulnforge_enabled')?.value === 'true',
+    [settings],
+  );
+  const myProjectsEnabled = useMemo(
+    () => settings?.find((s) => s.key === 'my_projects_enabled')?.value === 'true',
+    [settings],
+  );
+
+  const loading = containersQuery.isLoading;
+
+  const containersError = containersQuery.error;
+  useEffect(() => {
+    if (containersError) toast.error('Failed to load containers');
+  }, [containersError]);
+
+  // Single "Failed to load data" toast for the supporting queries — preserves
+  // today's UX without duplicating the message per slice.
+  const supportingError =
+    updatesQuery.error || analyticsQuery.error || settingsQuery.error;
+  useEffect(() => {
+    if (supportingError) toast.error('Failed to load data');
+  }, [supportingError]);
+
+  const invalidateContainers = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['containers', 'all'] }),
+    [queryClient],
+  );
+  const invalidateUpdates = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['updates', 'all'] }),
+    [queryClient],
+  );
+  const invalidateDepSummary = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: ['containers', 'dependencySummary'],
+      }),
+    [queryClient],
+  );
+
+  const refreshContainersAndUpdates = useCallback(() => {
+    invalidateContainers();
+    invalidateUpdates();
+  }, [invalidateContainers, invalidateUpdates]);
+
+  const checkJobHook = useCheckJob({
+    onCompleted: refreshContainersAndUpdates,
+    onCanceled: refreshContainersAndUpdates,
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: () => api.containers.sync(),
+    onSuccess: (result) => {
       if (result.warnings?.length) {
         result.warnings.forEach((w: string) => toast.warning(w));
       }
-      toast.success(`Synced ${result.containers_found} containers: ${result.stats.added} added, ${result.stats.updated} updated`);
-      await loadData();
-    } catch {
-      toast.error('Failed to sync containers');
-    } finally {
-      setScanning(false);
-    }
-  }, [loadData]);
+      toast.success(
+        `Synced ${result.containers_found} containers: ${result.stats.added} added, ${result.stats.updated} updated`,
+      );
+      invalidateContainers();
+      invalidateUpdates();
+      invalidateDepSummary();
+    },
+    onError: () => toast.error('Failed to sync containers'),
+  });
 
-  const handleScanMyProjects = useCallback(async () => {
-    setScanningProjects(true);
-    try {
-      const result = await api.containers.scanMyProjects();
-      if (result.success) {
-        const { added, updated, skipped } = result.results;
-        toast.success(`Projects: ${added} added, ${updated} updated, ${skipped} skipped`);
-        await loadData();
-      }
-    } catch {
-      toast.error('Failed to scan projects');
-    } finally {
-      setScanningProjects(false);
-    }
-  }, [loadData]);
+  const scanProjectsMutation = useMutation({
+    mutationFn: () => api.containers.scanMyProjects(),
+    onSuccess: (result) => {
+      if (!result.success) return;
+      const { added, updated, skipped } = result.results;
+      toast.success(`Projects: ${added} added, ${updated} updated, ${skipped} skipped`);
+      invalidateContainers();
+      invalidateUpdates();
+      invalidateDepSummary();
+    },
+    onError: () => toast.error('Failed to scan projects'),
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const handleScan = useCallback(() => scanMutation.mutate(), [scanMutation]);
+  const handleScanMyProjects = useCallback(
+    () => scanProjectsMutation.mutate(),
+    [scanProjectsMutation],
+  );
+  const scanning = scanMutation.isPending;
+  const scanningProjects = scanProjectsMutation.isPending;
+
+  const refreshAll = refreshContainersAndUpdates;
 
   // Memoize filtered and sorted containers
   const filteredContainers = useMemo(() => {
@@ -478,7 +514,7 @@ export default function Dashboard() {
           <ContainerModal
             container={selectedContainer}
             onClose={() => setSelectedContainer(null)}
-            onUpdate={loadData}
+            onUpdate={refreshAll}
           />
         </Suspense>
       )}

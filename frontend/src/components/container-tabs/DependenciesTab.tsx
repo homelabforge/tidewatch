@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Container, AppDependenciesResponse, DockerfileDependenciesResponse, HttpServersResponse, AppDependency, DockerfileDependency, HttpServer, BatchDependencyUpdateResponse } from '../../types';
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Container, AppDependency, DockerfileDependency, HttpServer, BatchDependencyUpdateResponse } from '../../types';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
 import DependencyIgnoreModal from '../DependencyIgnoreModal';
@@ -10,127 +11,269 @@ import DependencyRollbackModal from '../DependencyRollbackModal';
 import HttpServerSection from './dependencies/HttpServerSection';
 import DockerfileDependencySection from './dependencies/DockerfileDependencySection';
 import AppDependencySection from './dependencies/AppDependencySection';
+import { dependencyTypeToQueryKey } from '../../hooks/useDependencyQueries';
 
 interface DependenciesTabProps {
   container: Container;
 }
 
+type DepType = 'app' | 'dockerfile' | 'http_server';
+
 export default function DependenciesTab({ container }: DependenciesTabProps) {
-  // App Dependencies state
-  const [appDependencies, setAppDependencies] = useState<AppDependenciesResponse | null>(null);
-  const [loadingAppDependencies, setLoadingAppDependencies] = useState(false);
-  const [scanningAppDeps, setScanningAppDeps] = useState(false);
-  const [dependencyFilter, setDependencyFilter] = useState<'all' | 'updates' | 'security'>('updates');
-
-  // Dockerfile Dependencies state
-  const [dockerfileDependencies, setDockerfileDependencies] = useState<DockerfileDependenciesResponse | null>(null);
-  const [loadingDockerfileDeps, setLoadingDockerfileDeps] = useState(false);
-
-  // HTTP Servers state
-  const [httpServers, setHttpServers] = useState<HttpServersResponse | null>(null);
-  const [loadingHttpServers, setLoadingHttpServers] = useState(false);
+  const queryClient = useQueryClient();
 
   // Sub-tab state
   const [dependenciesSubTab, setDependenciesSubTab] = useState<'infra' | 'dependencies' | 'dev-dependencies'>('infra');
+  const [dependencyFilter, setDependencyFilter] = useState<'all' | 'updates' | 'security'>('updates');
 
-  // Ignore modal state
+  // Modal state
   const [ignoreModalOpen, setIgnoreModalOpen] = useState(false);
   const [dependencyToIgnore, setDependencyToIgnore] = useState<{
     dependency: AppDependency | DockerfileDependency | HttpServer;
-    type: 'app' | 'dockerfile' | 'http_server';
+    type: DepType;
   } | null>(null);
 
-  // Preview modal state
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [dependencyToPreview, setDependencyToPreview] = useState<{
     dependency: AppDependency | DockerfileDependency | HttpServer;
-    type: 'app' | 'dockerfile' | 'http_server';
+    type: DepType;
   } | null>(null);
 
-  // Rollback modal state
   const [rollbackModalOpen, setRollbackModalOpen] = useState(false);
   const [dependencyToRollback, setDependencyToRollback] = useState<{
     dependency: AppDependency | DockerfileDependency | HttpServer;
-    type: 'app' | 'dockerfile' | 'http_server';
+    type: DepType;
   } | null>(null);
 
   // Batch update selection state
   const [selectedProductionDeps, setSelectedProductionDeps] = useState<Set<number>>(new Set());
   const [selectedDevDeps, setSelectedDevDeps] = useState<Set<number>>(new Set());
-
-  // Batch update operation state
-  const [batchUpdating, setBatchUpdating] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchResultsOpen, setBatchResultsOpen] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchDependencyUpdateResponse | null>(null);
 
-  // Load functions
-  const loadAppDependencies = useCallback(async () => {
-    setLoadingAppDependencies(true);
+  // ── Result queries (reads only — no scan on mount) ──────────────────────
+  // staleTime: 0 keeps Phase 0 defaults; refetchOnWindowFocus: false + retry:
+  // false makes these explicit-action queries that don't silently re-fire when
+  // the user comes back to the tab.
+  const READ_OPTS = {
+    refetchOnWindowFocus: false,
+    retry: false,
+  } as const;
+
+  const appDepsQuery = useQuery({
+    queryKey: ['dependencies', 'app', container.id] as const,
+    queryFn: () => api.containers.getAppDependencies(container.id),
+    enabled: container.is_my_project,
+    ...READ_OPTS,
+  });
+  const dockerfileDepsQuery = useQuery({
+    queryKey: ['dependencies', 'dockerfile', container.id] as const,
+    queryFn: () => api.containers.getDockerfileDependencies(container.id),
+    ...READ_OPTS,
+  });
+  const httpServersQuery = useQuery({
+    queryKey: ['dependencies', 'httpServer', container.id] as const,
+    queryFn: () => api.containers.getHttpServers(container.id),
+    ...READ_OPTS,
+  });
+
+  const appDependencies = appDepsQuery.data ?? null;
+  const dockerfileDependencies = dockerfileDepsQuery.data ?? null;
+  const httpServers = httpServersQuery.data ?? null;
+
+  // ── Invalidation helpers ────────────────────────────────────────────────
+  const invalidateForType = (type: DepType) =>
+    queryClient.invalidateQueries({
+      queryKey: dependencyTypeToQueryKey(type, container.id),
+    });
+  const invalidateDepSummary = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['containers', 'dependencySummary'],
+    });
+  const invalidateHistory = () =>
+    queryClient.invalidateQueries({ queryKey: ['history'] });
+
+  // ── Scan mutations (triggered only by user action) ──────────────────────
+  const scanAppMutation = useMutation({
+    mutationFn: () => api.containers.scanAppDependencies(container.id),
+    onSuccess: () => {
+      invalidateForType('app');
+      invalidateDepSummary();
+    },
+    onError: () => toast.error('Failed to rescan dependencies'),
+  });
+  const scanDockerfileMutation = useMutation({
+    mutationFn: () => api.containers.scanDockerfileDependencies(container.id),
+    onSuccess: () => {
+      invalidateForType('dockerfile');
+      invalidateDepSummary();
+    },
+    onError: () => toast.error('Failed to rescan Dockerfile dependencies'),
+  });
+  const scanHttpMutation = useMutation({
+    mutationFn: () => api.containers.scanHttpServers(container.id),
+    onSuccess: () => {
+      invalidateForType('http_server');
+      invalidateDepSummary();
+    },
+    onError: () => toast.error('Failed to rescan HTTP servers'),
+  });
+
+  const handleRescanAppDeps = async () => {
     try {
-      try {
-        await api.containers.scanAppDependencies(container.id);
-      } catch {
-        console.log('App dependency scan skipped');
-      }
-      const data = await api.containers.getAppDependencies(container.id);
-      setAppDependencies(data);
-    } catch (error) {
-      console.error('Error loading app dependencies:', error);
-      toast.error('Failed to load app dependencies');
-    } finally {
-      setLoadingAppDependencies(false);
+      await scanAppMutation.mutateAsync();
+      toast.success('Dependencies rescanned successfully');
+    } catch {
+      // toast.error already fired in onError
     }
-  }, [container.id]);
-
-  const loadDockerfileDependencies = useCallback(async () => {
-    setLoadingDockerfileDeps(true);
+  };
+  const handleRescanDockerfile = async () => {
     try {
-      try {
-        await api.containers.scanDockerfileDependencies(container.id);
-      } catch {
-        console.log('Dockerfile scan skipped: no Dockerfile found');
-      }
-      const data = await api.containers.getDockerfileDependencies(container.id);
-      setDockerfileDependencies(data);
-    } catch (error) {
-      console.error('Error loading Dockerfile dependencies:', error);
-      setDockerfileDependencies(null);
-    } finally {
-      setLoadingDockerfileDeps(false);
+      await scanDockerfileMutation.mutateAsync();
+      toast.success('Dockerfile dependencies rescanned successfully');
+    } catch {
+      // toast.error already fired in onError
     }
-  }, [container.id]);
-
-  const loadHttpServers = useCallback(async () => {
-    setLoadingHttpServers(true);
+  };
+  const handleRescanHttpServers = async () => {
     try {
-      try {
-        await api.containers.scanHttpServers(container.id);
-      } catch {
-        console.log('HTTP server scan skipped');
+      await scanHttpMutation.mutateAsync();
+      toast.success('HTTP servers rescanned successfully');
+    } catch {
+      // toast.error already fired in onError
+    }
+  };
+
+  // ── Ignore / Unignore mutations ─────────────────────────────────────────
+  const ignoreMutation = useMutation({
+    mutationFn: async ({
+      dependency,
+      type,
+      reason,
+    }: {
+      dependency: AppDependency | DockerfileDependency | HttpServer;
+      type: DepType;
+      reason?: string;
+    }) => {
+      if (type === 'app') {
+        await api.dependencies.ignoreAppDependency((dependency as AppDependency).id, reason);
+      } else if (type === 'dockerfile') {
+        await api.dependencies.ignoreDockerfile((dependency as DockerfileDependency).id, reason);
+      } else {
+        await api.dependencies.ignoreHttpServer((dependency as HttpServer).id as number, reason);
       }
-      const data = await api.containers.getHttpServers(container.id);
-      setHttpServers(data);
-    } catch (error) {
-      console.error('Error loading HTTP servers:', error);
-      setHttpServers(null);
-    } finally {
-      setLoadingHttpServers(false);
-    }
-  }, [container.id]);
+      return { dependency, type };
+    },
+    onSuccess: ({ dependency, type }) => {
+      const name =
+        type === 'app'
+          ? (dependency as AppDependency).name
+          : type === 'dockerfile'
+            ? (dependency as DockerfileDependency).image_name
+            : (dependency as HttpServer).name;
+      toast.success(`Ignored update for ${name}`);
+      invalidateForType(type);
+      invalidateDepSummary();
+      invalidateHistory();
+    },
+    onError: () => toast.error('Failed to ignore update'),
+  });
 
-  useEffect(() => {
-    if (container.is_my_project) {
-      loadAppDependencies();
-    }
-    loadDockerfileDependencies();
-    loadHttpServers();
-  }, [container.id, container.is_my_project, loadAppDependencies, loadDockerfileDependencies, loadHttpServers]);
+  const unignoreMutation = useMutation({
+    mutationFn: async ({
+      dependency,
+      type,
+    }: {
+      dependency: AppDependency | DockerfileDependency | HttpServer;
+      type: DepType;
+    }) => {
+      if (type === 'app') {
+        await api.dependencies.unignoreAppDependency((dependency as AppDependency).id);
+      } else if (type === 'dockerfile') {
+        await api.dependencies.unignoreDockerfile((dependency as DockerfileDependency).id);
+      } else {
+        await api.dependencies.unignoreHttpServer((dependency as HttpServer).id as number);
+      }
+      return { dependency, type };
+    },
+    onSuccess: ({ dependency, type }) => {
+      const name =
+        type === 'app'
+          ? (dependency as AppDependency).name
+          : type === 'dockerfile'
+            ? (dependency as DockerfileDependency).image_name
+            : (dependency as HttpServer).name;
+      toast.success(`Unignored update for ${name}`);
+      invalidateForType(type);
+      invalidateDepSummary();
+      invalidateHistory();
+    },
+    onError: () => toast.error('Failed to unignore update'),
+  });
 
-  // Ignore/Unignore handlers
+  // ── Direct update mutation ──────────────────────────────────────────────
+  const directUpdateMutation = useMutation({
+    mutationFn: async ({
+      dependency,
+      type,
+    }: {
+      dependency: AppDependency | DockerfileDependency | HttpServer;
+      type: DepType;
+    }) => {
+      if (type === 'app') {
+        const dep = dependency as AppDependency;
+        await api.dependencies.updateAppDependency(dep.id, dep.latest_version || '');
+        return { name: dep.name, version: dep.latest_version || '', type };
+      } else if (type === 'dockerfile') {
+        const dep = dependency as DockerfileDependency;
+        await api.dependencies.updateDockerfile(dep.id, dep.latest_tag || '');
+        return { name: dep.image_name, version: dep.latest_tag || '', type };
+      } else {
+        const dep = dependency as HttpServer;
+        await api.dependencies.updateHttpServer(dep.id as number, dep.latest_version || '');
+        return { name: dep.name, version: dep.latest_version || '', type };
+      }
+    },
+    onSuccess: ({ name, version, type }) => {
+      toast.success(`Updated ${name} to ${version}`);
+      invalidateForType(type);
+      invalidateDepSummary();
+      invalidateHistory();
+    },
+    onError: () => toast.error('Failed to update dependency'),
+  });
+
+  // ── Batch update mutation (app dependencies only) ───────────────────────
+  const batchUpdateMutation = useMutation({
+    mutationFn: (ids: number[]) =>
+      api.dependencies.batchUpdateAppDependencies(ids),
+    onSuccess: (results) => {
+      setBatchResults(results);
+      setBatchResultsOpen(true);
+      if (results.summary.updated_count > 0) {
+        toast.success(`Updated ${results.summary.updated_count} dependencies`);
+      }
+      if (results.summary.failed_count > 0) {
+        toast.error(`${results.summary.failed_count} updates failed`);
+      }
+      invalidateForType('app');
+      invalidateDepSummary();
+      invalidateHistory();
+    },
+    onError: () => toast.error('Batch update failed'),
+  });
+
+  const batchUpdating = batchUpdateMutation.isPending;
+  const scanningAppDeps = scanAppMutation.isPending;
+  const loadingAppDependencies = appDepsQuery.isLoading || appDepsQuery.isFetching;
+  const loadingDockerfileDeps = dockerfileDepsQuery.isLoading || dockerfileDepsQuery.isFetching;
+  const loadingHttpServers = httpServersQuery.isLoading || httpServersQuery.isFetching;
+
+  // ── Modal-triggered handlers (state only) ───────────────────────────────
   const handleIgnoreDependency = (
     dependency: AppDependency | DockerfileDependency | HttpServer,
-    type: 'app' | 'dockerfile' | 'http_server'
+    type: DepType,
   ) => {
     setDependencyToIgnore({ dependency, type });
     setIgnoreModalOpen(true);
@@ -138,57 +281,23 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
 
   const handleConfirmIgnore = async (reason?: string) => {
     if (!dependencyToIgnore) return;
-
-    try {
-      const { dependency, type } = dependencyToIgnore;
-
-      if (type === 'app') {
-        await api.dependencies.ignoreAppDependency((dependency as AppDependency).id, reason);
-        await loadAppDependencies();
-        toast.success(`Ignored update for ${(dependency as AppDependency).name}`);
-      } else if (type === 'dockerfile') {
-        await api.dependencies.ignoreDockerfile((dependency as DockerfileDependency).id, reason);
-        await loadDockerfileDependencies();
-        toast.success(`Ignored update for ${(dependency as DockerfileDependency).image_name}`);
-      } else if (type === 'http_server') {
-        await api.dependencies.ignoreHttpServer((dependency as HttpServer).id as number, reason);
-        await loadHttpServers();
-        toast.success(`Ignored update for ${(dependency as HttpServer).name}`);
-      }
-    } catch (error) {
-      console.error('Failed to ignore dependency:', error);
-      toast.error('Failed to ignore update');
-    }
+    await ignoreMutation.mutateAsync({
+      dependency: dependencyToIgnore.dependency,
+      type: dependencyToIgnore.type,
+      reason,
+    });
   };
 
-  const handleUnignoreDependency = async (
+  const handleUnignoreDependency = (
     dependency: AppDependency | DockerfileDependency | HttpServer,
-    type: 'app' | 'dockerfile' | 'http_server'
+    type: DepType,
   ) => {
-    try {
-      if (type === 'app') {
-        await api.dependencies.unignoreAppDependency((dependency as AppDependency).id);
-        await loadAppDependencies();
-        toast.success(`Unignored update for ${(dependency as AppDependency).name}`);
-      } else if (type === 'dockerfile') {
-        await api.dependencies.unignoreDockerfile((dependency as DockerfileDependency).id);
-        await loadDockerfileDependencies();
-        toast.success(`Unignored update for ${(dependency as DockerfileDependency).image_name}`);
-      } else if (type === 'http_server') {
-        await api.dependencies.unignoreHttpServer((dependency as HttpServer).id as number);
-        await loadHttpServers();
-        toast.success(`Unignored update for ${(dependency as HttpServer).name}`);
-      }
-    } catch (error) {
-      console.error('Failed to unignore dependency:', error);
-      toast.error('Failed to unignore update');
-    }
+    unignoreMutation.mutate({ dependency, type });
   };
 
-  // Preview and Update handlers
   const handlePreviewUpdate = (
     dependency: AppDependency | DockerfileDependency | HttpServer,
-    type: 'app' | 'dockerfile' | 'http_server'
+    type: DepType,
   ) => {
     setDependencyToPreview({ dependency, type });
     setPreviewModalOpen(true);
@@ -196,22 +305,25 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
 
   const handleOpenRollback = (
     dependency: AppDependency | DockerfileDependency | HttpServer,
-    type: 'app' | 'dockerfile' | 'http_server'
+    type: DepType,
   ) => {
     setDependencyToRollback({ dependency, type });
     setRollbackModalOpen(true);
   };
 
   const handleRollbackComplete = () => {
-    loadDockerfileDependencies();
-    loadHttpServers();
-    loadAppDependencies();
+    // Rollback modal handles the API call; we just invalidate everything that
+    // could have changed and surface a success toast.
+    invalidateForType('app');
+    invalidateForType('dockerfile');
+    invalidateForType('http_server');
+    invalidateDepSummary();
+    invalidateHistory();
     toast.success('Dependency rolled back successfully');
   };
 
   const handlePreviewLoad = async (): Promise<PreviewData> => {
     if (!dependencyToPreview) throw new Error('No dependency to preview');
-
     const { dependency, type } = dependencyToPreview;
 
     if (type === 'app') {
@@ -222,194 +334,90 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
       const dep = dependency as DockerfileDependency;
       if (!dep.id) throw new Error(`Dependency ${dep.image_name} is missing ID field`);
       return await api.dependencies.previewDockerfileUpdate(dep.id, dep.latest_tag || '');
-    } else if (type === 'http_server') {
+    } else {
       const dep = dependency as HttpServer;
       if (!dep.id) throw new Error(`HTTP server ${dep.name} is missing ID field`);
       return await api.dependencies.previewHttpServerUpdate(dep.id, dep.latest_version || '');
     }
-
-    throw new Error('Invalid dependency type');
   };
 
-  const handleDirectUpdate = async (
+  const handleDirectUpdate = (
     dependency: AppDependency | DockerfileDependency | HttpServer,
-    type: 'app' | 'dockerfile' | 'http_server'
+    type: DepType,
   ) => {
-    try {
-      if (type === 'app') {
-        const dep = dependency as AppDependency;
-        const newVersion = dep.latest_version || '';
-        await api.dependencies.updateAppDependency(dep.id, newVersion);
-        await loadAppDependencies();
-        toast.success(`Updated ${dep.name} to ${newVersion}`);
-      } else if (type === 'dockerfile') {
-        const dep = dependency as DockerfileDependency;
-        const newVersion = dep.latest_tag || '';
-        await api.dependencies.updateDockerfile(dep.id, newVersion);
-        await loadDockerfileDependencies();
-        toast.success(`Updated ${dep.image_name} to ${newVersion}`);
-      } else if (type === 'http_server') {
-        const dep = dependency as HttpServer;
-        const newVersion = dep.latest_version || '';
-        await api.dependencies.updateHttpServer(dep.id as number, newVersion);
-        await loadHttpServers();
-        toast.success(`Updated ${dep.name} to ${newVersion}`);
-      }
-    } catch (error) {
-      console.error('Failed to update dependency:', error);
-      toast.error('Failed to update dependency');
-    }
+    directUpdateMutation.mutate({ dependency, type });
   };
 
   const handleConfirmUpdate = async () => {
     if (!dependencyToPreview) return;
-
-    try {
-      const { dependency, type } = dependencyToPreview;
-
-      if (type === 'app') {
-        const dep = dependency as AppDependency;
-        const newVersion = dep.latest_version || '';
-        await api.dependencies.updateAppDependency(dep.id, newVersion);
-        await loadAppDependencies();
-        toast.success(`Updated ${dep.name} to ${newVersion}`);
-      } else if (type === 'dockerfile') {
-        const dep = dependency as DockerfileDependency;
-        const newVersion = dep.latest_tag || '';
-        await api.dependencies.updateDockerfile(dep.id, newVersion);
-        await loadDockerfileDependencies();
-        toast.success(`Updated ${dep.image_name} to ${newVersion}`);
-      } else if (type === 'http_server') {
-        const dep = dependency as HttpServer;
-        const newVersion = dep.latest_version || '';
-        await api.dependencies.updateHttpServer(dep.id as number, newVersion);
-        await loadHttpServers();
-        toast.success(`Updated ${dep.name} to ${newVersion}`);
-      }
-
-      setPreviewModalOpen(false);
-      setDependencyToPreview(null);
-    } catch (error) {
-      console.error('Failed to update dependency:', error);
-      toast.error('Failed to update dependency');
-      throw error;
-    }
+    await directUpdateMutation.mutateAsync(dependencyToPreview);
+    setPreviewModalOpen(false);
+    setDependencyToPreview(null);
   };
 
-  // Batch selection helpers
+  // ── Batch selection helpers ─────────────────────────────────────────────
   const getCurrentSelection = useCallback(() => {
     if (dependenciesSubTab === 'dependencies') return selectedProductionDeps;
     if (dependenciesSubTab === 'dev-dependencies') return selectedDevDeps;
     return new Set<number>();
   }, [dependenciesSubTab, selectedProductionDeps, selectedDevDeps]);
 
-  const setCurrentSelection = useCallback((newSelection: Set<number>) => {
-    if (dependenciesSubTab === 'dependencies') setSelectedProductionDeps(newSelection);
-    if (dependenciesSubTab === 'dev-dependencies') setSelectedDevDeps(newSelection);
-  }, [dependenciesSubTab]);
+  const setCurrentSelection = useCallback(
+    (newSelection: Set<number>) => {
+      if (dependenciesSubTab === 'dependencies') setSelectedProductionDeps(newSelection);
+      if (dependenciesSubTab === 'dev-dependencies') setSelectedDevDeps(newSelection);
+    },
+    [dependenciesSubTab],
+  );
 
-  const getDepsWithUpdates = useCallback((type: 'production' | 'development') => {
-    return (appDependencies?.dependencies || [])
-      .filter(dep => dep.dependency_type === type && dep.update_available && !dep.ignored);
-  }, [appDependencies]);
+  const getDepsWithUpdates = useCallback(
+    (type: 'production' | 'development') => {
+      return (appDependencies?.dependencies || []).filter(
+        (dep) => dep.dependency_type === type && dep.update_available && !dep.ignored,
+      );
+    },
+    [appDependencies],
+  );
 
-  const handleSelectDependency = useCallback((depId: number) => {
-    const current = getCurrentSelection();
-    const newSelection = new Set(current);
-    if (newSelection.has(depId)) {
-      newSelection.delete(depId);
-    } else {
-      newSelection.add(depId);
-    }
-    setCurrentSelection(newSelection);
-  }, [getCurrentSelection, setCurrentSelection]);
+  const handleSelectDependency = useCallback(
+    (depId: number) => {
+      const current = getCurrentSelection();
+      const newSelection = new Set(current);
+      if (newSelection.has(depId)) {
+        newSelection.delete(depId);
+      } else {
+        newSelection.add(depId);
+      }
+      setCurrentSelection(newSelection);
+    },
+    [getCurrentSelection, setCurrentSelection],
+  );
 
   const handleSelectAllWithUpdates = useCallback(() => {
     const type = dependenciesSubTab === 'dependencies' ? 'production' : 'development';
     const depsWithUpdates = getDepsWithUpdates(type);
-    const newSelection = new Set(depsWithUpdates.map(d => d.id));
-    setCurrentSelection(newSelection);
+    setCurrentSelection(new Set(depsWithUpdates.map((d) => d.id)));
   }, [dependenciesSubTab, getDepsWithUpdates, setCurrentSelection]);
 
   const handleDeselectAll = useCallback(() => {
     setCurrentSelection(new Set());
   }, [setCurrentSelection]);
 
-  const handleBatchUpdateConfirm = async () => {
+  const handleBatchUpdateConfirm = () => {
     setBatchConfirmOpen(false);
-    setBatchUpdating(true);
-
-    try {
-      const selection = Array.from(getCurrentSelection());
-      const results = await api.dependencies.batchUpdateAppDependencies(selection);
-      setBatchResults(results);
-      setBatchResultsOpen(true);
-
-      if (results.summary.updated_count > 0) {
-        toast.success(`Updated ${results.summary.updated_count} dependencies`);
-      }
-      if (results.summary.failed_count > 0) {
-        toast.error(`${results.summary.failed_count} updates failed`);
-      }
-    } catch (error) {
-      console.error('Batch update failed:', error);
-      toast.error('Batch update failed');
-    } finally {
-      setBatchUpdating(false);
-    }
+    batchUpdateMutation.mutate(Array.from(getCurrentSelection()));
   };
 
   const handleBatchResultsClose = () => {
     setBatchResultsOpen(false);
     setBatchResults(null);
     setCurrentSelection(new Set());
-    loadAppDependencies();
   };
 
   const getSelectedDependencies = useCallback(() => {
     const selection = getCurrentSelection();
-    return (appDependencies?.dependencies || []).filter(d => selection.has(d.id));
+    return (appDependencies?.dependencies || []).filter((d) => selection.has(d.id));
   }, [getCurrentSelection, appDependencies]);
-
-  // Rescan handlers for sub-components
-  const handleRescanHttpServers = async () => {
-    setLoadingHttpServers(true);
-    try {
-      await api.containers.scanHttpServers(container.id);
-      await loadHttpServers();
-      toast.success('HTTP servers rescanned successfully');
-    } catch {
-      toast.error('Failed to rescan HTTP servers');
-    } finally {
-      setLoadingHttpServers(false);
-    }
-  };
-
-  const handleRescanDockerfile = async () => {
-    setLoadingDockerfileDeps(true);
-    try {
-      await api.containers.scanDockerfileDependencies(container.id);
-      await loadDockerfileDependencies();
-      toast.success('Dockerfile dependencies rescanned successfully');
-    } catch {
-      toast.error('Failed to rescan Dockerfile dependencies');
-    } finally {
-      setLoadingDockerfileDeps(false);
-    }
-  };
-
-  const handleRescanAppDeps = async () => {
-    setScanningAppDeps(true);
-    try {
-      await api.containers.scanAppDependencies(container.id);
-      await loadAppDependencies();
-      toast.success('Dependencies rescanned successfully');
-    } catch {
-      toast.error('Failed to rescan dependencies');
-    } finally {
-      setScanningAppDeps(false);
-    }
-  };
 
   return (
     <div>
@@ -456,9 +464,7 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
         </button>
       </div>
 
-      {/* Sub-tab Content */}
       <>
-        {/* Infrastructure Tab - HTTP Server & Dockerfile */}
         {dependenciesSubTab === 'infra' && (
           <div className="space-y-6">
             <HttpServerSection
@@ -485,7 +491,6 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
           </div>
         )}
 
-        {/* Dependencies Tab - Production Dependencies */}
         {dependenciesSubTab === 'dependencies' && (
           <AppDependencySection
             appDependencies={appDependencies}
@@ -510,7 +515,6 @@ export default function DependenciesTab({ container }: DependenciesTabProps) {
           />
         )}
 
-        {/* Dev Dependencies Tab */}
         {dependenciesSubTab === 'dev-dependencies' && (
           <AppDependencySection
             appDependencies={appDependencies}

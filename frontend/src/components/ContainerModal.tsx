@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Info, Activity, FileText, Clock, Settings, Package } from 'lucide-react';
 import { Container } from '../types';
+import { useContainer } from '../hooks/useContainer';
 import OverviewTab from './container-tabs/OverviewTab';
 import MetricsTab from './container-tabs/MetricsTab';
 import LogsTab from './container-tabs/LogsTab';
@@ -16,8 +17,13 @@ interface ContainerModalProps {
 
 type TabType = 'overview' | 'metrics' | 'logs' | 'history' | 'dependencies' | 'settings';
 
-export default function ContainerModal({ container, onClose, onUpdate }: ContainerModalProps) {
+export default function ContainerModal({ container: initialContainer, onClose, onUpdate }: ContainerModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  // Read live container data from the shared `['containers','all']` cache so
+  // mutations (e.g. SettingsTab's toggleMyProject) reflect here without prop
+  // mutation. Fall back to the initial prop until the query lands.
+  const liveQuery = useContainer(initialContainer.id);
+  const container = liveQuery.data ?? initialContainer;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RotateCcw, RefreshCw, CircleCheck, HardDrive, Database, Clock, ChevronDown, ChevronRight, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -15,25 +16,15 @@ interface UpdatesTabProps {
 }
 
 export default function UpdatesTab({ settings, saving, updateSetting, handleTextChange, categories }: UpdatesTabProps) {
-  const [schedulerStatus, setSchedulerStatus] = useState<Record<string, unknown> | null>(null);
-  const [loadingScheduler, setLoadingScheduler] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
-  const loadSchedulerStatus = useCallback(async () => {
-    try {
-      setLoadingScheduler(true);
-      const status = await api.updates.getSchedulerStatus();
-      setSchedulerStatus(status.scheduler);
-    } catch (error) {
-      console.error('Failed to load scheduler status:', error);
-    } finally {
-      setLoadingScheduler(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSchedulerStatus();
-  }, [loadSchedulerStatus]);
+  const schedulerQuery = useQuery({
+    queryKey: ['scheduler', 'status'] as const,
+    queryFn: () => api.updates.getSchedulerStatus(),
+    select: (data) => data.scheduler,
+  });
+  const schedulerStatus = schedulerQuery.data ?? null;
+  const loadingScheduler = schedulerQuery.isLoading;
 
   const toggleCategory = (category: string) => {
     setCollapsedCategories((prev) => {

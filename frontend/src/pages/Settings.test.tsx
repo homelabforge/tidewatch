@@ -1,7 +1,14 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../__tests__/test-utils'
 import { MemoryRouter } from 'react-router-dom'
 import Settings from './Settings'
+
+// Tests in this file supply their own MemoryRouter, so opt out of the
+// helper's default BrowserRouter wrap to avoid nested routers.
+const render = (ui: React.ReactElement) =>
+  renderWithProviders(ui, { withRouter: false })
 import { api } from '../services/api'
 import { AuthContext, type AuthContextType } from '../contexts/AuthContext'
 
@@ -37,6 +44,7 @@ vi.mock('../services/api', () => {
     updates: {
       getAll: vi.fn(),
       getSchedulerStatus: vi.fn(),
+      reloadScheduler: vi.fn(),
     },
   }
 
@@ -668,6 +676,41 @@ describe('Settings', () => {
 
       const systemTab = screen.getByText('System').closest('button')
       expect(systemTab?.className).toContain('border-primary')
+    })
+  })
+
+  describe('Cache invalidation', () => {
+    it('updateSetting mutation invalidates settings cache', async () => {
+      ;(api.settings.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+        key: 'auto_update_enabled',
+        value: 'true',
+      })
+
+      const { queryClient } = renderSettings()
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText('Settings')).toBeInTheDocument()
+      })
+
+      // Switch to the Updates tab to access the auto_update_enabled toggle.
+      fireEvent.click(screen.getByText('Updates'))
+      await waitFor(() => {
+        expect(screen.getByText('Auto Update Enabled')).toBeInTheDocument()
+      })
+
+      // Find the toggle button next to "Auto Update Enabled" and click it.
+      const toggle = screen
+        .getByText('Auto Update Enabled')
+        .closest('div')
+        ?.parentElement?.querySelector('button')
+      expect(toggle).toBeTruthy()
+      fireEvent.click(toggle!)
+
+      await waitFor(() => {
+        expect(api.settings.update).toHaveBeenCalled()
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['settings', 'all'] })
+      })
     })
   })
 })

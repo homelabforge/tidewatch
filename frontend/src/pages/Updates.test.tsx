@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders as render } from '../__tests__/test-utils'
 import Updates from './Updates'
 import { api } from '../services/api'
 
@@ -1005,6 +1006,92 @@ describe('Updates', () => {
       // nginx has 1 CVE, visible in default filter
       const nginxCard = screen.getByTestId('update-card-1')
       expect(nginxCard.textContent).toContain('Security: 1 CVEs')
+    })
+  })
+
+  describe('Cache invalidation', () => {
+    it('loads both updates AND containers on mount', async () => {
+      render(<Updates />)
+
+      await waitFor(() => {
+        expect(api.updates.getAll).toHaveBeenCalledTimes(1)
+        expect(api.containers.getAll).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('approve mutation invalidates only updates query', async () => {
+      vi.mocked(api.updates.approve).mockResolvedValue({ success: true } as never)
+
+      const { queryClient } = render(<Updates />)
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getAllByText('Approve')[0])
+
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+      })
+      expect(spy).not.toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+      expect(spy).not.toHaveBeenCalledWith({ queryKey: ['history'] })
+    })
+
+    it('remove-container mutation invalidates updates AND containers', async () => {
+      vi.mocked(api.updates.removeContainer).mockResolvedValue({
+        message: 'Container removed',
+      } as never)
+      const originalConfirm = window.confirm
+      window.confirm = vi.fn(() => true)
+
+      const { queryClient } = render(<Updates />)
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getAllByText('Remove Container')[0])
+
+      await waitFor(() => {
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+      })
+
+      window.confirm = originalConfirm
+    })
+
+    it('apply mutation invalidates updates + containers + history', async () => {
+      vi.mocked(api.updates.apply).mockResolvedValue({ success: true } as never)
+      // Return a terminal status on the FIRST poll so the mutation finishes quickly.
+      vi.mocked(api.updates.get).mockResolvedValue({
+        id: 1,
+        status: 'applied',
+      } as never)
+      const originalConfirm = window.confirm
+      window.confirm = vi.fn(() => true)
+
+      const { queryClient } = render(<Updates />)
+      const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Update for nginx/)).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getAllByText('Apply')[0])
+
+      // Mutation onSuccess only fires after the (mocked, 1 iteration) poll loop.
+      await waitFor(
+        () => {
+          expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+          expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
+          expect(spy).toHaveBeenCalledWith({ queryKey: ['history'] })
+        },
+        { timeout: 3000 },
+      )
+
+      window.confirm = originalConfirm
     })
   })
 })

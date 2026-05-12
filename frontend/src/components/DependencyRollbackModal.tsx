@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, RotateCcw, CircleAlert, Clock, User } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import type { AppDependency, DockerfileDependency, HttpServer, RollbackHistoryItem, RollbackHistoryResponse } from '../types';
+import type { AppDependency, DockerfileDependency, HttpServer, RollbackHistoryItem } from '../types';
 import { api } from '../services/api';
 
 interface DependencyRollbackModalProps {
@@ -17,43 +18,38 @@ export default function DependencyRollbackModal({
   onClose,
   onRollbackComplete,
 }: DependencyRollbackModalProps) {
-  const [history, setHistory] = useState<RollbackHistoryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [rolling, setRolling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<RollbackHistoryItem | null>(null);
 
-  const loadHistory = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      let data: RollbackHistoryResponse;
+  // Pattern B: parent renders this component only when the modal is open, so
+  // the query firing on mount IS the "open → fetch once" behavior.
+  const historyQuery = useQuery({
+    queryKey: ['dependencyRollback', dependencyType, dependency.id] as const,
+    queryFn: () => {
       if (dependencyType === 'dockerfile') {
-        data = await api.dependencies.getDockerfileRollbackHistory(dependency.id as number);
+        return api.dependencies.getDockerfileRollbackHistory(dependency.id as number);
       } else if (dependencyType === 'http_server') {
-        data = await api.dependencies.getHttpServerRollbackHistory(dependency.id as number);
-      } else {
-        data = await api.dependencies.getAppDependencyRollbackHistory(dependency.id as number);
+        return api.dependencies.getHttpServerRollbackHistory(dependency.id as number);
       }
-      setHistory(data);
-    } catch (err) {
-      console.error('Failed to load rollback history:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load rollback history');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return api.dependencies.getAppDependencyRollbackHistory(dependency.id as number);
+    },
+  });
+  const history = historyQuery.data ?? null;
+  const loading = historyQuery.isLoading;
+  const queryError =
+    historyQuery.error instanceof Error
+      ? historyQuery.error.message
+      : historyQuery.error
+        ? 'Failed to load rollback history'
+        : null;
+  const error = rollbackError ?? queryError;
 
   const handleRollback = async () => {
     if (!selectedVersion) return;
 
     setRolling(true);
-    setError(null);
+    setRollbackError(null);
     try {
       if (dependencyType === 'dockerfile') {
         await api.dependencies.rollbackDockerfile(dependency.id as number, selectedVersion.from_version);
@@ -66,7 +62,7 @@ export default function DependencyRollbackModal({
       onClose();
     } catch (err) {
       console.error('Failed to rollback dependency:', err);
-      setError(err instanceof Error ? err.message : 'Failed to rollback dependency');
+      setRollbackError(err instanceof Error ? err.message : 'Failed to rollback dependency');
     } finally {
       setRolling(false);
     }

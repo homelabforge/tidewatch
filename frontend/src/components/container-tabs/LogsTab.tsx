@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Search, Copy, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { Container } from '../../types';
 import { format } from 'date-fns';
@@ -10,34 +11,24 @@ interface LogsTabProps {
 }
 
 export default function LogsTab({ container }: LogsTabProps) {
-  const [logs, setLogs] = useState<string>('');
-  const [loadingLogs, setLoadingLogs] = useState(false);
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
   const [logLines, setLogLines] = useState(100);
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [followMode, setFollowMode] = useState(true);
 
-  const loadLogs = useCallback(async () => {
-    setLoadingLogs(true);
-    try {
-      const data = await api.containers.getLogs(container.id, logLines);
-      setLogs(data.logs.join('\n') || '');
-    } catch (error) {
-      console.error('Failed to load logs:', error);
-      setLogs('Failed to load logs');
-    } finally {
-      setLoadingLogs(false);
-    }
-  }, [container.id, logLines]);
+  // Pattern C: useQuery with conditional refetchInterval. Toggling autoRefresh
+  // off pauses polling; toggling on resumes. Changing `logLines` invalidates
+  // the cache key and triggers a fresh fetch.
+  const logsQuery = useQuery({
+    queryKey: ['logs', container.id, logLines] as const,
+    queryFn: () => api.containers.getLogs(container.id, logLines),
+    refetchInterval: autoRefreshLogs ? 2000 : false,
+    refetchOnWindowFocus: false,
+  });
 
-  useEffect(() => {
-    loadLogs();
-
-    if (autoRefreshLogs) {
-      const interval = setInterval(loadLogs, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [autoRefreshLogs, loadLogs]);
+  const logs = logsQuery.data?.logs.join('\n') ?? '';
+  const loadingLogs = logsQuery.isLoading || logsQuery.isFetching;
+  const logsError = logsQuery.error;
 
   const highlightLogLine = (line: string) => {
     const lowerLine = line.toLowerCase();
@@ -123,7 +114,7 @@ export default function LogsTab({ container }: LogsTabProps) {
             </button>
 
             <button
-              onClick={loadLogs}
+              onClick={() => logsQuery.refetch()}
               disabled={loadingLogs}
               className="px-3 py-1 bg-tide-surface-light hover:bg-gray-500 text-tide-text rounded-lg text-sm transition-colors disabled:opacity-50"
             >
@@ -185,6 +176,10 @@ export default function LogsTab({ container }: LogsTabProps) {
         {loadingLogs && !logs ? (
           <div className="flex items-center justify-center h-full">
             <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+          </div>
+        ) : logsError ? (
+          <div className="flex items-center justify-center h-full text-tide-text-muted">
+            Failed to load logs
           </div>
         ) : logs ? (
           <div className="whitespace-pre-wrap break-words">

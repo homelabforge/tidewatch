@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RotateCcw, Shield, Cpu, X, ChevronDown, ChevronRight, Sun, Moon, Lock, User, Eye, EyeOff, Check, Info, RefreshCw, CircleCheck, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../services/api';
 import type { SettingCategory } from '../../types';
-import type { OIDCConfig } from '../../types/auth';
+import type { OIDCConfig, UserProfile } from '../../types/auth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../hooks/useAuth';
 import { HelpTooltip } from '../../components/HelpTooltip';
@@ -15,6 +16,271 @@ interface SystemTabProps {
   handleTextChange: (key: string, value: string) => void;
   categories: SettingCategory[];
   loadSettings: () => Promise<void>;
+}
+
+// Pattern E: keyed sub-component for the Edit Profile modal. Lazy useState
+// initializers seed from the `user` prop; React's key-based remount on the
+// parent handles user-change reset without effects.
+interface EditProfileFormProps {
+  user: UserProfile;
+  onClose: () => void;
+  onSave: (email: string, fullName: string) => Promise<void>;
+}
+function EditProfileForm({ user, onClose, onSave }: EditProfileFormProps) {
+  const [email, setEmail] = useState(() => user.email);
+  const [fullName, setFullName] = useState(() => user.full_name || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await onSave(email, fullName);
+      toast.success('Profile updated successfully');
+      onClose();
+    } catch {
+      toast.error('Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-tide-surface rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-tide-text">Edit Profile</h2>
+          <button onClick={onClose} className="text-tide-text-muted hover:text-tide-text transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-tide-text mb-2">Username</label>
+            <input
+              type="text"
+              value={user.username}
+              disabled
+              className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted cursor-not-allowed"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-tide-text mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="your@email.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-tide-text mb-2">Full Name</label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="John Doe"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-sm text-tide-text-muted">
+            <Lock className="w-4 h-4" />
+            <span>Authentication: {user.auth_method === 'oidc' ? `SSO (${user.oidc_provider})` : 'Local'}</span>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 bg-tide-bg hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-teal-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Pattern E: keyed sub-component for the OIDC config form. `initialConfig` is
+// the canonical value from the cache; local edits stay in this component's
+// state until the user saves.
+interface OidcConfigFormProps {
+  initialConfig: OIDCConfig;
+  onClose: () => void;
+  onSave: (config: OIDCConfig) => Promise<void>;
+  onTest: (config: OIDCConfig) => Promise<void>;
+  saving: boolean;
+  testing: boolean;
+}
+function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testing }: OidcConfigFormProps) {
+  const [oidcConfig, setOidcConfig] = useState<OIDCConfig>(() => initialConfig);
+  const [showOidcSecret, setShowOidcSecret] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-tide-surface rounded-lg shadow-xl max-w-2xl w-full p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Shield className="w-6 h-6 text-primary" />
+            <h2 className="text-xl font-semibold text-tide-text">OIDC/SSO Configuration</h2>
+          </div>
+          <button onClick={onClose} className="text-tide-text-muted hover:text-tide-text transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="block text-sm font-medium text-tide-text mb-1">Enable OIDC/SSO</label>
+              <p className="text-sm text-tide-text-muted">Allow users to log in with Single Sign-On</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOidcConfig({ ...oidcConfig, enabled: !oidcConfig.enabled })}
+              disabled={saving}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                oidcConfig.enabled ? 'bg-teal-500' : 'bg-red-500'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                oidcConfig.enabled ? 'translate-x-6' : 'translate-x-1'
+              }`}></span>
+            </button>
+          </div>
+
+          {oidcConfig.enabled && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Issuer URL</label>
+                <input
+                  type="url"
+                  value={oidcConfig.issuer_url}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, issuer_url: e.target.value })}
+                  disabled={saving}
+                  placeholder="https://auth.example.com"
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Client ID</label>
+                <input
+                  type="text"
+                  value={oidcConfig.client_id}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, client_id: e.target.value })}
+                  disabled={saving}
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Client Secret</label>
+                <div className="relative">
+                  <input
+                    type={showOidcSecret ? 'text' : 'password'}
+                    value={oidcConfig.client_secret}
+                    onChange={(e) => setOidcConfig({ ...oidcConfig, client_secret: e.target.value })}
+                    disabled={saving}
+                    className="w-full px-3 py-2 pr-10 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOidcSecret(!showOidcSecret)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-tide-text-muted hover:text-tide-text"
+                  >
+                    {showOidcSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Provider Name</label>
+                <input
+                  type="text"
+                  value={oidcConfig.provider_name}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, provider_name: e.target.value })}
+                  disabled={saving}
+                  placeholder="Authentik"
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Scopes</label>
+                <input
+                  type="text"
+                  value={oidcConfig.scopes}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, scopes: e.target.value })}
+                  disabled={saving}
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Redirect URI (read-only)</label>
+                <input
+                  type="text"
+                  value={oidcConfig.redirect_uri || `${window.location.origin}/api/v1/auth/oidc/callback`}
+                  disabled
+                  className="w-full px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted cursor-not-allowed"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 bg-tide-bg hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          {oidcConfig.enabled && (
+            <>
+              <button
+                onClick={() => onTest(oidcConfig)}
+                disabled={testing || saving}
+                className="px-4 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <CircleCheck className="w-4 h-4" />
+                    Test Connection
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => onSave(oidcConfig)}
+                disabled={saving || testing}
+                className="px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-teal-500/50 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Save Configuration
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function SystemTab({ settings, saving, updateSetting, categories, loadSettings }: SystemTabProps) {
@@ -31,12 +297,7 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
   const [enableOidcAuthModalOpen, setEnableOidcAuthModalOpen] = useState(false);
   const [oidcConfigModalOpen, setOidcConfigModalOpen] = useState(false);
 
-  // Profile editing state
-  const [profileEmail, setProfileEmail] = useState('');
-  const [profileFullName, setProfileFullName] = useState('');
-  const [savingProfile, setSavingProfile] = useState(false);
-
-  // Password change state
+  // Password change state (kept local to the modal interactions below)
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -45,46 +306,48 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // OIDC state
-  const [oidcConfig, setOidcConfig] = useState({
-    enabled: false,
-    issuer_url: '',
-    client_id: '',
-    client_secret: '',
-    provider_name: '',
-    scopes: 'openid email profile',
-    redirect_uri: '',
-  });
+  // OIDC save/test in-flight flags — kept here so the form sub-component can
+  // disable its action buttons while either operation is running.
   const [savingOidc, setSavingOidc] = useState(false);
   const [testingOidc, setTestingOidc] = useState(false);
-  const [showOidcSecret, setShowOidcSecret] = useState(false);
 
-  // Initialize profile form when modal opens
-  useEffect(() => {
-    if (editProfileModalOpen && user) {
-      setProfileEmail(user.email || '');
-      setProfileFullName(user.full_name || '');
-    }
-  }, [editProfileModalOpen, user]);
+  const oidcConfigQuery = useQuery({
+    queryKey: ['oidc', 'config'] as const,
+    queryFn: () => api.auth.oidc.getConfig() as Promise<OIDCConfig>,
+    enabled: authMode !== 'none',
+  });
 
-  // Load user profile when tab mounts
-  useEffect(() => {
-    if (user) {
-      setProfileEmail(user.email);
-      setProfileFullName(user.full_name || '');
+  const handleSaveOidcConfig = async (config: OIDCConfig) => {
+    try {
+      setSavingOidc(true);
+      await api.auth.oidc.updateConfig(config);
+      toast.success('OIDC configuration saved successfully');
+      await oidcConfigQuery.refetch();
+      setOidcConfigModalOpen(false);
+    } catch (error) {
+      console.error('Failed to save OIDC config:', error);
+      toast.error('Failed to save OIDC configuration');
+    } finally {
+      setSavingOidc(false);
     }
-  }, [user]);
+  };
 
-  // Load OIDC config
-  useEffect(() => {
-    if (authMode !== 'none') {
-      api.auth.oidc.getConfig().then((config) => {
-        setOidcConfig(config as OIDCConfig);
-      }).catch((error) => {
-        console.error('Failed to load OIDC config:', error);
-      });
+  const handleTestOidcConnection = async (config: OIDCConfig) => {
+    try {
+      setTestingOidc(true);
+      const result = await api.auth.oidc.testConnection(config);
+      if (result.success) {
+        toast.success('OIDC connection successful!');
+      } else {
+        toast.error(`OIDC connection failed: ${result.errors.join(', ')}`);
+      }
+    } catch (error) {
+      console.error('Failed to test OIDC:', error);
+      toast.error('Failed to test OIDC connection');
+    } finally {
+      setTestingOidc(false);
     }
-  }, [authMode]);
+  };
 
   const toggleCategory = (category: string) => {
     setCollapsedCategories((prev) => {
@@ -129,36 +392,6 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
     }
   };
 
-  const handleSaveOidcConfig = async () => {
-    try {
-      setSavingOidc(true);
-      await api.auth.oidc.updateConfig(oidcConfig as OIDCConfig);
-      toast.success('OIDC configuration saved successfully');
-    } catch (error) {
-      console.error('Failed to save OIDC config:', error);
-      toast.error('Failed to save OIDC configuration');
-    } finally {
-      setSavingOidc(false);
-    }
-  };
-
-  const handleTestOidcConnection = async () => {
-    try {
-      setTestingOidc(true);
-      const result = await api.auth.oidc.testConnection(oidcConfig as OIDCConfig);
-
-      if (result.success) {
-        toast.success('OIDC connection successful!');
-      } else {
-        toast.error(`OIDC connection failed: ${result.errors.join(', ')}`);
-      }
-    } catch (error) {
-      console.error('Failed to test OIDC:', error);
-      toast.error('Failed to test OIDC connection');
-    } finally {
-      setTestingOidc(false);
-    }
-  };
 
   return (
     <>
@@ -649,99 +882,15 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
         </div>
       )}
 
-      {/* Edit Profile Modal */}
-      {editProfileModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-tide-surface rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-tide-text">Edit Profile</h2>
-              <button
-                onClick={() => setEditProfileModalOpen(false)}
-                className="text-tide-text-muted hover:text-tide-text transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Username (read-only) */}
-              <div>
-                <label className="block text-sm font-medium text-tide-text mb-2">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={user?.username || ''}
-                  disabled
-                  className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted cursor-not-allowed"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-medium text-tide-text mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={profileEmail}
-                  onChange={(e) => setProfileEmail(e.target.value)}
-                  className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="your@email.com"
-                />
-              </div>
-
-              {/* Full Name */}
-              <div>
-                <label className="block text-sm font-medium text-tide-text mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  value={profileFullName}
-                  onChange={(e) => setProfileFullName(e.target.value)}
-                  className="w-full px-4 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="John Doe"
-                />
-              </div>
-
-              {/* Auth Method Badge */}
-              <div className="flex items-center gap-2 text-sm text-tide-text-muted">
-                <Lock className="w-4 h-4" />
-                <span>Authentication: {user?.auth_method === 'oidc' ? `SSO (${user.oidc_provider})` : 'Local'}</span>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setEditProfileModalOpen(false)}
-                className="flex-1 px-4 py-2 bg-tide-bg hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    setSavingProfile(true);
-                    await updateProfile(profileEmail, profileFullName);
-                    toast.success('Profile updated successfully');
-                    setEditProfileModalOpen(false);
-                  } catch {
-                    toast.error('Failed to update profile');
-                  } finally {
-                    setSavingProfile(false);
-                  }
-                }}
-                disabled={savingProfile}
-                className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-teal-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-              >
-                {savingProfile ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Edit Profile Modal — Pattern E: keyed so a user change remounts. */}
+      {editProfileModalOpen && user && (
+        <EditProfileForm
+          key={user.id}
+          user={user}
+          onClose={() => setEditProfileModalOpen(false)}
+          onSave={updateProfile}
+        />
       )}
-
       {/* Change Password Modal */}
       {changePasswordModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -915,191 +1064,18 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
         </div>
       )}
 
-      {/* OIDC Configuration Modal */}
-      {oidcConfigModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-tide-surface rounded-lg shadow-xl max-w-2xl w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <Shield className="w-6 h-6 text-primary" />
-                <h2 className="text-xl font-semibold text-tide-text">OIDC/SSO Configuration</h2>
-              </div>
-              <button
-                onClick={() => setOidcConfigModalOpen(false)}
-                className="text-tide-text-muted hover:text-tide-text transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Enable OIDC Toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="block text-sm font-medium text-tide-text mb-1">
-                    Enable OIDC/SSO
-                  </label>
-                  <p className="text-sm text-tide-text-muted">
-                    Allow users to log in with Single Sign-On
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOidcConfig({ ...oidcConfig, enabled: !oidcConfig.enabled })}
-                  disabled={savingOidc}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                    oidcConfig.enabled ? 'bg-teal-500' : 'bg-red-500'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    oidcConfig.enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}></span>
-                </button>
-              </div>
-
-              {/* OIDC Fields (shown when enabled) */}
-              {oidcConfig.enabled && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Issuer URL
-                    </label>
-                    <input
-                      type="url"
-                      value={oidcConfig.issuer_url}
-                      onChange={(e) => setOidcConfig({ ...oidcConfig, issuer_url: e.target.value })}
-                      disabled={savingOidc}
-                      placeholder="https://auth.example.com"
-                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Client ID
-                    </label>
-                    <input
-                      type="text"
-                      value={oidcConfig.client_id}
-                      onChange={(e) => setOidcConfig({ ...oidcConfig, client_id: e.target.value })}
-                      disabled={savingOidc}
-                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Client Secret
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showOidcSecret ? 'text' : 'password'}
-                        value={oidcConfig.client_secret}
-                        onChange={(e) => setOidcConfig({ ...oidcConfig, client_secret: e.target.value })}
-                        disabled={savingOidc}
-                        className="w-full px-3 py-2 pr-10 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowOidcSecret(!showOidcSecret)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-tide-text-muted hover:text-tide-text"
-                      >
-                        {showOidcSecret ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Provider Name
-                    </label>
-                    <input
-                      type="text"
-                      value={oidcConfig.provider_name}
-                      onChange={(e) => setOidcConfig({ ...oidcConfig, provider_name: e.target.value })}
-                      disabled={savingOidc}
-                      placeholder="Authentik"
-                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Scopes
-                    </label>
-                    <input
-                      type="text"
-                      value={oidcConfig.scopes}
-                      onChange={(e) => setOidcConfig({ ...oidcConfig, scopes: e.target.value })}
-                      disabled={savingOidc}
-                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-tide-text mb-1">
-                      Redirect URI (read-only)
-                    </label>
-                    <input
-                      type="text"
-                      value={oidcConfig.redirect_uri || `${window.location.origin}/api/v1/auth/oidc/callback`}
-                      disabled
-                      className="w-full px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted cursor-not-allowed"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setOidcConfigModalOpen(false)}
-                className="flex-1 px-4 py-2 bg-tide-bg hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              {oidcConfig.enabled && (
-                <>
-                  <button
-                    onClick={handleTestOidcConnection}
-                    disabled={testingOidc || savingOidc}
-                    className="px-4 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {testingOidc ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      <>
-                        <CircleCheck className="w-4 h-4" />
-                        Test Connection
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={handleSaveOidcConfig}
-                    disabled={savingOidc || testingOidc}
-                    className="px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-teal-500/50 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-                  >
-                    {savingOidc ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        Save Configuration
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* OIDC Configuration Modal — Pattern E: keyed on loaded config so
+          re-opening after a save reseeds the form from the latest server data. */}
+      {oidcConfigModalOpen && oidcConfigQuery.data && (
+        <OidcConfigForm
+          key={JSON.stringify(oidcConfigQuery.data)}
+          initialConfig={oidcConfigQuery.data}
+          onClose={() => setOidcConfigModalOpen(false)}
+          onSave={handleSaveOidcConfig}
+          onTest={handleTestOidcConnection}
+          saving={savingOidc}
+          testing={testingOidc}
+        />
       )}
     </>
   );

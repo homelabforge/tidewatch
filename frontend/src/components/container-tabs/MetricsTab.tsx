@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, RefreshCw, TrendingUp, FileDown } from 'lucide-react';
-import { Container, ContainerMetrics } from '../../types';
+import { Container } from '../../types';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
@@ -27,13 +28,29 @@ interface MetricsTabProps {
 }
 
 export default function MetricsTab({ container }: MetricsTabProps) {
-  const [metrics, setMetrics] = useState<ContainerMetrics | null>(null);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('24h');
-  const [historyData, setHistoryData] = useState<MetricsHistoryDataPoint[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   const [compareMetrics, setCompareMetrics] = useState(false);
+
+  // Pattern A: current metrics — read on mount only, NO polling.
+  const metricsQuery = useQuery({
+    queryKey: ['containers', 'metrics', container.id] as const,
+    queryFn: () => api.containers.getMetrics(container.id),
+  });
+  const metrics = metricsQuery.data ?? null;
+  const loadingMetrics = metricsQuery.isLoading;
+
+  // History query only fires when the user picks a metric to drill into.
+  const historyQuery = useQuery({
+    queryKey: ['containers', 'metrics', 'history', container.id, timePeriod] as const,
+    queryFn: async () => {
+      const data = await api.containers.getMetricsHistory(container.id, timePeriod);
+      return data as unknown as MetricsHistoryDataPoint[];
+    },
+    enabled: selectedMetric !== null,
+  });
+  const historyData: MetricsHistoryDataPoint[] = historyQuery.data ?? [];
+  const loadingHistory = historyQuery.isLoading;
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -42,42 +59,6 @@ export default function MetricsTab({ container }: MetricsTabProps) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
   };
-
-  const loadMetrics = useCallback(async () => {
-    setLoadingMetrics(true);
-    try {
-      const data = await api.containers.getMetrics(container.id);
-      setMetrics(data);
-    } catch (error) {
-      console.error('Failed to load metrics:', error);
-      setMetrics(null);
-    } finally {
-      setLoadingMetrics(false);
-    }
-  }, [container.id]);
-
-  const loadHistoricalData = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const data = await api.containers.getMetricsHistory(container.id, timePeriod);
-      setHistoryData(data as unknown as MetricsHistoryDataPoint[]);
-    } catch (error) {
-      console.error('Failed to load historical data:', error);
-      setHistoryData([]);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [container.id, timePeriod]);
-
-  useEffect(() => {
-    loadMetrics();
-  }, [loadMetrics]);
-
-  useEffect(() => {
-    if (selectedMetric) {
-      loadHistoricalData();
-    }
-  }, [selectedMetric, timePeriod, loadHistoricalData]);
 
   const exportMetricsToCSV = () => {
     if (historyData.length === 0) {

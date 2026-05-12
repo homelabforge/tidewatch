@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, Eye, Download, ArrowRight, FileText, CircleAlert, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppDependency, DockerfileDependency, HttpServer } from '../types';
 
@@ -23,37 +24,32 @@ interface DependencyUpdatePreviewModalProps {
 
 export default function DependencyUpdatePreviewModal({
   dependency,
-  // dependencyType is passed for type safety but not currently used
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  dependencyType: _dependencyType,
+  dependencyType,
   onClose,
   onConfirmUpdate,
   onPreview,
 }: DependencyUpdatePreviewModalProps) {
-  const [preview, setPreview] = useState<PreviewData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [changelogExpanded, setChangelogExpanded] = useState(false);
 
-  const loadPreview = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await onPreview();
-      setPreview(data);
-    } catch (err) {
-      console.error('Failed to load preview:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load preview');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Pattern B: parent gates rendering on `open`, so mounting IS the trigger.
+  const previewQuery = useQuery({
+    queryKey: ['dependencyPreview', dependencyType, dependency.id] as const,
+    queryFn: () => onPreview(),
+    // The preview callback is closure-stable per parent render; one fetch on
+    // open is the right behavior — no refetch on focus.
+    refetchOnWindowFocus: false,
+  });
+  const preview = previewQuery.data ?? null;
+  const loading = previewQuery.isLoading;
+  const queryError =
+    previewQuery.error instanceof Error
+      ? previewQuery.error.message
+      : previewQuery.error
+        ? 'Failed to load preview'
+        : null;
+  const error = updateError ?? queryError;
 
   const handleUpdate = async () => {
     setUpdating(true);
@@ -62,7 +58,7 @@ export default function DependencyUpdatePreviewModal({
       onClose();
     } catch (err) {
       console.error('Failed to update dependency:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update dependency');
+      setUpdateError(err instanceof Error ? err.message : 'Failed to update dependency');
     } finally {
       setUpdating(false);
     }

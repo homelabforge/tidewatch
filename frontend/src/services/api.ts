@@ -107,6 +107,22 @@ function updateCsrfToken(response: Response): void {
   }
 }
 
+// Side-effects for a 401 response: surface a toast (if user was previously
+// authenticated), signal listeners in this tab via a CustomEvent, and update
+// sessionStorage as a best-effort cross-tab hint. Used by every code path
+// that calls `fetch` directly (currently `apiCall` + `backup.upload`).
+function handle401(): void {
+  const wasAuthenticated = sessionStorage.getItem('wasAuthenticated') === 'true';
+  if (wasAuthenticated) {
+    import('sonner').then(({ toast }) => {
+      toast.error('Your session has expired. Please log in again.');
+    });
+  }
+  sessionStorage.setItem('auth:401', Date.now().toString());
+  sessionStorage.removeItem('wasAuthenticated');
+  window.dispatchEvent(new CustomEvent('auth:401'));
+}
+
 // Helper function for API calls with CSRF protection
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -152,18 +168,8 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
       // Not JSON — keep rawBody as detail
     }
 
-    // Handle 401 Unauthorized - session expired (side-effect, then throw)
     if (response.status === 401) {
-      const wasAuthenticated = sessionStorage.getItem('wasAuthenticated') === 'true';
-      if (wasAuthenticated) {
-        // Import toast dynamically to avoid circular dependency
-        import('sonner').then(({ toast }) => {
-          toast.error('Your session has expired. Please log in again.');
-        });
-      }
-      // Signal auth context via sessionStorage (triggers across tabs)
-      sessionStorage.setItem('auth:401', Date.now().toString());
-      sessionStorage.removeItem('wasAuthenticated');
+      handle401();
     }
 
     throw new ApiError(response.status, detail, rawBody);
@@ -515,6 +521,9 @@ export const backupApi = {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        handle401();
+      }
       const error = await response.text();
       throw new Error(error || `Upload failed: ${response.statusText}`);
     }

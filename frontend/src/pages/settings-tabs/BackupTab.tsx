@@ -1,19 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Database, RefreshCw, HardDrive, Shield, Upload, Plus, Download, Trash2, Info, RotateCcw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '../../services/api';
-import type { BackupListResponse, BackupFile } from '../../types';
+import type { BackupFile } from '../../types';
 
 interface BackupTabProps {
   loadSettings: () => Promise<void>;
 }
 
+const BACKUPS_KEY = ['backups', 'all'] as const;
+
 export default function BackupTab({ loadSettings }: BackupTabProps) {
-  const [backups, setBackups] = useState<BackupListResponse | null>(null);
-  const [loadingBackups, setLoadingBackups] = useState(false);
-  const [creatingBackup, setCreatingBackup] = useState(false);
-  const [uploadingBackup, setUploadingBackup] = useState(false);
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -28,55 +28,76 @@ export default function BackupTab({ loadSettings }: BackupTabProps) {
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
   };
 
-  const loadBackups = useCallback(async () => {
-    try {
-      setLoadingBackups(true);
-      const backupData = await api.backup.list();
-      setBackups(backupData);
-    } catch (error) {
-      console.error('Failed to load backups:', error);
-      toast.error('Failed to load backups');
-    } finally {
-      setLoadingBackups(false);
-    }
-  }, []);
+  const backupsQuery = useQuery({
+    queryKey: BACKUPS_KEY,
+    queryFn: () => api.backup.list(),
+  });
+  const backups = backupsQuery.data ?? null;
+  const loadingBackups = backupsQuery.isLoading;
 
+  const backupsError = backupsQuery.error;
   useEffect(() => {
-    loadBackups();
-  }, [loadBackups]);
+    if (backupsError) toast.error('Failed to load backups');
+  }, [backupsError]);
 
-  const handleCreateBackup = async () => {
-    try {
-      setCreatingBackup(true);
-      const result = await api.backup.create();
+  const invalidateBackups = () =>
+    queryClient.invalidateQueries({ queryKey: BACKUPS_KEY });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.backup.create(),
+    onSuccess: (result) => {
       toast.success(result.message);
-      await loadBackups();
-    } catch (error) {
-      console.error('Failed to create backup:', error);
-      toast.error('Failed to create backup');
-    } finally {
-      setCreatingBackup(false);
-    }
-  };
+      invalidateBackups();
+    },
+    onError: () => toast.error('Failed to create backup'),
+  });
 
-  const handleUploadBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => api.backup.upload(file),
+    onSuccess: () => {
+      toast.success('Backup uploaded successfully');
+      invalidateBackups();
+    },
+    onError: () => toast.error('Failed to upload backup'),
+    onSettled: () => {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (filename: string) => api.backup.delete(filename),
+    onSuccess: (result) => {
+      toast.success(result.message);
+      invalidateBackups();
+      setDeleteModalOpen(false);
+      setSelectedBackup(null);
+    },
+    onError: () => toast.error('Failed to delete backup'),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (filename: string) => api.backup.restore(filename),
+    onSuccess: (result) => {
+      toast.success(result.message);
+      // Restore replaces the SQLite DB entirely — any cached read may be
+      // stale. Broad invalidation (no key) refetches everything in the cache.
+      queryClient.invalidateQueries();
+      loadSettings();
+      setRestoreModalOpen(false);
+      setSelectedBackup(null);
+    },
+    onError: () => toast.error('Failed to restore backup'),
+  });
+
+  const creatingBackup = createMutation.isPending;
+  const uploadingBackup = uploadMutation.isPending;
+
+  const handleCreateBackup = () => createMutation.mutate();
+
+  const handleUploadBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    try {
-      setUploadingBackup(true);
-      await api.backup.upload(file);
-      toast.success('Backup uploaded successfully');
-      await loadBackups();
-    } catch (error) {
-      console.error('Failed to upload backup:', error);
-      toast.error('Failed to upload backup');
-    } finally {
-      setUploadingBackup(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
+    uploadMutation.mutate(file);
   };
 
   const handleDownloadBackup = (filename: string) => {
@@ -104,36 +125,17 @@ export default function BackupTab({ loadSettings }: BackupTabProps) {
     setDeleteModalOpen(true);
   };
 
-  const confirmRestore = async () => {
+  const confirmRestore = () => {
     if (!selectedBackup) return;
-
-    try {
-      const result = await api.backup.restore(selectedBackup.filename);
-      toast.success(result.message);
-      await loadSettings();
-      await loadBackups();
-      setRestoreModalOpen(false);
-      setSelectedBackup(null);
-    } catch (error) {
-      console.error('Failed to restore backup:', error);
-      toast.error('Failed to restore backup');
-    }
+    restoreMutation.mutate(selectedBackup.filename);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!selectedBackup) return;
-
-    try {
-      const result = await api.backup.delete(selectedBackup.filename);
-      toast.success(result.message);
-      await loadBackups();
-      setDeleteModalOpen(false);
-      setSelectedBackup(null);
-    } catch (error) {
-      console.error('Failed to delete backup:', error);
-      toast.error('Failed to delete backup');
-    }
+    deleteMutation.mutate(selectedBackup.filename);
   };
+
+  const loadBackups = () => invalidateBackups();
 
   return (
     <>
