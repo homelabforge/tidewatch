@@ -365,8 +365,24 @@ app.include_router(api_router)
 static_dir = Path("/app/static")
 
 if static_dir.exists():
-    # Serve static assets (CSS, JS, images)
-    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+    # Serve static assets (CSS, JS, images).
+    #
+    # Vite emits content-hashed filenames under /assets (e.g. main-abc123.js),
+    # which are immutable for the life of the build. The `immutable` directive
+    # plus a year-long max-age stops browsers and Cloudflare from revalidating
+    # these on every navigation — the source of most post-deploy reload latency.
+    class ImmutableStaticFiles(StaticFiles):
+        async def get_response(self, path, scope):
+            response = await super().get_response(path, scope)
+            if response.status_code == 200:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
+
+    app.mount(
+        "/assets",
+        ImmutableStaticFiles(directory=str(static_dir / "assets")),
+        name="assets",
+    )
 
     # Serve frontend
     from fastapi.responses import FileResponse, JSONResponse

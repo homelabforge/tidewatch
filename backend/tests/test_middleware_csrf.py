@@ -190,13 +190,15 @@ class TestCSRFTokenValidation:
 
     def test_csrf_validation_uses_constant_time_comparison(self):
         """Test CSRF uses constant-time comparison (secrets.compare_digest)."""
-        # This is a security test to prevent timing attacks
-        # Verify secrets.compare_digest is used in the source code
+        # This is a security test to prevent timing attacks.
+        # Verify secrets.compare_digest is used somewhere in the middleware
+        # source. The class is pure ASGI now, so we scan the entire module
+        # rather than a single dispatch method.
         import inspect
 
-        from app.middleware.csrf import CSRFProtectionMiddleware
+        from app.middleware import csrf as csrf_module
 
-        source = inspect.getsource(CSRFProtectionMiddleware.dispatch)
+        source = inspect.getsource(csrf_module)
 
         assert "secrets.compare_digest" in source
 

@@ -54,7 +54,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [setupComplete, setSetupComplete] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
 
-  // Initialize authentication state on mount
+  // Initialize authentication state on mount.
+  //
+  // `getStatus` and `getMe` are dispatched in parallel: the previous version
+  // awaited `getStatus` before starting `getMe`, which doubled the time the
+  // UI sat on a loading screen for an authenticated user. In the not-set-up
+  // and auth-disabled branches the `getMe` result is simply ignored — one
+  // wasted call beats serializing the common authenticated path. Both
+  // endpoints set the `X-CSRF-Token` response header, so whichever resolves
+  // first still primes the CSRF state for later mutating requests.
   useEffect(() => {
     let mounted = true;
 
@@ -62,40 +70,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         setIsLoading(true);
 
-        // 1. Check auth status (also captures CSRF token)
-        const status = await authApi.getStatus();
+        const [statusResult, meResult] = await Promise.allSettled([
+          authApi.getStatus(),
+          authApi.getMe(),
+        ]);
+
         if (!mounted) return;
 
+        if (statusResult.status === 'rejected') {
+          throw statusResult.reason;
+        }
+
+        const status = statusResult.value;
         setSetupComplete(status.setup_complete);
         setAuthMode(status.auth_mode);
         setOidcEnabled(status.oidc_enabled);
 
-        // 2. If setup not complete, stop here
         if (!status.setup_complete) {
-          if (mounted) setIsLoading(false);
           return;
         }
 
-        // 3. If auth disabled, mark as authenticated
         if (status.auth_mode === "none") {
-          if (mounted) {
-            setIsAuthenticated(true);
-            setIsLoading(false);
-          }
+          setIsAuthenticated(true);
           return;
         }
 
-        // 4. Check if logged in
-        try {
-          const profile = await authApi.getMe();
-          if (!mounted) return;
-
-          setUser(profile);
+        // Auth is enabled — interpret the parallel /me response.
+        if (meResult.status === 'fulfilled') {
+          setUser(meResult.value);
           setIsAuthenticated(true);
           sessionStorage.setItem('wasAuthenticated', 'true');
-        } catch {
-          // 401 = not logged in
-          if (mounted) setIsAuthenticated(false);
+        } else {
+          const err = meResult.reason as { message?: string };
+          const msg = err?.message ?? String(meResult.reason);
+          if (!msg.includes('401')) {
+            console.warn('Unexpected error from authApi.getMe():', meResult.reason);
+          }
+          setIsAuthenticated(false);
         }
       } catch (error) {
         if (mounted) {

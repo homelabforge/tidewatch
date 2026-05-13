@@ -10,7 +10,6 @@ Tests token bucket algorithm rate limiting:
 """
 
 import time
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -227,41 +226,36 @@ class TestRateLimitMiddleware:
         app = FastAPI()
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
-        # Mock request with X-Forwarded-For
-        request = MagicMock()
-        request.headers.get = MagicMock(
-            side_effect=lambda h: {"X-Forwarded-For": "192.168.1.100, 10.0.0.1"}.get(h)
-        )
-
-        ip = middleware._get_client_ip(request)
-
-        assert ip == "192.168.1.100"  # First IP in chain
+        scope = {
+            "type": "http",
+            "headers": [(b"x-forwarded-for", b"192.168.1.100, 10.0.0.1")],
+            "client": ("127.0.0.1", 12345),
+        }
+        assert middleware._get_client_ip(scope) == "192.168.1.100"
 
     def test_client_ip_extraction_from_x_real_ip(self):
         """Test client IP extracted from X-Real-IP header."""
         app = FastAPI()
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
-        request = MagicMock()
-        request.headers.get = MagicMock(side_effect=lambda h: {"X-Real-IP": "203.0.113.42"}.get(h))
-        request.client = None
-
-        ip = middleware._get_client_ip(request)
-
-        assert ip == "203.0.113.42"
+        scope = {
+            "type": "http",
+            "headers": [(b"x-real-ip", b"203.0.113.42")],
+            "client": None,
+        }
+        assert middleware._get_client_ip(scope) == "203.0.113.42"
 
     def test_client_ip_fallback_to_request_client(self):
-        """Test client IP falls back to request.client.host."""
+        """Test client IP falls back to the ASGI scope's `client` tuple."""
         app = FastAPI()
         middleware = RateLimitMiddleware(app, requests_per_minute=60)
 
-        request = MagicMock()
-        request.headers.get = MagicMock(return_value=None)
-        request.client.host = "198.51.100.10"
-
-        ip = middleware._get_client_ip(request)
-
-        assert ip == "198.51.100.10"
+        scope = {
+            "type": "http",
+            "headers": [],
+            "client": ("198.51.100.10", 12345),
+        }
+        assert middleware._get_client_ip(scope) == "198.51.100.10"
 
     def test_different_ips_have_separate_buckets(self):
         """Test different client IPs are rate limited separately."""

@@ -1,17 +1,24 @@
-"""CSRF protection middleware for API endpoints."""
+"""CSRF protection middleware for API endpoints.
 
+Pure ASGI middleware rather than Starlette's `BaseHTTPMiddleware`: the latter
+buffers the response body through an internal asyncio queue, which is fine
+for small JSON but throttles streaming responses (e.g. SSE event streams,
+photo serving, large file downloads). Pure ASGI wraps `send` directly and
+only touches the `http.response.start` message — the body streams through.
+"""
+
+import json
 import logging
 import os
 import secrets
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
 
-class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+class CSRFProtectionMiddleware:
     """CSRF protection using session-based token storage.
 
     Improvements over cookie-only implementation:
@@ -22,101 +29,138 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     - Proper constant-time comparison
 
     Flow:
-    - GET/HEAD/OPTIONS: Generate CSRF token, store in session, set HttpOnly cookie
-    - POST/PUT/DELETE/PATCH: Validate token from header matches session token
+    - GET/HEAD/OPTIONS: Generate CSRF token, store in session, set HttpOnly
+      cookie, echo token in `X-CSRF-Token` response header.
+    - POST/PUT/DELETE/PATCH: Validate header token against session token.
+
+    Requires Starlette's `SessionMiddleware` to run *outside* of this one so
+    that `scope["session"]` is populated.
     """
 
-    def __init__(self, app, force_enabled: bool = False):
-        """Initialize CSRF protection middleware.
+    DEFAULT_EXEMPT_PATHS: tuple[str, ...] = (
+        "/health",
+        "/metrics",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/api/v1/auth/login",
+        "/api/v1/auth/setup",
+        "/api/v1/auth/cancel-setup",
+        "/api/v1/auth/oidc/callback",
+        "/api/v1/auth/oidc/test",
+    )
 
-        Args:
-            app: FastAPI application
-            force_enabled: If True, skip the TIDEWATCH_TESTING bypass (for testing the middleware itself)
-        """
-        super().__init__(app)
+    def __init__(self, app: ASGIApp, force_enabled: bool = False) -> None:
+        self.app = app
         self.force_enabled = force_enabled
-        self.exempt_paths = [
-            "/health",
-            "/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/api/v1/auth/login",  # Login needs to work without CSRF
-            "/api/v1/auth/setup",  # Setup needs to work without CSRF
-            "/api/v1/auth/cancel-setup",  # Cancel setup needs to work without CSRF
-            "/api/v1/auth/oidc/callback",  # OAuth2 callback can't have CSRF token
-            "/api/v1/auth/oidc/test",  # OIDC test endpoint for config validation
-        ]
+        self.exempt_paths = self.DEFAULT_EXEMPT_PATHS
 
-    async def dispatch(self, request: Request, call_next):
-        """Process request with CSRF protection.
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: Incoming request
-            call_next: Next middleware/endpoint
-
-        Returns:
-            Response or CSRF error
-        """
-        # Disable CSRF protection in test mode (unless force_enabled for middleware testing)
+        # Test-mode bypass.
         if not self.force_enabled and os.getenv("TIDEWATCH_TESTING", "false").lower() == "true":
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        # Exempt paths from CSRF protection
-        if any(request.url.path.startswith(path) for path in self.exempt_paths):
-            return await call_next(request)
+        path = scope.get("path", "")
+        if any(path.startswith(p) for p in self.exempt_paths):
+            await self.app(scope, receive, send)
+            return
 
-        # Safe methods - set CSRF token but don't validate
-        if request.method in ["GET", "HEAD", "OPTIONS"]:
-            response = await call_next(request)
+        method = scope.get("method", "GET")
 
-            # Generate or reuse CSRF token from session
-            session = request.session
-            csrf_token = session.get("csrf_token")
+        if method in ("GET", "HEAD", "OPTIONS"):
+            await self._handle_safe_method(scope, receive, send)
+            return
 
-            if not csrf_token:
-                # Generate new token for this session
-                csrf_token = secrets.token_urlsafe(32)
-                session["csrf_token"] = csrf_token
+        await self._handle_unsafe_method(scope, receive, send)
 
-            # Send CSRF token in response header for frontend to capture
-            # Frontend will store this in memory and include it in subsequent requests
-            response.headers["X-CSRF-Token"] = csrf_token
+    async def _handle_safe_method(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """For safe methods: generate/reuse CSRF token, decorate the response."""
+        session = scope.get("session")
+        if session is None:
+            # No SessionMiddleware in the chain — nothing we can do. Pass through.
+            await self.app(scope, receive, send)
+            return
 
-            # Also set a cookie for additional validation (not strictly necessary)
-            # This cookie is HttpOnly for security - frontend cannot read it
-            response.set_cookie(
-                key="csrf_token",
-                value=csrf_token,
-                httponly=True,  # Protects against XSS
-                secure=os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true",
-                samesite="lax",
-                max_age=86400,  # 24 hours
-            )
+        csrf_token = session.get("csrf_token")
+        if not csrf_token:
+            csrf_token = secrets.token_urlsafe(32)
+            session["csrf_token"] = csrf_token
 
-            return response
+        secure_cookie = os.getenv("CSRF_SECURE_COOKIE", "false").lower() == "true"
+        cookie_parts = [
+            f"csrf_token={csrf_token}",
+            "HttpOnly",
+            "Max-Age=86400",
+            "SameSite=lax",
+            "Path=/",
+        ]
+        if secure_cookie:
+            cookie_parts.append("Secure")
+        cookie_value = "; ".join(cookie_parts)
 
-        # Unsafe methods (POST, PUT, DELETE, PATCH) - validate CSRF token
-        session = request.session
+        async def send_with_csrf(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-CSRF-Token"] = csrf_token
+                headers.append("Set-Cookie", cookie_value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_csrf)
+
+    async def _handle_unsafe_method(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """For unsafe methods: validate header CSRF token against session token."""
+        session = scope.get("session") or {}
         session_token = session.get("csrf_token")
-        header_token = request.headers.get("X-CSRF-Token")
+        header_token = _get_header(scope, b"x-csrf-token")
 
-        # Both must be present
         if not session_token or not header_token:
             logger.warning(
-                f"CSRF validation failed: missing token "
-                f"(session={bool(session_token)}, header={bool(header_token)}) "
-                f"for {request.method} {request.url.path}"
+                "CSRF validation failed: missing token (session=%s, header=%s) for %s %s",
+                bool(session_token),
+                bool(header_token),
+                scope.get("method", "?"),
+                scope.get("path", "?"),
             )
-            return JSONResponse(status_code=403, content={"detail": "CSRF token missing"})
+            await _send_json(send, status=403, payload={"detail": "CSRF token missing"})
+            return
 
-        # Tokens must match using constant-time comparison
         if not secrets.compare_digest(session_token, header_token):
             logger.warning(
-                f"CSRF validation failed: token mismatch for {request.method} {request.url.path}"
+                "CSRF validation failed: token mismatch for %s %s",
+                scope.get("method", "?"),
+                scope.get("path", "?"),
             )
-            return JSONResponse(status_code=403, content={"detail": "CSRF token invalid"})
+            await _send_json(send, status=403, payload={"detail": "CSRF token invalid"})
+            return
 
-        # Token valid, proceed with request
-        response = await call_next(request)
-        return response
+        await self.app(scope, receive, send)
+
+
+def _get_header(scope: Scope, name: bytes) -> str | None:
+    """Look up a request header value (case-insensitive) from the ASGI scope."""
+    name_lower = name.lower()
+    for key, value in scope.get("headers", []):
+        if key.lower() == name_lower:
+            return value.decode("latin-1")
+    return None
+
+
+async def _send_json(send: Send, *, status: int, payload: dict) -> None:
+    """Emit a JSON response from inside ASGI middleware."""
+    body = json.dumps(payload).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})

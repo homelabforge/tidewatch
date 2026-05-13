@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Custom `CSRFProtectionMiddleware` and `RateLimitMiddleware` were built on Starlette's `BaseHTTPMiddleware`, which buffers the entire response body through an internal asyncio queue before forwarding. That stalls streaming responses (SSE event streams, large `FileResponse` payloads). Both are now pure ASGI middleware that wrap `send` directly and leave the response body untouched, with no observable behavior change.
+
 ### Changed
 - Migrated `authlib.jose` → `joserfc` (JWT signing/verification, OIDC ID token validation)
 - Refactored data-fetching to `@tanstack/react-query` v5 across pages, container-tabs, settings-tabs, and modals; same-tab 401 handling now uses a `CustomEvent` listener
 - Re-bumped `eslint-plugin-react-hooks` to `^7.1.1`; full ruleset now clean
+- `/assets/*` static files now ship with `Cache-Control: public, max-age=31536000, immutable`. Vite emits content-hashed filenames so this is safe; stops browsers and Cloudflare from revalidating on every navigation.
+- `AuthContext` dispatches `getStatus` and `getMe` in parallel on mount instead of sequentially, cutting bootstrap latency for authenticated users roughly in half. Both endpoints set `X-CSRF-Token` so the CSRF priming still works regardless of which one resolves first.
 
 ### App Dependencies
 - **@tanstack/react-query**: added (^5.100.10)
