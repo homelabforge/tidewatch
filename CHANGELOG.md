@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vitest**: 4.1.4 → 4.1.6
 
 ### Dockerfile Dependencies
-- **oven/bun**: 1.3.12-alpine → 1.3.13-alpine
+- **oven/bun**: 1.3.12-alpine → 1.3.14-alpine
 
 ## [3.9.3] - 2026-04-29
 
