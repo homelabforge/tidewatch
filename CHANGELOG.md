@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Custom `CSRFProtectionMiddleware` and `RateLimitMiddleware` were built on Starlette's `BaseHTTPMiddleware`, which buffers the entire response body through an internal asyncio queue before forwarding. That stalls streaming responses (SSE event streams, large `FileResponse` payloads). Both are now pure ASGI middleware that wrap `send` directly and leave the response body untouched, with no observable behavior change.
+- Static asset responses (`/assets/`, `/vite.svg`, `/favicon.ico`) no longer get a `Set-Cookie: csrf_token=...` header. The CSRF middleware previously set a per-session cookie on every safe-method request including chunk fetches, which made Cloudflare refuse to cache the responses (`cf-cache-status: BYPASS`). Cold loads now hit the Cloudflare edge instead of traversing the server's upload pipe for every chunk.
 
 ### Changed
 - Migrated `authlib.jose` → `joserfc` (JWT signing/verification, OIDC ID token validation)

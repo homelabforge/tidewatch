@@ -48,6 +48,14 @@ class CSRFProtectionMiddleware:
         "/api/v1/auth/cancel-setup",
         "/api/v1/auth/oidc/callback",
         "/api/v1/auth/oidc/test",
+        # Static asset paths. These are idempotent GETs that do not need a
+        # CSRF token, and emitting one on every request attaches a
+        # `Set-Cookie` header that makes Cloudflare refuse to cache the
+        # asset (`cf-cache-status: BYPASS`). The CSRF cookie is set on the
+        # HTML and API responses where it is actually used.
+        "/assets/",
+        "/vite.svg",
+        "/favicon.ico",
     )
 
     def __init__(self, app: ASGIApp, force_enabled: bool = False) -> None:
