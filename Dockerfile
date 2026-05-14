@@ -8,7 +8,7 @@
 # Global ARG before any FROM — visible to FROM lines only.
 # CI passes --build-arg BUN_VERSION=$(cat .bun-version) so this default is
 # only used by ad-hoc `docker build` without --build-arg.
-ARG BUN_VERSION=1.3.12
+ARG BUN_VERSION=1.3.14
 
 # Stage 1: Build frontend with Bun
 FROM oven/bun:${BUN_VERSION}-alpine AS frontend-builder
