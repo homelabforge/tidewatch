@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import pkg from './package.json' with { type: 'json' }
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    // Expose the app version as a compile-time constant so the service
+    // worker registration can namespace its caches per release (see main.tsx
+    // and public/sw.js).
+    APP_VERSION: JSON.stringify(pkg.version),
+  },
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

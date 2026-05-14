@@ -8,15 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Custom `CSRFProtectionMiddleware` and `RateLimitMiddleware` were built on Starlette's `BaseHTTPMiddleware`, which buffers the entire response body through an internal asyncio queue before forwarding. That stalls streaming responses (SSE event streams, large `FileResponse` payloads). Both are now pure ASGI middleware that wrap `send` directly and leave the response body untouched, with no observable behavior change.
-- Static asset responses (`/assets/`, `/vite.svg`, `/favicon.ico`) no longer get a `Set-Cookie: csrf_token=...` header. The CSRF middleware previously set a per-session cookie on every safe-method request including chunk fetches, which made Cloudflare refuse to cache the responses (`cf-cache-status: BYPASS`). Cold loads now hit the Cloudflare edge instead of traversing the server's upload pipe for every chunk.
+- `CSRFProtectionMiddleware` and `RateLimitMiddleware` rewritten as pure ASGI so streaming responses no longer get buffered through `BaseHTTPMiddleware`
+- Static asset paths exempted from CSRF cookie so Cloudflare can cache chunks at the edge
+
+### Added
+- Service worker for shell caching (versioned by `APP_VERSION`, retries on network failure, skips SSE and backup downloads)
 
 ### Changed
 - Migrated `authlib.jose` → `joserfc` (JWT signing/verification, OIDC ID token validation)
 - Refactored data-fetching to `@tanstack/react-query` v5 across pages, container-tabs, settings-tabs, and modals; same-tab 401 handling now uses a `CustomEvent` listener
 - Re-bumped `eslint-plugin-react-hooks` to `^7.1.1`; full ruleset now clean
-- `/assets/*` static files now ship with `Cache-Control: public, max-age=31536000, immutable`. Vite emits content-hashed filenames so this is safe; stops browsers and Cloudflare from revalidating on every navigation.
-- `AuthContext` dispatches `getStatus` and `getMe` in parallel on mount instead of sequentially, cutting bootstrap latency for authenticated users roughly in half. Both endpoints set `X-CSRF-Token` so the CSRF priming still works regardless of which one resolves first.
+- `/assets/*` now ship `Cache-Control: public, max-age=31536000, immutable`
+- `AuthContext` dispatches `getStatus` and `getMe` in parallel on mount
 
 ### App Dependencies
 - **@tanstack/react-query**: added (^5.100.10)

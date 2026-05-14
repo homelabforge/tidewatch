@@ -392,6 +392,26 @@ if static_dir.exists():
         """Serve frontend index.html at root."""
         return FileResponse(static_dir / "index.html")
 
+    # PWA-style assets that live in `frontend/public/` (and therefore get
+    # copied to the root of `dist/` by Vite). These have to be explicit
+    # because the 404 fallback below would otherwise serve `index.html`
+    # for unknown paths — and the service worker registration will fail
+    # if `/sw.js` returns HTML instead of JavaScript.
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker():
+        return FileResponse(
+            static_dir / "sw.js",
+            media_type="application/javascript",
+            # The SW script itself must not be long-cached, otherwise we
+            # can't ship updates. Browsers also limit SW script caching
+            # to a max of 24h by default since Chrome 68.
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    @app.get("/offline.html", include_in_schema=False)
+    async def offline_page():
+        return FileResponse(static_dir / "offline.html", media_type="text/html")
+
     # SPA fallback - handle 404s by serving index.html for client-side routing
     @app.exception_handler(404)
     async def spa_404_handler(request, exc):
