@@ -18,9 +18,9 @@ import logging
 from datetime import timedelta
 
 import httpx
-from authlib.jose import JoseError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from joserfc.errors import JoseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db

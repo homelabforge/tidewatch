@@ -15,7 +15,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from authlib.jose import JoseError, JsonWebKey, jwt
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySet
+from joserfc.jwt import JWTClaimsRegistry
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -508,24 +511,21 @@ async def verify_id_token(
             jwks = response.json()
 
         # Create key set
-        key_set = JsonWebKey.import_key_set(jwks)
+        key_set = KeySet.import_key_set(jwks)
 
-        # Decode and verify ID token
-        # Use issuer from metadata as fallback if not configured
+        # Decode (verifies signature) then validate iss/aud/nonce + default exp/nbf/iat.
+        # Use issuer from metadata as fallback if not configured.
         issuer = config.get("issuer_url") or metadata.get("issuer", "")
-        claims = jwt.decode(
-            id_token,
-            key_set,
-            claims_options={
-                "iss": {"essential": True, "value": issuer},
-                "aud": {"essential": True, "value": config.get("client_id", "")},
-                "nonce": {"essential": True, "value": nonce},
-            },
+        decoded = jwt.decode(id_token, key_set)
+        claims_registry = JWTClaimsRegistry(
+            iss={"essential": True, "value": issuer},
+            aud={"essential": True, "value": config.get("client_id", "")},
+            nonce={"essential": True, "value": nonce},
         )
-        claims.validate()
+        claims_registry.validate(decoded.claims)
 
-        logger.info("Successfully verified ID token for subject: %s", claims.get("sub"))
-        return dict(claims)
+        logger.info("Successfully verified ID token for subject: %s", decoded.claims.get("sub"))
+        return dict(decoded.claims)
 
     except JoseError as e:
         logger.error("ID token verification failed: %s", str(e))

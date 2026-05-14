@@ -15,8 +15,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from authlib.jose import jwt
 from fastapi import HTTPException
+from joserfc import jwt
 
 from app.services import auth
 from app.services.auth import (
@@ -201,7 +201,7 @@ class TestJWTOperations:
         token = create_access_token(sample_payload)
 
         # Decode without verification for testing
-        decoded = jwt.decode(token, auth._SECRET_KEY)
+        decoded = jwt.decode(token, auth._SIGNING_KEY).claims
 
         assert "exp" in decoded
         assert "iat" in decoded
@@ -211,7 +211,7 @@ class TestJWTOperations:
     def test_create_access_token_default_expiration(self, sample_payload):
         """Test token expires after default time (24 hours)."""
         token = create_access_token(sample_payload)
-        decoded = jwt.decode(token, auth._SECRET_KEY)
+        decoded = jwt.decode(token, auth._SIGNING_KEY).claims
 
         exp = datetime.fromtimestamp(decoded["exp"], tz=UTC)
         iat = datetime.fromtimestamp(decoded["iat"], tz=UTC)
@@ -226,7 +226,7 @@ class TestJWTOperations:
         """Test token with custom expiration delta."""
         custom_delta = timedelta(minutes=30)
         token = create_access_token(sample_payload, expires_delta=custom_delta)
-        decoded = jwt.decode(token, auth._SECRET_KEY)
+        decoded = jwt.decode(token, auth._SIGNING_KEY).claims
 
         exp = datetime.fromtimestamp(decoded["exp"], tz=UTC)
         iat = datetime.fromtimestamp(decoded["iat"], tz=UTC)
@@ -237,7 +237,7 @@ class TestJWTOperations:
     def test_create_access_token_preserves_payload(self, sample_payload):
         """Test token preserves all payload fields."""
         token = create_access_token(sample_payload)
-        decoded = jwt.decode(token, auth._SECRET_KEY)
+        decoded = jwt.decode(token, auth._SIGNING_KEY).claims
 
         for key, value in sample_payload.items():
             assert decoded[key] == value
