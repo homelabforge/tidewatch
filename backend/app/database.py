@@ -2,7 +2,9 @@
 
 import logging
 import os
+import sqlite3
 from collections.abc import AsyncGenerator
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy import event, text
@@ -12,6 +14,17 @@ from sqlalchemy.orm import declarative_base
 from app.utils.security import sanitize_path
 
 logger = logging.getLogger(__name__)
+
+
+# Replace Python's deprecated default sqlite3 datetime adapter/converter with
+# ISO-8601 versions. The stdlib default was deprecated in Python 3.12 and will
+# be removed in a future release; registering our own now silences the warning
+# and future-proofs the schema. SQLAlchemy normally bypasses these for typed
+# columns, but aiosqlite still trips the default-adapter deprecation on import.
+sqlite3.register_adapter(date, lambda v: v.isoformat())
+sqlite3.register_adapter(datetime, lambda v: v.isoformat())
+sqlite3.register_converter("date", lambda v: date.fromisoformat(v.decode()))
+sqlite3.register_converter("datetime", lambda v: datetime.fromisoformat(v.decode()))
 
 # Database URL from environment or default
 # Default to /data/tidewatch.db (production path mounted as volume)

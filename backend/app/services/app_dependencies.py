@@ -7,13 +7,14 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.app_dependency import AppDependency as AppDependencyModel
-from app.utils.project_resolver import find_project_root
+from app.utils.project_resolver import find_project_root, resolve_project_root
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,11 @@ class DependencyScanner:
             return str(file_path)
 
     async def scan_container_dependencies(
-        self, compose_file: str, service_name: str, manual_path: str | None = None
+        self,
+        compose_file: str,
+        service_name: str,
+        manual_path: str | None = None,
+        container: Any = None,
     ) -> list[AppDependency]:
         """
         Scan a container for application dependencies.
@@ -143,6 +148,10 @@ class DependencyScanner:
             compose_file: Path to the compose file
             service_name: Service name in the compose file (container name)
             manual_path: Optional manual path to dependency files
+            container: Optional Container row. When provided, project_root is
+                resolved via resolve_project_root(container) and takes priority
+                over the compose-derived lookup. Required for compose-independent
+                My Project rows.
 
         Returns:
             List of discovered dependencies
@@ -150,10 +159,21 @@ class DependencyScanner:
         dependencies = []
 
         # Use manual path if provided
+        project_root: Path | None
         if manual_path:
             project_root = Path(manual_path)
+        elif container is not None:
+            # Prefer the container's project_root anchor; fall back to the
+            # compose-derived lookup when the anchor doesn't exist on disk
+            # (covers legacy deployed-container rows whose compose_file lives
+            # under /compose/, not /projects/).
+            project_root = resolve_project_root(container)
+            if project_root is None or not project_root.exists():
+                project_root = find_project_root(
+                    compose_file, service_name, self.projects_directory
+                )
         else:
-            # Auto-detect project root from compose file location
+            # Auto-detect project root from compose file location (legacy path)
             project_root = find_project_root(compose_file, service_name, self.projects_directory)
 
         if not project_root or not project_root.exists():

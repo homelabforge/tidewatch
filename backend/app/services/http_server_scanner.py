@@ -246,7 +246,7 @@ class HttpServerScanner:
             List of detected HTTP servers with version information
         """
         from app.services.settings_service import SettingsService
-        from app.utils.project_resolver import find_project_root
+        from app.utils.project_resolver import find_project_root, resolve_project_root
 
         servers: list[dict[str, Any]] = []
 
@@ -254,12 +254,15 @@ class HttpServerScanner:
         projects_dir_str = await SettingsService.get(db, "projects_directory") or "/projects"
         projects_directory = Path(projects_dir_str)
 
-        # Resolve project root
+        # Resolve project root — prefer the container's project_root anchor,
+        # fall back to compose-derived lookup for legacy rows.
         compose_file = getattr(container_model, "compose_file", None) or ""
         service_name = getattr(container_model, "service_name", "") or ""
 
-        project_root = find_project_root(compose_file, service_name, projects_directory)
-        if not project_root:
+        project_root = resolve_project_root(container_model)
+        if project_root is None or not project_root.exists():
+            project_root = find_project_root(compose_file, service_name, projects_directory)
+        if not project_root or not project_root.exists():
             logger.warning(
                 "No project root found for %s (compose=%s, service=%s)",
                 sanitize_log_message(service_name),

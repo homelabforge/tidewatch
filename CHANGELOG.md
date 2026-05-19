@@ -8,18 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- `CSRFProtectionMiddleware` and `RateLimitMiddleware` rewritten as pure ASGI so streaming responses no longer get buffered through `BaseHTTPMiddleware`
+- `CSRFProtectionMiddleware` and `RateLimitMiddleware` rewritten as pure ASGI to stop buffering streaming responses
 - Static asset paths exempted from CSRF cookie so Cloudflare can cache chunks at the edge
+- Signal-based project discovery (Dockerfile / package.json / pyproject.toml / go.mod / Cargo.toml / composer.json / compose file); Dockerfile beats compose so project name comes from the directory
+- "Scan Projects" reports `updated` only when something actually changed; no-op rescans report `skipped`
+- Container Overview hides the "Compose File" row when empty
+- `DockerfileParser` expands `ARG` / `${VAR}` / `${VAR:-default}` in `FROM` lines; unresolved ARGs drop the row with a warning
+- Granian access-log filter: exact path match on `/health` and `/healthz`, lets failures (`status >= 400`) through
+- Python 3.12+ sqlite3 datetime-adapter deprecation silenced via ISO-8601 adapter/converter
 
 ### Added
-- Service worker for shell caching (versioned by `APP_VERSION`, retries on network failure, skips SSE and backup downloads)
+- Service worker for shell caching (versioned by `APP_VERSION`, retries on failure, skips SSE and backup downloads)
+- `TIDEWATCH_LOG_PRETTY=true` enables `rich` log handler (colour, aligned columns, rich tracebacks); falls back to plain format otherwise
+- `containers.project_root` column anchors compose-independent My Project rows; resolved via `app.utils.project_resolver.resolve_project_root`
 
 ### Changed
 - Migrated `authlib.jose` → `joserfc` (JWT signing/verification, OIDC ID token validation)
-- Refactored data-fetching to `@tanstack/react-query` v5 across pages, container-tabs, settings-tabs, and modals; same-tab 401 handling now uses a `CustomEvent` listener
-- Re-bumped `eslint-plugin-react-hooks` to `^7.1.1`; full ruleset now clean
+- Refactored data-fetching to `@tanstack/react-query` v5 across pages, tabs, and modals
+- Re-bumped `eslint-plugin-react-hooks` to `^7.1.1`
 - `/assets/*` now ship `Cache-Control: public, max-age=31536000, immutable`
 - `AuthContext` dispatches `getStatus` and `getMe` in parallel on mount
+- `ProjectScanner` signal-based discovery, single commit per scan, reuses `ComposeParser` helpers
 
 ### App Dependencies
 - **@tanstack/react-query**: added (^5.100.10)
@@ -36,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **requests**: 2.33.1 → 2.34.0
 - **starlette**: 0.50.0 → 1.0.0 (transitive via fastapi)
 - **urllib3**: pinned floor >=2.7.0
+- **@tanstack/react-query**: 5.100.10 → 5.100.11
+- **date-fns**: 4.1.0 → 4.2.1
+- **lucide-react**: 1.14.0 → 1.16.0
+- **python-multipart**: 0.0.28 → 0.0.29
+- **react-router-dom**: 7.15.0 → 7.15.1
+- **requests**: 2.34.0 → 2.34.2
+- **rich**: added (>=15.0.0)
+- **click**: 8.3.3 → 8.4.0 (transitive)
+- **idna**: 3.14 → 3.15 (transitive)
 
 ### Dev Dependencies
 - **@playwright/test**: 1.59.1 → 1.60.0
@@ -56,9 +74,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **typescript-eslint**: 8.58.2 → 8.59.3
 - **vite**: 8.0.8 → 8.0.12
 - **vitest**: 4.1.4 → 4.1.6
+- **@tanstack/react-query-devtools**: 5.100.10 → 5.100.11
+- **@typescript-eslint/eslint-plugin**: 8.59.3 → 8.59.4
+- **@typescript-eslint/parser**: 8.59.3 → 8.59.4
+- **@vitejs/plugin-react**: 6.0.1 → 6.0.2
+- **eslint**: 10.3.0 → 10.4.0
+- **ruff**: 0.15.12 → 0.15.13
+- **typescript-eslint**: 8.59.3 → 8.59.4
+- **vite**: 8.0.12 → 8.0.13
 
 ### Dockerfile Dependencies
 - **oven/bun**: 1.3.12-alpine → 1.3.14-alpine
+
+### Security
+- Pinned `brace-expansion` ≥5.0.6 and `picomatch` ≥4.0.4 via `package.json` overrides (GHSA-jxxr-4gwj-5jf2, GHSA-f886-m6hf-6m8v, GHSA-3v7f-55p6-f55p, GHSA-c2c7-rcm5-vvqj — dev toolchain transitives)
 
 ## [3.9.3] - 2026-04-29
 

@@ -1083,7 +1083,7 @@ async def get_app_dependencies(
             )
             # Scan dependencies
             scanned_deps = await scanner.scan_container_dependencies(
-                container.compose_file, container.service_name
+                container.compose_file, container.service_name, container=container
             )
 
             # Persist to database (always call to clear stale records on empty result)
@@ -1154,7 +1154,7 @@ async def scan_app_dependencies(
     try:
         # Trigger scan
         dependencies = await scanner.scan_container_dependencies(
-            container.compose_file, container.service_name
+            container.compose_file, container.service_name, container=container
         )
 
         # Persist to database (always call to clear stale records on empty result)

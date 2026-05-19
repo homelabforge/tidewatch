@@ -417,5 +417,5 @@ class TestUploadBackupSizeLimit:
                 files={"file": ("big-backup.json", BytesIO(oversized_content), "application/json")},
             )
 
-        assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+        assert response.status_code == status.HTTP_413_CONTENT_TOO_LARGE
         assert "too large" in response.json()["detail"].lower()

@@ -1,15 +1,65 @@
-"""Shared utility for resolving project root directories from compose files.
+"""Shared utility for resolving project root directories.
 
-Extracted from DependencyScanner._find_project_root() for reuse across services.
+Two resolvers live here:
+
+- ``resolve_project_root(container)`` — preferred. Reads ``Container.project_root``
+  first, then falls back to ``Path(compose_file).parent``. This is the contract
+  used by ``dockerfile_parser``, ``http_server_scanner``, and the dependency
+  scanner so that compose-independent My Project rows resolve correctly.
+
+- ``find_project_root(compose_file, service_name, projects_directory)`` — legacy
+  signature retained for callers that only have a compose path + service name
+  (e.g., callers that build a fresh resolver before any Container row exists).
 """
 
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_project_root(container: Any) -> Path | None:
+    """Resolve a project root for a Container row.
+
+    Priority:
+        1. ``container.project_root`` if set (the Phase 0 anchor).
+        2. ``Path(container.compose_file).parent`` if ``compose_file`` is truthy.
+        3. None.
+
+    Args:
+        container: SQLAlchemy ``Container`` instance (or any object exposing
+            ``project_root`` and ``compose_file`` attributes).
+
+    Returns:
+        Path to the project root, or None when neither anchor is usable.
+    """
+    project_root = getattr(container, "project_root", None)
+    if project_root:
+        try:
+            return Path(project_root)
+        except (TypeError, ValueError) as e:
+            logger.warning(
+                "Invalid project_root %s: %s",
+                sanitize_log_message(str(project_root)),
+                sanitize_log_message(str(e)),
+            )
+
+    compose_file = getattr(container, "compose_file", None)
+    if compose_file:
+        try:
+            return Path(compose_file).parent
+        except (TypeError, ValueError) as e:
+            logger.warning(
+                "Invalid compose_file %s: %s",
+                sanitize_log_message(str(compose_file)),
+                sanitize_log_message(str(e)),
+            )
+
+    return None
 
 
 def find_project_root(

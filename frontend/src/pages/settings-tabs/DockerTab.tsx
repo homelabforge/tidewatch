@@ -352,7 +352,7 @@ export default function DockerTab({ settings, saving, updateSetting, handleTextC
                   <p className="text-sm text-tide-text-muted mt-0.5">Manage dev containers and dependency tracking</p>
                 </div>
               </div>
-              <HelpTooltip content="My Projects groups dev containers separately on the Dashboard. Auto-scan discovers containers from {projects_directory}/*/compose.yaml files. Dependencies tab scans package.json, pyproject.toml, etc. You can also manually mark any container as 'My Project' in its Settings tab." />
+              <HelpTooltip content="My Projects groups dev containers separately on the Dashboard. Auto-scan discovers any subdirectory of {projects_directory} that has a Dockerfile, package.json, pyproject.toml, go.mod, Cargo.toml, composer.json, or a compose file at its root. Dependencies tab scans package.json, pyproject.toml, etc. You can also manually mark any container as 'My Project' in its Settings tab." />
             </div>
 
             <div className="space-y-4">

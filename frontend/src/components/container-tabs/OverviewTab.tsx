@@ -111,12 +111,14 @@ export default function OverviewTab({ container, onUpdate }: OverviewTabProps) {
             <span className="text-tide-text-muted">Registry</span>
             <span className="text-tide-text font-mono text-sm">{container.registry}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-tide-text-muted">Compose File</span>
-            <span className="text-tide-text font-mono text-sm truncate max-w-xs" title={container.compose_file}>
-              {container.compose_file}
-            </span>
-          </div>
+          {container.compose_file && (
+            <div className="flex justify-between">
+              <span className="text-tide-text-muted">Compose File</span>
+              <span className="text-tide-text font-mono text-sm truncate max-w-xs" title={container.compose_file}>
+                {container.compose_file}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-tide-text-muted">Service Name</span>
             <span className="text-tide-text font-mono text-sm">{container.service_name}</span>

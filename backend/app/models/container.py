@@ -38,6 +38,11 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
         String, nullable=True
     )  # Actual Docker container name (e.g., "immich-redis-1")
 
+    # Project anchor for compose-independent My Project rows.
+    # When set, downstream scanners use this as the project root instead of
+    # Path(compose_file).parent. See app.utils.project_resolver.resolve_project_root.
+    project_root: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # Update policy fields are provided by UpdatePolicyMixin:
     # policy, scope, include_prereleases, version_track, update_window
 

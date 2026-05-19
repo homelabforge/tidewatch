@@ -355,6 +355,7 @@ async def _scan_app_deps(container: Container, db: AsyncSession) -> int:
         deps = await scanner.scan_container_dependencies(
             compose_file=container.compose_file or "",
             service_name=container.service_name,
+            container=container,
         )
         await scanner.persist_dependencies(db, container.id, deps)
         return sum(1 for d in deps if d.update_available)

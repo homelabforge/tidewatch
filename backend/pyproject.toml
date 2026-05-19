@@ -13,7 +13,7 @@ dependencies = [
     "sqlalchemy>=2.0.49",
     "aiosqlite>=0.22.1",
     "pydantic>=2.13.4",
-    "python-multipart>=0.0.28",
+    "python-multipart>=0.0.29",
     "ruamel.yaml>=0.19.1",
     "httpx>=0.28.1",
     "python-dateutil>=2.9.0.post0",
@@ -30,9 +30,12 @@ dependencies = [
     "email-validator>=2.3.0",
     # HTML to Markdown conversion
     "html2text>=2025.4.15",
+    # Pretty log handler (color, aligned columns, structured tracebacks) —
+    # enabled when TIDEWATCH_LOG_PRETTY=true
+    "rich>=15.0.0",
     # Transitive dependency floors (security)
     "cryptography>=48.0.0",
-    "requests>=2.34.0",
+    "requests>=2.34.2",
     "urllib3>=2.7.0",
 ]
 
@@ -43,7 +46,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "httpx>=0.28.1",
     "pyright>=1.1.409",
-    "ruff>=0.15.12",
+    "ruff>=0.15.13",
 ]
 
 [tool.setuptools.packages.find]

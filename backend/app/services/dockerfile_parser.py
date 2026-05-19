@@ -17,6 +17,38 @@ from app.utils.security import sanitize_log_message, sanitize_path
 logger = logging.getLogger(__name__)
 
 
+_ARG_REF = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def _strip_quotes(value: str) -> str:
+    """Strip a single pair of matching surrounding quotes from an ARG value."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+def _expand_args(text: str, arg_values: dict[str, str]) -> tuple[str, set[str]]:
+    """Expand ``${VAR}`` / ``${VAR:-default}`` / ``$VAR`` against ``arg_values``.
+
+    Returns the expanded string and the set of variable names that could not
+    be resolved (no value, no default).
+    """
+    unresolved: set[str] = set()
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(3)
+        default = match.group(2)
+        if name in arg_values:
+            return arg_values[name]
+        if default is not None:
+            return default
+        unresolved.add(name)
+        return match.group(0)
+
+    expanded = _ARG_REF.sub(replace, text)
+    return expanded, unresolved
+
+
 class DockerfileParser:
     """Parser for analyzing Dockerfiles and extracting base image dependencies."""
 
@@ -161,19 +193,31 @@ class DockerfileParser:
                 )
                 # Fall through to automatic search
 
-        # Get project root from compose file
-        compose_path = Path(container.compose_file)
+        # Resolve project root via the shared resolver (handles compose-independent
+        # My Project rows where compose_file is empty).
+        from app.utils.project_resolver import resolve_project_root
 
-        # Try common locations
-        search_paths = [
-            compose_path.parent / "Dockerfile",  # Same dir as compose
-            compose_path.parent / "docker" / "Dockerfile",  # docker/ subdirectory
-            compose_path.parent / "build" / "Dockerfile",  # build/ subdirectory
-            compose_path.parent / ".." / "Dockerfile",  # Parent directory
-        ]
+        project_anchor = resolve_project_root(container)
+        compose_file = container.compose_file or ""
+        compose_path = Path(compose_file) if compose_file else None
+
+        # Try common locations relative to the anchor (compose dir or project_root)
+        search_paths: list[Path] = []
+        if project_anchor:
+            search_paths.extend(
+                [
+                    project_anchor / "Dockerfile",
+                    project_anchor / "docker" / "Dockerfile",
+                    project_anchor / "build" / "Dockerfile",
+                ]
+            )
+            if compose_path is not None:
+                # Legacy: compose dir's parent (kept for callers whose compose file
+                # sits in a subdir of the project root).
+                search_paths.append(project_anchor / ".." / "Dockerfile")
 
         # If using projects directory, also search there
-        if str(compose_path).startswith("/compose/"):
+        if compose_path is not None and str(compose_path).startswith("/compose/"):
             project_name = compose_path.stem
             project_root = self.projects_directory / project_name
             search_paths.extend(
@@ -189,12 +233,13 @@ class DockerfileParser:
                 # Validate that the resolved path is safe (no traversal outside expected directories)
                 try:
                     resolved = path.resolve()
-                    # Ensure path is under a safe directory (/compose, /projects, or compose_path parent)
+                    # Ensure path is under a safe directory (/compose, /projects, or the resolved anchor)
                     safe_parents = [
                         Path("/compose").resolve(),
                         self.projects_directory.resolve(),
-                        compose_path.parent.resolve(),
                     ]
+                    if project_anchor is not None:
+                        safe_parents.append(project_anchor.resolve())
                     if any(str(resolved).startswith(str(parent)) for parent in safe_parents):
                         return path
                     else:
@@ -224,11 +269,25 @@ class DockerfileParser:
             with open(dockerfile_path) as f:
                 lines = f.readlines()
 
+            # Track ARG values so ${VAR} references in FROM lines resolve to the
+            # declared default. We use Dockerfile's "global ARGs are visible
+            # before FROM" semantics in the simple case; in practice this is what
+            # multi-stage builds like oven/bun:${BUN_VERSION}-alpine rely on.
+            arg_values: dict[str, str] = {}
+
             for line_num, line in enumerate(lines, start=1):
                 # Remove comments and whitespace
                 line = line.split("#")[0].strip()
 
                 if not line:
+                    continue
+
+                arg_match = re.match(r"^ARG\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$", line)
+                if arg_match:
+                    name = arg_match.group(1)
+                    value = arg_match.group(2)
+                    if value is not None:
+                        arg_values[name] = _strip_quotes(value.strip())
                     continue
 
                 # Match FROM statements (including multi-stage builds)
@@ -239,11 +298,24 @@ class DockerfileParser:
                 match = re.match(r"^FROM\s+([^\s]+)(?:\s+AS\s+([^\s]+))?", line, re.IGNORECASE)
 
                 if match:
-                    full_image = match.group(1)
+                    full_image_raw = match.group(1)
                     stage_name = match.group(2)
 
                     # Skip scratch and platform-specific syntax
-                    if full_image.lower() == "scratch":
+                    if full_image_raw.lower() == "scratch":
+                        continue
+
+                    # Expand ${ARG} references. Unresolved references skip the
+                    # row — persisting an un-trackable tag like `${BUN_VERSION}-alpine`
+                    # would just clutter the UI with permanently-stale entries.
+                    full_image, unresolved = _expand_args(full_image_raw, arg_values)
+                    if unresolved:
+                        logger.warning(
+                            "Skipping FROM line %d in %s — unresolved ARG(s): %s",
+                            line_num,
+                            sanitize_log_message(str(dockerfile_path)),
+                            sanitize_log_message(",".join(sorted(unresolved))),
+                        )
                         continue
 
                     # Parse image reference
