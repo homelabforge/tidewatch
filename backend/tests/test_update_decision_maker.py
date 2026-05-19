@@ -399,6 +399,27 @@ class TestDigestCrossMajorShift:
         assert decision.trace.trace["digest_channel_shift"]["previous_major"] == 4
         assert decision.trace.trace["digest_channel_shift"]["new_major"] == 5
 
+    def test_first_check_digest_change_with_null_baseline_is_channel_shift(self):
+        """Codex Pass 4: post-migration containers with last_digest_major=NULL
+        must NOT silently treat a first digest change as a normal update.
+
+        The user might be running v4 stable and seeing TideWatch's first
+        post-update check land right on the v4→v5 transition. Without a
+        stored baseline we cannot prove the change is in-major, so we
+        conservatively surface it as a channel_shift the user must accept.
+        """
+        container = self._container(last_major=None)
+        response = make_fetch_response(metadata={"digest": "sha256:newv5"})
+        response.current_tag_major = 5
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+
+        assert decision.has_update is True
+        assert decision.update_kind == "channel_shift"
+        block = decision.trace.trace["digest_channel_shift"]
+        assert block["previous_major"] is None
+        assert block["new_major"] == 5
+        assert block.get("reason") == "first_check_unknown_baseline"
+
 
 class TestVersionComparison:
     """Regression tests for version comparison (Fix 4)."""

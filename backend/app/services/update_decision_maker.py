@@ -263,20 +263,33 @@ class UpdateDecisionMaker:
                 # stored last_digest_major. A differing major indicates an
                 # upstream channel shift on a mutable tag (e.g. linuxserver/sonarr
                 # re-pointing `latest` from v4 stable to a v5 build).
+                #
+                # First-check gap (codex Pass 4): when ``last_digest_major``
+                # is NULL on a post-migration container with an existing
+                # ``current_digest``, we cannot prove the prior major matched
+                # the fresh major. Be conservative and emit channel_shift
+                # rather than silently baselining to ``fresh_major`` — the
+                # user might be on the very v4→v5 transition we are trying
+                # to surface. The trace records ``previous_major=None`` so
+                # the UI can explain the unknown prior state.
                 fresh_major = getattr(fetch_response, "current_tag_major", None)
                 stored_major: int | None = getattr(container, "last_digest_major", None)  # type: ignore[attr-defined]
-                if (
-                    digest_changed
-                    and isinstance(fresh_major, int)
-                    and isinstance(stored_major, int)
-                    and fresh_major != stored_major
-                ):
-                    digest_cross_major_shift = True
-                    trace.trace["digest_channel_shift"] = {
-                        "previous_major": stored_major,
-                        "new_major": fresh_major,
-                        "tag": current_tag,
-                    }
+                if digest_changed and isinstance(fresh_major, int):
+                    if isinstance(stored_major, int) and fresh_major != stored_major:
+                        digest_cross_major_shift = True
+                        trace.trace["digest_channel_shift"] = {
+                            "previous_major": stored_major,
+                            "new_major": fresh_major,
+                            "tag": current_tag,
+                        }
+                    elif stored_major is None:
+                        digest_cross_major_shift = True
+                        trace.trace["digest_channel_shift"] = {
+                            "previous_major": None,
+                            "new_major": fresh_major,
+                            "tag": current_tag,
+                            "reason": "first_check_unknown_baseline",
+                        }
             elif new_digest and current_digest is None:
                 # First run: baseline needs to be stored but it's not an "update"
                 digest_baseline_needed = True
