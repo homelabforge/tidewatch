@@ -103,6 +103,9 @@ class TagFetchResult:
         metadata: Additional metadata (e.g., digest for 'latest' tag)
         fetched_at: When the result was fetched
         error: Error message if fetch failed
+        current_tag_major: Phase 6.2 resolved major of the current mutable
+            tag — needs to be cached so cache-hit siblings see the same
+            channel_shift classification as the original fetch.
     """
 
     tags: list[str]
@@ -112,6 +115,7 @@ class TagFetchResult:
     metadata: dict[str, Any] | None = None
     fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     error: str | None = None
+    current_tag_major: int | None = None
 
 
 @dataclass

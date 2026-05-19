@@ -156,7 +156,11 @@ class TagFetcher:
         """
         start_time = time.monotonic()
 
-        # Build cache key (version_track included so different overrides don't collide)
+        # Build cache key. Every field that influences the registry call's
+        # outcome must be part of the key — otherwise a cached response from
+        # one anchor/digest group can leak to another. The dedupe layer
+        # (check_run_context.ImageCheckKey.from_container) already partitions
+        # groups by these fields; the inline key must mirror that.
         key = ImageCheckKey(
             registry=request.registry.lower(),
             image=request.image,
@@ -164,6 +168,13 @@ class TagFetcher:
             scope=request.scope,
             include_prereleases=request.include_prereleases,
             version_track=request.version_track,
+            # Phase 5/6 — these affect the registry-result selection
+            # (stable_anchor_major bounds _compare_versions; the others
+            # change channel_shift classification in the decision maker
+            # that reads this cached response).
+            stable_anchor_tag=None,  # request does not carry the tag itself
+            accepted_anchor_major=request.stable_anchor_major,
+            last_digest_major=None,  # carried via current_tag_major on response
         )
 
         # Check run-scoped cache first
@@ -182,6 +193,7 @@ class TagFetcher:
                     metadata=cached.metadata,
                     cache_hit=True,
                     fetch_duration_ms=duration_ms,
+                    current_tag_major=cached.current_tag_major,
                 )
 
         # Fetch from registry with rate limiting
@@ -288,6 +300,7 @@ class TagFetcher:
                         latest_major_tag=latest_major_tag,
                         calver_blocked_tag=calver_blocked_tag,
                         metadata=metadata,
+                        current_tag_major=current_tag_major,
                     )
 
                     # Cache in run context
