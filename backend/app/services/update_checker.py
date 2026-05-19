@@ -878,6 +878,24 @@ class UpdateChecker:
         ):
             container.last_digest_major = fresh_current_major
 
+        # Phase 5 baseline mirror: when the user has set ``stable_anchor_tag``
+        # but ``accepted_anchor_major`` is still None on THIS container (e.g.
+        # this row is a grouped sibling that did not run the anchor resolver
+        # itself), baseline it from the AnchorDecision attached to the
+        # shared fetch response. Without this, only the group representative
+        # gets its baseline persisted on first enable.
+        anchor_decision = getattr(fetch_response, "anchor_decision", None)
+        if (
+            anchor_decision is not None
+            and container.stable_anchor_tag is not None
+            and container.accepted_anchor_major is None
+            and getattr(anchor_decision, "channel_shift", False) is False
+        ):
+            fresh = getattr(anchor_decision, "fresh", None)
+            fresh_major = getattr(fresh, "anchor_major", None) if fresh else None
+            if isinstance(fresh_major, int):
+                container.accepted_anchor_major = fresh_major
+
         # Determine if we have an in-scope update
         is_digest_update = decision.update_kind == "digest"
 

@@ -25,7 +25,15 @@ class ImageCheckKey:
 
     Containers with identical ImageCheckKey can share the same registry
     lookup results since they're checking the same image with the same
-    scope and prerelease settings.
+    scope, prerelease settings, AND stable-channel-anchor configuration.
+
+    Anchor fields are part of the key so two containers sharing an image
+    but with different ``stable_anchor_tag`` / ``accepted_anchor_major``
+    settings end up in different groups. Without this, the representative
+    container's anchor decision would be applied to siblings with
+    incompatible anchor state — a sibling could miss its own initial
+    baseline persistence or get a channel_shift result keyed on the wrong
+    accepted major.
 
     Attributes:
         registry: Registry name (normalized lowercase)
@@ -34,6 +42,8 @@ class ImageCheckKey:
         scope: Update scope ("patch", "minor", "major")
         include_prereleases: Whether prereleases are included in search
         version_track: Version scheme override (None=auto, "semver", "calver")
+        stable_anchor_tag: Phase 5 anchor opt-in tag (None=disabled)
+        accepted_anchor_major: User-accepted upstream major (None=not baselined)
     """
 
     registry: str
@@ -42,6 +52,8 @@ class ImageCheckKey:
     scope: str
     include_prereleases: bool
     version_track: str | None = None
+    stable_anchor_tag: str | None = None
+    accepted_anchor_major: int | None = None
 
     @classmethod
     def from_container(cls, container: Container, include_prereleases: bool) -> ImageCheckKey:
@@ -62,6 +74,8 @@ class ImageCheckKey:
             scope=str(container.scope),  # type: ignore[attr-defined]
             include_prereleases=include_prereleases,
             version_track=container.version_track if container.version_track else None,  # type: ignore[attr-defined]
+            stable_anchor_tag=container.stable_anchor_tag,  # type: ignore[attr-defined]
+            accepted_anchor_major=container.accepted_anchor_major,  # type: ignore[attr-defined]
         )
 
 
