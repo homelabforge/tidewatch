@@ -54,6 +54,15 @@ class ImageCheckKey:
     version_track: str | None = None
     stable_anchor_tag: str | None = None
     accepted_anchor_major: int | None = None
+    # Phase 6.2: digest cross-major detection compares
+    # ``fetch_response.current_tag_major`` against
+    # ``container.last_digest_major``. If two grouped siblings have
+    # different baselined digest majors (e.g. one at 4, one still None),
+    # using one representative's decision for both can let a v5 mutable-tag
+    # promotion slip through as a normal digest update for a v4-baselined
+    # sibling. Including it in the key splits divergent baselines into
+    # separate groups, each with their own decision pass.
+    last_digest_major: int | None = None
 
     @classmethod
     def from_container(cls, container: Container, include_prereleases: bool) -> ImageCheckKey:
@@ -76,6 +85,7 @@ class ImageCheckKey:
             version_track=container.version_track if container.version_track else None,  # type: ignore[attr-defined]
             stable_anchor_tag=container.stable_anchor_tag,  # type: ignore[attr-defined]
             accepted_anchor_major=container.accepted_anchor_major,  # type: ignore[attr-defined]
+            last_digest_major=container.last_digest_major,  # type: ignore[attr-defined]
         )
 
 
