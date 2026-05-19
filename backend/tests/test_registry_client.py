@@ -121,12 +121,44 @@ class TestPrereleaseDetection:
     def test_case_insensitive_detection(self):
         """Test prerelease detection is case insensitive."""
         assert is_prerelease_tag("NIGHTLY") is True
-        # "Beta" and "RC1" alone are not detected because:
-        # 1. They're not in NON_PEP440_PRERELEASE_INDICATORS
-        # 2. They don't parse as valid PEP 440 versions
-        # They would be detected in context like "1.0-Beta" or "v2.0-RC1"
+        # After Phase 2 the anchored segment regex catches bare 'rc', 'beta',
+        # 'alpha' as well as their context-wrapped forms.
         assert is_prerelease_tag("1.0-Beta") is True
         assert is_prerelease_tag("v2.0-RC1") is True
+
+    def test_detects_positional_rc_alpha_beta_forms(self):
+        """D3 regression: rc/alpha/beta in any tag position must be flagged."""
+        assert is_prerelease_tag("rc-1.2.3") is True
+        assert is_prerelease_tag("version-1.2.3-rc") is True
+        assert is_prerelease_tag("1.2.3-rc-1") is True
+        assert is_prerelease_tag("alpha-1.2.3") is True
+        assert is_prerelease_tag("1.2.3-beta") is True
+        assert is_prerelease_tag("pre-1.2.3") is True
+
+    def test_detects_arch_prefixed_prerelease_tags(self):
+        """Arch-prefixed prerelease tags must still be flagged as prerelease.
+
+        Linuxserver publishes mirror tags like ``arm64v8-4.0.17.2967-develop-ls171``
+        and ``arm64v8-4.0.17-develop`` alongside the canonical develop tags. The
+        anchored per-segment scan catches the embedded channel marker regardless
+        of position.
+        """
+        assert is_prerelease_tag("arm64v8-4.0.17.2967-develop-ls171") is True
+        assert is_prerelease_tag("amd64-4.0.17-develop") is True
+        assert is_prerelease_tag("develop-version-4.0.17.2967-ls171") is True
+
+    def test_stable_linuxserver_tags_not_prerelease(self):
+        """Phase 2 regression: real Sonarr/LinuxServer stable forms stay stable."""
+        assert is_prerelease_tag("4.0.17.2952-ls311") is False
+        assert is_prerelease_tag("4.0.17.2953-ls170") is False
+        assert is_prerelease_tag("version-4.0.17.2952") is False
+        assert is_prerelease_tag("arm64v8-4.0.17.2952-ls311") is False
+        assert is_prerelease_tag("amd64-4.0.17.2952-ls311") is False
+        # Common stable variant suffixes must not trip the segment scan.
+        assert is_prerelease_tag("3.12-alpine") is False
+        assert is_prerelease_tag("3.12-alpine3.20") is False
+        assert is_prerelease_tag("1.2.3-slim") is False
+        assert is_prerelease_tag("1.2.3-bookworm") is False
 
     def test_version_with_v_prefix(self):
         """Test 'v' prefix is handled correctly."""
@@ -278,38 +310,44 @@ class TestVersionComparison:
         """Test _normalize_version parses semantic versions."""
         normalized = mock_client._normalize_version("1.2.3")
 
-        assert normalized == (1, 2, 3, ())
+        assert normalized is not None
+        assert normalized[0:3] == (1, 2, 3)
 
     def test_normalize_version_strips_v_prefix(self, mock_client):
         """Test _normalize_version strips 'v' prefix."""
         normalized = mock_client._normalize_version("v1.2.3")
 
-        assert normalized == (1, 2, 3, ())
+        assert normalized == mock_client._normalize_version("1.2.3")
 
     def test_normalize_version_handles_two_component_version(self, mock_client):
         """Test _normalize_version handles versions with 2 components."""
         normalized = mock_client._normalize_version("1.2")
 
-        assert normalized == (1, 2, 0, ())
+        assert normalized is not None
+        assert normalized[0:3] == (1, 2, 0)
 
     def test_normalize_version_handles_single_component_version(self, mock_client):
         """Test _normalize_version handles versions with 1 component."""
         normalized = mock_client._normalize_version("5")
 
-        assert normalized == (5, 0, 0, ())
+        assert normalized is not None
+        assert normalized[0:3] == (5, 0, 0)
 
     def test_normalize_version_handles_prerelease(self, mock_client):
         """Test _normalize_version parses prerelease versions."""
         normalized = mock_client._normalize_version("1.2.3-beta.1")
+        stable = mock_client._normalize_version("1.2.3")
 
+        assert normalized is not None and stable is not None
         assert normalized[0:3] == (1, 2, 3)
-        assert normalized[3] != ()  # Has prerelease info
+        # Beta must compare strictly less than stable of the same release.
+        assert normalized < stable
 
     def test_normalize_version_ignores_build_metadata(self, mock_client):
         """Test _normalize_version ignores build metadata (+suffix)."""
         normalized = mock_client._normalize_version("1.2.3+build.123")
 
-        assert normalized == (1, 2, 3, ())
+        assert normalized == mock_client._normalize_version("1.2.3")
 
     def test_normalize_version_handles_suffix_with_hyphen(self, mock_client):
         """Test _normalize_version handles versions with hyphen suffix."""
@@ -372,6 +410,30 @@ class TestVersionComparison:
         """Test version comparison rejects same version."""
         # 1.2.3 -> 1.2.3: same version not allowed
         assert mock_client._compare_versions("1.2.3", "1.2.3", "major") is False
+
+    def test_compare_versions_allows_four_segment_patch_update(self, mock_client):
+        """D1 regression: Sonarr-style 4-segment patch updates must be accepted.
+
+        Before the _normalize_version fix, both 4.0.17.2952-ls311 and
+        4.0.17.2953-ls170 collapsed to (4, 0, 17, ()) and the <= guard rejected
+        the candidate. Within-patch Sonarr ls-counter bumps were silently
+        never proposed.
+        """
+        assert (
+            mock_client._compare_versions("4.0.17.2952-ls311", "4.0.17.2953-ls170", "patch") is True
+        )
+        assert (
+            mock_client._compare_versions("4.0.17.2952-ls311", "4.0.17.2952-ls311", "patch")
+            is False
+        )
+
+    def test_compare_versions_prerelease_to_stable(self, mock_client):
+        """D2 regression: a user on 1.2.3rc1 must be able to update to 1.2.3."""
+        assert mock_client._compare_versions("1.2.3rc1", "1.2.3", "patch") is True
+
+    def test_compare_versions_stable_blocks_older_prerelease(self, mock_client):
+        """D2 regression: a stable 1.2.3 must NOT downgrade to 1.2.3rc2."""
+        assert mock_client._compare_versions("1.2.3", "1.2.3rc2", "patch") is False
 
 
 class TestCompareVersionsExplicitCalVer:
@@ -764,13 +826,14 @@ class TestVersionNormalizationEdgeCases:
         # packaging.Version normalizes 01.02.03 -> 1.2.3
         normalized = mock_client._normalize_version("01.02.03")
 
-        assert normalized == (1, 2, 3, ())
+        assert normalized == mock_client._normalize_version("1.2.3")
 
     def test_normalize_version_with_underscores(self, mock_client):
         """Test version normalization handles underscore separators."""
         # 4.6.0_ls123 -> parse 4.6.0
         normalized = mock_client._normalize_version("4.6.0_ls123")
 
+        assert normalized is not None
         assert normalized[0:3] == (4, 6, 0)
 
     def test_normalize_version_with_epoch(self, mock_client):
@@ -778,16 +841,48 @@ class TestVersionNormalizationEdgeCases:
         # packaging.Version supports epoch (1!1.0)
         normalized = mock_client._normalize_version("1!1.0.0")
 
-        # Epoch is stored separately, not in release tuple
+        assert normalized is not None
+        # Epoch is stored separately by packaging.Version, not in release tuple
         assert normalized[0:3] == (1, 0, 0)
 
     def test_normalize_version_with_four_components(self, mock_client):
-        """Test version normalization handles versions with 4+ components."""
-        # packaging.Version supports arbitrary components
-        normalized = mock_client._normalize_version("1.2.3.4")
+        """4-segment releases (Sonarr-style 4.0.17.2952) must order on segment 4."""
+        v_low = mock_client._normalize_version("4.0.17.2952")
+        v_high = mock_client._normalize_version("4.0.17.2953")
 
-        # Only first 3 components used in comparison
-        assert normalized[0:3] == (1, 2, 3)
+        assert v_low is not None and v_high is not None
+        assert v_low[0:3] == (4, 0, 17) and v_high[0:3] == (4, 0, 17)
+        # Critical regression check (D1): segment 4 must differentiate.
+        assert v_low < v_high
+
+    def test_normalize_version_four_components_with_ls_suffix(self, mock_client):
+        """LinuxServer 4-segment + ls<N> suffix must still order on segment 4."""
+        v_low = mock_client._normalize_version("4.0.17.2952-ls311")
+        v_high = mock_client._normalize_version("4.0.17.2953-ls170")
+
+        assert v_low is not None and v_high is not None
+        assert v_low < v_high
+
+    def test_normalize_version_prerelease_orders_below_stable(self, mock_client):
+        """1.2.3rc1 must compare strictly less than 1.2.3 (D2 regression)."""
+        rc = mock_client._normalize_version("1.2.3rc1")
+        stable = mock_client._normalize_version("1.2.3")
+
+        assert rc is not None and stable is not None
+        assert rc < stable
+
+    def test_normalize_version_orders_dev_alpha_beta_rc_final(self, mock_client):
+        """Stage ordering: dev < alpha < beta < rc < final."""
+        norms = [
+            mock_client._normalize_version("1.2.3.dev1"),
+            mock_client._normalize_version("1.2.3a1"),
+            mock_client._normalize_version("1.2.3b1"),
+            mock_client._normalize_version("1.2.3rc1"),
+            mock_client._normalize_version("1.2.3"),
+        ]
+        assert all(n is not None for n in norms)
+        for earlier, later in zip(norms, norms[1:], strict=False):
+            assert earlier < later, f"{earlier!r} should sort below {later!r}"
 
 
 class TestSemanticVersionComparison:
@@ -968,6 +1063,63 @@ class TestExtractVariantSuffix:
     def test_v_prefix_no_suffix_returns_none(self, client):
         """v-prefixed tag with no hyphen after version returns None."""
         assert client._extract_variant_suffix("v1.2.3") is None
+
+    def test_develop_channel_prefix_separates_from_stable_ls(self, client):
+        """D4 regression: develop-X-lsN must not collapse to the same variant as X-lsN."""
+        stable = client._extract_variant_suffix("4.0.17.2952-ls311", normalize_ls=True)
+        develop = client._extract_variant_suffix("develop-4.0.17.2967-ls171", normalize_ls=True)
+        assert stable == "ls"
+        assert develop == "develop-ls"
+        assert stable != develop
+
+    def test_nightly_channel_prefix_separates_from_stable_ls(self, client):
+        """nightly-prefixed tags must not collapse into the stable variant."""
+        assert (
+            client._extract_variant_suffix("nightly-4.0.17-ls131", normalize_ls=True)
+            == "nightly-ls"
+        )
+
+    def test_channel_prefix_with_non_ls_suffix(self, client):
+        """Channel marker also propagates when there's no ls-counter."""
+        assert (
+            client._extract_variant_suffix("develop-4.0.17.2967", normalize_ls=True)
+            == "develop-4.0.17.2967"
+        )
+
+    def test_stable_variants_unchanged_by_channel_prefix(self, client):
+        """Regression: existing stable variants (alpine, alpine3.20) keep prior shape."""
+        assert client._extract_variant_suffix("3.12-alpine", normalize_ls=True) == "alpine"
+        assert client._extract_variant_suffix("3.12-alpine3.20", normalize_ls=True) == "alpine3.20"
+
+
+class TestArchPrefixSupport:
+    """Phase 4: arch markers can appear as prefix OR suffix; both must work."""
+
+    @pytest.fixture
+    def client(self):
+        from app.services.registry_client import DockerHubClient
+
+        return DockerHubClient()
+
+    def test_extract_arch_suffix_handles_prefix(self, client):
+        """D5 regression: arm64v8-1.2.3 must be recognized as arm64-targeted."""
+        assert client._extract_arch_suffix("arm64v8-1.2.3") == "arm64"
+        assert client._extract_arch_suffix("amd64-1.2.3") == "amd64"
+
+    def test_extract_arch_suffix_still_handles_suffix(self, client):
+        """Regression: trailing arch suffix continues to work."""
+        assert client._extract_arch_suffix("1.2.3-arm64") == "arm64"
+
+    def test_normalize_version_strips_arch_prefix(self, client):
+        """Arch-prefixed tags must normalize to the same key as the bare version."""
+        bare = client._normalize_version("1.2.3")
+        prefixed = client._normalize_version("arm64v8-1.2.3")
+        assert prefixed is not None and bare is not None
+        assert prefixed[0:3] == bare[0:3] == (1, 2, 3)
+
+    def test_compare_versions_arch_prefixed_patch_update(self, client):
+        """A user on an arch-prefixed tag can receive arch-matched updates."""
+        assert client._compare_versions("arm64v8-1.2.3", "arm64v8-1.2.4", "patch") is True
 
 
 class TestLinuxServerSuffixMatching:

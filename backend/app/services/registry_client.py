@@ -101,101 +101,77 @@ def _is_calver_tag(tag: str) -> bool:
     return False
 
 
+# Anchored per-segment regex for prerelease/dev/beta markers. Matches the exact
+# segment (no substring hits — avoids 'latest' false-positiving on 'test', etc.).
+# Optional trailing digits cover forms like 'rc1', 'beta2', 'alpha10'.
+PRERELEASE_SEGMENT_RE = re.compile(
+    r"^(?:a|alpha|b|beta|rc|pre|preview|dev|develop|nightly|unstable|"
+    r"snapshot|canary|edge|experimental|exp|master|main|test|testing)\d*$"
+)
+
+
 def is_prerelease_tag(tag: str) -> bool:
     """Detect if a Docker image tag represents a prerelease version.
 
-    Uses a hybrid approach:
-    1. Try parsing with packaging.Version and check is_prerelease (catches PEP 440: alpha, beta, rc, dev, etc.)
-    2. Fall back to pattern matching for non-standard indicators (nightly, unstable, etc.)
+    Layered detection:
 
-    Args:
-        tag: Docker image tag to check
-
-    Returns:
-        True if the tag appears to be a prerelease version
+    1. PEP 440 parse + ``is_prerelease`` / ``is_devrelease`` for canonical forms.
+    2. Anchored per-segment regex match for non-PEP 440 markers (``rc-1.2.3``,
+       ``develop-version-X``, ``arm64v8-X-develop-...``) — catches positional
+       forms anywhere in the tag, including the leading segment.
+    3. Prefix-style branch markers (``pr-``, ``feat-``, ``hotfix-``, etc.) that
+       only make sense as a prefix.
     """
     tag_lower = tag.lower().lstrip("v")
 
-    # First, try PEP 440 detection via packaging library
+    # 1. PEP 440 first — canonical alpha/beta/rc/dev are best caught here.
     try:
-        # Handle build metadata
-        version_str = tag_lower.split("+")[0] if "+" in tag_lower else tag_lower
+        version_str = tag_lower.split("+", 1)[0] if "+" in tag_lower else tag_lower
         parsed = Version(version_str)
         if parsed.is_prerelease or parsed.is_devrelease:
             return True
     except InvalidVersion:
-        # If it doesn't parse as a valid version, check if the base parses
-        # e.g., "4.6.0-unstable" -> try "4.6.0" then check suffix
+        # If full tag doesn't parse, try the base before -/_ separator so e.g.
+        # ``4.6.0-unstable`` still benefits from PEP 440 on the base.
         for sep in ("-", "_"):
             if sep in tag_lower:
-                parts = tag_lower.split(sep, 1)
+                base, suffix = tag_lower.split(sep, 1)
                 try:
-                    Version(parts[0])
-                    # Base is valid, check if suffix indicates prerelease
-                    suffix = parts[1].lower()
-                    # Check non-PEP 440 indicators in suffix
-                    if any(indicator in suffix for indicator in NON_PEP440_PRERELEASE_INDICATORS):
-                        return True
+                    Version(base)
+                    # Base parses as a version. Suffix is checked by the
+                    # segment scan below; nothing more to do here.
+                    break
                 except InvalidVersion:
-                    pass
+                    continue
 
-    # Second, check for non-PEP 440 patterns in the full tag
-    # Use word boundary matching to avoid false positives (e.g., 'latest' shouldn't match 'test')
+    # 2. Anchored per-segment scan. Splits on -, _, and . and tests each segment
+    #    against PRERELEASE_SEGMENT_RE. This catches:
+    #      - rc-1.2.3              (leading)
+    #      - version-1.2.3-rc      (trailing word)
+    #      - 1.2.3-rc-1            (middle)
+    #      - develop-4.0.17.2967   (leading)
+    #      - arm64v8-4.0.17-develop-ls171  (middle)
+    segments = [seg for seg in re.split(r"[-_.]", tag_lower) if seg]
+    if any(PRERELEASE_SEGMENT_RE.match(seg) for seg in segments):
+        return True
+
+    # 3. Branch-style markers that act as either a leading prefix (``pr-...``)
+    #    or as a bare segment followed by additional segments (``1.2.3-pr-789``).
+    branch_words = {
+        indicator.rstrip("-")
+        for indicator in NON_PEP440_PRERELEASE_INDICATORS
+        if indicator.endswith("-")
+    }
     for indicator in NON_PEP440_PRERELEASE_INDICATORS:
-        # Handle prefix patterns (e.g., 'pr-', 'feat-') - check if tag starts with indicator
-        if indicator.endswith("-"):
-            # For patterns like 'pr-', check if tag starts with 'pr-' (case-insensitive)
-            if tag_lower.startswith(indicator):
-                return True
-            # Also check if any segment after splitting starts with the prefix
-            # e.g., '1.0-pr-123' should match 'pr-'
-            segments = re.split(r"[-_.]", tag_lower)
-            if any(seg.startswith(indicator) for seg in segments):
-                return True
-        else:
-            # For exact word patterns (e.g., 'nightly', 'test'), check exact segment match
-            segments = re.split(r"[-_.]", tag_lower)
-            if indicator in segments:
-                return True
+        if indicator.endswith("-") and tag_lower.startswith(indicator):
+            return True
+    # Bare branch-word segments (e.g. 'pr' in '1.2.3-pr-789'). A solo branch
+    # word like 'pr' could be a legit short tag, so require it to be flanked
+    # by at least one other segment.
+    if len(segments) > 1 and any(seg in branch_words for seg in segments):
+        return True
 
     return False
-
-
-def extract_tag_pattern(tag: str) -> str:
-    """Extract a structural pattern from a Docker tag for comparison.
-
-    Converts numeric sequences to 'N' while preserving literal parts.
-    This allows matching tags with the same structure but different versions.
-
-    Examples:
-        '4.0.16.2944-ls300' -> 'N.N.N.N-lsN'
-        '5.14-version-2.0.0.5344' -> 'N.N-version-N.N.N.N'
-        'latest' -> 'latest'
-        'v1.2.3' -> 'vN.N.N'
-        '3.12-alpine' -> 'N.N-alpine'
-
-    Args:
-        tag: Docker image tag
-
-    Returns:
-        Pattern string with numeric parts replaced by 'N'
-    """
-    # Replace sequences of digits with 'N'
-    pattern = re.sub(r"\d+", "N", tag)
-    return pattern
-
-
-def tags_have_matching_pattern(current_tag: str, candidate_tag: str) -> bool:
-    """Check if two tags have the same structural pattern.
-
-    Args:
-        current_tag: The current tag in use
-        candidate_tag: A candidate tag being considered for update
-
-    Returns:
-        True if patterns match, False otherwise
-    """
-    return extract_tag_pattern(current_tag) == extract_tag_pattern(candidate_tag)
 
 
 def is_non_semver_tag(tag: str) -> bool:
@@ -581,10 +557,32 @@ class RegistryClient(ABC):
             return True
 
     def _normalize_version(self, version: str) -> tuple[int, int, int, tuple] | None:
-        """Normalize version strings for comparison."""
+        """Normalize version strings for comparison.
+
+        Returns a 4-tuple ``(major, minor, patch, extra)`` where ``extra`` is
+        ``(release_tail, stage_key)``:
+
+        - ``release_tail`` is a tuple of release segments past index 2 (e.g.
+          ``(2952,)`` for Sonarr-style ``4.0.17.2952``). Without this, all
+          ``4.0.17.X`` versions compare equal and patch-level updates are
+          silently rejected.
+        - ``stage_key`` is a numeric tuple encoding dev/alpha/beta/rc/final
+          ordering so prereleases compare *less than* the corresponding stable
+          release. PEP 440 ``parsed.pre`` is ``None`` for stable, which would
+          tuple-compare lower than ``("rc", 1)`` and strand prerelease users.
+        """
         version = version.lstrip("v")
         if version == "latest":
             return None
+
+        # Strip a leading architecture marker (``arm64v8-1.2.3`` →
+        # ``1.2.3``) so arch-prefixed current tags remain comparable.
+        lower_version = version.lower()
+        for arch in ARCH_SUFFIX_PATTERNS:
+            prefix = f"{arch}-"
+            if lower_version.startswith(prefix):
+                version = version[len(prefix) :]
+                break
 
         if "+" in version:
             version = version.split("+", 1)[0]
@@ -602,12 +600,24 @@ class RegistryClient(ABC):
                         continue
             else:
                 return None
-        return (
-            parsed.release[0] if len(parsed.release) > 0 else 0,
-            parsed.release[1] if len(parsed.release) > 1 else 0,
-            parsed.release[2] if len(parsed.release) > 2 else 0,
-            tuple(parsed.pre or ()),
-        )
+
+        release = parsed.release
+        major = release[0] if len(release) > 0 else 0
+        minor = release[1] if len(release) > 1 else 0
+        patch = release[2] if len(release) > 2 else 0
+        release_tail = tuple(release[3:])
+
+        # dev < alpha < beta < rc < final; numbers within each stage break ties.
+        if parsed.dev is not None:
+            stage_key: tuple[int, ...] = (0, parsed.dev)
+        elif parsed.pre is not None:
+            phase_order = {"a": 1, "b": 2, "rc": 3}
+            phase, number = parsed.pre
+            stage_key = (phase_order.get(phase, 1), number)
+        else:
+            stage_key = (4,)
+
+        return (major, minor, patch, (release_tail, stage_key))
 
     def _parse_semver(self, version: str) -> tuple[int, int, int, tuple] | None:
         """Backward-compatible helper for existing version-parsing calls."""
@@ -715,14 +725,32 @@ class RegistryClient(ABC):
             '1.42.2.10156-f737b826c-ls284' -> 'ls'       (composite normalized)
             '3.12-alpine'                  -> 'alpine'   (no ls counter, unchanged)
             '3.12-alpine3.20'              -> 'alpine3.20' (no ls counter, unchanged)
+            'develop-4.0.17.2967-ls171'    -> 'develop-ls' (channel-prefixed)
+            'nightly-4.0.17-ls131'         -> 'nightly-ls' (channel-prefixed)
         """
         tag_without_v = tag.lstrip("vV")
         if "-" not in tag_without_v:
             return None
+
+        # Detect a leading channel-marker segment so develop/nightly/etc. lines
+        # never collapse into the same variant as the stable line (defense in
+        # depth: prerelease filtering is the primary gate, this is the backup).
+        channel_markers = {
+            "develop",
+            "nightly",
+            "unstable",
+            "edge",
+            "canary",
+            "snapshot",
+            "preview",
+        }
+        first_segment = tag_without_v.lower().split("-", 1)[0]
+        channel = first_segment if first_segment in channel_markers else None
+
         suffix = tag_without_v.split("-", 1)[1].lower()
         if normalize_ls and re.search(r"(?:^|-)ls\d+$", suffix):
-            return "ls"
-        return suffix
+            return f"{channel}-ls" if channel else "ls"
+        return f"{channel}-{suffix}" if channel else suffix
 
     def _is_non_semver_tag(self, tag: str) -> bool:
         """Check if tag requires digest tracking (non-semantic version).
@@ -739,10 +767,18 @@ class RegistryClient(ABC):
         return self._parse_semver(tag) is None
 
     def _extract_arch_suffix(self, tag: str) -> str | None:
-        """Extract canonical architecture suffix from a tag if present."""
+        """Extract canonical architecture marker from a tag if present.
+
+        Architecture markers appear as either a trailing suffix
+        (``image:1.2.3-arm64``) or a leading prefix
+        (``image:arm64v8-1.2.3``) — both are common on multi-arch
+        publications such as ``linuxserver/sonarr``.
+        """
         lower_tag = tag.lower()
         for suffix in ARCH_SUFFIX_PATTERNS:
             if lower_tag.endswith(f"-{suffix}"):
+                return canonical_arch_suffix(suffix)
+            if lower_tag.startswith(f"{suffix}-"):
                 return canonical_arch_suffix(suffix)
         return None
 
