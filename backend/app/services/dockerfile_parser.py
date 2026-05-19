@@ -246,8 +246,22 @@ class DockerfileParser:
         """
         dependencies = []
 
+        # Defense-in-depth: re-validate the dockerfile path even though the
+        # caller (_find_dockerfile) only returns sanitize_path-validated paths.
+        # Keeps the CodeQL path-injection barrier local to the sink — the
+        # interprocedural taint tracker doesn't always carry the barrier
+        # through `await self._find_dockerfile(...)` returns.
         try:
-            with open(dockerfile_path) as f:
+            safe_dockerfile = sanitize_path(str(dockerfile_path), "/", allow_symlinks=False)
+        except (ValueError, FileNotFoundError) as e:
+            logger.warning(
+                f"Refusing to parse Dockerfile at suspicious path: "
+                f"{sanitize_log_message(str(dockerfile_path))} - {sanitize_log_message(str(e))}"
+            )
+            return []
+
+        try:
+            with open(safe_dockerfile) as f:
                 lines = f.readlines()
 
             # Track ARG values so ${VAR} references in FROM lines resolve to the
@@ -291,11 +305,13 @@ class DockerfileParser:
                     # would just clutter the UI with permanently-stale entries.
                     full_image, unresolved = _expand_args(full_image_raw, arg_values)
                     if unresolved:
+                        # f-string formatting matches the surrounding pattern
+                        # that CodeQL's sanitize_log_message barrier recognises.
                         logger.warning(
-                            "Skipping FROM line %d in %s — unresolved ARG(s): %s",
-                            line_num,
-                            sanitize_log_message(str(dockerfile_path)),
-                            sanitize_log_message(",".join(sorted(unresolved))),
+                            f"Skipping FROM line {line_num} in "
+                            f"{sanitize_log_message(str(safe_dockerfile))} — "
+                            f"unresolved ARG(s): "
+                            f"{sanitize_log_message(','.join(sorted(unresolved)))}"
                         )
                         continue
 
@@ -307,11 +323,11 @@ class DockerfileParser:
 
                     # Compute project-relative path for storage
                     try:
-                        rel_path = str(dockerfile_path.relative_to(self.projects_directory))
+                        rel_path = str(safe_dockerfile.relative_to(self.projects_directory))
                     except ValueError:
                         logger.warning(
                             f"Skipping Dockerfile outside projects_directory: "
-                            f"{sanitize_log_message(str(dockerfile_path))}"
+                            f"{sanitize_log_message(str(safe_dockerfile))}"
                         )
                         continue
 
@@ -333,15 +349,15 @@ class DockerfileParser:
 
         except (OSError, PermissionError) as e:
             logger.error(
-                f"File system error parsing Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}"
+                f"File system error parsing Dockerfile {sanitize_log_message(str(safe_dockerfile))}: {sanitize_log_message(str(e))}"
             )
         except UnicodeDecodeError as e:
             logger.error(
-                f"Encoding error parsing Dockerfile {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}"
+                f"Encoding error parsing Dockerfile {sanitize_log_message(str(safe_dockerfile))}: {sanitize_log_message(str(e))}"
             )
         except (ValueError, AttributeError) as e:
             logger.error(
-                f"Invalid Dockerfile content at {sanitize_log_message(str(dockerfile_path))}: {sanitize_log_message(str(e))}"
+                f"Invalid Dockerfile content at {sanitize_log_message(str(safe_dockerfile))}: {sanitize_log_message(str(e))}"
             )
 
         return dependencies
