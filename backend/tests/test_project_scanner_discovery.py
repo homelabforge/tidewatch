@@ -320,11 +320,15 @@ async def test_dockerfile_parser_uses_project_root_for_no_compose_row(tmp_path):
     dockerfile = project / "Dockerfile"
     dockerfile.write_text("FROM python:3.14-slim\n")
 
-    container = SimpleNamespace(
+    container = Container(
         name="myapp",
+        image="",
+        current_tag="",
+        registry="local",
         compose_file="",
+        service_name="myapp",
         project_root=str(project),
-        id=1,
+        is_my_project=True,
     )
 
     parser = DockerfileParser(projects_directory=str(tmp_path))
