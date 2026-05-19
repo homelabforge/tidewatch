@@ -482,12 +482,52 @@ async def approve_update(
         update.approved_at = datetime.now(UTC)
         update.version += 1  # Increment version for optimistic locking
 
+        # Phase 6: when the user approves a channel_shift update, advance
+        # accepted_anchor_major on the container row so future checks treat
+        # the new upstream major as the active bound.
+        if update.update_kind == "channel_shift":
+            _advance_anchor_major_on_accept(container, update)
+
     await db.commit()
 
     return {
         "success": True,
         "message": f"Update approved for container {update.container_id}",
     }
+
+
+def _advance_anchor_major_on_accept(container: Container, update: Update) -> None:
+    """Advance anchor majors from a channel_shift decision trace.
+
+    Handles both variants of channel_shift:
+      * Anchor-tag drift (Phase 5/6): advance ``accepted_anchor_major``
+        from the ``channel_shift`` trace block.
+      * Mutable-tag cross-major drift (Phase 6.2): advance
+        ``last_digest_major`` from the ``digest_channel_shift`` block.
+
+    Silent no-op on a malformed trace — the channel_shift remains approved
+    either way; only the bound advancement is missed, surfaced as a repeat
+    channel_shift on the next check.
+    """
+    import json as _json
+
+    trace_json = update.decision_trace
+    if not trace_json:
+        return
+    try:
+        trace = _json.loads(trace_json)
+    except ValueError:
+        return
+    except TypeError:
+        return
+    anchor_block = trace.get("channel_shift") or {}
+    anchor_major = anchor_block.get("new_major")
+    if isinstance(anchor_major, int):
+        container.accepted_anchor_major = anchor_major
+    digest_block = trace.get("digest_channel_shift") or {}
+    digest_major = digest_block.get("new_major")
+    if isinstance(digest_major, int):
+        container.last_digest_major = digest_major
 
 
 @router.post("/{update_id}/apply")

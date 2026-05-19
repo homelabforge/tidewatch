@@ -1905,6 +1905,35 @@ class UpdateEngine:
         return await create_vulnforge_client(db)
 
     @staticmethod
+    def _advance_anchor_major_on_accept(container: Container, update: Update) -> None:
+        """Advance anchor majors from a channel_shift decision trace.
+
+        Handles both anchor-tag drift (Phase 5/6, advances
+        ``accepted_anchor_major``) and mutable-tag cross-major drift
+        (Phase 6.2, advances ``last_digest_major``). Silent no-op on a
+        malformed trace.
+        """
+        import json as _json
+
+        trace_json = update.decision_trace
+        if not trace_json:
+            return
+        try:
+            trace = _json.loads(trace_json)
+        except ValueError:
+            return
+        except TypeError:
+            return
+        anchor_block = trace.get("channel_shift") or {}
+        anchor_major = anchor_block.get("new_major")
+        if isinstance(anchor_major, int):
+            container.accepted_anchor_major = anchor_major
+        digest_block = trace.get("digest_channel_shift") or {}
+        digest_major = digest_block.get("new_major")
+        if isinstance(digest_major, int):
+            container.last_digest_major = digest_major
+
+    @staticmethod
     async def batch_approve(db: AsyncSession, update_ids: list[int]) -> dict[str, Any]:
         """Approve multiple updates in batch.
 
@@ -1984,6 +2013,12 @@ class UpdateEngine:
                     update.status = "approved"
                     update.approved_at = datetime.now(UTC)
                     update.version += 1
+
+                    # Phase 6: advance anchor major on channel_shift accept
+                    # so the new upstream major becomes the bound for
+                    # subsequent checks.
+                    if update.update_kind == "channel_shift":
+                        UpdateEngine._advance_anchor_major_on_accept(container, update)
 
                 await db.commit()
                 await db.refresh(update)

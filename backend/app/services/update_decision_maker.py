@@ -248,6 +248,7 @@ class UpdateDecisionMaker:
         digest_changed = False
         digest_baseline_needed = False
         new_digest: str | None = None
+        digest_cross_major_shift = False
         if is_non_semver_tag(current_tag) and fetch_response.metadata:
             new_digest = fetch_response.metadata.get("digest")
             if new_digest and current_digest:
@@ -257,6 +258,25 @@ class UpdateDecisionMaker:
                     new_digest,
                     digest_changed,
                 )
+                # Phase 6.2: when the digest changed AND we can resolve the
+                # new tag's upstream major, compare against the container's
+                # stored last_digest_major. A differing major indicates an
+                # upstream channel shift on a mutable tag (e.g. linuxserver/sonarr
+                # re-pointing `latest` from v4 stable to a v5 build).
+                fresh_major = getattr(fetch_response, "current_tag_major", None)
+                stored_major: int | None = getattr(container, "last_digest_major", None)  # type: ignore[attr-defined]
+                if (
+                    digest_changed
+                    and isinstance(fresh_major, int)
+                    and isinstance(stored_major, int)
+                    and fresh_major != stored_major
+                ):
+                    digest_cross_major_shift = True
+                    trace.trace["digest_channel_shift"] = {
+                        "previous_major": stored_major,
+                        "new_major": fresh_major,
+                        "tag": current_tag,
+                    }
             elif new_digest and current_digest is None:
                 # First run: baseline needs to be stored but it's not an "update"
                 digest_baseline_needed = True
@@ -274,24 +294,30 @@ class UpdateDecisionMaker:
             trace.set_tag_update(latest_tag, change_type)
         elif digest_changed:
             has_update = True
-            update_kind = "digest"
+            # Phase 6.2: a digest change that crosses upstream major
+            # boundaries is a channel_shift, not a normal digest update.
+            # The user must explicitly accept it via the approval UI.
+            if digest_cross_major_shift:
+                update_kind = "channel_shift"
+                change_type = "major"
+                trace.trace["update_kind"] = "channel_shift"
+            else:
+                update_kind = "digest"
 
-        # Phase 6: classify anchor drift as a channel_shift, overriding any
-        # tag/digest classification when the fresh anchor major moved above
-        # the user-accepted bound. The fetch path enforces
-        # `stable_anchor_major` so no candidate beyond the accepted major
-        # arrives here; what we surface is the *anchor-tag* drift itself so
-        # the user can explicitly accept the new major (or not).
+        # Phase 6: surface anchor drift.
+        # Channel drift information is always recorded in the trace so the UI
+        # and approval flow can see it, but it only becomes the dominant
+        # update_kind when there is no in-bound tag/digest update to report.
+        # Otherwise the in-bound patch (e.g. 4.0.17.2952 -> 4.0.17.2953) gets
+        # suppressed by a channel_shift "update" that has no actual target
+        # tag — apply_decision would then create a current_tag -> current_tag
+        # phantom update.
         anchor_decision = getattr(fetch_response, "anchor_decision", None)
         if anchor_decision is not None and getattr(anchor_decision, "channel_shift", False):
             fresh = getattr(anchor_decision, "fresh", None)
             new_major = getattr(fresh, "anchor_major", None) if fresh is not None else None
             accepted_major = getattr(anchor_decision, "upper_major_bound", None)
-            has_update = True
-            update_kind = "channel_shift"
-            change_type = "major"
-            trace.trace["update_kind"] = "channel_shift"
-            trace.trace["channel_shift"] = {
+            channel_shift_block = {
                 "previous_major": accepted_major,
                 "new_major": new_major,
                 "anchor_tag": getattr(container, "stable_anchor_tag", None),
@@ -299,10 +325,26 @@ class UpdateDecisionMaker:
                 "anchor_digest": getattr(fresh, "digest", None) if fresh else None,
                 "raw_label_value": (getattr(fresh, "raw_label_value", None) if fresh else None),
             }
+            trace.trace["channel_shift"] = channel_shift_block
             trace.add_anomaly(
-                f"channel_shift: anchor {fetch_response.metadata or {}} drifted from "
+                f"channel_shift detected: anchor drifted from "
                 f"major={accepted_major} to major={new_major}"
             )
+
+            if not has_update:
+                # No in-bound tag/digest update — channel_shift becomes the
+                # update. apply_decision will need a meaningful target; we
+                # signal that by leaving latest_tag as None and letting the
+                # approval flow surface the anchor drift to the user.
+                has_update = True
+                update_kind = "channel_shift"
+                change_type = "major"
+                trace.trace["update_kind"] = "channel_shift"
+            else:
+                # An in-bound tag/digest update is the primary surface. Keep
+                # its update_kind dominant but mark channel_shift_pending so
+                # the UI can render a secondary warning badge.
+                trace.trace["channel_shift_pending"] = True
 
         # Check for scope violation
         is_scope_violation = False

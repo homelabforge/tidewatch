@@ -343,6 +343,62 @@ class TestChannelShift:
 
         assert decision.update_kind != "channel_shift"
 
+    def test_channel_shift_does_not_suppress_inbound_tag_update(self):
+        """FIX-3: anchor drift must not overwrite a real in-bound tag update."""
+        from app.services.channel_anchor import AnchorDecision, AnchorResolution
+
+        fresh = AnchorResolution(5, "sha256:newer", "build_version", "...")
+        anchor_decision = AnchorDecision(upper_major_bound=4, fresh=fresh, channel_shift=True)
+        container = make_container(current_tag="4.0.17.2952-ls311", scope="patch")
+        container.stable_anchor_tag = "latest"  # type: ignore[assignment]
+        container.accepted_anchor_major = 4  # type: ignore[assignment]
+        response = make_fetch_response(latest_tag="4.0.17.2953-ls170")
+        response.anchor_decision = anchor_decision
+
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+
+        # Tag update remains dominant — no phantom current→current update.
+        assert decision.has_update is True
+        assert decision.update_kind == "tag"
+        assert decision.latest_tag == "4.0.17.2953-ls170"
+        # Drift is still recorded for the UI.
+        trace = decision.trace.trace
+        assert trace.get("channel_shift_pending") is True
+        assert trace["channel_shift"]["new_major"] == 5
+
+
+class TestDigestCrossMajorShift:
+    """Phase 6.2 / FIX-5: cross-major drift on a mutable-tag digest update."""
+
+    def _container(self, last_major: int | None = 4):
+        c = make_container(current_tag="latest", current_digest="sha256:oldv4")
+        c.last_digest_major = last_major  # type: ignore[assignment]
+        return c
+
+    def test_digest_same_major_stays_digest(self):
+        container = self._container(last_major=4)
+        response = make_fetch_response(
+            metadata={"digest": "sha256:newv4"},
+        )
+        response.current_tag_major = 4
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+        assert decision.has_update is True
+        assert decision.update_kind == "digest"
+
+    def test_digest_cross_major_emits_channel_shift(self):
+        """Sonarr-style: `latest` re-points from v4 to v5 → channel_shift."""
+        container = self._container(last_major=4)
+        response = make_fetch_response(
+            metadata={"digest": "sha256:newv5"},
+        )
+        response.current_tag_major = 5
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+        assert decision.has_update is True
+        assert decision.update_kind == "channel_shift"
+        assert decision.change_type == "major"
+        assert decision.trace.trace["digest_channel_shift"]["previous_major"] == 4
+        assert decision.trace.trace["digest_channel_shift"]["new_major"] == 5
+
 
 class TestVersionComparison:
     """Regression tests for version comparison (Fix 4)."""

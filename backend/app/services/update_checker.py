@@ -866,6 +866,18 @@ class UpdateChecker:
             container.current_digest = decision.new_digest
             logger.info(f"Stored initial digest for {container.name}: {decision.new_digest}")
 
+        # Phase 6.2: baseline last_digest_major when we have a fresh resolution
+        # and no stored value yet. Skip when this is a channel_shift — that
+        # major must only advance via explicit user acceptance through the
+        # approval flow (see UpdateEngine._advance_anchor_major_on_accept).
+        fresh_current_major = getattr(fetch_response, "current_tag_major", None)
+        if (
+            isinstance(fresh_current_major, int)
+            and container.last_digest_major is None
+            and decision.update_kind != "channel_shift"
+        ):
+            container.last_digest_major = fresh_current_major
+
         # Determine if we have an in-scope update
         is_digest_update = decision.update_kind == "digest"
 

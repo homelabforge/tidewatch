@@ -81,6 +81,11 @@ class FetchTagsResponse:
     calver_blocked_tag: str | None = None
     error: str | None = None
     anchor_decision: Any | None = None  # AnchorDecision; Any to avoid import cycle
+    # Resolved upstream major of the *current* (mutable) tag's digest. Used
+    # by the decision maker to detect cross-major drift on digest-tracked
+    # containers (Phase 6.2). ``None`` if the tag is semver, the registry
+    # client does not expose labels, or label resolution failed.
+    current_tag_major: int | None = None
 
 
 class TagFetcher:
@@ -229,6 +234,7 @@ class TagFetcher:
 
                     # Get metadata for non-semver tags (digest tracking)
                     metadata = None
+                    current_tag_major: int | None = None
                     if is_non_semver:
                         try:
                             metadata = await client.get_tag_metadata(
@@ -238,6 +244,28 @@ class TagFetcher:
                             logger.warning(
                                 f"Failed to fetch metadata for "
                                 f"{request.image}:{request.current_tag}: {e}"
+                            )
+                        # Phase 6.2: resolve the upstream major of the
+                        # current mutable tag so the decision maker can
+                        # detect cross-major drift on digest-tracked
+                        # containers. Best-effort — registries without a
+                        # ``get_image_labels`` override return None and the
+                        # decision maker falls back to the legacy "digest"
+                        # update_kind.
+                        try:
+                            from app.services.channel_anchor import resolve_anchor_major
+
+                            current_anchor = await resolve_anchor_major(
+                                client, request.image, request.current_tag
+                            )
+                            if current_anchor is not None:
+                                current_tag_major = current_anchor.anchor_major
+                        except Exception as e:  # noqa: BLE001
+                            logger.debug(
+                                "Could not resolve current_tag major for %s:%s — %s",
+                                request.image,
+                                request.current_tag,
+                                e,
                             )
 
                     duration_ms = (time.monotonic() - start_time) * 1000
@@ -279,6 +307,7 @@ class TagFetcher:
                         metadata=metadata,
                         cache_hit=False,
                         fetch_duration_ms=duration_ms,
+                        current_tag_major=current_tag_major,
                     )
 
                 finally:
@@ -408,7 +437,48 @@ class TagFetcher:
                 finally:
                     await client.close()
 
-        return decide_anchor_bound(accepted_anchor_major=accepted, fresh=fresh)
+        decision = decide_anchor_bound(accepted_anchor_major=accepted, fresh=fresh)
+
+        # First-resolution baseline persistence (codex finding #2):
+        # When the user has opted in but no accepted_anchor_major is on the
+        # row yet, the first successful resolution must be written back to
+        # the container row. Otherwise `decide_anchor_bound(None, fresh)`
+        # silently treats every subsequent fresh major as a non-shift
+        # baseline, defeating the channel_shift mechanism. We persist via a
+        # targeted UPDATE rather than relying on the existing session
+        # because the container row was loaded by a different
+        # session/transaction in the check job worker.
+        if accepted is None and fresh is not None and decision.upper_major_bound is not None:
+            try:
+                from sqlalchemy import update as sa_update
+
+                from app.models.container import Container as ContainerModel
+
+                container_id: int = container.id  # type: ignore[attr-defined]
+                await self._db.execute(
+                    sa_update(ContainerModel)
+                    .where(ContainerModel.id == container_id)
+                    .values(accepted_anchor_major=fresh.anchor_major)
+                )
+                # Reflect the new value on the in-memory row so any
+                # subsequent decision in this same request sees it.
+                container.accepted_anchor_major = fresh.anchor_major  # type: ignore[assignment]
+                logger.info(
+                    "Anchor baseline persisted for container %d (image=%s, anchor=%s, major=%d)",
+                    container_id,
+                    image,
+                    anchor_tag,
+                    fresh.anchor_major,
+                )
+            except Exception as exc:  # noqa: BLE001 — never crash the check on persistence
+                logger.warning(
+                    "Failed to persist initial anchor baseline for container %s:%s — %s",
+                    image,
+                    anchor_tag,
+                    exc,
+                )
+
+        return decision
 
     async def fetch_tags_for_key(
         self, key: ImageCheckKey, current_digest: str | None = None

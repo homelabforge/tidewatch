@@ -23,7 +23,6 @@ from app.models.container import Container
 from app.services.check_run_context import CheckRunContext, ImageCheckKey
 from app.services.event_bus import event_bus
 from app.services.notifications.dispatcher import NotificationDispatcher
-from app.services.registry_client import is_non_semver_tag
 from app.services.registry_rate_limiter import RegistryRateLimiter
 from app.services.settings_service import SettingsService
 from app.services.sibling_reconciliation import SiblingDrift, reconcile_siblings
@@ -325,15 +324,19 @@ class CheckJobService:
                                 if not fresh_representative:
                                     raise ValueError(f"No containers found for group {key.image}")
 
-                                # Fetch tags for this image signature
+                                # Fetch tags for this image signature using the
+                                # representative container so the per-container
+                                # stable_anchor_tag (Phase 5) is resolved and
+                                # applied as the upper-major bound. Same-image
+                                # containers within a group share scope and
+                                # prereleases policy via ImageCheckKey; anchor
+                                # state varies per container but the grouping
+                                # already pins same-image siblings together,
+                                # so using the representative's anchor is
+                                # consistent with the existing key dedup.
                                 tag_fetcher = TagFetcher(worker_db, rate_limiter, run_context)
-                                fetch_response = await tag_fetcher.fetch_tags_for_key(
-                                    key,
-                                    current_digest=(
-                                        fresh_representative.current_digest  # type: ignore[attr-defined]
-                                        if is_non_semver_tag(key.current_tag)
-                                        else None
-                                    ),
+                                fetch_response = await tag_fetcher.fetch_tags_for_container(
+                                    fresh_representative
                                 )
 
                                 # Make update decision
