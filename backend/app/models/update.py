@@ -91,7 +91,7 @@ class Update(Base):
     )  # JSON string with trace data
     update_kind: Mapped[str | None] = mapped_column(
         String, nullable=True, index=True
-    )  # "tag" or "digest"
+    )  # "tag", "digest", or "channel_shift" (cross-major drift, Phase 6)
     change_type: Mapped[str | None] = mapped_column(
         String, nullable=True, index=True
     )  # "major", "minor", "patch"

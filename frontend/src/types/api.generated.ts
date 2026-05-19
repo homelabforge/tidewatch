@@ -4184,6 +4184,12 @@ export interface components {
             updated_at: string;
             /** Version Track */
             version_track?: string | null;
+            /** Stable Anchor Tag */
+            stable_anchor_tag?: string | null;
+            /** Accepted Anchor Major */
+            accepted_anchor_major?: number | null;
+            /** Last Digest Major */
+            last_digest_major?: number | null;
             /** Vulnforge Enabled */
             vulnforge_enabled: boolean;
         };
@@ -4239,6 +4245,10 @@ export interface components {
             scope?: string | null;
             /** Version Track */
             version_track?: ("semver" | "calver") | null;
+            /** Stable Anchor Tag */
+            stable_anchor_tag?: string | null;
+            /** Accepted Anchor Major */
+            accepted_anchor_major?: number | null;
             /** Vulnforge Enabled */
             vulnforge_enabled?: boolean | null;
         };

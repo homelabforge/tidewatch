@@ -175,6 +175,8 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
   const [scope, setScope] = useState(container.scope);
   const [includePrereleases, setIncludePrereleases] = useState<boolean | null>(container.include_prereleases ?? null);
   const [versionTrack, setVersionTrack] = useState<string | null>(container.version_track ?? null);
+  const [stableAnchorTag, setStableAnchorTag] = useState<string>(container.stable_anchor_tag ?? '');
+  const [stableAnchorInput, setStableAnchorInput] = useState<string>(container.stable_anchor_tag ?? '');
   const [vulnforgeEnabled] = useState(container.vulnforge_enabled);
   const [healthCheckMethod, setHealthCheckMethod] = useState(container.health_check_method);
   const [healthCheckUrl, setHealthCheckUrl] = useState(container.health_check_url || '');
@@ -303,6 +305,19 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
     const newValue: string | null = value === 'null' ? null : value;
     setVersionTrack(newValue);
     await saveSettings({ version_track: newValue });
+  };
+
+  const handleSaveStableAnchor = async () => {
+    const trimmed = stableAnchorInput.trim();
+    const newValue: string | null = trimmed === '' ? null : trimmed;
+    setStableAnchorTag(trimmed);
+    await saveSettings({ stable_anchor_tag: newValue });
+  };
+
+  const handleClearStableAnchor = async () => {
+    setStableAnchorTag('');
+    setStableAnchorInput('');
+    await saveSettings({ stable_anchor_tag: null });
   };
 
   const handleHealthCheckMethodChange = async (method: string) => {
@@ -706,6 +721,59 @@ export default function SettingsTab({ container, onUpdate }: SettingsTabProps) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Stable Channel Anchor */}
+        <div className={`bg-tide-surface/50 rounded-lg p-6 break-inside-avoid mb-6 border border-tide-border transition-opacity ${policy === 'disabled' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <h4 className="text-base font-semibold text-tide-text mb-3">Stable Channel Anchor</h4>
+          <p className="text-sm text-tide-text-muted mb-4">
+            Opt in to pin the upstream "stable major" for this image. TideWatch resolves the named tag's
+            manifest labels and refuses to promote any candidate above that major — useful for images
+            like <code>linuxserver/sonarr</code> where v5 is the upstream beta line while v4 is stable.
+            Common value: <code>latest</code>. Leave blank to disable.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <input
+              type="text"
+              value={stableAnchorInput}
+              onChange={(e) => setStableAnchorInput(e.target.value)}
+              placeholder="latest"
+              disabled={savingSettings}
+              className="flex-1 bg-tide-surface border border-tide-border rounded-md px-3 py-2 text-sm text-tide-text focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveStableAnchor}
+                disabled={savingSettings || stableAnchorInput.trim() === (stableAnchorTag ?? '')}
+                className="px-4 py-2 rounded-md bg-primary text-white text-sm font-medium disabled:opacity-50"
+              >
+                {stableAnchorTag ? 'Update Anchor' : 'Enable Anchor'}
+              </button>
+              {stableAnchorTag && (
+                <button
+                  onClick={handleClearStableAnchor}
+                  disabled={savingSettings}
+                  className="px-4 py-2 rounded-md bg-tide-surface border border-tide-border text-sm font-medium hover:border-tide-border-light disabled:opacity-50"
+                >
+                  Disable
+                </button>
+              )}
+            </div>
+          </div>
+          {stableAnchorTag && (
+            <div className="mt-4 text-xs text-tide-text-muted">
+              <div>
+                <span className="text-tide-text-muted">Anchor tag:</span>{' '}
+                <code className="text-tide-text">{stableAnchorTag}</code>
+              </div>
+              {container.accepted_anchor_major !== null && container.accepted_anchor_major !== undefined && (
+                <div className="mt-1">
+                  <span>Accepted upstream major:</span>{' '}
+                  <code className="text-tide-text">v{container.accepted_anchor_major}.x</code>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Pre-releases */}

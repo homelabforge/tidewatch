@@ -293,6 +293,57 @@ class TestFetchError:
         assert "429" in trace_json
 
 
+class TestChannelShift:
+    """Phase 6: anchor drift surfaces as a channel_shift update kind."""
+
+    def _make_decision_args(self, *, anchor_decision):
+        container = make_container(current_tag="4.0.17.2952-ls311", scope="patch")
+        container.stable_anchor_tag = "latest"  # type: ignore[assignment]
+        container.accepted_anchor_major = 4  # type: ignore[assignment]
+        response = make_fetch_response()
+        response.anchor_decision = anchor_decision
+        return container, response
+
+    def test_anchor_drift_emits_channel_shift(self):
+        """Fresh anchor major > accepted must classify the update as channel_shift."""
+        from app.services.channel_anchor import AnchorDecision, AnchorResolution
+
+        fresh = AnchorResolution(
+            anchor_major=5,
+            digest="sha256:newer",
+            source_label="build_version",
+            raw_label_value="LinuxServer.io version: 5.0.0.6928-develop-ls300 Build-date: ...",
+        )
+        anchor_decision = AnchorDecision(upper_major_bound=4, fresh=fresh, channel_shift=True)
+        container, response = self._make_decision_args(anchor_decision=anchor_decision)
+
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+
+        assert decision.has_update is True
+        assert decision.update_kind == "channel_shift"
+        assert decision.change_type == "major"
+
+        trace = decision.trace.trace
+        assert trace["update_kind"] == "channel_shift"
+        cs = trace["channel_shift"]
+        assert cs["previous_major"] == 4
+        assert cs["new_major"] == 5
+        assert cs["anchor_tag"] == "latest"
+        assert cs["source_label"] == "build_version"
+
+    def test_no_anchor_drift_does_not_emit_channel_shift(self):
+        """When fresh == accepted, no channel_shift is emitted."""
+        from app.services.channel_anchor import AnchorDecision, AnchorResolution
+
+        fresh = AnchorResolution(4, "sha256:same", "build_version", "...")
+        anchor_decision = AnchorDecision(upper_major_bound=4, fresh=fresh, channel_shift=False)
+        container, response = self._make_decision_args(anchor_decision=anchor_decision)
+
+        decision = UpdateDecisionMaker().make_decision(container, response, False)
+
+        assert decision.update_kind != "channel_shift"
+
+
 class TestVersionComparison:
     """Regression tests for version comparison (Fix 4)."""
 

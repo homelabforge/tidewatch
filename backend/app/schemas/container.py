@@ -45,6 +45,9 @@ class ContainerSchema(BaseModel):
     latest_major_tag: str | None = None
     calver_blocked_tag: str | None = None
     version_track: str | None = None
+    stable_anchor_tag: str | None = None  # Phase 5: opt-in channel anchor
+    accepted_anchor_major: int | None = None  # Last user-acknowledged anchor major
+    last_digest_major: int | None = None  # Phase 6: cross-major digest tracking
     last_checked: datetime | None = None
     last_updated: datetime | None = None
     labels: dict[str, str] = Field(default_factory=dict)
@@ -166,6 +169,10 @@ class ContainerUpdate(BaseModel):
     scope: str | None = None  # patch, minor, major
     include_prereleases: bool | None = None  # Include nightly, dev, alpha, beta, rc tags
     version_track: Literal["semver", "calver"] | None = None  # None=auto, "semver", "calver"
+    stable_anchor_tag: str | None = None  # Phase 5 opt-in: tag to resolve as upper-major anchor
+    accepted_anchor_major: int | None = (
+        None  # User-accepted anchor major (for channel_shift acceptance)
+    )
     vulnforge_enabled: bool | None = None
     health_check_url: str | None = None
     health_check_method: str | None = None

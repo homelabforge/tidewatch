@@ -273,6 +273,26 @@ async def update_container(
     if "version_track" in update.model_fields_set:
         container.version_track = update.version_track  # None clears back to Auto
 
+    # Phase 5: stable_anchor_tag uses the same explicit-null pattern so the
+    # user can disable the feature by sending null. When the user enables
+    # the anchor by setting the tag string, also reset accepted_anchor_major
+    # so the next check baselines fresh — never carry a stale acceptance
+    # across a disable/re-enable cycle.
+    if "stable_anchor_tag" in update.model_fields_set:
+        previous_anchor_tag = container.stable_anchor_tag
+        container.stable_anchor_tag = update.stable_anchor_tag
+        if update.stable_anchor_tag is None or update.stable_anchor_tag != previous_anchor_tag:
+            # Disable: clear stored bound and last digest major.
+            # Re-enable with different tag: clear so next resolution baselines.
+            container.accepted_anchor_major = None
+            container.last_digest_major = None
+
+    # `accepted_anchor_major` advances on explicit user acceptance of a
+    # channel_shift. Routes that handle the "Accept new anchor major" action
+    # set it via this same PATCH endpoint.
+    if "accepted_anchor_major" in update.model_fields_set:
+        container.accepted_anchor_major = update.accepted_anchor_major
+
     await db.commit()
     await db.refresh(container)
 

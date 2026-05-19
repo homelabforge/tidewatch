@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 4-segment versions (Sonarr `4.0.17.2952-ls311`) no longer drop the 4th release segment in `_normalize_version`; within-patch updates now correctly detect as upgrades
+- Prerelease-to-stable comparisons no longer strand users on prerelease tags (`1.2.3rc1` → `1.2.3` is now classified as a valid upgrade)
+- Positional `rc`/`alpha`/`beta` markers in any tag position now flag as prerelease (`rc-1.2.3`, `version-1.2.3-rc`, arch-prefixed develop tags)
+- Develop and stable LinuxServer channels no longer collapse to the same `ls` variant (`develop-X-lsN` → `develop-ls`)
+- Arch-prefixed tags (`arm64v8-1.2.3`) are now updatable; both prefix and suffix arch markers are detected
+
+### Added
+- Stable channel anchor (opt-in, per container): set `stable_anchor_tag` in Settings → Update Policy to pin the upstream stable major and refuse cross-major candidates (e.g. blocks Sonarr v5 beta when on v4 stable)
+- `channel_shift` update kind for cross-major drift on mutable anchor tags — surfaces in the UI, never auto-approved, requires explicit user acceptance via API (`accepted_anchor_major`)
+- `channel_anchor.py` service with multi-arch manifest index resolution and LinuxServer `build_version` free-form label parsing
+- Migration 057 adds `stable_anchor_tag`, `accepted_anchor_major`, `last_digest_major` columns to `containers`
+
+### Removed
+- Dead helpers `extract_tag_pattern` / `tags_have_matching_pattern` (no callers in selection paths)
+
 ### Security
 - `DockerfileParser._find_dockerfile` validates candidate paths via `sanitize_path` (CodeQL-recognised barrier) instead of an ad-hoc `startswith` check — resolves CodeQL alerts py/path-injection (#688) and py/log-injection (#689)
 

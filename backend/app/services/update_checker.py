@@ -60,6 +60,11 @@ class UpdateChecker:
         if getattr(update, "anomaly_held", False):
             return False, "supply chain anomaly hold — manual approval required"
 
+        # Phase 6: channel_shift updates (cross-major shift on a mutable
+        # anchor tag) require explicit user acceptance regardless of policy.
+        if getattr(update, "update_kind", None) == "channel_shift":
+            return False, "channel shift — manual acceptance required for cross-major drift"
+
         # Check global setting
         if not auto_update_enabled:
             return False, "auto_update_enabled is disabled globally"

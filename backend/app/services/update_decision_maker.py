@@ -276,6 +276,34 @@ class UpdateDecisionMaker:
             has_update = True
             update_kind = "digest"
 
+        # Phase 6: classify anchor drift as a channel_shift, overriding any
+        # tag/digest classification when the fresh anchor major moved above
+        # the user-accepted bound. The fetch path enforces
+        # `stable_anchor_major` so no candidate beyond the accepted major
+        # arrives here; what we surface is the *anchor-tag* drift itself so
+        # the user can explicitly accept the new major (or not).
+        anchor_decision = getattr(fetch_response, "anchor_decision", None)
+        if anchor_decision is not None and getattr(anchor_decision, "channel_shift", False):
+            fresh = getattr(anchor_decision, "fresh", None)
+            new_major = getattr(fresh, "anchor_major", None) if fresh is not None else None
+            accepted_major = getattr(anchor_decision, "upper_major_bound", None)
+            has_update = True
+            update_kind = "channel_shift"
+            change_type = "major"
+            trace.trace["update_kind"] = "channel_shift"
+            trace.trace["channel_shift"] = {
+                "previous_major": accepted_major,
+                "new_major": new_major,
+                "anchor_tag": getattr(container, "stable_anchor_tag", None),
+                "source_label": getattr(fresh, "source_label", None) if fresh else None,
+                "anchor_digest": getattr(fresh, "digest", None) if fresh else None,
+                "raw_label_value": (getattr(fresh, "raw_label_value", None) if fresh else None),
+            }
+            trace.add_anomaly(
+                f"channel_shift: anchor {fetch_response.metadata or {}} drifted from "
+                f"major={accepted_major} to major={new_major}"
+            )
+
         # Check for scope violation
         is_scope_violation = False
         if latest_major_tag and latest_major_tag != current_tag and latest_major_tag != latest_tag:

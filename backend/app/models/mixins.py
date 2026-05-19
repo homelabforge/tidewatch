@@ -43,6 +43,21 @@ class UpdatePolicyMixin:
         String, nullable=True
     )  # Format: "HH:MM-HH:MM" or "Days:HH:MM-HH:MM"
 
+    # Phase 5: stable channel anchor — opt-in per container. When `stable_anchor_tag`
+    # is set (typically "latest"), TideWatch resolves its manifest's image config
+    # labels to determine the upstream stable major and refuses to promote any
+    # candidate whose major exceeds `accepted_anchor_major`. Fresh upward drift
+    # surfaces a `channel_shift` instead of silently raising the bound.
+    stable_anchor_tag: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # None=disabled; set to "latest" (or any tag) to opt in
+    accepted_anchor_major: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # Last user-acknowledged anchor major; never auto-advanced on drift
+    last_digest_major: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # Last resolved major from a digest-tracked tag (Phase 6 channel_shift)
+
 
 class IgnoreFieldsMixin:
     """Mixin for dependency ignore tracking columns.

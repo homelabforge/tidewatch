@@ -40,6 +40,8 @@ class FetchTagsRequest:
         include_prereleases: Whether to include prerelease tags
         current_digest: Current digest for 'latest' tag tracking
         version_track: Versioning scheme override (None=auto, "semver", "calver")
+        stable_anchor_major: Phase 5 anchor bound; candidates with a higher
+            major are rejected. ``None`` disables the bound.
     """
 
     registry: str
@@ -49,6 +51,7 @@ class FetchTagsRequest:
     include_prereleases: bool
     current_digest: str | None = None
     version_track: str | None = None
+    stable_anchor_major: int | None = None
 
 
 @dataclass
@@ -64,6 +67,9 @@ class FetchTagsResponse:
         cache_hit: Whether result came from run-scoped cache
         fetch_duration_ms: Time taken to fetch (including rate limit waits)
         error: Error message if fetch failed
+        anchor_decision: Phase 5/6 stable-channel anchor state machine result
+            for the per-container fetch path. ``None`` for the cache-hit
+            and key-only paths where no anchor resolution was attempted.
     """
 
     latest_tag: str | None
@@ -74,6 +80,7 @@ class FetchTagsResponse:
     fetch_duration_ms: float
     calver_blocked_tag: str | None = None
     error: str | None = None
+    anchor_decision: Any | None = None  # AnchorDecision; Any to avoid import cycle
 
 
 class TagFetcher:
@@ -197,6 +204,7 @@ class TagFetcher:
                         current_digest=request.current_digest,
                         include_prereleases=request.include_prereleases,
                         version_track=request.version_track,
+                        stable_anchor_major=request.stable_anchor_major,
                     )
 
                     # Fetch latest major tag (for scope violation visibility)
@@ -208,6 +216,7 @@ class TagFetcher:
                                 request.current_tag,
                                 include_prereleases=request.include_prereleases,
                                 version_track=request.version_track,
+                                stable_anchor_major=request.stable_anchor_major,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to fetch major tag for {request.image}: {e}")
@@ -299,7 +308,9 @@ class TagFetcher:
         """Convenience method to fetch tags for a container.
 
         Automatically resolves the effective include_prereleases setting
-        (container-specific or global default).
+        (container-specific or global default) and, for opt-in containers,
+        resolves a stable-channel anchor major via the Phase 5.4 state
+        machine (``channel_anchor.decide_anchor_bound``).
 
         Args:
             container: Container to fetch tags for
@@ -327,7 +338,17 @@ class TagFetcher:
         )  # type: ignore[attr-defined]
         version_track: str | None = container.version_track if container.version_track else None  # type: ignore[attr-defined]
 
-        return await self.fetch_tags(
+        # Phase 5: resolve stable-channel anchor if the user has opted in.
+        # The bound returned by ``decide_anchor_bound`` enforces the
+        # accepted upstream major; fresh upward drift is reported via the
+        # AnchorDecision so the decision-maker can surface it as a
+        # channel_shift update kind rather than a normal upgrade.
+        anchor_decision = await self._resolve_anchor_decision(container)
+        stable_anchor_major = (
+            anchor_decision.upper_major_bound if anchor_decision is not None else None
+        )
+
+        response = await self.fetch_tags(
             FetchTagsRequest(
                 registry=registry,
                 image=image,
@@ -336,8 +357,58 @@ class TagFetcher:
                 include_prereleases=include_prereleases,
                 current_digest=current_digest,
                 version_track=version_track,
+                stable_anchor_major=stable_anchor_major,
             )
         )
+        # Attach the anchor decision so downstream callers can detect drift
+        # and classify the update as channel_shift when appropriate.
+        if anchor_decision is not None:
+            response.anchor_decision = anchor_decision
+        return response
+
+    async def _resolve_anchor_decision(self, container: Container):
+        """Resolve the full Phase 5.4 anchor decision for a container.
+
+        Returns ``None`` when the feature is disabled. Otherwise returns an
+        ``AnchorDecision`` whose ``upper_major_bound`` is the active enforcement
+        bound and whose ``channel_shift`` flag tells the decision-maker
+        whether fresh anchor drift should be surfaced as a separate update
+        kind (Phase 6).
+        """
+        anchor_tag: str | None = container.stable_anchor_tag  # type: ignore[attr-defined]
+        accepted: int | None = container.accepted_anchor_major  # type: ignore[attr-defined]
+        if anchor_tag is None and accepted is None:
+            return None
+
+        # Local imports keep this module's import graph light when the
+        # anchor feature is unused.
+        from app.services.channel_anchor import (
+            AnchorResolution,
+            decide_anchor_bound,
+            get_anchor_cache,
+            resolve_anchor_major,
+        )
+        from app.services.registry_client import RegistryClientFactory
+
+        registry: str = str(container.registry)  # type: ignore[attr-defined]
+        image: str = str(container.image)  # type: ignore[attr-defined]
+        fresh: AnchorResolution | None = None
+
+        if anchor_tag:
+            cache = get_anchor_cache()
+            cached = cache.get(registry, image, anchor_tag)
+            if cached is not None:
+                fresh = cached
+            else:
+                client = await RegistryClientFactory.get_client(registry, self._db)
+                try:
+                    fresh = await resolve_anchor_major(client, image, anchor_tag)
+                    if fresh is not None:
+                        cache.set(registry, image, anchor_tag, fresh)
+                finally:
+                    await client.close()
+
+        return decide_anchor_bound(accepted_anchor_major=accepted, fresh=fresh)
 
     async def fetch_tags_for_key(
         self, key: ImageCheckKey, current_digest: str | None = None

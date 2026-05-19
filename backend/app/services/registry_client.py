@@ -415,6 +415,7 @@ class RegistryClient(ABC):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag for an image.
 
@@ -425,6 +426,8 @@ class RegistryClient(ABC):
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
             version_track: Override version scheme detection (None=auto, "semver", "calver")
+            stable_anchor_major: Phase 5 anchor bound; candidates with a
+                higher major are rejected. ``None`` disables the bound.
 
         Returns:
             Latest tag or None
@@ -456,12 +459,36 @@ class RegistryClient(ABC):
         """
         pass
 
+    async def get_image_labels(self, image: str, tag: str) -> tuple[dict[str, str], str] | None:
+        """Fetch OCI/Docker labels from the image config blob.
+
+        Phase 5 (stable channel anchor): drives ``channel_anchor.resolve_anchor_major``.
+        Must transparently handle multi-arch manifest indexes by selecting
+        the host-platform child manifest before fetching the config blob.
+
+        Default implementation returns ``None`` — the anchor feature falls
+        through gracefully for registries that don't expose labels. Override
+        in concrete clients that need the feature (LSCR, DockerHub, GHCR).
+
+        Args:
+            image: Image name (e.g. ``linuxserver/sonarr``).
+            tag: Anchor tag to resolve (typically ``"latest"``).
+
+        Returns:
+            ``(labels, digest)`` where ``labels`` is the flat label map and
+            ``digest`` is the manifest digest used. ``None`` on any failure.
+        """
+        # Default fallthrough — anchor feature is opt-in per registry.
+        _ = (image, tag)
+        return None
+
     def _compare_versions(
         self,
         current: str,
         candidate: str,
         scope: str,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> bool:
         """Compare semantic versions based on scope.
 
@@ -543,6 +570,21 @@ class RegistryClient(ABC):
             curr_patch,
             curr_extra,
         ):
+            return False
+
+        # Phase 5: stable channel anchor — reject any candidate whose major
+        # exceeds the user-accepted upstream bound. The anchor is opt-in per
+        # container; when unset, ``stable_anchor_major`` is ``None`` and this
+        # check is a no-op.
+        if stable_anchor_major is not None and cand_major > stable_anchor_major:
+            logger.debug(
+                "Rejecting candidate %s for %s due to stable_anchor_major bound "
+                "(candidate_major=%d > accepted=%d)",
+                candidate,
+                current,
+                cand_major,
+                stable_anchor_major,
+            )
             return False
 
         # Check scope
@@ -820,6 +862,7 @@ class RegistryClient(ABC):
         current_tag: str,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest major version regardless of container scope.
 
@@ -831,6 +874,8 @@ class RegistryClient(ABC):
             current_tag: Current tag
             include_prereleases: Include pre-release tags
             version_track: Override CalVer detection (None=auto, "semver", "calver")
+            stable_anchor_major: Phase 5 anchor bound; candidates with a
+                higher major are rejected.
 
         Returns:
             Latest major version or None
@@ -848,6 +893,7 @@ class RegistryClient(ABC):
             current_digest=None,  # Not needed for semver tags
             include_prereleases=include_prereleases,
             version_track=version_track,
+            stable_anchor_major=stable_anchor_major,
         )
 
 
@@ -926,6 +972,7 @@ class DockerHubClient(RegistryClient):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag from Docker Hub.
 
@@ -939,6 +986,7 @@ class DockerHubClient(RegistryClient):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            stable_anchor_major: Phase 5 anchor bound.
 
         Returns:
             New tag if update available, None otherwise
@@ -952,7 +1000,12 @@ class DockerHubClient(RegistryClient):
 
         # For semantic versions, use optimized fetching
         return await self._get_semver_update(
-            image, current_tag, scope, include_prereleases, version_track=version_track
+            image,
+            current_tag,
+            scope,
+            include_prereleases,
+            version_track=version_track,
+            stable_anchor_major=stable_anchor_major,
         )
 
     async def _check_digest_change(
@@ -1023,6 +1076,7 @@ class DockerHubClient(RegistryClient):
         scope: str,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get semantic version update with optimized API calls.
 
@@ -1069,7 +1123,13 @@ class DockerHubClient(RegistryClient):
                         continue
 
                     # Check if this is a valid update
-                    if self._compare_versions(current_tag, tag_name, scope, version_track):
+                    if self._compare_versions(
+                        current_tag,
+                        tag_name,
+                        scope,
+                        version_track,
+                        stable_anchor_major=stable_anchor_major,
+                    ):
                         if best_tag is None or self._is_better_version(tag_name, best_tag):
                             best_tag = tag_name
 
@@ -1283,6 +1343,7 @@ class GHCRClient(RegistryClient):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag from GHCR.
 
@@ -1292,6 +1353,7 @@ class GHCRClient(RegistryClient):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            stable_anchor_major: Phase 5 anchor bound.
 
         Returns:
             New tag if update available, None otherwise
@@ -1335,7 +1397,9 @@ class GHCRClient(RegistryClient):
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope, version_track):
+            if self._compare_versions(
+                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+            ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1491,6 +1555,7 @@ class LSCRClient(RegistryClient):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag from LSCR.
 
@@ -1500,6 +1565,7 @@ class LSCRClient(RegistryClient):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            stable_anchor_major: Phase 5 anchor bound.
 
         Returns:
             New tag if update available, None otherwise
@@ -1539,7 +1605,9 @@ class LSCRClient(RegistryClient):
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope, version_track):
+            if self._compare_versions(
+                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+            ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1578,6 +1646,98 @@ class LSCRClient(RegistryClient):
             return None
         except httpx.TimeoutException as e:
             logger.error(f"Timeout fetching LSCR metadata for {image}:{tag}: {e}")
+            return None
+
+    async def get_image_labels(self, image: str, tag: str) -> tuple[dict[str, str], str] | None:
+        """Fetch OCI/Docker image config labels for a tag (Phase 5).
+
+        Walks an OCI image index or Docker manifest list when present, picks
+        the host-platform child manifest, then fetches the image config blob
+        to read its ``Labels`` map. Used by ``channel_anchor.resolve_anchor_major``
+        to anchor the upstream stable major for opt-in containers.
+        """
+        from app.services.channel_anchor import (
+            host_arch,
+            labels_from_config_blob,
+            pick_platform_manifest,
+        )
+
+        token = await self._get_bearer_token(image, "pull")
+        if not token:
+            return None
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": ", ".join(
+                [
+                    "application/vnd.oci.image.index.v1+json",
+                    "application/vnd.docker.distribution.manifest.list.v2+json",
+                    "application/vnd.oci.image.manifest.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                ]
+            ),
+        }
+
+        manifest_url = f"{self.BASE_URL}/v2/{image}/manifests/{tag}"
+        try:
+            response = await self.client.get(manifest_url, headers=headers)
+            response.raise_for_status()
+            manifest = response.json()
+            anchor_digest = response.headers.get("Docker-Content-Digest", "")
+            media_type = manifest.get("mediaType") or response.headers.get("Content-Type", "")
+
+            # If this is an index/list, pick the host-platform child manifest.
+            if (
+                "manifest.list" in media_type
+                or "image.index" in media_type
+                or manifest.get("manifests")
+            ):
+                child = pick_platform_manifest(
+                    manifest.get("manifests", []), preferred_arch=host_arch()
+                )
+                if child is None:
+                    logger.info("LSCR: no platform child manifest for %s:%s", image, tag)
+                    return None
+                child_url = f"{self.BASE_URL}/v2/{image}/manifests/{child['digest']}"
+                child_headers = dict(headers)
+                child_headers["Accept"] = (
+                    "application/vnd.oci.image.manifest.v1+json, "
+                    "application/vnd.docker.distribution.manifest.v2+json"
+                )
+                child_response = await self.client.get(child_url, headers=child_headers)
+                child_response.raise_for_status()
+                manifest = child_response.json()
+                # Keep the original index digest as the anchor digest so the
+                # caller can correlate against the user-facing tag pointer.
+                if not anchor_digest:
+                    anchor_digest = child["digest"]
+
+            config_ref = manifest.get("config", {})
+            config_digest = config_ref.get("digest")
+            if not config_digest:
+                return None
+
+            blob_url = f"{self.BASE_URL}/v2/{image}/blobs/{config_digest}"
+            blob_response = await self.client.get(
+                blob_url, headers={"Authorization": f"Bearer {token}"}
+            )
+            blob_response.raise_for_status()
+            config_blob = blob_response.json()
+
+            labels = labels_from_config_blob(config_blob)
+            if not anchor_digest:
+                # Fall back to the manifest's own digest if the index header
+                # was empty (some private registries elide it).
+                anchor_digest = blob_response.headers.get("Docker-Content-Digest", "")
+
+            return (labels, anchor_digest or "")
+        except (
+            httpx.HTTPStatusError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            ValueError,
+            KeyError,
+        ) as exc:
+            logger.warning("LSCR get_image_labels failed for %s:%s — %s", image, tag, exc)
             return None
 
 
@@ -1641,6 +1801,7 @@ class GCRClient(RegistryClient):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag from GCR.
 
@@ -1650,6 +1811,7 @@ class GCRClient(RegistryClient):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            stable_anchor_major: Phase 5 anchor bound.
 
         Returns:
             New tag if update available, None otherwise
@@ -1693,7 +1855,9 @@ class GCRClient(RegistryClient):
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope, version_track):
+            if self._compare_versions(
+                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+            ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
@@ -1787,6 +1951,7 @@ class QuayClient(RegistryClient):
         current_digest: str | None = None,
         include_prereleases: bool = False,
         version_track: str | None = None,
+        stable_anchor_major: int | None = None,
     ) -> str | None:
         """Get latest tag from Quay.io.
 
@@ -1796,6 +1961,7 @@ class QuayClient(RegistryClient):
             scope: Update scope (patch, minor, major)
             current_digest: Current digest (for latest tag tracking)
             include_prereleases: Include nightly, dev, alpha, beta, rc tags
+            stable_anchor_major: Phase 5 anchor bound.
 
         Returns:
             New tag if update available, None otherwise
@@ -1839,7 +2005,9 @@ class QuayClient(RegistryClient):
         # Find best match
         best_tag = None
         for tag in version_tags:
-            if self._compare_versions(current_tag, tag, scope, version_track):
+            if self._compare_versions(
+                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+            ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 

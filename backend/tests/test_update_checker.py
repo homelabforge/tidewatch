@@ -1459,6 +1459,46 @@ class TestApplyDecisionRefactor:
         assert should_approve is False
         assert "anomaly hold" in reason
 
+    @pytest.mark.asyncio
+    async def test_channel_shift_blocks_auto_approval(self, mock_db, base_container):
+        """Phase 6 (R1-H4): channel_shift update kind must never auto-approve.
+
+        Even with policy=auto AND auto_update_enabled=True, an update with
+        update_kind='channel_shift' (cross-major anchor drift on a mutable
+        tag) requires explicit user acceptance before any subsequent
+        candidate >= the new major is permitted.
+        """
+        base_container.policy = "auto"
+        decision = self._make_decision(base_container)
+        fetch = _make_fetch_response()
+
+        with (
+            patch("app.services.update_checker.SettingsService.get_bool", return_value=True),
+            patch("app.services.update_checker.SettingsService.get_int", return_value=3),
+            patch("app.services.update_checker.SettingsService.get", return_value=None),
+            patch(
+                "app.services.update_checker.ComposeParser.extract_release_source",
+                return_value=None,
+            ),
+            patch("app.services.update_checker.event_bus.publish", new=AsyncMock()),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher"
+                ".notify_update_available",
+                new=AsyncMock(),
+            ),
+        ):
+            update = await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
+
+        assert update is not None
+        update.update_kind = "channel_shift"
+        update.status = "pending"
+
+        should_approve, reason = await UpdateChecker._should_auto_approve(
+            base_container, update, auto_update_enabled=True
+        )
+        assert should_approve is False
+        assert "channel shift" in reason.lower()
+
 
 class TestCalverBlockedTagPersistence:
     """Test C: apply_decision() sets and clears calver_blocked_tag each run."""
