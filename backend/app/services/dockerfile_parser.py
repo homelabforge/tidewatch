@@ -201,56 +201,37 @@ class DockerfileParser:
         compose_file = container.compose_file or ""
         compose_path = Path(compose_file) if compose_file else None
 
-        # Try common locations relative to the anchor (compose dir or project_root)
-        search_paths: list[Path] = []
+        # Each candidate Dockerfile is paired with the trust root it must live
+        # under. We later validate the pair via sanitize_path, which CodeQL
+        # recognises as a path-injection barrier — replacing the previous
+        # ad-hoc startswith() check that the taint tracker could not model.
+        candidates: list[tuple[Path, Path]] = []
         if project_anchor:
-            search_paths.extend(
-                [
-                    project_anchor / "Dockerfile",
-                    project_anchor / "docker" / "Dockerfile",
-                    project_anchor / "build" / "Dockerfile",
-                ]
-            )
+            for rel in ("Dockerfile", "docker/Dockerfile", "build/Dockerfile"):
+                candidates.append((project_anchor / rel, project_anchor))
             if compose_path is not None:
-                # Legacy: compose dir's parent (kept for callers whose compose file
-                # sits in a subdir of the project root).
-                search_paths.append(project_anchor / ".." / "Dockerfile")
+                # Legacy: compose dir's parent (kept for callers whose compose
+                # file sits in a subdir of the project root). Containment is
+                # still enforced against the project anchor.
+                candidates.append((project_anchor / ".." / "Dockerfile", project_anchor))
 
-        # If using projects directory, also search there
         if compose_path is not None and str(compose_path).startswith("/compose/"):
-            project_name = compose_path.stem
-            project_root = self.projects_directory / project_name
-            search_paths.extend(
-                [
-                    project_root / "Dockerfile",
-                    project_root / "docker" / "Dockerfile",
-                    project_root / "build" / "Dockerfile",
-                ]
-            )
+            project_root = self.projects_directory / compose_path.stem
+            for rel in ("Dockerfile", "docker/Dockerfile", "build/Dockerfile"):
+                candidates.append((project_root / rel, self.projects_directory))
 
-        for path in search_paths:
-            if path.exists() and path.is_file():
-                # Validate that the resolved path is safe (no traversal outside expected directories)
-                try:
-                    resolved = path.resolve()
-                    # Ensure path is under a safe directory (/compose, /projects, or the resolved anchor)
-                    safe_parents = [
-                        Path("/compose").resolve(),
-                        self.projects_directory.resolve(),
-                    ]
-                    if project_anchor is not None:
-                        safe_parents.append(project_anchor.resolve())
-                    if any(str(resolved).startswith(str(parent)) for parent in safe_parents):
-                        return path
-                    else:
-                        logger.warning(
-                            f"Dockerfile path outside safe directories, skipping: {sanitize_log_message(str(resolved))}"
-                        )
-                except (OSError, RuntimeError) as e:
-                    logger.warning(
-                        f"Could not validate Dockerfile path {sanitize_log_message(str(path))}: {sanitize_log_message(str(e))}"
-                    )
-                    continue
+        for path, trust_root in candidates:
+            if not (path.exists() and path.is_file()):
+                continue
+            try:
+                # sanitize_path resolves, asserts containment in trust_root, and
+                # rejects symlinks. CodeQL treats the return as a sanitized Path.
+                return sanitize_path(str(path), str(trust_root), allow_symlinks=False)
+            except (ValueError, FileNotFoundError) as e:
+                logger.warning(
+                    f"Dockerfile path outside trust root, skipping: "
+                    f"{sanitize_log_message(str(path))} - {sanitize_log_message(str(e))}"
+                )
 
         return None
 

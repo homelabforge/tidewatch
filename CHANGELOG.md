@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `DockerfileParser._find_dockerfile` validates candidate paths via `sanitize_path` (CodeQL-recognised barrier) instead of an ad-hoc `startswith` check — resolves CodeQL alerts py/path-injection (#688) and py/log-injection (#689)
+
 ## [3.10.0] - 2026-05-19
 
 ### Fixed
