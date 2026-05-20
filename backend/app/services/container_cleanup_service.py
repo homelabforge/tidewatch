@@ -12,6 +12,7 @@ from app.models.container import Container
 from app.models.dockerfile_dependency import DockerfileDependency
 from app.models.history import UpdateHistory
 from app.models.http_server import HttpServer
+from app.models.pending_scan_job import PendingScanJob
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.models.update import Update
@@ -106,6 +107,16 @@ class ContainerCleanupService:
                 await db.execute(
                     AppDependency.__table__.delete().where(
                         AppDependency.container_id == container.id
+                    )
+                )
+                # PendingScanJob references updates.id with NOT NULL FK, so
+                # historical scan jobs block the DELETE FROM updates below.
+                # Wipe them by walking the container's updates first.
+                await db.execute(
+                    PendingScanJob.__table__.delete().where(
+                        PendingScanJob.update_id.in_(
+                            select(Update.id).where(Update.container_id == container.id)
+                        )
                     )
                 )
                 await db.execute(
