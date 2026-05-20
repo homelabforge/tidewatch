@@ -7,11 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.app_dependency import AppDependency
 from app.models.container import Container
+from app.models.dockerfile_dependency import DockerfileDependency
 from app.models.history import UpdateHistory
+from app.models.http_server import HttpServer
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.models.update import Update
+from app.models.vulnerability_scan import VulnerabilityScan
 from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
@@ -64,7 +68,13 @@ class ContainerCleanupService:
 
         try:
             async with db.begin_nested():
-                # Delete related records
+                # Delete dependent records before the container.
+                #
+                # Tables with NOT NULL container_id and no DB-level CASCADE
+                # would otherwise have SQLAlchemy attempt to NULL the FK on
+                # parent delete and violate the NOT NULL constraint.
+                # vulnerability_scan, http_server, dockerfile_dependency,
+                # and app_dependency all fall into that bucket.
                 await db.execute(
                     UpdateHistory.__table__.delete().where(
                         UpdateHistory.container_id == container.id
@@ -78,6 +88,24 @@ class ContainerCleanupService:
                 await db.execute(
                     ContainerRestartLog.__table__.delete().where(
                         ContainerRestartLog.container_id == container.id
+                    )
+                )
+                await db.execute(
+                    VulnerabilityScan.__table__.delete().where(
+                        VulnerabilityScan.container_id == container.id
+                    )
+                )
+                await db.execute(
+                    HttpServer.__table__.delete().where(HttpServer.container_id == container.id)
+                )
+                await db.execute(
+                    DockerfileDependency.__table__.delete().where(
+                        DockerfileDependency.container_id == container.id
+                    )
+                )
+                await db.execute(
+                    AppDependency.__table__.delete().where(
+                        AppDependency.container_id == container.id
                     )
                 )
                 await db.execute(
