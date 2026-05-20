@@ -4076,6 +4076,8 @@ export interface components {
          * @description Container response schema.
          */
         ContainerSchema: {
+            /** Accepted Anchor Major */
+            accepted_anchor_major?: number | null;
             /**
              * Auto Restart Enabled
              * @default false
@@ -4131,6 +4133,8 @@ export interface components {
             };
             /** Last Checked */
             last_checked?: string | null;
+            /** Last Digest Major */
+            last_digest_major?: number | null;
             /** Last Updated */
             last_updated?: string | null;
             /** Latest Major Tag */
@@ -4169,6 +4173,8 @@ export interface components {
             scope: string;
             /** Service Name */
             service_name: string;
+            /** Stable Anchor Tag */
+            stable_anchor_tag?: string | null;
             /** Supply Chain Enabled */
             supply_chain_enabled?: boolean | null;
             /** Supply Chain Sensitivity */
@@ -4184,12 +4190,6 @@ export interface components {
             updated_at: string;
             /** Version Track */
             version_track?: string | null;
-            /** Stable Anchor Tag */
-            stable_anchor_tag?: string | null;
-            /** Accepted Anchor Major */
-            accepted_anchor_major?: number | null;
-            /** Last Digest Major */
-            last_digest_major?: number | null;
             /** Vulnforge Enabled */
             vulnforge_enabled: boolean;
         };
@@ -4227,6 +4227,8 @@ export interface components {
          * @description Container update request.
          */
         ContainerUpdate: {
+            /** Accepted Anchor Major */
+            accepted_anchor_major?: number | null;
             /** Health Check Auth */
             health_check_auth?: string | null;
             /** Health Check Method */
@@ -4243,12 +4245,10 @@ export interface components {
             release_source?: string | null;
             /** Scope */
             scope?: string | null;
-            /** Version Track */
-            version_track?: ("semver" | "calver") | null;
             /** Stable Anchor Tag */
             stable_anchor_tag?: string | null;
-            /** Accepted Anchor Major */
-            accepted_anchor_major?: number | null;
+            /** Version Track */
+            version_track?: ("semver" | "calver") | null;
             /** Vulnforge Enabled */
             vulnforge_enabled?: boolean | null;
         };

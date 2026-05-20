@@ -871,6 +871,17 @@
       "ContainerSchema": {
         "description": "Container response schema.",
         "properties": {
+          "accepted_anchor_major": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Anchor Major"
+          },
           "auto_restart_enabled": {
             "default": false,
             "title": "Auto Restart Enabled",
@@ -1004,6 +1015,17 @@
             ],
             "title": "Last Checked"
           },
+          "last_digest_major": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Digest Major"
+          },
           "last_updated": {
             "anyOf": [
               {
@@ -1088,6 +1110,17 @@
           "service_name": {
             "title": "Service Name",
             "type": "string"
+          },
+          "stable_anchor_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stable Anchor Tag"
           },
           "supply_chain_enabled": {
             "anyOf": [
@@ -1233,6 +1266,17 @@
       "ContainerUpdate": {
         "description": "Container update request.",
         "properties": {
+          "accepted_anchor_major": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Anchor Major"
+          },
           "health_check_auth": {
             "anyOf": [
               {
@@ -1320,6 +1364,17 @@
               }
             ],
             "title": "Scope"
+          },
+          "stable_anchor_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stable Anchor Tag"
           },
           "version_track": {
             "anyOf": [
