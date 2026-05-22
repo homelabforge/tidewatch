@@ -197,7 +197,16 @@ export default function Dashboard() {
     runningContainers: containers.length,
     autoUpdateEnabled: containers.filter((c) => c.policy === 'auto').length,
     staleContainers: updates.filter((u) => u.status === 'pending' && u.reason_type === 'stale').length,
-    pendingUpdates: updates.filter((u) => u.status === 'pending').length,
+    // Pending Updates excludes stale-type notifications (which have their
+    // own Stale Containers counter) and channel_shift records (which need
+    // explicit user acceptance and shouldn't inflate the routine-updates
+    // counter).
+    pendingUpdates: updates.filter(
+      (u) =>
+        u.status === 'pending' &&
+        u.reason_type !== 'stale' &&
+        u.update_kind !== 'channel_shift',
+    ).length,
   }), [containers, updates]);
 
   const policyStats = useMemo(() => {
