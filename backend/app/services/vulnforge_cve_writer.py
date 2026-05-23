@@ -43,7 +43,12 @@ async def write_cve_delta(
 
     update_record.cves_fixed = cves_fixed
     update_record.new_vulns = total_vulns
-    update_record.vuln_delta = len(cves_introduced) - len(cves_fixed)
+    # Phase 5 (D13): delta is the change in total vulnerability *count*, not
+    # a derived diff of introduced/fixed list lengths. Using list lengths
+    # masks orphan-tag class incidents (lidarr v3 -> v0.8 showed
+    # current=0, new=576, but delta computed as 177 because of overlap
+    # quirks). The actual count delta is what the auto-apply gate uses.
+    update_record.vuln_delta = total_vulns - (update_record.current_vulns or 0)
 
     history_result = await db.execute(
         select(UpdateHistory).where(UpdateHistory.update_id == update_id)

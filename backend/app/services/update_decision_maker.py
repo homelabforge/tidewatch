@@ -12,12 +12,17 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.services.registry_client import is_non_semver_tag
 from app.services.tag_fetcher import FetchTagsResponse
 from app.utils.version import get_version_change_type
+
+# Phase 3 (D11): slack window for the stale-tag heuristic. A candidate
+# pushed within ``STALE_TAG_SLACK`` of the current tag's push time is still
+# accepted, to handle harmless backfills (rebuild, mirror sync, etc.).
+STALE_TAG_SLACK = timedelta(days=7)
 
 if TYPE_CHECKING:
     from app.models.container import Container
@@ -295,6 +300,61 @@ class UpdateDecisionMaker:
                 digest_baseline_needed = True
                 trace.set_digest_update(None, new_digest, False)
 
+        # Phase 2 (D10): apply `:latest` lineage cap before promoting a
+        # semver candidate. If `:latest` resolves to a major below the
+        # candidate's major, the candidate is an orphan-tag suspect and
+        # must be rejected unless the container has opted out.
+        latest_lineage_major = getattr(fetch_response, "latest_lineage_major", None)
+        lineage_cap_disabled = bool(
+            getattr(container, "latest_lineage_cap_disabled", False) or False
+        )
+        if (
+            latest_tag
+            and latest_tag != current_tag
+            and isinstance(latest_lineage_major, int)
+            and not lineage_cap_disabled
+        ):
+            candidate_parsed = self._parse_candidate_major(latest_tag)
+            if candidate_parsed is not None and candidate_parsed > latest_lineage_major:
+                trace.trace["latest_cap_skip"] = {
+                    "candidate_tag": latest_tag,
+                    "candidate_major": candidate_parsed,
+                    "latest_cap_major": latest_lineage_major,
+                    "method": getattr(fetch_response, "latest_lineage_method", None),
+                }
+                trace.add_anomaly(
+                    f"latest_cap_skip: {latest_tag} (major={candidate_parsed}) > "
+                    f":latest major={latest_lineage_major}"
+                )
+                latest_tag = None  # Suppress this candidate for downstream logic.
+
+        # Phase 3 (D11): stale-tag heuristic. If the candidate was pushed
+        # well before the current tag, it's almost certainly an orphan /
+        # historical artifact — reject unless within slack window.
+        latest_pushed_at = getattr(fetch_response, "latest_tag_pushed_at", None)
+        current_pushed_at = getattr(fetch_response, "current_tag_pushed_at", None)
+        if (
+            latest_tag
+            and latest_tag != current_tag
+            and latest_pushed_at is not None
+            and current_pushed_at is not None
+            and latest_pushed_at < current_pushed_at - STALE_TAG_SLACK
+        ):
+            trace.trace["stale_tag_skip"] = {
+                "candidate_tag": latest_tag,
+                "candidate_pushed_at": latest_pushed_at.isoformat()
+                if hasattr(latest_pushed_at, "isoformat")
+                else str(latest_pushed_at),
+                "current_pushed_at": current_pushed_at.isoformat()
+                if hasattr(current_pushed_at, "isoformat")
+                else str(current_pushed_at),
+            }
+            trace.add_anomaly(
+                f"stale_tag_skip: candidate {latest_tag} pushed "
+                f"{latest_pushed_at} < current {current_pushed_at}"
+            )
+            latest_tag = None
+
         # Determine if there's an in-scope update
         has_update = False
         update_kind: str | None = None
@@ -381,6 +441,35 @@ class UpdateDecisionMaker:
             new_digest=new_digest,
             digest_baseline_needed=digest_baseline_needed,
         )
+
+    @staticmethod
+    def _parse_candidate_major(tag: str) -> int | None:
+        """Parse a candidate tag's major number using packaging.Version.
+
+        Returns None for tags that can't be parsed (non-semver). Tolerates
+        v-prefix and build metadata suffixes.
+        """
+        from packaging.version import InvalidVersion, Version
+
+        version = tag.lstrip("vV")
+        if "+" in version:
+            version = version.split("+", 1)[0]
+        try:
+            parsed = Version(version)
+        except InvalidVersion:
+            for sep in ("-", "_"):
+                if sep in version:
+                    base = version.split(sep, 1)[0]
+                    try:
+                        parsed = Version(base)
+                        break
+                    except InvalidVersion:
+                        continue
+            else:
+                return None
+        if parsed.release:
+            return parsed.release[0]
+        return None
 
     def _extract_suffix(self, tag: str) -> str | None:
         """Extract suffix from tag (e.g., '-alpine', '-slim').

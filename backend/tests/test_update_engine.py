@@ -872,6 +872,20 @@ class TestApplyUpdateOrchestration:
         mock_execute = AsyncMock(return_value={"success": True})
         mock_health = AsyncMock(return_value={"success": True, "method": "http_check"})
 
+        # Phase 4 (D12): data backup must succeed (or raise) — patch it to
+        # return a successful BackupResult so the orchestration test reaches
+        # the compose update phase.
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+
         with (
             patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
             patch(
@@ -881,6 +895,10 @@ class TestApplyUpdateOrchestration:
             patch.object(UpdateEngine, "_pull_docker_image", mock_pull),
             patch.object(UpdateEngine, "_execute_docker_compose", mock_execute),
             patch.object(UpdateEngine, "_validate_health_check", mock_health),
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
             patch(
                 "app.services.settings_service.SettingsService.get",
                 return_value="/var/run/docker.sock",
@@ -932,6 +950,17 @@ class TestApplyUpdateOrchestration:
             call_order.append("health_check")
             return {"success": True, "method": "http_check"}
 
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+
         with (
             patch.object(UpdateEngine, "_backup_compose_file", track_backup),
             patch(
@@ -941,6 +970,10 @@ class TestApplyUpdateOrchestration:
             patch.object(UpdateEngine, "_pull_docker_image", track_pull),
             patch.object(UpdateEngine, "_execute_docker_compose", track_execute),
             patch.object(UpdateEngine, "_validate_health_check", track_health),
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
             patch(
                 "app.services.settings_service.SettingsService.get",
                 return_value="/var/run/docker.sock",
@@ -1488,6 +1521,8 @@ class TestEventBusProgress:
         async def capture_event(event):
             events.append(event)
 
+        from app.services.data_backup_service import BackupResult
+
         with (
             patch.object(
                 UpdateEngine,
@@ -1512,6 +1547,17 @@ class TestEventBusProgress:
                 UpdateEngine,
                 "_validate_health_check",
                 AsyncMock(return_value={"success": True, "method": "http_check"}),
+            ),
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                AsyncMock(
+                    return_value=BackupResult(
+                        backup_id="bk-1",
+                        container_name="sonarr",
+                        status="success",
+                        mounts_backed_up=1,
+                    )
+                ),
             ),
             patch(
                 "app.services.settings_service.SettingsService.get",

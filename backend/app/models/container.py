@@ -53,6 +53,18 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     # My Projects feature
     is_my_project: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # Phase 2 (D10): per-container opt-out of the :latest lineage cap. The
+    # cap is default-on for every container; flip this to True for pins where
+    # :latest is intentionally on a different track (e.g. user on :bookworm
+    # while :latest is on :trixie).
+    latest_lineage_cap_disabled: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
+    # Phase 6 (D14): independent of scope, hold any major bump for manual
+    # approval. Default True — even a user with scope=major gets a chance
+    # to review a major before it auto-applies.
+    require_approval_for_major_change: Mapped[bool] = mapped_column(
+        Boolean, nullable=True, default=True
+    )
+
     # Status
     update_available: Mapped[bool] = mapped_column(
         Boolean, default=False, index=True

@@ -1581,3 +1581,55 @@ async def scan_http_servers(
             f"Missing module scanning HTTP servers for container {sanitize_log_message(str(container.id))}: {sanitize_log_message(str(e))}"
         )
         raise HTTPException(status_code=500, detail="HTTP server scanner not available")
+
+
+@router.get("/audit/permissive-scope", response_model=list[dict])
+async def audit_permissive_scope(
+    _admin: dict | None = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Phase 6 (D14): list containers with permissive auto-update scopes.
+
+    Returns containers where ``policy='auto'`` (or global ``auto_update_enabled``
+    is set) AND ``scope in ('major', 'minor')``. ``major`` rows come first.
+    Used by the dashboard widget to surface candidates for the lidarr-class
+    incident class so the user can demote them to ``patch``.
+    """
+    from app.services.settings_service import SettingsService
+
+    global_auto = await SettingsService.get_bool(db, "auto_update_enabled", default=False)
+
+    stmt = (
+        select(Container)
+        .where(
+            Container.scope.in_(("major", "minor")),
+        )
+        .order_by(Container.scope.desc(), Container.name.asc())
+    )
+    result = await db.execute(stmt)
+    containers = result.scalars().all()
+
+    rows: list[dict] = []
+    for c in containers:
+        # Include if container is on auto policy OR global auto is on.
+        if c.policy != "auto" and not global_auto:
+            continue
+        rows.append(
+            {
+                "id": c.id,
+                "name": c.name,
+                "image": c.image,
+                "current_tag": c.current_tag,
+                "scope": c.scope,
+                "policy": c.policy,
+                "registry": c.registry,
+                "global_auto_update_enabled": global_auto,
+                "require_approval_for_major_change": bool(
+                    c.require_approval_for_major_change
+                    if c.require_approval_for_major_change is not None
+                    else True
+                ),
+                "latest_lineage_cap_disabled": bool(c.latest_lineage_cap_disabled or False),
+            }
+        )
+    return rows

@@ -52,6 +52,11 @@ class FetchTagsRequest:
     current_digest: str | None = None
     version_track: str | None = None
     stable_anchor_major: int | None = None
+    # Phase 2 (D10): when True, resolve `:latest` lineage and expose
+    # ``latest_lineage_major`` on the response so the decision maker can
+    # reject candidates with major > cap. Default True (cap is opt-out per
+    # container).
+    latest_lineage_cap_enabled: bool = True
 
 
 @dataclass
@@ -86,6 +91,19 @@ class FetchTagsResponse:
     # containers (Phase 6.2). ``None`` if the tag is semver, the registry
     # client does not expose labels, or label resolution failed.
     current_tag_major: int | None = None
+    # Phase 1 (continuity check): union of majors successfully parsed from
+    # the candidate set across all pages scanned. Empty when the client did
+    # not enumerate candidates (e.g. pure digest tracking path).
+    candidate_majors_seen: set[int] | None = None
+    # Phase 2 (`:latest` lineage cap): upstream major of ``:latest``'s digest
+    # or its OCI image.version label. ``None`` if unavailable. The decision
+    # maker rejects any candidate whose major exceeds this cap (unless the
+    # container has opted out).
+    latest_lineage_major: int | None = None
+    latest_lineage_method: str | None = None  # "label", "digest_walk", "unresolved"
+    # Phase 3 (stale-tag heuristic): when each was last pushed/built.
+    latest_tag_pushed_at: Any | None = None  # datetime or None
+    current_tag_pushed_at: Any | None = None  # datetime or None
 
 
 class TagFetcher:
@@ -238,10 +256,17 @@ class TagFetcher:
                         except Exception as e:
                             logger.warning(f"Failed to fetch major tag for {request.image}: {e}")
 
-                    # For Docker Hub with semver tags, fetch all_tags after
-                    # get_latest_tag (which already made optimized API calls).
-                    # For non-semver tags, all_tags is not needed.
-                    if not all_tags and not is_non_semver:
+                    # Phase 7 (D15): drop the unconditional Docker Hub
+                    # ``get_all_tags`` re-fetch. The semver path already
+                    # scanned the first 5 pages and ``all_tags`` is only used
+                    # by the UI tag dropdown (which now lazy-fetches on
+                    # demand) and the non-semver digest path (handled
+                    # below). Re-paginating thousands of tags for
+                    # linuxserver/* / plex burned Docker Hub quota for no
+                    # downstream benefit.
+                    # For non-DockerHub registries, all_tags was already
+                    # populated above via the TagCache pre-population path.
+                    if not all_tags and not is_non_semver and client.uses_tag_cache_for_latest:
                         all_tags = await client.get_all_tags(request.image)
 
                     # Get metadata for non-semver tags (digest tracking)
@@ -293,6 +318,56 @@ class TagFetcher:
                             calver_blocked_tag,
                         )
 
+                    # Phase 1 (D9): expose candidate majors observed by the
+                    # client so callers / tests can audit continuity decisions.
+                    candidate_majors_seen = (
+                        set(getattr(client, "_last_candidate_majors_seen", set())) or None
+                    )
+
+                    # Phase 2 (D10): resolve `:latest` lineage cap. Default-on
+                    # for every container unless the caller explicitly opted
+                    # out. Best-effort — registries with no `:latest` tag or
+                    # no label/digest support return None and the cap is a
+                    # no-op for the decision maker.
+                    latest_lineage_major: int | None = None
+                    latest_lineage_method: str | None = None
+                    if request.latest_lineage_cap_enabled and not is_non_semver:
+                        try:
+                            from app.services.latest_lineage_resolver import (
+                                LatestLineageResolver,
+                            )
+
+                            resolver = LatestLineageResolver(client)
+                            res = await resolver.resolve(request.image, current_best=latest_tag)
+                            if res is not None:
+                                latest_lineage_major = res.major
+                                latest_lineage_method = res.method
+                            else:
+                                latest_lineage_method = "unresolved"
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug(
+                                "latest_lineage_resolver failed for %s: %s",
+                                request.image,
+                                exc,
+                            )
+                            latest_lineage_method = "unresolved"
+
+                    # Phase 3 (D11): collect pushed-at timestamps for the
+                    # stale-tag heuristic. Best-effort — clients that can't
+                    # expose this return None.
+                    latest_pushed = None
+                    current_pushed = None
+                    if latest_tag and not is_non_semver:
+                        try:
+                            latest_pushed = await self._fetch_pushed_at(
+                                client, request.image, latest_tag
+                            )
+                            current_pushed = await self._fetch_pushed_at(
+                                client, request.image, request.current_tag
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug("pushed_at fetch failed for %s: %s", request.image, exc)
+
                     # Create result
                     result = TagFetchResult(
                         tags=all_tags,
@@ -321,6 +396,11 @@ class TagFetcher:
                         cache_hit=False,
                         fetch_duration_ms=duration_ms,
                         current_tag_major=current_tag_major,
+                        candidate_majors_seen=candidate_majors_seen,
+                        latest_lineage_major=latest_lineage_major,
+                        latest_lineage_method=latest_lineage_method,
+                        latest_tag_pushed_at=latest_pushed,
+                        current_tag_pushed_at=current_pushed,
                     )
 
                 finally:
@@ -492,6 +572,49 @@ class TagFetcher:
                 )
 
         return decision
+
+    async def _fetch_pushed_at(self, client, image: str, tag: str):
+        """Phase 3 (D11): best-effort fetch of a tag's pushed/built timestamp.
+
+        For DockerHub, this comes from ``last_updated`` in the tag metadata
+        endpoint. For OCI registries the value comes from the image config
+        blob's ``org.opencontainers.image.created`` label (resolved via
+        ``get_image_labels``). Returns None when the registry exposes neither.
+        """
+        from datetime import datetime as _dt
+
+        # DockerHub-style metadata exposes last_updated directly.
+        try:
+            meta = await client.get_tag_metadata(image, tag)
+        except Exception:  # noqa: BLE001
+            meta = None
+        if isinstance(meta, dict):
+            last_updated = meta.get("last_updated")
+            if isinstance(last_updated, str):
+                try:
+                    return _dt.fromisoformat(last_updated.replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+            if isinstance(last_updated, _dt):
+                return last_updated
+
+        # OCI / label fallback.
+        try:
+            label_result = await client.get_image_labels(image, tag)
+        except Exception:  # noqa: BLE001
+            label_result = None
+        if isinstance(label_result, tuple) and label_result:
+            labels = label_result[0] if label_result else {}
+            if isinstance(labels, dict):
+                created = labels.get("org.opencontainers.image.created") or labels.get(
+                    "org.label-schema.build-date"
+                )
+                if isinstance(created, str):
+                    try:
+                        return _dt.fromisoformat(created.replace("Z", "+00:00"))
+                    except ValueError:
+                        return None
+        return None
 
     async def fetch_tags_for_key(
         self, key: ImageCheckKey, current_digest: str | None = None

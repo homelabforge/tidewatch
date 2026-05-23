@@ -13,12 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Positional `rc`/`alpha`/`beta` markers flag as prerelease (`rc-1.2.3`, `version-1.2.3-rc`)
 - LinuxServer develop and stable channels no longer share the `ls` variant
 - Arch-prefixed tags (`arm64v8-1.2.3`) now updatable
+- Backup failure during `apply_update` now aborts the update instead of silently continuing
+- `vuln_delta` calculation corrected to `new_vulns - current_vulns`
+- DockerHub semver path no longer re-fetches the full tag list after the page-capped scan
 
 ### Added
 - Opt-in per-container stable channel anchor (Settings → Update Policy) pins the upstream stable major and blocks cross-major candidates
 - `channel_shift` update kind for cross-major drift on mutable tags; never auto-approved
 - Multi-arch manifest index resolution and LinuxServer `build_version` label parsing
 - Migration 057: `stable_anchor_tag`, `accepted_anchor_major`, `last_digest_major` columns
+- Major-jump continuity check rejects candidates that skip intermediate majors (e.g., 3 → 8 with no 4/5/6/7)
+- `:latest` lineage cap (default-on, per-container opt-out via `latest_lineage_cap_disabled`) blocks candidates above `:latest`'s resolved major
+- `LatestLineageResolver` resolves `:latest`'s major via OCI image label first, falls back to digest-walk over top candidates
+- Stale-tag heuristic rejects candidates pushed earlier than current_tag (7-day slack)
+- CVE-delta auto-apply gate (`cve_delta_block_threshold`, default 50) in `_should_auto_approve`
+- Per-container `require_approval_for_major_change` (default true) holds major bumps for manual approval
+- Audit endpoint `GET /api/audit/permissive-scope` and dashboard widget for `auto_update + scope IN ('major','minor')` containers
+- Boot-time `/rollback-data/` writability health check
+- DockerHub queries use `?ordering=last_updated&name=<substring>` for volume reduction
+- Persistent ETag-revalidated tag cache (`tag_cache_entries` table) cuts steady-state registry load to mostly-304 conditional GETs
+- Migration 058: `latest_lineage_cap_disabled`, `require_approval_for_major_change` columns
+- Migration 059: `tag_cache_entries` table
 
 ### Removed
 - Dead helpers `extract_tag_pattern` and `tags_have_matching_pattern`

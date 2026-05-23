@@ -95,6 +95,15 @@ class SettingsService:
             "category": "scheduling",
             "description": "Maximum number of updates to auto-apply per run (rate limiting)",
         },
+        "cve_delta_block_threshold": {
+            "value": "50",
+            "category": "scheduling",
+            "description": (
+                "Hold updates for manual approval when net new CVE count "
+                "increases by more than this threshold. Defends against "
+                "orphan-tag downgrades (Phase 5 / D13)."
+            ),
+        },
         "check_concurrency_limit": {
             "value": "5",
             "category": "scheduling",

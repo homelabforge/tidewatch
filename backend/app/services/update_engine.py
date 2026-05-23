@@ -337,55 +337,68 @@ class UpdateEngine:
                 }
             )
 
-            # Step 1.5: Pre-update data backup (best-effort, non-blocking)
-            try:
-                from app.services.data_backup_service import DataBackupService
+            # Step 1.5: Pre-update data backup. Phase 4 (D12) — backup is the
+            # only mechanism that lets a user recover from a bad update, so a
+            # failure here MUST abort the update. The earlier "best-effort,
+            # continue on failure" branch let the lidarr v3 -> orphan v0.8
+            # incident proceed after the rollback dir came up unwritable.
+            from app.services.data_backup_service import DataBackupService
 
-                backup_service = DataBackupService()
+            backup_service = DataBackupService()
+            try:
                 data_backup_result = await backup_service.create_backup(
                     container.runtime_name,
                     timeout_seconds=300,
                     storage_key=container.service_name,
                 )
-                history.data_backup_id = data_backup_result.backup_id
-                history.data_backup_status = data_backup_result.status
-                await db.commit()
-
-                await event_bus.publish(
-                    {
-                        "type": "update-progress",
-                        "container_id": container.id,
-                        "container_name": container.name,
-                        "history_id": history.id,
-                        "phase": "data-backup",
-                        "progress": 0.2,
-                        "status": "in_progress",
-                        "step_id": "data_backup",
-                        "duration_ms": int(data_backup_result.duration_seconds * 1000),
-                        "error_code": (
-                            "BACKUP_FAILED" if data_backup_result.status == "failed" else None
-                        ),
-                        "message": (
-                            f"Data backup: {data_backup_result.status} "
-                            f"({data_backup_result.mounts_backed_up} mounts)"
-                        ),
-                    }
-                )
-
-                if data_backup_result.status == "failed":
-                    logger.warning(
-                        "Data backup failed for %s: %s. Continuing with update.",
-                        container.name,
-                        data_backup_result.error,
-                    )
             except Exception as backup_err:
-                logger.warning(
-                    "Data backup exception for %s: %s. Continuing with update.",
+                logger.error(
+                    "Data backup raised for %s: %s. Aborting update.",
                     container.name,
                     backup_err,
                 )
                 history.data_backup_status = "failed"
                 await db.commit()
+                raise Exception(
+                    f"Pre-update data backup raised: {backup_err}. "
+                    f"Update aborted to preserve recoverability."
+                ) from backup_err
+
+            history.data_backup_id = data_backup_result.backup_id
+            history.data_backup_status = data_backup_result.status
+            await db.commit()
+
+            await event_bus.publish(
+                {
+                    "type": "update-progress",
+                    "container_id": container.id,
+                    "container_name": container.name,
+                    "history_id": history.id,
+                    "phase": "data-backup",
+                    "progress": 0.2,
+                    "status": "in_progress",
+                    "step_id": "data_backup",
+                    "duration_ms": int(data_backup_result.duration_seconds * 1000),
+                    "error_code": (
+                        "BACKUP_FAILED" if data_backup_result.status == "failed" else None
+                    ),
+                    "message": (
+                        f"Data backup: {data_backup_result.status} "
+                        f"({data_backup_result.mounts_backed_up} mounts)"
+                    ),
+                }
+            )
+
+            if data_backup_result.status == "failed":
+                logger.error(
+                    "Data backup failed for %s: %s. Aborting update.",
+                    container.name,
+                    data_backup_result.error,
+                )
+                raise Exception(
+                    f"Pre-update data backup failed: {data_backup_result.error}. "
+                    f"Update aborted to preserve recoverability."
+                )
 
             # Step 2: Update compose file (digest-pinned if expected_digest is set)
             if getattr(update, "expected_digest", None):

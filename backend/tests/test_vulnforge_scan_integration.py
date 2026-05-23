@@ -191,7 +191,10 @@ class TestCveDeltaWriter:
         await db.refresh(update)
         assert update.cves_fixed == ["CVE-2024-0001", "CVE-2024-0002"]
         assert update.new_vulns == 10
-        assert update.vuln_delta == -1  # 1 introduced - 2 fixed
+        # Phase 5 (D13): vuln_delta is the change in total vulnerability
+        # *count* (new - current), not a derived diff of CVE list lengths.
+        # current_vulns defaults to 0 in this fixture so delta == new_vulns.
+        assert update.vuln_delta == 10
 
         # Verify UpdateHistory
         await db.refresh(history)

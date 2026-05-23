@@ -208,6 +208,27 @@ def is_non_semver_tag(tag: str) -> bool:
         return True
 
 
+def _is_continuous_major_jump(
+    current_major: int,
+    candidate_major: int,
+    available_majors: set[int],
+) -> bool:
+    """Phase 1 (D9): determine if a multi-major jump skips intermediate majors.
+
+    A candidate is "continuous" if either:
+      * it bumps the major by at most +1, OR
+      * every intermediate major (curr+1 .. cand-1) is observable in the
+        scanned candidate set.
+
+    Returns True if the jump is continuous (candidate may proceed) or False
+    if intermediate majors are missing (orphan tag, reject).
+    """
+    if candidate_major <= current_major + 1:
+        return True
+    missing = set(range(current_major + 1, candidate_major)) - available_majors
+    return not missing
+
+
 # Simple in-memory cache for registry tags with TTL
 class TagCache:
     """Thread-safe in-memory cache for registry tags with TTL."""
@@ -356,6 +377,11 @@ class RegistryClient(ABC):
         # get_latest_tag() call. Read by TagFetcher / update_checker after the call to surface
         # the mismatch in the UI (similar to latest_major_tag for scope violations).
         self._best_cross_scheme_rejected: str | None = None
+        # Phase 1 (D9): exposes the major version set observed in the last
+        # candidate scan so the tag fetcher can populate
+        # FetchTagsResponse.candidate_majors_seen. Empty when the client did
+        # not enumerate candidates (e.g. pure digest path).
+        self._last_candidate_majors_seen: set[int] = set()
 
     def _get_cache_key(self, image: str) -> str:
         """Generate cache key for image.
@@ -489,6 +515,7 @@ class RegistryClient(ABC):
         scope: str,
         version_track: str | None = None,
         stable_anchor_major: int | None = None,
+        available_majors: set[int] | None = None,
     ) -> bool:
         """Compare semantic versions based on scope.
 
@@ -497,6 +524,13 @@ class RegistryClient(ABC):
             candidate: Candidate version (e.g., "1.2.4")
             scope: Update scope (patch, minor, major)
             version_track: Override CalVer detection (None=auto, "semver", "calver")
+            stable_anchor_major: Phase 5 anchor bound; candidates with a
+                higher major are rejected.
+            available_majors: Phase 1 continuity check — union of majors the
+                caller observed in the scanned candidate set. When provided,
+                a multi-major jump (cand_major > curr_major + 1) is rejected
+                unless every intermediate major is present. ``None`` skips
+                the check (caller did not enumerate candidates).
 
         Returns:
             True if candidate is a valid update
@@ -584,6 +618,31 @@ class RegistryClient(ABC):
                 current,
                 cand_major,
                 stable_anchor_major,
+            )
+            return False
+
+        # Phase 1 (D9): continuity check on major jumps. A jump that skips
+        # intermediate majors is, in practice, an orphan tag, republished
+        # historical artifact, or developer test push. Reject any candidate
+        # whose major exceeds curr_major + 1 unless every intermediate major
+        # is observable in the scanned candidate set.
+        # CalVer is intentionally excluded — date-based "majors" (20260224)
+        # are not sequential integers and the continuity rule has no meaning.
+        if (
+            available_majors is not None
+            and not is_curr_calver
+            and not is_cand_calver
+            and cand_major > curr_major + 1
+            and not _is_continuous_major_jump(curr_major, cand_major, available_majors)
+        ):
+            missing = sorted(set(range(curr_major + 1, cand_major)) - available_majors)
+            logger.info(
+                "Rejecting non-continuous major jump for %s -> %s "
+                "(missing majors=%s, available=%s)",
+                current,
+                candidate,
+                missing,
+                sorted(available_majors),
             )
             return False
 
@@ -1085,11 +1144,28 @@ class DockerHubClient(RegistryClient):
         if "/" not in image:
             image = f"library/{image}"
 
-        url = f"{self.BASE_URL}/repositories/{image}/tags?page_size=100"
+        # Phase 8 (D16): Docker Hub's `?ordering=last_updated` surfaces real new
+        # versions on page 1 in nearly all cases and pushes historical orphan
+        # tags (e.g. lidarr's `8.1.2135`) onto later pages. `name=` is a
+        # substring filter — narrowing by current_tag's track when possible.
+        params = ["ordering=last_updated", "page_size=100"]
+        name_substring = self._derive_name_substring(current_tag, scope)
+        if name_substring:
+            params.append(f"name={name_substring}")
+        url = f"{self.BASE_URL}/repositories/{image}/tags?" + "&".join(params)
         best_tag = None
         current_version = self._parse_semver(current_tag)
         normalize_ls = self._is_linuxserver_image(image)
         current_variant = self._extract_variant_suffix(current_tag, normalize_ls=normalize_ls)
+        # Phase 1 (D9): collect majors observed in the candidate set so the
+        # comparator can reject non-contiguous major jumps.
+        candidate_majors: set[int] = set()
+        # Buffer all candidates so we can apply continuity check after we've
+        # scanned every page (otherwise a missing intermediate major on a
+        # later page would falsely reject a valid jump observed earlier).
+        candidates_for_compare: list[str] = []
+        if current_version is not None:
+            candidate_majors.add(current_version[0])
 
         try:
             # Fetch up to 500 tags (5 pages) max
@@ -1106,9 +1182,13 @@ class DockerHubClient(RegistryClient):
                     if tag_name.lower() == "latest":
                         continue
 
+                    parsed = self._parse_semver(tag_name)
                     # Skip non-semantic tags
-                    if not self._parse_semver(tag_name):
+                    if not parsed:
                         continue
+
+                    # Record observed major for continuity check
+                    candidate_majors.add(parsed[0])
 
                     # Skip pre-release tags unless explicitly allowed
                     if not include_prereleases and is_prerelease_tag(tag_name):
@@ -1122,28 +1202,11 @@ class DockerHubClient(RegistryClient):
                     ):
                         continue
 
-                    # Check if this is a valid update
-                    if self._compare_versions(
-                        current_tag,
-                        tag_name,
-                        scope,
-                        version_track,
-                        stable_anchor_major=stable_anchor_major,
-                    ):
-                        if best_tag is None or self._is_better_version(tag_name, best_tag):
-                            best_tag = tag_name
+                    candidates_for_compare.append(tag_name)
 
-                # Early exit if we found a good update and current page has old versions
-                if best_tag and current_version:
-                    # If this page has versions older than current, stop searching
-                    page_versions = [
-                        v for t in data.get("results", []) if (v := self._parse_semver(t["name"]))
-                    ]
-                    if page_versions and all(v <= current_version for v in page_versions):
-                        logger.debug(f"Early exit: found {best_tag}, rest are older")
-                        break
-
-                # Check for next page
+                # Check for next page (do NOT short-circuit on "older" pages —
+                # ordering=last_updated means later pages may carry valid
+                # historical major points we need for the continuity check).
                 url = data.get("next")
                 if not url:
                     break
@@ -1165,7 +1228,54 @@ class DockerHubClient(RegistryClient):
             logger.error(f"Invalid response data fetching tags for {image}: {e}")
             return None
 
+        # Now apply the comparator against the full scanned candidate set so
+        # the continuity check has every observed major.
+        for tag_name in candidates_for_compare:
+            if self._compare_versions(
+                current_tag,
+                tag_name,
+                scope,
+                version_track,
+                stable_anchor_major=stable_anchor_major,
+                available_majors=candidate_majors,
+            ):
+                if best_tag is None or self._is_better_version(tag_name, best_tag):
+                    best_tag = tag_name
+
+        # Expose observed majors so the caller can pass to FetchTagsResponse.
+        self._last_candidate_majors_seen = set(candidate_majors)
         return best_tag
+
+    @staticmethod
+    def _derive_name_substring(current_tag: str, scope: str) -> str | None:
+        """Phase 8 (D16): derive a Docker Hub ``name=`` substring filter.
+
+        Docker Hub's ``name=`` parameter is a server-side substring match, not
+        a complete filter — narrowing by current_tag's track reduces page
+        volume but client-side filtering must still apply. For ``scope=major``
+        we send no ``name`` filter and rely on ``ordering=last_updated``.
+
+        Returns the substring or None when no useful filter can be derived
+        (current_tag is non-semver, scope is major, etc.).
+        """
+        if scope == "major":
+            return None
+        clean = current_tag.lstrip("vV")
+        # Pull leading semver-ish chunk (digits and dots only) up to the first
+        # non-version separator. This avoids passing variant suffixes like
+        # "3.1.0-alpine" as the filter — we want the bare track shape.
+        match = re.match(r"^\d+(?:\.\d+){0,3}", clean)
+        if not match:
+            return None
+        parts = match.group(0).split(".")
+        if not parts:
+            return None
+        # patch => track to major.minor (e.g. "3.1."), minor => major (e.g. "3.")
+        if scope == "patch" and len(parts) >= 2:
+            return f"{parts[0]}.{parts[1]}."
+        if scope == "minor" and len(parts) >= 1:
+            return f"{parts[0]}."
+        return None
 
     async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
         """Get tag metadata from Docker Hub."""
@@ -1394,15 +1504,31 @@ class GHCRClient(RegistryClient):
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
+        # Phase 1 (D9): collect observed majors across the full tag list
+        # (including filtered-out variants/prereleases) so the comparator can
+        # judge continuity. Otherwise legitimate +2 jumps that skipped a
+        # prerelease-only major would false-reject.
+        candidate_majors: set[int] = set()
+        for raw_tag in tags:
+            parsed = self._parse_semver(raw_tag)
+            if parsed is not None:
+                candidate_majors.add(parsed[0])
+
         # Find best match
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(
-                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+                current_tag,
+                tag,
+                scope,
+                version_track,
+                stable_anchor_major=stable_anchor_major,
+                available_majors=candidate_majors,
             ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
+        self._last_candidate_majors_seen = set(candidate_majors)
         return best_tag
 
     async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
@@ -1591,7 +1717,12 @@ class LSCRClient(RegistryClient):
         # build-counter churn does not block updates across releases.
         current_variant = self._extract_variant_suffix(current_tag, normalize_ls=True)
         version_tags = []
+        # Phase 1 (D9): collect majors across the entire tag list.
+        candidate_majors: set[int] = set()
         for t in tags:
+            parsed = self._parse_semver(t)
+            if parsed is not None:
+                candidate_majors.add(parsed[0])
             # Skip pre-release tags unless explicitly allowed
             if not include_prereleases and is_prerelease_tag(t):
                 continue
@@ -1599,18 +1730,24 @@ class LSCRClient(RegistryClient):
             if self._extract_variant_suffix(t, normalize_ls=True) != current_variant:
                 continue
             # Only include tags that have valid semantic versions
-            if self._parse_semver(t) is not None:
+            if parsed is not None:
                 version_tags.append(t)
 
         # Find best match
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(
-                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+                current_tag,
+                tag,
+                scope,
+                version_track,
+                stable_anchor_major=stable_anchor_major,
+                available_majors=candidate_majors,
             ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
+        self._last_candidate_majors_seen = set(candidate_majors)
         return best_tag
 
     async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
@@ -1852,15 +1989,28 @@ class GCRClient(RegistryClient):
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
+        # Phase 1 (D9): collect candidate majors for continuity check
+        candidate_majors: set[int] = set()
+        for raw_tag in tags:
+            parsed = self._parse_semver(raw_tag)
+            if parsed is not None:
+                candidate_majors.add(parsed[0])
+
         # Find best match
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(
-                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+                current_tag,
+                tag,
+                scope,
+                version_track,
+                stable_anchor_major=stable_anchor_major,
+                available_majors=candidate_majors,
             ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
+        self._last_candidate_majors_seen = set(candidate_majors)
         return best_tag
 
     async def get_tag_metadata(self, image: str, tag: str) -> dict | None:
@@ -2002,15 +2152,28 @@ class QuayClient(RegistryClient):
             if self._extract_variant_suffix(tag, normalize_ls=normalize_ls) == current_variant
         ]
 
+        # Phase 1 (D9): collect candidate majors for continuity check
+        candidate_majors: set[int] = set()
+        for raw_tag in tags:
+            parsed = self._parse_semver(raw_tag)
+            if parsed is not None:
+                candidate_majors.add(parsed[0])
+
         # Find best match
         best_tag = None
         for tag in version_tags:
             if self._compare_versions(
-                current_tag, tag, scope, version_track, stable_anchor_major=stable_anchor_major
+                current_tag,
+                tag,
+                scope,
+                version_track,
+                stable_anchor_major=stable_anchor_major,
+                available_majors=candidate_majors,
             ):
                 if best_tag is None or self._is_better_version(tag, best_tag):
                     best_tag = tag
 
+        self._last_candidate_majors_seen = set(candidate_majors)
         return best_tag
 
     async def get_tag_metadata(self, image: str, tag: str) -> dict | None:

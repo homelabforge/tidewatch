@@ -268,13 +268,22 @@ class TestDockerHubOptimization:
 
     @pytest.mark.asyncio
     async def test_dockerhub_skips_eager_get_all_tags(self, mock_db, rate_limiter):
-        """Docker Hub should NOT call get_all_tags before get_latest_tag."""
+        """Docker Hub should NOT call get_all_tags at all (Phase 7 / D15).
+
+        ``_get_semver_update`` already paginates the first 500 tags inline
+        and ``all_tags`` is only needed by the UI tag dropdown (lazy fetch)
+        and the non-semver digest path. Re-paginating thousands of tags for
+        linuxserver/* / plex burned Docker Hub quota for no benefit.
+        """
         mock_client = AsyncMock()
         mock_client.get_latest_tag = AsyncMock(return_value="1.0.1")
         mock_client.get_latest_major_tag = AsyncMock(return_value=None)
         mock_client.get_all_tags = AsyncMock(return_value=["1.0.0", "1.0.1"])
         mock_client.uses_tag_cache_for_latest = False  # Docker Hub
         mock_client._is_non_semver_tag = MagicMock(return_value=False)
+        mock_client.get_image_labels = AsyncMock(return_value=None)
+        mock_client.get_tag_metadata = AsyncMock(return_value=None)
+        mock_client._last_candidate_majors_seen = set()
         mock_client.close = AsyncMock()
 
         with patch(
@@ -285,12 +294,7 @@ class TestDockerHubOptimization:
             request = make_request(registry="docker.io")
             await fetcher.fetch_tags(request)
 
-        # get_all_tags should be called AFTER get_latest_tag (not before)
-        # Verify call order: get_latest_tag first, then get_all_tags
-        calls = [c[0] for c in mock_client.method_calls]
-        latest_idx = next(i for i, c in enumerate(calls) if c == "get_latest_tag")
-        all_tags_idx = next(i for i, c in enumerate(calls) if c == "get_all_tags")
-        assert latest_idx < all_tags_idx
+        mock_client.get_all_tags.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ghcr_calls_get_all_tags_first(self, mock_db, rate_limiter):

@@ -187,6 +187,27 @@ async def lifespan(app: FastAPI):
         else:
             logger.info(f"Authentication enabled: auth_mode='{auth_mode}'")
 
+    # Phase 4 (D12): verify the /rollback-data/ directory is writable by the
+    # current process UID. Surface a warning banner if not — backups will
+    # raise during update apply, and the operator needs to know up front.
+    from app.services.data_backup_service import BACKUP_BASE_DIR
+
+    try:
+        BACKUP_BASE_DIR.mkdir(parents=True, exist_ok=True)
+        probe = BACKUP_BASE_DIR / ".tidewatch_writable_probe"
+        probe.write_text("ok")
+        probe.unlink(missing_ok=True)
+        app.state.rollback_data_writable = True
+    except OSError as exc:
+        app.state.rollback_data_writable = False
+        app.state.rollback_data_error = str(exc)
+        logger.error(
+            "⚠️  /rollback-data/ is not writable (%s). Data backups will fail "
+            "and updates will be aborted by Phase 4 safety. Fix volume "
+            "permissions before applying any update.",
+            exc,
+        )
+
     yield
 
     # Shutdown scheduler

@@ -44,7 +44,10 @@ class UpdateChecker:
 
     @staticmethod
     async def _should_auto_approve(
-        container: Container, update: Update, auto_update_enabled: bool
+        container: Container,
+        update: Update,
+        auto_update_enabled: bool,
+        db: AsyncSession | None = None,
     ) -> tuple[bool, str]:
         """Determine if an update should be automatically approved.
 
@@ -52,6 +55,9 @@ class UpdateChecker:
             container: Container being updated
             update: Update record
             auto_update_enabled: Global auto-update setting
+            db: Database session (for reading cve_delta_block_threshold).
+                Optional for backward-compatible tests; when None the CVE
+                delta gate uses the default 50.
 
         Returns:
             tuple[bool, str]: (should_approve, reason)
@@ -64,6 +70,38 @@ class UpdateChecker:
         # anchor tag) require explicit user acceptance regardless of policy.
         if getattr(update, "update_kind", None) == "channel_shift":
             return False, "channel shift — manual acceptance required for cross-major drift"
+
+        # Phase 5 (D13): CVE delta spike gate. A 576-vuln increase on an
+        # "upgrade" is physically impossible for a real upgrade; this catches
+        # orphan-tag downgrades that the comparator+lineage+stale checks let
+        # through.
+        threshold = 50
+        if db is not None:
+            try:
+                threshold = await SettingsService.get_int(
+                    db, "cve_delta_block_threshold", default=50
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        vuln_delta = getattr(update, "vuln_delta", 0) or 0
+        if vuln_delta > threshold:
+            return (
+                False,
+                f"cve_delta_spike: vuln_delta={vuln_delta} > cve_delta_block_threshold={threshold}",
+            )
+
+        # Phase 6 (D14): hold any major change for manual approval when the
+        # container has require_approval_for_major_change=True (default).
+        # Independent of scope — a power user with scope=major still gets
+        # a review checkpoint.
+        require_major_approval = bool(
+            getattr(container, "require_approval_for_major_change", True)
+            if getattr(container, "require_approval_for_major_change", None) is not None
+            else True
+        )
+        change_type = getattr(update, "change_type", None)
+        if require_major_approval and change_type == "major":
+            return False, "major_change_held: manual approval required for major bump"
 
         # Check global setting
         if not auto_update_enabled:
@@ -760,7 +798,7 @@ class UpdateChecker:
             db, "auto_update_enabled", default=False
         )
         should_approve, approval_reason = await UpdateChecker._should_auto_approve(
-            container, update, auto_update_enabled
+            container, update, auto_update_enabled, db=db
         )
 
         # Self-managed infrastructure carve-out: never auto-approve. Apply path
