@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-05-23
+
 ### Fixed
 - `_normalize_version` preserves 4-segment release tails so Sonarr-style `4.0.17.2952` patch updates detect correctly
 - Prerelease tags can now upgrade to GA (`1.2.3rc1` → `1.2.3`)
