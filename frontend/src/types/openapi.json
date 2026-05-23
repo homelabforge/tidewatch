@@ -6471,6 +6471,38 @@
         ]
       }
     },
+    "/api/v1/containers/audit/permissive-scope": {
+      "get": {
+        "description": "Phase 6 (D14): list containers with permissive auto-update scopes.\n\nReturns containers where ``policy='auto'`` (or global ``auto_update_enabled``\nis set) AND ``scope in ('major', 'minor')``. ``major`` rows come first.\nUsed by the dashboard widget to surface candidates for the lidarr-class\nincident class so the user can demote them to ``patch``.",
+        "operationId": "audit_permissive_scope_api_v1_containers_audit_permissive_scope_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Audit Permissive Scope Api V1 Containers Audit Permissive Scope Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Audit Permissive Scope",
+        "tags": [
+          "containers"
+        ]
+      }
+    },
     "/api/v1/containers/dockerfile-dependencies/check-updates": {
       "post": {
         "description": "Check all Dockerfile dependencies for available updates.\n\nThis will query Docker registries to check if newer versions\nof base images are available.\n\nReturns:\n    Statistics about the update check",

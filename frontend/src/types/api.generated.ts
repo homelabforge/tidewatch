@@ -777,6 +777,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/containers/audit/permissive-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Permissive Scope
+         * @description Phase 6 (D14): list containers with permissive auto-update scopes.
+         *
+         *     Returns containers where ``policy='auto'`` (or global ``auto_update_enabled``
+         *     is set) AND ``scope in ('major', 'minor')``. ``major`` rows come first.
+         *     Used by the dashboard widget to surface candidates for the lidarr-class
+         *     incident class so the user can demote them to ``patch``.
+         */
+        get: operations["audit_permissive_scope_api_v1_containers_audit_permissive_scope_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/containers/dockerfile-dependencies/check-updates": {
         parameters: {
             query?: never;
@@ -6519,6 +6544,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_permissive_scope_api_v1_containers_audit_permissive_scope_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
         };
