@@ -104,16 +104,18 @@ def _make_container(**overrides):
 
 
 def _make_response(**kwargs):
+    from typing import Any
+
     from app.services.tag_fetcher import FetchTagsResponse
 
-    base = dict(
-        latest_tag=None,
-        latest_major_tag=None,
-        all_tags=[],
-        metadata=None,
-        cache_hit=False,
-        fetch_duration_ms=1.0,
-    )
+    base: dict[str, Any] = {
+        "latest_tag": None,
+        "latest_major_tag": None,
+        "all_tags": [],
+        "metadata": None,
+        "cache_hit": False,
+        "fetch_duration_ms": 1.0,
+    }
     base.update(kwargs)
     return FetchTagsResponse(**base)
 
