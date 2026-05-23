@@ -142,4 +142,5 @@ class PersistentTagCache:
             {"threshold": threshold},
         )
         await self._db.commit()
-        return result.rowcount or 0
+        deleted: int = result.rowcount or 0  # type: ignore[assignment]
+        return deleted
