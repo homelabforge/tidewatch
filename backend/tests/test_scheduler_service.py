@@ -763,6 +763,26 @@ class TestAutoApplyJob:
             # Should not raise
             await scheduler_instance._run_auto_apply()
 
+    async def test_skips_auto_apply_when_check_job_active(
+        self, scheduler_instance, mock_settings, mock_check_job_service, db
+    ):
+        # Concurrent check + auto-apply reproducibly crashed a Granian
+        # worker mid-update; auto-apply must back off until the check
+        # finishes.
+        active_job = MagicMock()
+        active_job.id = 42
+        mock_check_job_service.get_active_job = AsyncMock(return_value=active_job)
+
+        # auto_update_enabled lookup would normally be reached after the
+        # active-check guard; assert it's NOT consulted, proving we
+        # short-circuited before any pull/recreate work.
+        mock_settings.get_bool.reset_mock()
+
+        await scheduler_instance._run_auto_apply()
+
+        mock_check_job_service.get_active_job.assert_awaited_once()
+        mock_settings.get_bool.assert_not_called()
+
 
 class TestMetricsJobs:
     """Test metrics collection and cleanup jobs."""

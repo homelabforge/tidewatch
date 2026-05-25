@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Container log viewer renders ANSI color codes as styled spans instead of raw `\x1b[...m` gibberish; Copy/Download strip ANSI for clean plain text
+- Auto-apply skips its cycle when the 6h check job is still running, preventing the Granian worker crash from concurrent registry pagination overlapping a pull subprocess
+
 ## [3.11.0] - 2026-05-23
 
 ### Fixed

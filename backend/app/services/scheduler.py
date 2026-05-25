@@ -328,6 +328,20 @@ class SchedulerService:
 
         try:
             async with AsyncSessionLocal() as db:
+                # Skip if the check job is still running. Their concurrent
+                # registry traffic (especially deep tag pagination from the
+                # 6h check overlapping with the pull subprocess fired by
+                # auto-apply) reproducibly crashed a Granian worker, taking
+                # the whole app down mid-update. The next 5-min cycle will
+                # pick the work up once the check finishes.
+                active_check = await CheckJobService.get_active_job(db)
+                if active_check:
+                    logger.info(
+                        f"Skipping auto-apply - check job {active_check.id} "
+                        f"still running (will retry next cycle)"
+                    )
+                    return
+
                 # Check if auto-update is enabled globally
                 auto_update_enabled = await SettingsService.get_bool(
                     db, "auto_update_enabled", default=False
