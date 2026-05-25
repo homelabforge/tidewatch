@@ -2370,49 +2370,62 @@
         "type": "object"
       },
       "OIDCTestResult": {
-        "description": "Result of OIDC connection test.",
+        "description": "Result of OIDC connection test (canonical wire contract per plan \u00a75.4(4)).\n\nSuccess: ok=True with discovered issuer + supported algorithms.\nFailure: ok=False with a short machine-readable error code and optional human-readable detail.",
         "properties": {
-          "endpoints_found": {
-            "default": false,
-            "title": "Endpoints Found",
-            "type": "boolean"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "metadata": {
+          "algorithms_supported": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Metadata"
+            "title": "Algorithms Supported"
           },
-          "metadata_valid": {
-            "default": false,
-            "title": "Metadata Valid",
-            "type": "boolean"
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           },
-          "provider_reachable": {
-            "default": false,
-            "title": "Provider Reachable",
-            "type": "boolean"
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           },
-          "success": {
-            "title": "Success",
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "ok": {
+            "title": "Ok",
             "type": "boolean"
           }
         },
         "required": [
-          "success"
+          "ok"
         ],
         "title": "OIDCTestResult",
         "type": "object"

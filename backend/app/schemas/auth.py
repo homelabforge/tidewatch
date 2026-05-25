@@ -158,14 +158,17 @@ class OIDCLinkRequest(BaseModel):
 
 
 class OIDCTestResult(BaseModel):
-    """Result of OIDC connection test."""
+    """Result of OIDC connection test (canonical wire contract per plan §5.4(4)).
 
-    success: bool
-    provider_reachable: bool = False
-    metadata_valid: bool = False
-    endpoints_found: bool = False
-    errors: list[str] = Field(default_factory=list)
-    metadata: dict | None = None
+    Success: ok=True with discovered issuer + supported algorithms.
+    Failure: ok=False with a short machine-readable error code and optional human-readable detail.
+    """
+
+    ok: bool
+    error: str | None = None
+    detail: str | None = None
+    issuer: str | None = None
+    algorithms_supported: list[str] | None = None
 
 
 class OIDCProviderMetadata(BaseModel):

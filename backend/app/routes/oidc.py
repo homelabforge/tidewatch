@@ -65,8 +65,8 @@ async def get_oidc_config(
     # Get OIDC config from settings
     config = await oidc_service.get_oidc_config(db)
 
-    # Mask client_secret for security
-    masked_secret = oidc_service.mask_secret(config.get("client_secret", ""))
+    # Canonical mask per §5.4(3): literal "********" placeholder if stored, "" otherwise.
+    masked_secret = oidc_service.display_mask_secret(config.get("client_secret", ""))
 
     return {
         "enabled": config.get("enabled", "false").lower() == "true",
@@ -116,15 +116,18 @@ async def update_oidc_config(
         sanitize_log_message(oidc_config.redirect_uri),
     )
 
-    # If client_secret is masked, keep the existing secret instead of overwriting
+    # §5.4(2): empty string OR masked placeholder = preserve stored secret.
     client_secret = oidc_config.client_secret
-    if oidc_service.is_masked_secret(client_secret):
+    if not client_secret or oidc_service.is_masked_secret(client_secret):
         existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
         client_secret = existing_secret
 
+    # §5.4(1): strip trailing slash and whitespace from issuer URL before persisting.
+    issuer_url = oidc_config.issuer_url.strip().rstrip("/")
+
     # Update OIDC settings
     await SettingsService.set(db, "oidc_enabled", str(oidc_config.enabled).lower())
-    await SettingsService.set(db, "oidc_issuer_url", oidc_config.issuer_url)
+    await SettingsService.set(db, "oidc_issuer_url", issuer_url)
     await SettingsService.set(db, "oidc_client_id", oidc_config.client_id)
     await SettingsService.set(db, "oidc_client_secret", client_secret or "")
     await SettingsService.set(db, "oidc_provider_name", oidc_config.provider_name)
@@ -169,29 +172,56 @@ async def test_oidc_connection(
             detail="Not authenticated",
         )
 
-    # If client_secret is masked, use existing secret
+    # If client_secret is empty or masked, use existing stored secret.
     client_secret = oidc_config.client_secret
-    if oidc_service.is_masked_secret(client_secret):
+    if not client_secret or oidc_service.is_masked_secret(client_secret):
         existing_secret = await SettingsService.get(db, "oidc_client_secret", default="")
         client_secret = existing_secret
 
+    # Normalize issuer URL for the discovery call (same rule as save).
+    issuer_url = oidc_config.issuer_url.strip().rstrip("/")
+
     # Convert to config dict
     config = {
-        "issuer_url": sanitize_log_message(oidc_config.issuer_url),
-        "client_id": sanitize_log_message(oidc_config.client_id),
+        "issuer_url": issuer_url,
+        "client_id": oidc_config.client_id,
         "client_secret": client_secret,
     }
 
-    # Test connection
-    result = await oidc_service.test_oidc_connection(config)
+    # Test connection (service returns the verbose shape; we adapt to canonical wire contract below).
+    raw = await oidc_service.test_oidc_connection(config)
+
+    if raw.get("success"):
+        metadata = raw.get("metadata") or {}
+        response = {
+            "ok": True,
+            "issuer": metadata.get("issuer") or issuer_url,
+            "algorithms_supported": metadata.get("id_token_signing_alg_values_supported") or [],
+        }
+    else:
+        # Map the failure stage to a short machine code.
+        if not raw.get("provider_reachable"):
+            error_code = "unreachable"
+        elif not raw.get("metadata_valid"):
+            error_code = "invalid_metadata"
+        elif not raw.get("endpoints_found"):
+            error_code = "missing_endpoints"
+        else:
+            error_code = "discovery_failed"
+        errors = raw.get("errors") or []
+        response = {
+            "ok": False,
+            "error": error_code,
+            "detail": "; ".join(errors) if errors else None,
+        }
 
     logger.info(
         "OIDC connection test by admin %s: %s",
         sanitize_log_message(admin["username"]),
-        "success" if result["success"] else "failed",
+        "success" if response["ok"] else f"failed ({response.get('error')})",
     )
 
-    return result
+    return response
 
 
 # ============================================================================

@@ -59,27 +59,13 @@ export interface OIDCLinkRequest {
   password: string;
 }
 
-// OIDCTestResult stays hand-maintained: backend declares metadata as dict | None,
-// but frontend uses OIDCProviderMetadata (structured OIDC discovery doc).
-// Generating this would widen metadata to Record<string, unknown> | null.
-// Long-term fix: add OIDCProviderMetadata Pydantic model to backend OIDCTestResult.
+// Canonical OIDC test result per plan §5.4(4).
+// Success: ok=true with discovered issuer + supported algorithms.
+// Failure: ok=false with short machine error code and optional human-readable detail.
 export interface OIDCTestResult {
-  success: boolean;
-  provider_reachable: boolean;
-  metadata_valid: boolean;
-  endpoints_found: boolean;
-  errors: string[];
-  metadata?: OIDCProviderMetadata;
-}
-
-export interface OIDCProviderMetadata {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  userinfo_endpoint?: string;
-  jwks_uri: string;
-  scopes_supported?: string[];
-  response_types_supported?: string[];
-  subject_types_supported?: string[];
-  id_token_signing_alg_values_supported?: string[];
+  ok: boolean;
+  error?: string;
+  detail?: string;
+  issuer?: string;
+  algorithms_supported?: string[];
 }

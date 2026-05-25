@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.1] - 2026-05-25
+
+### Changed
+- OIDC admin `GET /api/v1/auth/oidc/config` returns the canonical `"********"` placeholder when a client secret is stored (empty string when unset)
+- OIDC admin `PUT /api/v1/auth/oidc/config` treats empty `client_secret` as "preserve" (no longer clears the stored secret); trailing slashes are stripped from `issuer_url` on save
+- `POST /api/v1/auth/oidc/test` returns the canonical `{ok, error, detail, issuer, algorithms_supported}` shape per the homelab OIDC settings contract
+- OIDC settings modal: added Username Claim and Email Claim inputs, Account Linking subsection (link token expiry + max password attempts), Callback URL display with copy button, and corrected Issuer URL helper text
+
 ### Dev Dependencies
 - **@tanstack/react-query-devtools**: 5.100.11 → 5.100.14
 - **@types/react**: 19.2.14 → 19.2.15

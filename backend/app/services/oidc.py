@@ -48,6 +48,11 @@ def generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
+# Canonical masked-secret placeholder returned by admin GET endpoints when a
+# client_secret is stored. See plan §5.4(3).
+MASKED_SECRET_PLACEHOLDER = "********"
+
+
 def mask_secret(secret: str, show_chars: int = 4) -> str:
     """Mask a secret value for safe logging.
 
@@ -73,14 +78,21 @@ def mask_secret(secret: str, show_chars: int = 4) -> str:
     return f"{secret[:show_chars]}****...****{secret[-show_chars:]}"
 
 
+def display_mask_secret(secret: str) -> str:
+    """Return the canonical placeholder used in admin GET responses."""
+    return MASKED_SECRET_PLACEHOLDER if secret else ""
+
+
 def is_masked_secret(secret: str) -> bool:
     """Detect if a secret value is already masked for display.
 
-    Accepts both the legacy "***" mask and the newer "****...****"
-    pattern returned by mask_secret().
+    Accepts the canonical "********" placeholder, the legacy "***" mask,
+    and the older "****...****" pattern returned by mask_secret().
     """
     if not secret:
         return False
+    if secret == MASKED_SECRET_PLACEHOLDER:
+        return True
     return secret.startswith("***") or "****...****" in secret
 
 

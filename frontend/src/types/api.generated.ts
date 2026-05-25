@@ -4670,32 +4670,22 @@ export interface components {
         };
         /**
          * OIDCTestResult
-         * @description Result of OIDC connection test.
+         * @description Result of OIDC connection test (canonical wire contract per plan §5.4(4)).
+         *
+         *     Success: ok=True with discovered issuer + supported algorithms.
+         *     Failure: ok=False with a short machine-readable error code and optional human-readable detail.
          */
         OIDCTestResult: {
-            /**
-             * Endpoints Found
-             * @default false
-             */
-            endpoints_found: boolean;
-            /** Errors */
-            errors?: string[];
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Metadata Valid
-             * @default false
-             */
-            metadata_valid: boolean;
-            /**
-             * Provider Reachable
-             * @default false
-             */
-            provider_reachable: boolean;
-            /** Success */
-            success: boolean;
+            /** Algorithms Supported */
+            algorithms_supported?: string[] | null;
+            /** Detail */
+            detail?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Issuer */
+            issuer?: string | null;
+            /** Ok */
+            ok: boolean;
         };
         /**
          * PauseRestartRequest

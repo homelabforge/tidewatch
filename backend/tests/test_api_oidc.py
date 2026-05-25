@@ -39,7 +39,7 @@ class TestOIDCConfigEndpoint:
         assert data["provider_name"] == "Example Provider"
 
     async def test_get_config_masks_client_secret(self, authenticated_client, db):
-        """Test client secret is masked in response."""
+        """Test client secret returns the canonical "********" placeholder when set."""
         from app.services.settings_service import SettingsService
 
         await SettingsService.set(
@@ -50,9 +50,20 @@ class TestOIDCConfigEndpoint:
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        # Secret should be masked
+        # Canonical wire contract per plan §5.4(3): literal "********" when stored, "" when absent.
+        assert data["client_secret"] == "********"
         assert "very-long-secret-key-that-should-be-masked" not in data["client_secret"]
-        assert "*" in data["client_secret"]
+
+    async def test_get_config_empty_secret_returns_empty_string(self, authenticated_client, db):
+        """When no secret is stored, GET returns empty string (not the placeholder)."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "oidc_client_secret", "")
+
+        response = await authenticated_client.get("/api/v1/auth/oidc/config")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["client_secret"] == ""
 
     async def test_get_config_requires_auth(self, client, db):
         """Test requires authentication."""
@@ -146,8 +157,50 @@ class TestUpdateOIDCConfigEndpoint:
         assert data["email_claim"] == "mail"
         assert data["link_token_expire_minutes"] == 10
         assert data["link_max_password_attempts"] == 5
-        # Secret is masked on GET
-        assert "*" in data["client_secret"]
+        # Canonical mask per §5.4(3).
+        assert data["client_secret"] == "********"
+
+    async def test_update_config_preserves_secret_on_empty_string(self, authenticated_client, db):
+        """Empty client_secret on PUT MUST preserve the stored secret (§5.4(2))."""
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "oidc_client_secret", "preserved-secret")
+
+        config_data = {
+            "enabled": True,
+            "issuer_url": "https://auth.example.com",
+            "client_id": "test-client",
+            "client_secret": "",  # Empty = preserve
+            "provider_name": "Provider",
+            "scopes": "openid",
+            "redirect_uri": "",
+        }
+
+        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
+        assert response.status_code == status.HTTP_200_OK
+
+        secret = await SettingsService.get(db, "oidc_client_secret")
+        assert secret == "preserved-secret"
+
+    async def test_update_config_strips_issuer_trailing_slash(self, authenticated_client, db):
+        """Backend MUST rstrip trailing slash from issuer_url (§5.4(1))."""
+        from app.services.settings_service import SettingsService
+
+        config_data = {
+            "enabled": True,
+            "issuer_url": "https://auth.example.com/auth/v1/",
+            "client_id": "test-client",
+            "client_secret": "secret",
+            "provider_name": "Provider",
+            "scopes": "openid",
+            "redirect_uri": "",
+        }
+
+        response = await authenticated_client.put("/api/v1/auth/oidc/config", json=config_data)
+        assert response.status_code == status.HTTP_200_OK
+
+        stored = await SettingsService.get(db, "oidc_issuer_url")
+        assert stored == "https://auth.example.com/auth/v1"
 
     async def test_update_config_requires_auth(self, client, db):
         """Test requires authentication."""
@@ -174,7 +227,7 @@ class TestOIDCTestEndpoint:
     """Test suite for POST /api/v1/auth/oidc/test endpoint."""
 
     async def test_oidc_test_connection_success(self, authenticated_client, db):
-        """Test OIDC connection test with valid configuration."""
+        """Test OIDC connection test returns canonical {ok, issuer, algorithms_supported}."""
         from app.services.settings_service import SettingsService
 
         # Set up valid configuration
@@ -190,22 +243,62 @@ class TestOIDCTestEndpoint:
             "redirect_uri": "",
         }
 
-        # Mock the test_oidc_connection to return success
+        # Mock the verbose service response; route should map to canonical envelope.
         with patch(
             "app.routes.oidc.oidc_service.test_oidc_connection", new_callable=AsyncMock
         ) as mock_test:
             mock_test.return_value = {
                 "success": True,
-                "message": "Successfully connected to OIDC provider",
-                "provider_name": "Provider",
-                "issuer": "https://auth.example.com",
+                "provider_reachable": True,
+                "metadata_valid": True,
+                "endpoints_found": True,
+                "errors": [],
+                "metadata": {
+                    "issuer": "https://auth.example.com",
+                    "id_token_signing_alg_values_supported": ["EdDSA", "RS256"],
+                },
             }
 
             response = await authenticated_client.post("/api/v1/auth/oidc/test", json=config_data)
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
-            assert data["success"] is True
+            assert data["ok"] is True
+            assert data["issuer"] == "https://auth.example.com"
+            assert data["algorithms_supported"] == ["EdDSA", "RS256"]
+
+    async def test_oidc_test_connection_failure_returns_canonical_error(
+        self, authenticated_client, db
+    ):
+        """Test failure path returns canonical {ok: false, error, detail}."""
+        config_data = {
+            "enabled": True,
+            "issuer_url": "https://bad.example.com",
+            "client_id": "test-client",
+            "client_secret": "",
+            "provider_name": "Provider",
+            "scopes": "openid",
+            "redirect_uri": "",
+        }
+
+        with patch(
+            "app.routes.oidc.oidc_service.test_oidc_connection", new_callable=AsyncMock
+        ) as mock_test:
+            mock_test.return_value = {
+                "success": False,
+                "provider_reachable": False,
+                "metadata_valid": False,
+                "endpoints_found": False,
+                "errors": ["Failed to fetch provider metadata"],
+                "metadata": None,
+            }
+
+            response = await authenticated_client.post("/api/v1/auth/oidc/test", json=config_data)
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+            assert data["ok"] is False
+            assert data["error"] == "unreachable"
+            assert "fetch provider metadata" in (data.get("detail") or "")
 
     async def test_oidc_test_requires_auth(self, client, db):
         """Test requires authentication."""

@@ -119,13 +119,39 @@ interface OidcConfigFormProps {
   saving: boolean;
   testing: boolean;
 }
+// Canonical mask placeholder per plan §5.4(3) — the GET endpoint returns this
+// when a secret is stored. We treat it as "preserve existing" on save and never
+// re-submit it as a real value.
+const MASKED_SECRET_PLACEHOLDER = '********';
+
 function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testing }: OidcConfigFormProps) {
   const [oidcConfig, setOidcConfig] = useState<OIDCConfig>(() => initialConfig);
   const [showOidcSecret, setShowOidcSecret] = useState(false);
+  const [secretCleared, setSecretCleared] = useState(false);
+  const [copiedCallback, setCopiedCallback] = useState(false);
+
+  const callbackUrl = `${window.location.origin}/api/v1/auth/oidc/callback`;
+
+  // §5.4(2): if the user did not touch the masked secret, send empty string so
+  // the backend preserves the stored value. Never send the literal "********" back.
+  const buildSubmitConfig = (cfg: OIDCConfig): OIDCConfig => {
+    const submitSecret = cfg.client_secret === MASKED_SECRET_PLACEHOLDER ? '' : cfg.client_secret;
+    return { ...cfg, client_secret: submitSecret };
+  };
+
+  const handleCopyCallback = async () => {
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopiedCallback(true);
+      setTimeout(() => setCopiedCallback(false), 1500);
+    } catch {
+      // Clipboard API unavailable — silent. User can still select+copy manually.
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-tide-surface rounded-lg shadow-xl max-w-2xl w-full p-6">
+      <div className="bg-tide-surface rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Shield className="w-6 h-6 text-primary" />
@@ -140,7 +166,7 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm font-medium text-tide-text mb-1">Enable OIDC/SSO</label>
-              <p className="text-sm text-tide-text-muted">Allow users to log in with Single Sign-On</p>
+              <p className="text-sm text-tide-text-muted">Allow users to sign in with OIDC</p>
             </div>
             <button
               type="button"
@@ -165,9 +191,12 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                   value={oidcConfig.issuer_url}
                   onChange={(e) => setOidcConfig({ ...oidcConfig, issuer_url: e.target.value })}
                   disabled={saving}
-                  placeholder="https://auth.example.com"
+                  placeholder="https://rauthy.example.com/auth/v1"
                   className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-xs text-tide-text-muted">
+                  Base issuer URL — e.g. <code>https://rauthy.example.com/auth/v1</code>. The app appends <code>/.well-known/openid-configuration</code> itself; do not include it.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-tide-text mb-1">Client ID</label>
@@ -178,6 +207,7 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                   disabled={saving}
                   className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-xs text-tide-text-muted">OIDC client identifier from your IdP.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-tide-text mb-1">Client Secret</label>
@@ -185,8 +215,20 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                   <input
                     type={showOidcSecret ? 'text' : 'password'}
                     value={oidcConfig.client_secret}
-                    onChange={(e) => setOidcConfig({ ...oidcConfig, client_secret: e.target.value })}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setOidcConfig({ ...oidcConfig, client_secret: v });
+                      if (v === '') setSecretCleared(true);
+                    }}
+                    onFocus={() => {
+                      // First focus on a masked placeholder clears the field so the user can type a new value.
+                      if (oidcConfig.client_secret === MASKED_SECRET_PLACEHOLDER && !secretCleared) {
+                        setOidcConfig({ ...oidcConfig, client_secret: '' });
+                        setSecretCleared(true);
+                      }
+                    }}
                     disabled={saving}
+                    placeholder={initialConfig.client_secret === MASKED_SECRET_PLACEHOLDER ? 'Leave blank to keep existing' : ''}
                     className="w-full px-3 py-2 pr-10 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                   />
                   <button
@@ -197,6 +239,7 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                     {showOidcSecret ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                <p className="mt-1 text-xs text-tide-text-muted">Leave blank to keep existing.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-tide-text mb-1">Provider Name</label>
@@ -205,9 +248,10 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                   value={oidcConfig.provider_name}
                   onChange={(e) => setOidcConfig({ ...oidcConfig, provider_name: e.target.value })}
                   disabled={saving}
-                  placeholder="Authentik"
+                  placeholder="Rauthy"
                   className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-xs text-tide-text-muted">Display name shown on the login button (e.g. &ldquo;Rauthy&rdquo;).</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-tide-text mb-1">Scopes</label>
@@ -216,17 +260,99 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                   value={oidcConfig.scopes}
                   onChange={(e) => setOidcConfig({ ...oidcConfig, scopes: e.target.value })}
                   disabled={saving}
+                  placeholder="openid profile email"
                   className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-xs text-tide-text-muted">Space-separated. Default: <code>openid profile email</code>.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-tide-text mb-1">Redirect URI (read-only)</label>
+                <label className="block text-sm font-medium text-tide-text mb-1">Username Claim</label>
                 <input
                   type="text"
-                  value={oidcConfig.redirect_uri || `${window.location.origin}/api/v1/auth/oidc/callback`}
-                  disabled
-                  className="w-full px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted cursor-not-allowed"
+                  value={oidcConfig.username_claim ?? 'preferred_username'}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, username_claim: e.target.value })}
+                  disabled={saving}
+                  placeholder="preferred_username"
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
                 />
+                <p className="mt-1 text-xs text-tide-text-muted">Default: <code>preferred_username</code>.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Email Claim</label>
+                <input
+                  type="text"
+                  value={oidcConfig.email_claim ?? 'email'}
+                  onChange={(e) => setOidcConfig({ ...oidcConfig, email_claim: e.target.value })}
+                  disabled={saving}
+                  placeholder="email"
+                  className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                />
+                <p className="mt-1 text-xs text-tide-text-muted">Default: <code>email</code>.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-tide-text mb-1">Callback URL</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={callbackUrl}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-tide-bg border border-tide-border rounded-lg text-tide-text-muted font-mono text-xs cursor-not-allowed"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyCallback}
+                    className="px-3 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg text-sm transition-colors"
+                  >
+                    {copiedCallback ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-tide-text-muted">Copy this into your IdP&apos;s redirect URI list.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-tide-text-muted bg-tide-bg/40 border border-tide-border rounded-lg p-3">
+                <div><span className="font-medium text-tide-text">Token algorithms:</span> EdDSA preferred; RS256 accepted.</div>
+                <div><span className="font-medium text-tide-text">PKCE:</span> Always enabled (S256).</div>
+              </div>
+
+              <div className="pt-2 border-t border-tide-border">
+                <h3 className="text-sm font-semibold text-tide-text mb-3">Account Linking</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-tide-text mb-1">Link Token Expiry (minutes)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={oidcConfig.link_token_expire_minutes ?? 5}
+                      onChange={(e) =>
+                        setOidcConfig({
+                          ...oidcConfig,
+                          link_token_expire_minutes: Number(e.target.value) || 5,
+                        })
+                      }
+                      disabled={saving}
+                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                    />
+                    <p className="mt-1 text-xs text-tide-text-muted">How long the pending-link token stays valid (1–60).</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-tide-text mb-1">Max Password Attempts</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={oidcConfig.link_max_password_attempts ?? 3}
+                      onChange={(e) =>
+                        setOidcConfig({
+                          ...oidcConfig,
+                          link_max_password_attempts: Number(e.target.value) || 3,
+                        })
+                      }
+                      disabled={saving}
+                      className="w-full px-3 py-2 bg-tide-surface border border-tide-border rounded-lg text-tide-text focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+                    />
+                    <p className="mt-1 text-xs text-tide-text-muted">How many password tries before the link token is invalidated (1–10).</p>
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -242,7 +368,7 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
           {oidcConfig.enabled && (
             <>
               <button
-                onClick={() => onTest(oidcConfig)}
+                onClick={() => onTest(buildSubmitConfig(oidcConfig))}
                 disabled={testing || saving}
                 className="px-4 py-2 bg-tide-surface hover:bg-tide-surface-light text-tide-text border border-tide-border rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -259,7 +385,7 @@ function OidcConfigForm({ initialConfig, onClose, onSave, onTest, saving, testin
                 )}
               </button>
               <button
-                onClick={() => onSave(oidcConfig)}
+                onClick={() => onSave(buildSubmitConfig(oidcConfig))}
                 disabled={saving || testing}
                 className="px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-teal-500/50 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
               >
@@ -336,10 +462,14 @@ export default function SystemTab({ settings, saving, updateSetting, categories,
     try {
       setTestingOidc(true);
       const result = await api.auth.oidc.testConnection(config);
-      if (result.success) {
-        toast.success('OIDC connection successful!');
+      if (result.ok) {
+        const algos = result.algorithms_supported?.length
+          ? ` (${result.algorithms_supported.join(', ')})`
+          : '';
+        toast.success(`OIDC connection successful — ${result.issuer ?? 'provider reached'}${algos}`);
       } else {
-        toast.error(`OIDC connection failed: ${result.errors.join(', ')}`);
+        const detail = result.detail || result.error || 'unknown error';
+        toast.error(`OIDC connection failed: ${detail}`);
       }
     } catch (error) {
       console.error('Failed to test OIDC:', error);
