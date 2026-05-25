@@ -7,9 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dev Dependencies
+- **@tanstack/react-query-devtools**: 5.100.11 → 5.100.14
+- **@types/react**: 19.2.14 → 19.2.15
+- **@vitest/coverage-v8**: 4.1.6 → 4.1.7
+- **@vitest/ui**: 4.1.6 → 4.1.7
+- **ruff**: 0.15.13 → 0.15.14
+- **vite**: 8.0.13 → 8.0.14
+- **vitest**: 4.1.6 → 4.1.7
+
+### App Dependencies
+- **@tanstack/react-query**: 5.100.11 → 5.100.14
+- **date-fns**: 4.2.1 → 4.3.0
+- **joserfc**: 1.6.5 → 1.6.7
+- **pyjwt**: 2.12.1 → 2.13.0
+
 ### Fixed
 - Container log viewer renders ANSI color codes as styled spans instead of raw `\x1b[...m` gibberish; Copy/Download strip ANSI for clean plain text
 - Auto-apply skips its cycle when the 6h check job is still running, preventing the Granian worker crash from concurrent registry pagination overlapping a pull subprocess
+
+### Security
+- OIDC login flow now uses PKCE S256 (RFC 7636); `code_verifier` persisted on `oidc_states` and sent in the token exchange.
+- ID token verifier explicitly allowlists `EdDSA` and `RS256` algorithms.
 
 ## [3.11.0] - 2026-05-23
 

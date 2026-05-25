@@ -23,9 +23,9 @@ dependencies = [
     "prometheus-client>=0.25.0",
     "aiosmtplib>=5.1.0",
     # Authentication dependencies
-    "joserfc>=1.6.5",
+    "joserfc>=1.6.7",
     "argon2-cffi>=25.1.0",
-    "pyjwt>=2.12.1",
+    "pyjwt>=2.13.0",
     "itsdangerous>=2.2.0",
     "email-validator>=2.3.0",
     # HTML to Markdown conversion
@@ -46,7 +46,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "httpx>=0.28.1",
     "pyright>=1.1.409",
-    "ruff>=0.15.13",
+    "ruff>=0.15.14",
 ]
 
 [tool.setuptools.packages.find]

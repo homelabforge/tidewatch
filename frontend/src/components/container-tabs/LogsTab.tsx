@@ -4,6 +4,7 @@ import { RefreshCw, Search, Copy, Download, ChevronDown, ChevronUp } from 'lucid
 import { Container } from '../../types';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
+import { parseAnsi, stripAnsi } from '../../lib/ansi';
 import { toast } from 'sonner';
 
 interface LogsTabProps {
@@ -30,8 +31,8 @@ export default function LogsTab({ container }: LogsTabProps) {
   const loadingLogs = logsQuery.isLoading || logsQuery.isFetching;
   const logsError = logsQuery.error;
 
-  const highlightLogLine = (line: string) => {
-    const lowerLine = line.toLowerCase();
+  const lineLevelClass = (line: string) => {
+    const lowerLine = stripAnsi(line).toLowerCase();
     if (lowerLine.includes('error')) return 'text-red-400';
     if (lowerLine.includes('warn') || lowerLine.includes('warning')) return 'text-yellow-400';
     if (lowerLine.includes('info')) return 'text-blue-400';
@@ -43,12 +44,12 @@ export default function LogsTab({ container }: LogsTabProps) {
     if (!logSearchQuery.trim()) return logContent;
     const lines = logContent.split('\n');
     const query = logSearchQuery.toLowerCase();
-    return lines.filter(line => line.toLowerCase().includes(query)).join('\n');
+    return lines.filter(line => stripAnsi(line).toLowerCase().includes(query)).join('\n');
   };
 
   const copyLogsToClipboard = async () => {
     try {
-      const logsToCopy = filterLogs(logs);
+      const logsToCopy = stripAnsi(filterLogs(logs));
       await navigator.clipboard.writeText(logsToCopy);
       toast.success('Logs copied to clipboard');
     } catch (error) {
@@ -59,7 +60,7 @@ export default function LogsTab({ container }: LogsTabProps) {
 
   const downloadLogs = () => {
     try {
-      const logsToDownload = filterLogs(logs);
+      const logsToDownload = stripAnsi(filterLogs(logs));
       const timestamp = format(new Date(), 'yyyy-MM-dd-HHmmss');
       const filename = `${container.name}-logs-${timestamp}.txt`;
 
@@ -183,11 +184,23 @@ export default function LogsTab({ container }: LogsTabProps) {
           </div>
         ) : logs ? (
           <div className="whitespace-pre-wrap break-words">
-            {filterLogs(logs).split('\n').map((line, index) => (
-              <div key={index} className={highlightLogLine(line)}>
-                {line}
-              </div>
-            ))}
+            {filterLogs(logs).split('\n').map((line, index) => {
+              const segments = parseAnsi(line);
+              const hasAnsi = segments.some((s) => s.className);
+              return (
+                <div key={index} className={hasAnsi ? 'text-tide-text' : lineLevelClass(line)}>
+                  {segments.length === 0 ? (
+                    ' '
+                  ) : (
+                    segments.map((seg, i) => (
+                      <span key={i} className={seg.className || undefined}>
+                        {seg.text}
+                      </span>
+                    ))
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-tide-text-muted">
