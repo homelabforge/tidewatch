@@ -6,6 +6,12 @@
 # container_monitor singleton talks to the Docker daemon at startup.
 # Mounting the host socket directly into the unprivileged app fails with
 # Permission Denied; the proxy exposes the socket over TCP for the app.
+#
+# Image tag is parameterized: run.sh builds and tests `tidewatch:release-smoke`
+# by default. Ad-hoc invocations can override with `TIDEWATCH_E2E_IMAGE=...` to
+# test a pre-built image (e.g. a GHCR pull during a soak), but the default
+# MUST match the tag `run.sh` builds — otherwise the gate silently exercises
+# a stale image and lets bad releases through (see mygarage v2.27.1 fixup).
 
 services:
   docker-proxy:
@@ -21,7 +27,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   app:
-    image: tidewatch:release-smoke
+    image: ${TIDEWATCH_E2E_IMAGE:-tidewatch:release-smoke}
     container_name: tidewatch-release-smoke-app
     depends_on:
       - docker-proxy
