@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.2-rc1] - 2026-05-26
+
+(pre-release; promoting to stable will keep these entries)
+
 ### Fixed
 - Major-jump continuity check no longer OOM-kills the Granian worker on images mixing semver with separator-less numeric tags (e.g., jellyfin/jellyfin's `2026052302` nightly produced `set(range(11, 2_026_052_302))`)
+
+### Changed
+- Release-smoke harness parameterizes image tag and pre-builds with `docker rmi` for hermeticity
+
+### Security
+- OIDC callback sanitizes a known-safe log argument to silence CodeQL FP (alert #697)
 
 ## [3.11.1] - 2026-05-25
 
