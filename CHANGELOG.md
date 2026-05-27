@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Major-jump continuity check no longer OOM-kills the Granian worker on images mixing semver with separator-less numeric tags (e.g., jellyfin/jellyfin's `2026052302` nightly produced `set(range(11, 2_026_052_302))`)
+
 ## [3.11.1] - 2026-05-25
 
 ### Changed

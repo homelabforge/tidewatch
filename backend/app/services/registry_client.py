@@ -225,6 +225,15 @@ def _is_continuous_major_jump(
     """
     if candidate_major <= current_major + 1:
         return True
+    # Short-circuit on absurd gaps before materializing the range. Images that
+    # mix semver with CalVer-format nightlies (jellyfin/jellyfin ships tags
+    # like 2026052302 alongside 10.x) produce candidate majors in the billions;
+    # set(range(11, 2_026_052_302)) allocates tens of GB and OOM-kills the
+    # worker. If the gap exceeds the observed major count, intermediate majors
+    # provably cannot all be present.
+    gap_size = candidate_major - current_major - 1
+    if gap_size > len(available_majors):
+        return False
     missing = set(range(current_major + 1, candidate_major)) - available_majors
     return not missing
 
@@ -635,13 +644,24 @@ class RegistryClient(ABC):
             and cand_major > curr_major + 1
             and not _is_continuous_major_jump(curr_major, cand_major, available_majors)
         ):
-            missing = sorted(set(range(curr_major + 1, cand_major)) - available_majors)
+            # Avoid materializing the full intermediate-major range for the log:
+            # CalVer-formatted numeric tags (e.g., jellyfin's 2026052302) sneak
+            # through CalVer detection when they have no separators and produce
+            # billion-scale "majors" — set(range(11, 2_026_052_302)) here was
+            # the OOM trigger.
+            gap_size = cand_major - curr_major - 1
+            if gap_size > len(available_majors):
+                missing_summary = (
+                    f"<gap of {gap_size} majors exceeds {len(available_majors)} observed>"
+                )
+            else:
+                missing_summary = sorted(set(range(curr_major + 1, cand_major)) - available_majors)
             logger.info(
                 "Rejecting non-continuous major jump for %s -> %s "
                 "(missing majors=%s, available=%s)",
                 current,
                 candidate,
-                missing,
+                missing_summary,
                 sorted(available_majors),
             )
             return False
@@ -1230,17 +1250,32 @@ class DockerHubClient(RegistryClient):
 
         # Now apply the comparator against the full scanned candidate set so
         # the continuity check has every observed major.
+        # Per-tag try/except: a single malformed tag must not abort the loop
+        # (or, worse, take down the worker). Worker was hard-exiting on
+        # jellyfin/jellyfin update checks — bug suspected in the comparator
+        # path on a specific tag shape; isolate it instead of crashing.
         for tag_name in candidates_for_compare:
-            if self._compare_versions(
-                current_tag,
-                tag_name,
-                scope,
-                version_track,
-                stable_anchor_major=stable_anchor_major,
-                available_majors=candidate_majors,
-            ):
-                if best_tag is None or self._is_better_version(tag_name, best_tag):
-                    best_tag = tag_name
+            try:
+                if self._compare_versions(
+                    current_tag,
+                    tag_name,
+                    scope,
+                    version_track,
+                    stable_anchor_major=stable_anchor_major,
+                    available_majors=candidate_majors,
+                ):
+                    if best_tag is None or self._is_better_version(tag_name, best_tag):
+                        best_tag = tag_name
+            except Exception:
+                logger.exception(
+                    "Comparator crashed on %s vs candidate %r (scope=%s, track=%s, anchor=%s)",
+                    image,
+                    tag_name,
+                    scope,
+                    version_track,
+                    stable_anchor_major,
+                )
+                continue
 
         # Expose observed majors so the caller can pass to FetchTagsResponse.
         self._last_candidate_majors_seen = set(candidate_majors)
