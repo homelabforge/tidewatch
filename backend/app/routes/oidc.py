@@ -218,7 +218,7 @@ async def test_oidc_connection(
     logger.info(
         "OIDC connection test by admin %s: %s",
         sanitize_log_message(admin["username"]),
-        "success" if response["ok"] else f"failed ({response.get('error')})",
+        sanitize_log_message("success" if response["ok"] else f"failed ({response.get('error')})"),
     )
 
     return response
