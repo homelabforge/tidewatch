@@ -112,3 +112,4 @@ tmp/
 
 # Agent instruction files (local-only, not for the public repo)
 CLAUDE.md
+.claude/
