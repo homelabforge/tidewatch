@@ -1455,3 +1455,185 @@ class TestCalVerCrossTrackLSCR:
                 "linuxserver/someapp", "1.0.0-ls131", scope="minor"
             )
         assert result == "1.1.0-ls1"
+
+
+class TestSameOrigin:
+    """Origin comparison for pagination confinement (#6)."""
+
+    def _so(self, url):
+        from app.services.registry_client import _same_origin
+
+        return _same_origin(url, "https://hub.docker.com/v2")
+
+    def test_exact_match(self):
+        assert self._so("https://hub.docker.com/v2/x") is True
+
+    def test_ignores_path_and_query(self):
+        assert self._so("https://hub.docker.com/anything?page=2") is True
+
+    def test_cross_host_rejected(self):
+        assert self._so("https://evil.tld/x") is False
+
+    def test_scheme_downgrade_rejected(self):
+        assert self._so("http://hub.docker.com/x") is False
+
+    def test_userinfo_confusion_rejected(self):
+        assert self._so("https://hub.docker.com@evil.tld/x") is False
+
+    def test_explicit_port_mismatch_rejected(self):
+        assert self._so("https://hub.docker.com:8443/x") is False
+
+    def test_explicit_default_port_matches(self):
+        assert self._so("https://hub.docker.com:443/x") is True
+
+    def test_relative_url_rejected(self):
+        assert self._so("/v2/x") is False
+
+    def test_case_insensitive_host(self):
+        assert self._so("https://Hub.Docker.Com/x") is True
+
+
+class TestPaginationOriginConfinement:
+    """Server-provided next/Link URLs are confined to the registry origin (#6)."""
+
+    @pytest.mark.asyncio
+    async def test_dockerhub_rejects_off_origin_next(self):
+        from app.services.registry_client import DockerHubClient, _tag_cache
+
+        _tag_cache.clear()
+        client = DockerHubClient()
+        page1 = MagicMock()
+        page1.json.return_value = {"results": [{"name": "1.0.0"}], "next": "https://evil.tld/steal"}
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"results": [{"name": "EVIL"}], "next": None}
+        page2.raise_for_status = MagicMock()
+
+        with patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get:
+            tags = await client.get_all_tags("nginx")
+
+        assert "1.0.0" in tags
+        assert "EVIL" not in tags
+        assert mock_get.call_count == 1  # off-origin page2 never fetched
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_dockerhub_follows_on_origin_next(self):
+        from app.services.registry_client import DockerHubClient, _tag_cache
+
+        _tag_cache.clear()
+        client = DockerHubClient()
+        page1 = MagicMock()
+        page1.json.return_value = {
+            "results": [{"name": "1.0.0"}],
+            "next": "https://hub.docker.com/v2/repositories/library/nginx/tags?page=2",
+        }
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"results": [{"name": "1.1.0"}], "next": None}
+        page2.raise_for_status = MagicMock()
+
+        with patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get:
+            tags = await client.get_all_tags("nginx")
+
+        assert "1.0.0" in tags and "1.1.0" in tags
+        assert mock_get.call_count == 2
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_semver_update_rejects_off_origin_next(self):
+        from app.services.registry_client import DockerHubClient
+
+        client = DockerHubClient()
+        page1 = MagicMock()
+        page1.json.return_value = {"results": [], "next": "https://evil.tld/steal"}
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"results": [], "next": None}
+        page2.raise_for_status = MagicMock()
+
+        with patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get:
+            await client._get_semver_update("nginx", "1.2.3", "patch")
+
+        assert mock_get.call_count == 1
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_ghcr_rejects_off_origin_link(self):
+        from app.services.registry_client import GHCRClient, _tag_cache
+
+        _tag_cache.clear()
+        client = GHCRClient()
+        page1 = MagicMock()
+        page1.json.return_value = {"tags": ["1.0.0"]}
+        page1.headers = {"Link": '<https://evil.tld/v2/o/i/tags/list?last=z>; rel="next"'}
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"tags": ["EVIL"]}
+        page2.headers = {}
+        page2.raise_for_status = MagicMock()
+
+        with (
+            patch.object(client, "_get_bearer_token", AsyncMock(return_value="tok")),
+            patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get,
+        ):
+            tags = await client.get_all_tags("owner/image")
+
+        assert "1.0.0" in tags
+        assert "EVIL" not in tags
+        assert mock_get.call_count == 1
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_ghcr_follows_relative_link(self):
+        from app.services.registry_client import GHCRClient, _tag_cache
+
+        _tag_cache.clear()
+        client = GHCRClient()
+        page1 = MagicMock()
+        page1.json.return_value = {"tags": ["1.0.0"]}
+        page1.headers = {"Link": '</v2/owner/image/tags/list?last=1.0.0>; rel="next"'}
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"tags": ["2.0.0"]}
+        page2.headers = {}
+        page2.raise_for_status = MagicMock()
+
+        with (
+            patch.object(client, "_get_bearer_token", AsyncMock(return_value="tok")),
+            patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get,
+        ):
+            tags = await client.get_all_tags("owner/image")
+
+        assert "1.0.0" in tags and "2.0.0" in tags
+        # The relative Link resolved against BASE_URL (origin-confined).
+        assert mock_get.call_args_list[1].args[0] == (
+            "https://ghcr.io/v2/owner/image/tags/list?last=1.0.0"
+        )
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_lscr_rejects_off_origin_link(self):
+        from app.services.registry_client import LSCRClient, _tag_cache
+
+        _tag_cache.clear()
+        client = LSCRClient()
+        page1 = MagicMock()
+        page1.json.return_value = {"tags": ["1.0.0"]}
+        page1.headers = {"Link": '<https://evil.tld/v2/o/i/tags/list?last=z>; rel="next"'}
+        page1.raise_for_status = MagicMock()
+        page2 = MagicMock()
+        page2.json.return_value = {"tags": ["EVIL"]}
+        page2.headers = {}
+        page2.raise_for_status = MagicMock()
+
+        with (
+            patch.object(client, "_get_bearer_token", AsyncMock(return_value="tok")),
+            patch.object(client.client, "get", side_effect=[page1, page2]) as mock_get,
+        ):
+            tags = await client.get_all_tags("owner/image")
+
+        assert "1.0.0" in tags
+        assert "EVIL" not in tags
+        assert mock_get.call_count == 1
+        await client.close()

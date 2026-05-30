@@ -5,13 +5,42 @@ import platform
 import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
+from urllib.parse import SplitResult, urljoin, urlsplit
 
 import httpx
 from packaging.version import InvalidVersion, Version
 
 from app.utils.retry import async_retry
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+
+def _same_origin(url: str, base_url: str) -> bool:
+    """Return True if ``url`` and ``base_url`` share scheme + host + port.
+
+    Uses ``urlsplit().hostname`` (not ``netloc``) so a userinfo trick like
+    ``https://hub.docker.com@evil.tld/`` is rejected (hostname is ``evil.tld``).
+    Explicit and default ports are normalized so an explicit ``:443`` still
+    matches the https default.
+    """
+    try:
+        u, b = urlsplit(url), urlsplit(base_url)
+
+        def _port(parts: SplitResult) -> int | None:
+            return (
+                parts.port
+                if parts.port is not None
+                else {"https": 443, "http": 80}.get(parts.scheme)
+            )
+
+        return (
+            u.scheme == b.scheme
+            and (u.hostname or "").lower() == (b.hostname or "").lower()
+            and _port(u) == _port(b)
+        )
+    except ValueError:
+        return False
 
 
 class RegistryCheckError(Exception):
@@ -363,6 +392,23 @@ class RegistryClient(ABC):
     # overridden to False for Docker Hub whose get_latest_tag uses a separate
     # optimized paginated fetch (_get_semver_update) that does not use TagCache.
     uses_tag_cache_for_latest: bool = True
+
+    # Each concrete client sets the registry origin (scheme://host[:port][/prefix]).
+    BASE_URL: str
+
+    def _is_followable_page_url(self, url: str) -> bool:
+        """True only if a server-provided pagination URL stays on this registry's
+        origin. A malicious ``next``/``Link`` could otherwise redirect a
+        credentialed request to an attacker host and exfiltrate the auth token.
+        """
+        if _same_origin(url, self.BASE_URL):
+            return True
+        logger.warning(
+            "Refusing off-origin pagination URL %s (registry base %s)",
+            sanitize_log_message(url),
+            self.BASE_URL,
+        )
+        return False
 
     def __init__(self, username: str | None = None, token: str | None = None) -> None:
         """Initialize registry client.
@@ -1014,8 +1060,12 @@ class DockerHubClient(RegistryClient):
                 for tag_data in data.get("results", []):
                     tags.append(tag_data["name"])
 
-                # Check for pagination
-                url = data.get("next")
+                # Check for pagination — confine the follow to this registry origin
+                # (the server-provided "next" carries our Basic-auth credentials).
+                next_url = data.get("next")
+                if next_url and not self._is_followable_page_url(next_url):
+                    break
+                url = next_url
 
         except httpx.HTTPStatusError as e:
             logger.error(
@@ -1227,9 +1277,12 @@ class DockerHubClient(RegistryClient):
                 # Check for next page (do NOT short-circuit on "older" pages —
                 # ordering=last_updated means later pages may carry valid
                 # historical major points we need for the continuity check).
-                url = data.get("next")
-                if not url:
+                next_url = data.get("next")
+                if not next_url:
                     break
+                if not self._is_followable_page_url(next_url):
+                    break
+                url = next_url
 
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error fetching tags for {image}: {e.response.status_code}")
@@ -1452,10 +1505,12 @@ class GHCRClient(RegistryClient):
                 link_header = response.headers.get("Link")
                 if link_header and 'rel="next"' in link_header:
                     next_url = link_header.split(";")[0].strip("<>")
-                    if not next_url.startswith("http"):
-                        url = f"{self.BASE_URL}{next_url}"
-                    else:
-                        url = next_url
+                    # urljoin resolves a relative Link against BASE_URL and leaves an
+                    # absolute one as-is; then confine the follow to this origin.
+                    candidate = urljoin(self.BASE_URL, next_url)
+                    if not self._is_followable_page_url(candidate):
+                        break
+                    url = candidate
                 else:
                     break
 
@@ -1680,10 +1735,12 @@ class LSCRClient(RegistryClient):
                 link_header = response.headers.get("Link")
                 if link_header and 'rel="next"' in link_header:
                     next_url = link_header.split(";")[0].strip("<>")
-                    if not next_url.startswith("http"):
-                        url = f"{self.BASE_URL}{next_url}"
-                    else:
-                        url = next_url
+                    # urljoin resolves a relative Link against BASE_URL and leaves an
+                    # absolute one as-is; then confine the follow to this origin.
+                    candidate = urljoin(self.BASE_URL, next_url)
+                    if not self._is_followable_page_url(candidate):
+                        break
+                    url = candidate
                 else:
                     break
 
