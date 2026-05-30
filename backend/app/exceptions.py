@@ -17,6 +17,20 @@ class SSRFProtectionError(Exception):
     pass
 
 
+class OIDCSubjectMismatchError(Exception):
+    """Raised when an OIDC login presents a subject that does not match the one
+    already bound to the admin account.
+
+    Once an admin account is bound to an OIDC ``sub``, re-login is accepted only
+    from that same subject. A different subject (a different identity at the same
+    provider) is rejected outright rather than silently rebinding the account —
+    this is the closed half of the #1 account-takeover hole. The callback maps
+    this to HTTP 403 without leaking the bound identity.
+    """
+
+    pass
+
+
 class PendingLinkRequiredError(Exception):
     """Raised when OIDC linking requires password verification for admin account.
 

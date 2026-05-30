@@ -723,3 +723,69 @@ class TestPasswordChangeEndpoint:
         # This test is skipped because the test fixtures don't have session middleware
         # In production, this endpoint IS protected by CSRF middleware
         pass
+
+
+class TestPasswordChangeBreakGlass:
+    """Break-glass password change for OIDC-linked admins (#1 Change F / R1-H3)."""
+
+    async def _seed_admin(self, db, *, auth_method, password_hash):
+        from app.models.user import User
+        from app.services.settings_service import SettingsService
+
+        db.add(
+            User(
+                username="admin",
+                email="admin@example.com",
+                password_hash=password_hash,
+                full_name="Admin User",
+                auth_method=auth_method,
+            )
+        )
+        await SettingsService.set(db, "auth_mode", "local")
+        await db.commit()
+
+    async def _authed(self, client):
+        from app.services.auth import create_access_token
+
+        token = create_access_token({"sub": "admin", "username": "admin"})
+        client.headers["Authorization"] = f"Bearer {token}"
+        resp = await client.get("/api/v1/settings")
+        if "X-CSRF-Token" in resp.headers:
+            client.headers["X-CSRF-Token"] = resp.headers["X-CSRF-Token"]
+        return client
+
+    async def test_change_password_oidc_linked_admin_with_password(self, client, db):
+        """An OIDC-linked admin that still holds a local password can rotate it."""
+        from app.services.auth import _get_admin_user, hash_password, verify_password
+
+        await self._seed_admin(
+            db, auth_method="oidc", password_hash=hash_password("AdminPassword123!")
+        )
+        await self._authed(client)
+
+        resp = await client.put(
+            "/api/v1/auth/password",
+            json={
+                "current_password": "AdminPassword123!",
+                "new_password": "NewPassword456!",
+            },
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        user = await _get_admin_user(db)
+        assert verify_password("NewPassword456!", user.password_hash)
+
+    async def test_change_password_rejected_without_hash(self, client, db):
+        """An admin with no usable local password hash still cannot change it."""
+        await self._seed_admin(db, auth_method="oidc", password_hash="")
+        await self._authed(client)
+
+        resp = await client.put(
+            "/api/v1/auth/password",
+            json={
+                "current_password": "anything-at-all",
+                "new_password": "NewPassword456!",
+            },
+        )
+
+        assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR

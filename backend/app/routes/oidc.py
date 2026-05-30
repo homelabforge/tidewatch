@@ -24,8 +24,8 @@ from joserfc.errors import JoseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.exceptions import PendingLinkRequiredError
-from app.schemas.auth import OIDCConfig, OIDCTestResult
+from app.exceptions import OIDCSubjectMismatchError, PendingLinkRequiredError
+from app.schemas.auth import OIDCConfig, OIDCLinkRequest, OIDCTestResult
 from app.services import oidc as oidc_service
 from app.services.auth import (
     JWT_COOKIE_MAX_AGE,
@@ -438,6 +438,14 @@ async def oidc_callback(
 
         logger.info("Redirecting to link account page")
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    except OIDCSubjectMismatchError:
+        # Account is bound to a different OIDC subject — reject without leaking
+        # the linked identity.
+        logger.warning("OIDC subject mismatch on callback; rejecting login")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This identity is not authorized for this account.",
+        )
 
     # Get admin profile
     from app.services.auth import get_admin_profile
@@ -479,10 +487,9 @@ async def oidc_callback(
 
 @router.post("/link-account")
 async def link_oidc_account(
+    payload: OIDCLinkRequest,
     request: Request,
     response: Response,
-    token: str,
-    password: str,
     db: AsyncSession = Depends(get_db),
 ):
     """Link OIDC account to admin with password verification (public).
@@ -491,13 +498,14 @@ async def link_oidc_account(
     password verification to link the OIDC identity.
 
     Security:
+    - Credentials ride in the JSON request body, never the query string
+      (passwords must not land in access logs).
     - Max 3 password attempts per token
     - Token expires after 5 minutes
     - One-time use (token deleted after success)
 
     Args:
-        token: Pending link token from callback redirect
-        password: Admin password for verification
+        payload: ``{token, password}`` JSON body
         request: FastAPI request for header extraction
         response: FastAPI response for cookie setting
         db: Database session
@@ -506,10 +514,11 @@ async def link_oidc_account(
         Redirect to frontend with JWT cookie set
 
     Raises:
-        HTTPException: 401 if token invalid/expired or password incorrect
+        HTTPException: 401 if token invalid/expired or password incorrect;
+            403 if the identity is bound to a different OIDC subject.
     """
     # Validate and consume pending link token
-    result = await oidc_service.verify_pending_link(db, token, password)
+    result = await oidc_service.verify_pending_link(db, payload.token, payload.password)
     if not result["success"]:
         error = result["error"] or "Link verification failed"
         logger.warning("OIDC link failed: %s", error)
@@ -524,9 +533,20 @@ async def link_oidc_account(
             detail=error,
         )
 
-    # Link the OIDC identity to the admin account
+    # Link the OIDC identity to the admin account. The password was just
+    # verified, so the first-link gate is satisfied (password_verified=True);
+    # a mismatched bound subject still rejects.
     config = {"provider_name": result["provider_name"] or "OIDC Provider"}
-    await oidc_service.link_oidc_to_admin(db, result["claims"], result["userinfo"], config)
+    try:
+        await oidc_service.link_oidc_to_admin(
+            db, result["claims"], result["userinfo"], config, password_verified=True
+        )
+    except OIDCSubjectMismatchError:
+        logger.warning("OIDC subject mismatch during password-verified link; rejecting")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This identity is not authorized for this account.",
+        )
 
     # Get admin profile
     from app.services.auth import get_admin_profile

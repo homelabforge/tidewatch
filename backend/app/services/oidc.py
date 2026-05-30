@@ -25,7 +25,11 @@ from joserfc.jwt import JWTClaimsRegistry
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import SSRFProtectionError
+from app.exceptions import (
+    OIDCSubjectMismatchError,
+    PendingLinkRequiredError,
+    SSRFProtectionError,
+)
 from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
 from app.services.settings_service import SettingsService
@@ -589,32 +593,69 @@ async def verify_id_token(
 # ============================================================================
 
 
+def _admin_username(claims: dict[str, Any], config: dict[str, str]) -> str:
+    """Best-effort admin username from claims for the pending-link flow."""
+    username_claim = config.get("username_claim") or "preferred_username"
+    return claims.get(username_claim) or "admin"
+
+
 async def link_oidc_to_admin(
     db: AsyncSession,
     claims: dict[str, Any],
     userinfo: dict[str, Any] | None,
     config: dict[str, str],
+    *,
+    password_verified: bool = False,
 ) -> None:
-    """Link OIDC identity to admin account (TideWatch single-user mode).
+    """Link an OIDC identity to the admin account (TideWatch single-user mode).
+
+    Security model (single trusted admin):
+    - The *first* link requires password verification whenever a local password
+      exists. Until that proof is provided this raises ``PendingLinkRequiredError``
+      so the callback routes the user through the password-gated
+      ``/auth/oidc/link-account`` flow and binds nothing.
+    - Once bound, only the same ``sub`` may re-login. A different ``sub`` raises
+      ``OIDCSubjectMismatchError`` (the closed account-takeover path).
 
     Args:
         db: Database session
         claims: ID token claims
         userinfo: Optional userinfo claims from userinfo endpoint
         config: OIDC configuration
-    """
-    from app.services.auth import update_admin_last_login, update_admin_oidc_link
+        password_verified: Set True by the link-account flow once the admin
+            password has been verified; bypasses the first-link gate.
 
-    sub = claims.get("sub")
+    Raises:
+        PendingLinkRequiredError: First link needs password verification.
+        OIDCSubjectMismatchError: Incoming subject does not match the bound one.
+    """
+    from app.services.auth import (
+        _get_admin_user,
+        get_admin_password_hash,
+        update_admin_last_login,
+        update_admin_oidc_link,
+    )
+
+    sub = (claims.get("sub") or "").strip()
     provider_name = config.get("provider_name", "OIDC Provider")
 
-    # Link OIDC to admin
-    await update_admin_oidc_link(db, sub or "", provider_name)
+    user = await _get_admin_user(db)
+    if not user:
+        # No admin yet — route through the password-gated flow.
+        raise PendingLinkRequiredError(_admin_username(claims, config), claims, userinfo, config)
 
-    # Update last login
+    stored = user.oidc_subject or ""
+    # First-link gate: nothing bound yet, a local password exists, and the
+    # caller has not already verified it.
+    if not stored and bool(await get_admin_password_hash(db)) and not password_verified:
+        raise PendingLinkRequiredError(user.username, claims, userinfo, config)
+
+    result = await update_admin_oidc_link(db, sub, provider_name)
+    if result == "mismatch":
+        raise OIDCSubjectMismatchError()
+
     await update_admin_last_login(db)
-
-    logger.info("Linked OIDC account to admin user (sub: %s, provider: %s)", sub, provider_name)
+    logger.info("OIDC admin link result=%s (provider: %s)", result, provider_name)
 
 
 async def create_pending_link(

@@ -297,16 +297,49 @@ async def update_admin_password(db: AsyncSession, new_hash: str) -> None:
     await db.commit()
 
 
-async def update_admin_oidc_link(db: AsyncSession, oidc_subject: str, provider: str) -> None:
-    """Link OIDC identity to admin account."""
+async def update_admin_oidc_link(db: AsyncSession, oidc_subject: str, provider: str) -> str:
+    """Bind an OIDC identity to the admin account (bind-only, never clobbers).
+
+    This is the safe core of the #1 fix: it only ever *establishes* a binding
+    for an unbound account or *confirms* an already-bound one. It never
+    overwrites a bound ``oidc_subject`` with a different one.
+
+    Returns:
+        "linked"   - first-time bind (subject was empty, now set; auth_method
+                     flipped to "oidc").
+        "matched"  - incoming subject equals the stored subject (provider label
+                     refreshed only).
+        "mismatch" - no admin, empty incoming subject, or incoming subject does
+                     not match the stored one. Nothing is written.
+    """
     user = await _get_admin_user(db)
     if not user:
-        return
+        return "mismatch"
 
-    user.oidc_subject = oidc_subject
-    user.oidc_provider = provider
-    user.auth_method = "oidc"
-    await db.commit()
+    incoming = oidc_subject or ""
+    if not incoming:
+        # Refuse to bind an empty subject.
+        return "mismatch"
+
+    stored = user.oidc_subject or ""
+    if not stored:
+        # First link — establish the binding.
+        user.oidc_subject = incoming
+        user.oidc_provider = provider
+        user.auth_method = "oidc"
+        await db.commit()
+        return "linked"
+
+    if stored == incoming:
+        # Same identity re-logging in — refresh the provider label only.
+        user.oidc_provider = provider
+        await db.commit()
+        return "matched"
+
+    # Bound to a different subject — refuse, write nothing. Do not log the raw
+    # subject (PII / log-injection); the closed account-takeover path.
+    logger.warning("OIDC subject mismatch on admin link attempt; ignoring")
+    return "mismatch"
 
 
 async def update_admin_last_login(db: AsyncSession) -> None:
@@ -383,14 +416,12 @@ async def authenticate_admin(db: AsyncSession, username: str, password: str) -> 
     if user.username != username:
         return None
 
-    # Check password hash exists
+    # Check password hash exists. This is the only legitimate no-password guard;
+    # a linked admin (auth_method="oidc") with a local password may still log in
+    # by password — the deliberate break-glass recovery path so a hostile OIDC
+    # link can never permanently lock the admin out (#1 Change B).
     if not user.password_hash:
         logger.warning("Password login attempted but no password hash set")
-        return None
-
-    # Check auth method - reject password login for OIDC-only users
-    if user.auth_method == "oidc":
-        logger.warning("Password login attempted for OIDC-linked admin account")
         return None
 
     # Verify password

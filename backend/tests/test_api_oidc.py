@@ -432,10 +432,140 @@ class TestOIDCCallbackEndpoint:
         """Test ID token signature verification."""
         pass
 
-    @pytest.mark.skip(reason="Requires complete OIDC flow mocking")
+    @staticmethod
+    def _patch_callback_boundary(*, sub: str, userinfo=None):
+        """Patch the OIDC network boundary so link_oidc_to_admin runs for real.
+
+        Returns a list of context managers (state, metadata, token exchange,
+        id-token verification, userinfo) ready to enter via ExitStack/with.
+        """
+        return [
+            patch(
+                "app.routes.oidc.oidc_service.validate_and_consume_state",
+                new_callable=AsyncMock,
+                return_value={
+                    "redirect_uri": "https://tidewatch.local/api/v1/auth/oidc/callback",
+                    "nonce": "nonce-value",
+                    "code_verifier": "verifier-value",
+                    "created_at": None,
+                },
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.get_provider_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "authorization_endpoint": "https://auth.example.com/authorize",
+                    "token_endpoint": "https://auth.example.com/token",
+                    "jwks_uri": "https://auth.example.com/jwks",
+                },
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.exchange_code_for_tokens",
+                new_callable=AsyncMock,
+                return_value={"id_token": "id-token", "access_token": "access-token"},
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.verify_id_token",
+                new_callable=AsyncMock,
+                return_value={"sub": sub, "preferred_username": "admin"},
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.get_userinfo",
+                new_callable=AsyncMock,
+                return_value=userinfo,
+            ),
+        ]
+
+    @staticmethod
+    async def _seed_admin(db, *, oidc_subject=None, auth_method="local"):
+        from app.models.user import User
+        from app.services.auth import hash_password
+        from app.services.settings_service import SettingsService
+
+        db.add(
+            User(
+                username="admin",
+                email="admin@example.com",
+                password_hash=hash_password("Password123!"),
+                auth_method=auth_method,
+                oidc_subject=oidc_subject,
+            )
+        )
+        await SettingsService.set(db, "oidc_enabled", "true")
+        await SettingsService.set(db, "oidc_issuer_url", "https://auth.example.com")
+        await SettingsService.set(db, "oidc_client_id", "client-id")
+        await SettingsService.set(db, "oidc_provider_name", "Example")
+        # The config-save path (PUT /oidc/config) always writes these; mirror it
+        # so the pending-link flow has valid integers to parse.
+        await SettingsService.set(db, "oidc_link_token_expire_minutes", "5")
+        await SettingsService.set(db, "oidc_link_max_password_attempts", "3")
+        await db.commit()
+
     async def test_callback_pending_link_redirect(self, client, db):
-        """Test redirects to link account page when password verification required."""
-        pass
+        """First OIDC login for a password-protected admin redirects to the
+        password-gated link page and binds nothing."""
+        from contextlib import ExitStack
+
+        from sqlalchemy import select
+
+        from app.models.oidc_pending_link import OIDCPendingLink
+        from app.services.auth import _get_admin_user
+
+        await self._seed_admin(db, oidc_subject=None)
+
+        with ExitStack() as stack:
+            for cm in self._patch_callback_boundary(sub="oidc-user-1"):
+                stack.enter_context(cm)
+            response = await client.get(
+                "/api/v1/auth/oidc/callback?code=abc&state=xyz", follow_redirects=False
+            )
+
+        assert response.status_code == status.HTTP_302_FOUND
+        assert "/auth/link-account?token=" in response.headers["location"]
+
+        # Nothing bound; a pending-link row was created.
+        user = await _get_admin_user(db)
+        assert user.oidc_subject is None
+        rows = (await db.execute(select(OIDCPendingLink))).scalars().all()
+        assert len(rows) == 1
+
+    async def test_callback_relogin_matching_sub_sets_cookie(self, client, db):
+        """Re-login from the bound subject issues a JWT cookie and lands on the app."""
+        from contextlib import ExitStack
+
+        await self._seed_admin(db, oidc_subject="oidc-user-1", auth_method="oidc")
+
+        with ExitStack() as stack:
+            for cm in self._patch_callback_boundary(sub="oidc-user-1"):
+                stack.enter_context(cm)
+            response = await client.get(
+                "/api/v1/auth/oidc/callback?code=abc&state=xyz", follow_redirects=False
+            )
+
+        assert response.status_code == status.HTTP_302_FOUND
+        assert "/auth/link-account" not in response.headers["location"]
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "tidewatch_token=" in set_cookie
+
+    async def test_callback_mismatched_sub_returns_403(self, client, db):
+        """A different subject at the same provider is rejected with 403."""
+        from contextlib import ExitStack
+
+        from app.services.auth import _get_admin_user
+
+        await self._seed_admin(db, oidc_subject="oidc-user-1", auth_method="oidc")
+
+        with ExitStack() as stack:
+            for cm in self._patch_callback_boundary(sub="evil-user-2"):
+                stack.enter_context(cm)
+            response = await client.get(
+                "/api/v1/auth/oidc/callback?code=abc&state=xyz", follow_redirects=False
+            )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Binding unchanged.
+        user = await _get_admin_user(db)
+        assert user.oidc_subject == "oidc-user-1"
 
 
 class TestOIDCLinkAccountEndpoint:
@@ -474,7 +604,7 @@ class TestOIDCLinkAccountEndpoint:
         ):
             response = await client.post(
                 "/api/v1/auth/oidc/link-account",
-                params={"token": "test-token", "password": "test-password"},
+                json={"token": "test-token", "password": "test-password"},
             )
 
             assert response.status_code == status.HTTP_200_OK
@@ -485,13 +615,46 @@ class TestOIDCLinkAccountEndpoint:
             # Verify the service was called correctly
             mock_verify.assert_called_once_with(db, "test-token", "test-password")
 
-            # Verify link_oidc_to_admin was called to persist the link
+            # Verify link_oidc_to_admin was called to persist the link, with the
+            # password-verified flag set (the link-account flow already proved
+            # the password).
             mock_link.assert_called_once_with(
                 db,
                 self._SUCCESS_RESULT["claims"],
                 self._SUCCESS_RESULT["userinfo"],
                 {"provider_name": "Test Provider"},
+                password_verified=True,
             )
+
+    async def test_link_account_accepts_json_body(self, client, db):
+        """The endpoint accepts the real frontend JSON body shape {token, password}.
+
+        Guards the contract fix (#1 Change E): the previous query-param signature
+        would 422 against this body.
+        """
+        with (
+            patch(
+                "app.routes.oidc.oidc_service.verify_pending_link",
+                new_callable=AsyncMock,
+                return_value=self._SUCCESS_RESULT,
+            ),
+            patch(
+                "app.routes.oidc.oidc_service.link_oidc_to_admin",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.auth.get_admin_profile",
+                new_callable=AsyncMock,
+                return_value=self._ADMIN_PROFILE,
+            ),
+        ):
+            response = await client.post(
+                "/api/v1/auth/oidc/link-account",
+                json={"token": "test-token", "password": "test-password"},
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code != status.HTTP_422_UNPROCESSABLE_CONTENT
 
     async def test_link_account_invalid_token(self, client):
         """Test invalid token returns 401."""
@@ -508,7 +671,7 @@ class TestOIDCLinkAccountEndpoint:
         ):
             response = await client.post(
                 "/api/v1/auth/oidc/link-account",
-                params={"token": "bad-token", "password": "test-password"},
+                json={"token": "bad-token", "password": "test-password"},
             )
 
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -529,7 +692,7 @@ class TestOIDCLinkAccountEndpoint:
         ):
             response = await client.post(
                 "/api/v1/auth/oidc/link-account",
-                params={"token": "test-token", "password": "wrong-password"},
+                json={"token": "test-token", "password": "wrong-password"},
             )
 
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -550,7 +713,7 @@ class TestOIDCLinkAccountEndpoint:
         ):
             response = await client.post(
                 "/api/v1/auth/oidc/link-account",
-                params={"token": "test-token", "password": "test-password"},
+                json={"token": "test-token", "password": "test-password"},
             )
 
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -576,7 +739,7 @@ class TestOIDCLinkAccountEndpoint:
         ):
             response = await client.post(
                 "/api/v1/auth/oidc/link-account",
-                params={"token": "test-token", "password": "test-password"},
+                json={"token": "test-token", "password": "test-password"},
             )
 
             assert response.status_code == status.HTTP_200_OK

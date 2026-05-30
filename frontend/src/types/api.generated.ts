@@ -205,13 +205,14 @@ export interface paths {
          *     password verification to link the OIDC identity.
          *
          *     Security:
+         *     - Credentials ride in the JSON request body, never the query string
+         *       (passwords must not land in access logs).
          *     - Max 3 password attempts per token
          *     - Token expires after 5 minutes
          *     - One-time use (token deleted after success)
          *
          *     Args:
-         *         token: Pending link token from callback redirect
-         *         password: Admin password for verification
+         *         payload: ``{token, password}`` JSON body
          *         request: FastAPI request for header extraction
          *         response: FastAPI response for cookie setting
          *         db: Database session
@@ -220,7 +221,8 @@ export interface paths {
          *         Redirect to frontend with JWT cookie set
          *
          *     Raises:
-         *         HTTPException: 401 if token invalid/expired or password incorrect
+         *         HTTPException: 401 if token invalid/expired or password incorrect;
+         *             403 if the identity is bound to a different OIDC subject.
          */
         post: operations["link_oidc_account_api_v1_auth_oidc_link_account_post"];
         delete?: never;
@@ -292,7 +294,13 @@ export interface paths {
         get?: never;
         /**
          * Change Password
-         * @description Change admin password (local auth only).
+         * @description Change admin password.
+         *
+         *     Open to any admin that has a usable local password hash, regardless of
+         *     ``auth_method``. This keeps the OIDC break-glass path complete: a linked
+         *     admin (``auth_method="oidc"``) that still holds a local password can rotate
+         *     it. The current-password verification below is the real gate — an admin with
+         *     no usable hash still cannot change the password (#1 Change F).
          */
         put: operations["change_password_api_v1_auth_password_put"];
         post?: never;
@@ -4669,6 +4677,16 @@ export interface components {
             username_claim: string;
         };
         /**
+         * OIDCLinkRequest
+         * @description Request to link OIDC account with password verification.
+         */
+        OIDCLinkRequest: {
+            /** Password */
+            password: string;
+            /** Token */
+            token: string;
+        };
+        /**
          * OIDCTestResult
          * @description Result of OIDC connection test (canonical wire contract per plan §5.4(4)).
          *
@@ -5880,15 +5898,16 @@ export interface operations {
     };
     link_oidc_account_api_v1_auth_oidc_link_account_post: {
         parameters: {
-            query: {
-                token: string;
-                password: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OIDCLinkRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

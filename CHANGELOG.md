@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Require password verification before first OIDC admin link; keep local password as break-glass
+
 ## [3.11.3] - 2026-05-27
 
 ### Security

@@ -275,19 +275,18 @@ async def change_password(
     admin: dict = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Change admin password (local auth only)."""
+    """Change admin password.
+
+    Open to any admin that has a usable local password hash, regardless of
+    ``auth_method``. This keeps the OIDC break-glass path complete: a linked
+    admin (``auth_method="oidc"``) that still holds a local password can rotate
+    it. The current-password verification below is the real gate — an admin with
+    no usable hash still cannot change the password (#1 Change F).
+    """
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
-        )
-
-    # Check if admin uses local authentication
-    if admin["auth_method"] != "local":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Password change not allowed for {admin['auth_method']} authentication. "
-            "Please use your identity provider to change your password.",
         )
 
     # Verify current password

@@ -29,6 +29,7 @@ from app.services.auth import (
     get_or_create_secret_key,
     hash_password,
     is_setup_complete,
+    update_admin_oidc_link,
     update_admin_password,
     update_admin_profile,
     verify_password,
@@ -503,12 +504,18 @@ class TestAuthentication:
             assert profile is None
 
     @pytest.mark.asyncio
-    async def test_authenticate_admin_oidc_user_rejects_password(self, mock_db):
-        """Test authenticate_admin() rejects password login for OIDC users."""
-        mock_user = self._make_mock_user(auth_method="oidc")
-        with patch("app.services.auth._get_admin_user", return_value=mock_user):
-            profile = await authenticate_admin(mock_db, "admin", "SomePassword")
-            assert profile is None
+    async def test_authenticate_admin_oidc_user_allows_password_breakglass(self, mock_db):
+        """Break-glass (#1 Change B): an OIDC-linked admin that still holds a
+        local password hash CAN authenticate by password (recovery path)."""
+        password = "SecurePassword123!"
+        mock_user = self._make_mock_user(auth_method="oidc", password_hash=hash_password(password))
+        with (
+            patch("app.services.auth._get_admin_user", return_value=mock_user),
+            patch("app.services.auth.update_admin_last_login", new_callable=AsyncMock),
+        ):
+            profile = await authenticate_admin(mock_db, "admin", password)
+            assert profile is not None
+            assert profile["username"] == "admin"
 
     @pytest.mark.asyncio
     async def test_authenticate_admin_updates_last_login(self, mock_db):
@@ -523,6 +530,71 @@ class TestAuthentication:
         ):
             await authenticate_admin(mock_db, "admin", password)
             mock_update.assert_called_once_with(mock_db)
+
+
+class TestUpdateAdminOIDCLink:
+    """Test suite for bind-only update_admin_oidc_link (#1 Change A)."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Mock database session."""
+        return AsyncMock()
+
+    def _make_user(self, **overrides):
+        from unittest.mock import MagicMock
+
+        from app.models.user import User
+
+        user = MagicMock(spec=User)
+        user.oidc_subject = overrides.get("oidc_subject", None)
+        user.oidc_provider = overrides.get("oidc_provider", None)
+        user.auth_method = overrides.get("auth_method", "local")
+        return user
+
+    @pytest.mark.asyncio
+    async def test_first_link_returns_linked(self, mock_db):
+        """First link (no stored subject) binds and returns 'linked'."""
+        user = self._make_user(oidc_subject=None)
+        mock_db.commit = AsyncMock()
+        with patch("app.services.auth._get_admin_user", return_value=user):
+            result = await update_admin_oidc_link(mock_db, "sub-123", "Provider")
+        assert result == "linked"
+        assert user.oidc_subject == "sub-123"
+        assert user.oidc_provider == "Provider"
+        assert user.auth_method == "oidc"
+
+    @pytest.mark.asyncio
+    async def test_same_sub_returns_matched(self, mock_db):
+        """Re-login with the same subject returns 'matched' (no rebind)."""
+        user = self._make_user(oidc_subject="sub-123", auth_method="oidc")
+        mock_db.commit = AsyncMock()
+        with patch("app.services.auth._get_admin_user", return_value=user):
+            result = await update_admin_oidc_link(mock_db, "sub-123", "Provider2")
+        assert result == "matched"
+        assert user.oidc_subject == "sub-123"
+        assert user.oidc_provider == "Provider2"
+
+    @pytest.mark.asyncio
+    async def test_different_sub_returns_mismatch_unchanged(self, mock_db):
+        """A different subject returns 'mismatch' and writes nothing."""
+        user = self._make_user(oidc_subject="sub-123", auth_method="oidc")
+        mock_db.commit = AsyncMock()
+        with patch("app.services.auth._get_admin_user", return_value=user):
+            result = await update_admin_oidc_link(mock_db, "evil-sub-999", "Provider")
+        assert result == "mismatch"
+        assert user.oidc_subject == "sub-123"
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_sub_returns_mismatch(self, mock_db):
+        """An empty incoming subject is refused with 'mismatch'."""
+        user = self._make_user(oidc_subject=None)
+        mock_db.commit = AsyncMock()
+        with patch("app.services.auth._get_admin_user", return_value=user):
+            result = await update_admin_oidc_link(mock_db, "", "Provider")
+        assert result == "mismatch"
+        assert user.oidc_subject is None
+        mock_db.commit.assert_not_called()
 
 
 class TestAuthMode:

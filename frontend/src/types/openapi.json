@@ -2369,6 +2369,29 @@
         "title": "OIDCConfig",
         "type": "object"
       },
+      "OIDCLinkRequest": {
+        "description": "Request to link OIDC account with password verification.",
+        "properties": {
+          "password": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "OIDCLinkRequest",
+        "type": "object"
+      },
       "OIDCTestResult": {
         "description": "Result of OIDC connection test (canonical wire contract per plan \u00a75.4(4)).\n\nSuccess: ok=True with discovered issuer + supported algorithms.\nFailure: ok=False with a short machine-readable error code and optional human-readable detail.",
         "properties": {
@@ -5433,28 +5456,18 @@
     },
     "/api/v1/auth/oidc/link-account": {
       "post": {
-        "description": "Link OIDC account to admin with password verification (public).\n\nThis endpoint is called after OIDC login when the admin account requires\npassword verification to link the OIDC identity.\n\nSecurity:\n- Max 3 password attempts per token\n- Token expires after 5 minutes\n- One-time use (token deleted after success)\n\nArgs:\n    token: Pending link token from callback redirect\n    password: Admin password for verification\n    request: FastAPI request for header extraction\n    response: FastAPI response for cookie setting\n    db: Database session\n\nReturns:\n    Redirect to frontend with JWT cookie set\n\nRaises:\n    HTTPException: 401 if token invalid/expired or password incorrect",
+        "description": "Link OIDC account to admin with password verification (public).\n\nThis endpoint is called after OIDC login when the admin account requires\npassword verification to link the OIDC identity.\n\nSecurity:\n- Credentials ride in the JSON request body, never the query string\n  (passwords must not land in access logs).\n- Max 3 password attempts per token\n- Token expires after 5 minutes\n- One-time use (token deleted after success)\n\nArgs:\n    payload: ``{token, password}`` JSON body\n    request: FastAPI request for header extraction\n    response: FastAPI response for cookie setting\n    db: Database session\n\nReturns:\n    Redirect to frontend with JWT cookie set\n\nRaises:\n    HTTPException: 401 if token invalid/expired or password incorrect;\n        403 if the identity is bound to a different OIDC subject.",
         "operationId": "link_oidc_account_api_v1_auth_oidc_link_account_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OIDCLinkRequest"
+              }
             }
           },
-          {
-            "in": "query",
-            "name": "password",
-            "required": true,
-            "schema": {
-              "title": "Password",
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -5553,7 +5566,7 @@
     },
     "/api/v1/auth/password": {
       "put": {
-        "description": "Change admin password (local auth only).",
+        "description": "Change admin password.\n\nOpen to any admin that has a usable local password hash, regardless of\n``auth_method``. This keeps the OIDC break-glass path complete: a linked\nadmin (``auth_method=\"oidc\"``) that still holds a local password can rotate\nit. The current-password verification below is the real gate \u2014 an admin with\nno usable hash still cannot change the password (#1 Change F).",
         "operationId": "change_password_api_v1_auth_password_put",
         "requestBody": {
           "content": {
