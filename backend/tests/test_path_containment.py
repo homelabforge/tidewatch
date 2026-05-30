@@ -176,9 +176,7 @@ class TestScannerContainment:
         (project / "requirements.txt").write_text("requests==2.31.0\n")
 
         scanner = DependencyScanner(projects_directory=str(tmp_path))
-        with patch.object(
-            DependencyScanner, "_get_pypi_latest", new=AsyncMock(return_value=None)
-        ):
+        with patch.object(DependencyScanner, "_get_pypi_latest", new=AsyncMock(return_value=None)):
             deps = await scanner._scan_python(project)
         assert any(d.name == "requests" for d in deps)
 
