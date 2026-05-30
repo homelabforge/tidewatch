@@ -6,7 +6,7 @@ import httpx
 
 from app.exceptions import SSRFProtectionError
 from app.services.notifications.base import NotificationService
-from app.utils.url_validation import validate_url_for_ssrf
+from app.utils.url_validation import validate_integration_url
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +32,12 @@ class NtfyNotificationService(NotificationService):
         Raises:
             SSRFProtectionError: If server URL fails SSRF validation
         """
-        # Validate server URL to prevent SSRF attacks
-        # Allow both HTTP and HTTPS for self-hosted ntfy instances
+        # Validate server URL to prevent SSRF. validate_integration_url blocks
+        # private/metadata targets unless the host is in TIDEWATCH_TRUSTED_HOSTS
+        # (matches the slack/discord contract — raise on a blocked URL).
         try:
-            validate_url_for_ssrf(
-                server_url,
-                allowed_schemes=["http", "https"],
-                block_private_ips=False,  # Allow for self-hosted instances
-            )
-        except SSRFProtectionError as e:
+            validate_integration_url(server_url)
+        except (SSRFProtectionError, ValueError) as e:
             logger.error(f"[ntfy] Server URL failed SSRF validation: {e}")
             raise
 

@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 import aiosmtplib
 
 from app.services.notifications.base import NotificationService
+from app.utils.url_validation import validate_smtp_host
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,15 @@ class EmailNotificationService(NotificationService):
             from_address: Sender email address
             to_address: Recipient email address
             use_tls: Whether to use TLS (STARTTLS)
+
+        Raises:
+            SSRFProtectionError: If smtp_host resolves to a private IP and is not
+                in TIDEWATCH_TRUSTED_HOSTS.
         """
+        # SMTP host is a bare hostname (no scheme); block private/internal targets
+        # unless explicitly trusted. Raises before any connection is attempted.
+        validate_smtp_host(smtp_host)
+
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
         self.smtp_user = smtp_user

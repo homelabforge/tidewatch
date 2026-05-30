@@ -35,6 +35,29 @@ def _mask_secret(value: str) -> str:
     return "****"
 
 
+# Settings whose value is an outbound URL / SMTP host and must be SSRF-validated
+# on the write path (defense-in-depth alongside the notifier constructors).
+_URL_VALIDATED_SETTINGS = {"ntfy_server", "ntfy_url", "gotify_server", "vulnforge_url"}
+_SMTP_HOST_SETTINGS = {"email_smtp_host"}
+
+
+def _validate_setting_url(key: str, value: str) -> None:
+    """Reject a private/blocked URL or SMTP host on the write path (HTTP 400).
+
+    A value blocked here can't be slipped past via a direct settings edit. Honors
+    TIDEWATCH_TRUSTED_HOSTS (so explicitly-trusted LAN hosts are still allowed).
+    """
+    if not value:
+        return
+    try:
+        if key in _URL_VALIDATED_SETTINGS:
+            validate_integration_url(value)
+        elif key in _SMTP_HOST_SETTINGS:
+            validate_smtp_host(value)
+    except (SSRFProtectionError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid value for '{key}': {e}") from e
+
+
 @router.get("/", response_model=list[SettingSchema])
 async def get_all_settings(
     _admin: dict | None = Depends(require_auth),
@@ -102,6 +125,7 @@ async def update_setting(
     db: AsyncSession = Depends(get_db),
 ) -> SettingSchema:
     """Update a setting value."""
+    _validate_setting_url(key, update.value)
     try:
         setting = await SettingsService.set(db, key, update.value)
     except ValueError as e:
@@ -134,6 +158,7 @@ async def batch_update_settings(
                     status_code=400,
                     detail="Each update must have 'key' and 'value' fields",
                 )
+            _validate_setting_url(update["key"], update["value"])
 
         # Apply all updates in transaction
         updated_settings = []

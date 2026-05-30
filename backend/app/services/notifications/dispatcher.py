@@ -4,6 +4,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import SSRFProtectionError
 from app.services.notifications.base import NotificationService
 from app.services.notifications.discord import DiscordNotificationService
 from app.services.notifications.email import EmailNotificationService
@@ -13,6 +14,7 @@ from app.services.notifications.pushover import PushoverNotificationService
 from app.services.notifications.slack import SlackNotificationService
 from app.services.notifications.telegram import TelegramNotificationService
 from app.services.settings_service import SettingsService
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -132,14 +134,26 @@ class NotificationDispatcher:
             topic = await SettingsService.get(self.db, "ntfy_topic", default="tidewatch")
             api_key = await SettingsService.get(self.db, "ntfy_token")
             if server and topic:
-                services.append(NtfyNotificationService(server, topic, api_key))
+                try:
+                    services.append(NtfyNotificationService(server, topic, api_key))
+                except (SSRFProtectionError, ValueError) as e:
+                    logger.error(
+                        "Skipping ntfy notifier (blocked/invalid URL): %s",
+                        sanitize_log_message(str(e)),
+                    )
 
         # Check gotify
         if await SettingsService.get_bool(self.db, "gotify_enabled", default=False):
             server = await SettingsService.get(self.db, "gotify_server")
             token = await SettingsService.get(self.db, "gotify_token")
             if server and token:
-                services.append(GotifyNotificationService(server, token))
+                try:
+                    services.append(GotifyNotificationService(server, token))
+                except (SSRFProtectionError, ValueError) as e:
+                    logger.error(
+                        "Skipping gotify notifier (blocked/invalid URL): %s",
+                        sanitize_log_message(str(e)),
+                    )
 
         # Check pushover
         if await SettingsService.get_bool(self.db, "pushover_enabled", default=False):
@@ -152,13 +166,25 @@ class NotificationDispatcher:
         if await SettingsService.get_bool(self.db, "slack_enabled", default=False):
             webhook_url = await SettingsService.get(self.db, "slack_webhook_url")
             if webhook_url:
-                services.append(SlackNotificationService(webhook_url))
+                try:
+                    services.append(SlackNotificationService(webhook_url))
+                except (SSRFProtectionError, ValueError) as e:
+                    logger.error(
+                        "Skipping slack notifier (blocked/invalid URL): %s",
+                        sanitize_log_message(str(e)),
+                    )
 
         # Check discord
         if await SettingsService.get_bool(self.db, "discord_enabled", default=False):
             webhook_url = await SettingsService.get(self.db, "discord_webhook_url")
             if webhook_url:
-                services.append(DiscordNotificationService(webhook_url))
+                try:
+                    services.append(DiscordNotificationService(webhook_url))
+                except (SSRFProtectionError, ValueError) as e:
+                    logger.error(
+                        "Skipping discord notifier (blocked/invalid URL): %s",
+                        sanitize_log_message(str(e)),
+                    )
 
         # Check telegram
         if await SettingsService.get_bool(self.db, "telegram_enabled", default=False):
@@ -177,17 +203,23 @@ class NotificationDispatcher:
             to_address = await SettingsService.get(self.db, "email_to")
             use_tls = await SettingsService.get_bool(self.db, "email_smtp_tls", default=True)
             if smtp_host and smtp_user and smtp_password and from_address and to_address:
-                services.append(
-                    EmailNotificationService(
-                        smtp_host,
-                        smtp_port,
-                        smtp_user,
-                        smtp_password,
-                        from_address,
-                        to_address,
-                        use_tls,
+                try:
+                    services.append(
+                        EmailNotificationService(
+                            smtp_host,
+                            smtp_port,
+                            smtp_user,
+                            smtp_password,
+                            from_address,
+                            to_address,
+                            use_tls,
+                        )
                     )
-                )
+                except (SSRFProtectionError, ValueError) as e:
+                    logger.error(
+                        "Skipping email notifier (blocked/invalid SMTP host): %s",
+                        sanitize_log_message(str(e)),
+                    )
 
         return services
 
