@@ -593,6 +593,24 @@ class SettingsService:
         },
     }
 
+    # Sensitive keys not represented in DEFAULTS (stored elsewhere or legacy) that
+    # must still never be returned unmasked. Derived secret keys come from the
+    # encrypted:True DEFAULTS entries via sensitive_keys().
+    _EXTRA_SENSITIVE_KEYS = frozenset(
+        {"admin_password_hash", "oidc_client_secret", "encryption_key"}
+    )
+
+    @classmethod
+    def sensitive_keys(cls) -> frozenset[str]:
+        """Return the full set of setting keys that must be masked in responses.
+
+        Derived from the ``encrypted:True`` DEFAULTS entries (so a new encrypted
+        default can never silently leak by drifting out of a hand-maintained
+        list) unioned with _EXTRA_SENSITIVE_KEYS.
+        """
+        derived = {k for k, v in cls.DEFAULTS.items() if v.get("encrypted")}
+        return frozenset(derived) | cls._EXTRA_SENSITIVE_KEYS
+
     @staticmethod
     async def init_defaults(db: AsyncSession) -> None:
         """Initialize default settings if they don't exist."""

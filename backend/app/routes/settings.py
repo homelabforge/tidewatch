@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.exceptions import SSRFProtectionError
 from app.schemas import SettingCategory, SettingSchema, SettingUpdate
+from app.schemas.setting import SENSITIVE_KEYS
 from app.services import SettingsService
 from app.services.auth import require_auth
 from app.services.docker_access import make_docker_client, resolve_docker_url
@@ -21,6 +22,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _mask_secret(value: str) -> str:
+    """Mask a stored secret for safe display in settings responses.
+
+    Operates on the stored ciphertext-at-rest (the route never decrypts), so the
+    output never reveals a plaintext fragment.
+    """
+    if len(value) > 12:
+        return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
+    if len(value) > 4:
+        return f"{value[:2]}{'*' * (len(value) - 2)}"
+    return "****"
+
+
 @router.get("/", response_model=list[SettingSchema])
 async def get_all_settings(
     _admin: dict | None = Depends(require_auth),
@@ -28,21 +42,13 @@ async def get_all_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all settings, optionally filtered by category."""
-    from app.schemas.setting import SENSITIVE_KEYS
-
     settings = await SettingsService.get_all(db, category)
 
-    # Mask sensitive values in responses
+    # Mask sensitive values in responses. Masks the ciphertext-at-rest (the route
+    # never decrypts), so no plaintext fragment can leak.
     for setting in settings:
         if setting.key in SENSITIVE_KEYS and setting.value:
-            if len(setting.value) > 12:
-                setting.value = (
-                    f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
-                )
-            elif len(setting.value) > 4:
-                setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
-            else:
-                setting.value = "****"
+            setting.value = _mask_secret(setting.value)
 
     return settings
 
@@ -53,22 +59,13 @@ async def get_settings_by_category(
     db: AsyncSession = Depends(get_db),
 ) -> list[SettingCategory]:
     """Get settings grouped by category."""
-    from app.schemas.setting import SENSITIVE_KEYS
-
     grouped = await SettingsService.get_by_category(db)
 
-    # Mask sensitive values in all categories
+    # Mask sensitive values in all categories (ciphertext-at-rest; never decrypted).
     for settings_list in grouped.values():
         for setting in settings_list:
             if setting.key in SENSITIVE_KEYS and setting.value:
-                if len(setting.value) > 12:
-                    setting.value = (
-                        f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
-                    )
-                elif len(setting.value) > 4:
-                    setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
-                else:
-                    setting.value = "****"
+                setting.value = _mask_secret(setting.value)
 
     return [SettingCategory(category=cat, settings=settings) for cat, settings in grouped.items()]
 
@@ -80,8 +77,6 @@ async def get_setting(
     db: AsyncSession = Depends(get_db),
 ) -> SettingSchema:
     """Get a specific setting by key."""
-    from app.schemas.setting import SENSITIVE_KEYS
-
     value = await SettingsService.get(db, key)
     if value is None:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
@@ -92,16 +87,9 @@ async def get_setting(
     if not setting:
         raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
 
-    # Mask sensitive value
+    # Mask sensitive value (ciphertext-at-rest; never decrypted).
     if setting.key in SENSITIVE_KEYS and setting.value:
-        if len(setting.value) > 12:
-            setting.value = (
-                f"{setting.value[:4]}{'*' * (len(setting.value) - 8)}{setting.value[-4:]}"
-            )
-        elif len(setting.value) > 4:
-            setting.value = f"{setting.value[:2]}{'*' * (len(setting.value) - 2)}"
-        else:
-            setting.value = "****"
+        setting.value = _mask_secret(setting.value)
 
     return setting
 

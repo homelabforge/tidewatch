@@ -13,6 +13,15 @@ from unittest.mock import patch
 import pytest
 from fastapi import status
 
+from app.services.settings_service import SettingsService as _SettingsService
+
+# Every encrypted:True DEFAULTS key — the source of truth the mask set derives
+# from. Enumerated here so the desync-proof tests below mask whatever the app
+# actually encrypts, with no hand-maintained second list to drift.
+_ENCRYPTED_DEFAULT_KEYS = sorted(
+    k for k, v in _SettingsService.DEFAULTS.items() if v.get("encrypted")
+)
+
 
 class TestGetAllSettingsEndpoint:
     """Test suite for GET /api/v1/settings endpoint."""
@@ -405,38 +414,33 @@ class TestSensitiveDataMasking:
             assert "my-super-secret-encryption-key-12345" not in data["value"]
 
     async def test_notification_tokens_masked(self, authenticated_client, db):
-        """Test notification service tokens are masked."""
+        """Test notification service tokens are masked (unconditionally)."""
         from app.services.settings_service import SettingsService
 
-        # Set a notification token (Discord, Slack, etc.)
-        await SettingsService.set(
-            db,
-            "discord_webhook_url",
-            "https://discord.com/api/webhooks/123456789/super-secret-webhook-token",
-        )
+        secret = "https://discord.com/api/webhooks/123456789/super-secret-webhook-token"
+        await SettingsService.set(db, "discord_webhook_url", secret)
 
         response = await authenticated_client.get("/api/v1/settings/discord_webhook_url")
 
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            # Webhook URL might be masked if marked as sensitive
-            # At minimum, it should be returned
-            assert "discord_webhook_url" == data["key"]
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["key"] == "discord_webhook_url"
+        assert "*" in data["value"]
+        assert secret not in data["value"]
 
     async def test_email_password_masked(self, authenticated_client, db):
-        """Test email SMTP password is masked."""
+        """Test email SMTP password is masked (real key email_smtp_password)."""
         from app.services.settings_service import SettingsService
 
-        # Set email SMTP password
-        await SettingsService.set(db, "smtp_password", "my-email-password-123")
+        secret = "my-email-password-123"
+        await SettingsService.set(db, "email_smtp_password", secret)
 
-        response = await authenticated_client.get("/api/v1/settings/smtp_password")
+        response = await authenticated_client.get("/api/v1/settings/email_smtp_password")
 
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            # Should be masked if marked as sensitive
-            if "*" in data["value"]:
-                assert "my-email-password-123" not in data["value"]
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "*" in data["value"]
+        assert secret not in data["value"]
 
     async def test_oidc_client_secret_masked(self, authenticated_client, db):
         """Test OIDC client secret is masked."""
@@ -451,6 +455,59 @@ class TestSensitiveDataMasking:
             data = response.json()
             # Should be masked if marked as sensitive
             assert "super-secret-client-secret-value" not in data["value"]
+
+    async def test_previously_leaking_keys_masked(self, authenticated_client, db):
+        """ntfy_token / slack_webhook_url / discord_webhook_url were missing from
+        the hand-maintained list and leaked unmasked; the derived set masks them."""
+        from app.services.settings_service import SettingsService
+
+        secrets = {
+            "ntfy_token": "tk_super_secret_ntfy_token_value",
+            "slack_webhook_url": "https://hooks.slack.com/services/T000/B000/secrettoken",
+            "discord_webhook_url": "https://discord.com/api/webhooks/123/secrettoken",
+        }
+        for key, value in secrets.items():
+            await SettingsService.set(db, key, value)
+
+        response = await authenticated_client.get("/api/v1/settings")
+        assert response.status_code == status.HTTP_200_OK
+        by_key = {s["key"]: s["value"] for s in response.json()}
+        for key, value in secrets.items():
+            assert "*" in by_key[key], f"{key} not masked"
+            assert value not in by_key[key], f"{key} leaked plaintext"
+
+    @pytest.mark.parametrize("key", _ENCRYPTED_DEFAULT_KEYS)
+    async def test_all_encrypted_defaults_masked_in_get_all(self, authenticated_client, db, key):
+        """Every encrypted:True DEFAULTS key is masked in GET /settings."""
+        from app.services.settings_service import SettingsService
+
+        secret = f"plaintext-secret-for-{key}-1234567890"
+        await SettingsService.set(db, key, secret)
+
+        response = await authenticated_client.get("/api/v1/settings")
+        assert response.status_code == status.HTTP_200_OK
+        value = {s["key"]: s["value"] for s in response.json()}[key]
+        assert "*" in value, f"{key} not masked in get_all"
+        assert secret not in value, f"{key} leaked plaintext in get_all"
+
+    @pytest.mark.parametrize("key", _ENCRYPTED_DEFAULT_KEYS)
+    async def test_all_encrypted_defaults_masked_in_categories(self, authenticated_client, db, key):
+        """Every encrypted:True DEFAULTS key is masked in GET /settings/categories."""
+        from app.services.settings_service import SettingsService
+
+        secret = f"plaintext-secret-for-{key}-1234567890"
+        await SettingsService.set(db, key, secret)
+
+        response = await authenticated_client.get("/api/v1/settings/categories")
+        assert response.status_code == status.HTTP_200_OK
+        found = None
+        for category in response.json():
+            for s in category["settings"]:
+                if s["key"] == key:
+                    found = s["value"]
+        assert found is not None, f"{key} missing from categories"
+        assert "*" in found, f"{key} not masked in categories"
+        assert secret not in found, f"{key} leaked plaintext in categories"
 
 
 class TestSSRFProtectionOnTestEndpoints:
