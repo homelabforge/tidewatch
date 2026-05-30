@@ -282,6 +282,24 @@ class TestJWTOperations:
 
         assert exc_info.value.status_code == 401
 
+    def test_decode_token_rejects_wrong_algorithm(self):
+        """A token signed with a different (but same-secret) algorithm is rejected
+        now that decode pins algorithms=[HS256] (N3)."""
+        from datetime import UTC, datetime, timedelta
+
+        claims = {
+            "sub": "admin",
+            "username": "admin",
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        # Forge an HS384 token with the SAME signing key — accepted before the pin.
+        forged = jwt.encode({"alg": "HS384"}, claims, auth._SIGNING_KEY, algorithms=["HS384"])
+
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(forged)
+
+        assert exc_info.value.status_code == 401
+
     def test_create_access_token_uses_hs256_algorithm(self, sample_payload):
         """Test JWT uses HS256 algorithm."""
         token = create_access_token(sample_payload)

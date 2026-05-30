@@ -33,7 +33,7 @@ from app.exceptions import (
 from app.models.oidc_pending_link import OIDCPendingLink
 from app.models.oidc_state import OIDCState
 from app.services.settings_service import SettingsService
-from app.utils.security import mask_sensitive
+from app.utils.security import mask_sensitive, sanitize_log_message
 from app.utils.url_validation import validate_oidc_url
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,23 @@ def mask_secret(secret: str, show_chars: int = 4) -> str:
 def display_mask_secret(secret: str) -> str:
     """Return the canonical placeholder used in admin GET responses."""
     return MASKED_SECRET_PLACEHOLDER if secret else ""
+
+
+# Max length of a provider response body echoed into logs.
+_LOG_SNIPPET_MAX = 256
+
+
+def _safe_response_snippet(text: str, secret: str = "") -> str:
+    """Bounded, secret-redacted, log-injection-safe snippet of a provider response.
+
+    A reflective/hostile OIDC provider can echo the posted ``client_secret`` back
+    in its error body — redact it verbatim, cap the length, and sanitize before
+    logging (N4).
+    """
+    snippet = (text or "")[:_LOG_SNIPPET_MAX]
+    if secret:
+        snippet = snippet.replace(secret, "<redacted>")
+    return sanitize_log_message(snippet)
 
 
 def is_masked_secret(secret: str) -> bool:
@@ -448,7 +465,9 @@ async def exchange_code_for_tokens(
             # Log response details for debugging
             if response.status_code != 200:
                 logger.error("Token exchange failed with status %s", response.status_code)
-                logger.error("Response body: %s", response.text)
+                logger.error(
+                    "Response body: %s", _safe_response_snippet(response.text, client_secret)
+                )
 
             response.raise_for_status()
             tokens = response.json()
@@ -458,7 +477,7 @@ async def exchange_code_for_tokens(
 
     except httpx.HTTPStatusError as e:
         logger.error("HTTP error during token exchange: %s", e.response.status_code)
-        logger.error("Response body: %s", e.response.text)
+        logger.error("Response body: %s", _safe_response_snippet(e.response.text, client_secret))
         return None
     except httpx.TimeoutException:
         logger.error("Token exchange request timed out")

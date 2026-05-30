@@ -203,7 +203,11 @@ def decode_token(token: str) -> dict:
     )
 
     try:
-        decoded = jwt.decode(token, _SIGNING_KEY)
+        # Pin the accepted algorithm to HS256. _SIGNING_KEY is an OctKey (HMAC
+        # only), so an algorithm-confusion swap isn't currently exploitable, but
+        # an explicit allowlist is the correct hardening — an alg mismatch raises
+        # JoseError → the 401 below.
+        decoded = jwt.decode(token, _SIGNING_KEY, algorithms=[JWT_ALGORITHM])
         payload = decoded.claims
 
         # Manually validate expiration (joserfc only validates via JWTClaimsRegistry).

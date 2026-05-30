@@ -9,7 +9,8 @@ Tests OIDC/OAuth2 authentication endpoints:
 - POST /api/v1/auth/oidc/link-account - Link OIDC account
 """
 
-from unittest.mock import AsyncMock, patch
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import status
@@ -750,3 +751,51 @@ class TestOIDCLinkAccountEndpoint:
             set_cookie = response.headers.get("set-cookie", "")
             assert "tidewatch_token=" in set_cookie
             assert "httponly" in set_cookie.lower()
+
+
+class TestExchangeCodeForTokensLogging:
+    """Token-exchange error logging must not leak the client_secret (N4)."""
+
+    _SECRET = "super-secret-client-value-1234567890"
+    _CONFIG = {"client_id": "client", "client_secret": _SECRET}
+    _METADATA = {"token_endpoint": "https://auth.example.com/token"}
+
+    def _echoing_response(self, status_code):
+        import httpx
+
+        resp = MagicMock(spec=httpx.Response)
+        resp.status_code = status_code
+        # A reflective provider echoes the posted secret + a long body.
+        resp.text = f"error: rejected client_secret={self._SECRET} " + ("x" * 600)
+        return resp
+
+    async def test_non_200_branch_does_not_log_secret(self, caplog):
+        from app.services import oidc as oidc_service
+
+        resp = self._echoing_response(400)
+        # raise_for_status raises so only the non-200 log fires, then the
+        # HTTPStatusError branch fires — both must redact.
+        import httpx
+
+        resp.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError("err", request=MagicMock(), response=resp)
+        )
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+
+        with (
+            patch("app.services.oidc.httpx.AsyncClient", return_value=client),
+            patch("app.services.oidc.validate_oidc_url"),
+            caplog.at_level(logging.ERROR, logger="app.services.oidc"),
+        ):
+            result = await oidc_service.exchange_code_for_tokens(
+                "code", self._CONFIG, self._METADATA, "https://rp.example.com/cb"
+            )
+
+        assert result is None
+        assert self._SECRET not in caplog.text
+        assert "<redacted>" in caplog.text
+        # Bounded: the 600-char filler is truncated to the snippet cap.
+        assert ("x" * 400) not in caplog.text
