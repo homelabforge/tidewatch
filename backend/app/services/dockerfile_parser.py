@@ -182,15 +182,25 @@ class DockerfileParser:
         4. Common Dockerfile locations (docker/, build/, etc.)
         """
         if manual_path:
-            # Validate manual_path to prevent path traversal
-            try:
-                dockerfile = sanitize_path(manual_path, "/", allow_symlinks=False)
-                if dockerfile.exists():
-                    return dockerfile
-            except (ValueError, FileNotFoundError) as e:
+            # Hard-reject absolute manual paths (they have no containment against
+            # projects_directory); a relative path is contained against the
+            # configured projects directory. Either way, fall through to
+            # auto-detection on rejection. (Locked Decision 4.)
+            if Path(manual_path).is_absolute():
                 logger.warning(
-                    f"Invalid manual Dockerfile path: {sanitize_log_message(manual_path)} - {sanitize_log_message(str(e))}"
+                    f"Absolute manual Dockerfile path rejected: {sanitize_log_message(manual_path)}"
                 )
+            else:
+                try:
+                    dockerfile = sanitize_path(
+                        manual_path, str(self.projects_directory), allow_symlinks=False
+                    )
+                    if dockerfile.exists() and dockerfile.is_file():
+                        return dockerfile
+                except (ValueError, FileNotFoundError) as e:
+                    logger.warning(
+                        f"Invalid manual Dockerfile path: {sanitize_log_message(manual_path)} - {sanitize_log_message(str(e))}"
+                    )
                 # Fall through to automatic search
 
         # Resolve project root via the shared resolver (handles compose-independent
@@ -252,7 +262,9 @@ class DockerfileParser:
         # interprocedural taint tracker doesn't always carry the barrier
         # through `await self._find_dockerfile(...)` returns.
         try:
-            safe_dockerfile = sanitize_path(str(dockerfile_path), "/", allow_symlinks=False)
+            safe_dockerfile = sanitize_path(
+                str(dockerfile_path), str(self.projects_directory), allow_symlinks=False
+            )
         except (ValueError, FileNotFoundError) as e:
             logger.warning(
                 f"Refusing to parse Dockerfile at suspicious path: "

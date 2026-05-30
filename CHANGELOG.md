@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Require password verification before first OIDC admin link; keep local password as break-glass
 - SSRF-validate and size-cap changelog/release-source fetches; quote GitHub release tags
+- Contain manual Dockerfile path within the projects directory
 
 ## [3.11.3] - 2026-05-27
 

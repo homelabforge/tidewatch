@@ -467,13 +467,25 @@ class ProjectScanner:
                 logger.debug(f"No Dockerfile found in {project_dir}")
                 return
 
+            # Root the parser at the configured projects directory and pass a path
+            # RELATIVE to it that includes the project subdir. A bare "Dockerfile"
+            # would resolve to <projects_dir>/Dockerfile (the wrong file), and an
+            # absolute path is now hard-rejected by the parser (H2).
+            projects_dir = await SettingsService.get(self.db, "projects_directory") or "/projects"
+            try:
+                rel = str(project_dir.relative_to(projects_dir) / "Dockerfile")
+            except ValueError:
+                logger.warning(
+                    f"Project dir {sanitize_log_message(str(project_dir))} is outside "
+                    f"projects_directory {sanitize_log_message(str(projects_dir))}; skipping auto-scan"
+                )
+                return
+
             from app.services.dockerfile_parser import DockerfileParser
 
             logger.info(f"Auto-scanning Dockerfile for container {container.id}")
-            parser = DockerfileParser()
-            dependencies = await parser.scan_container_dockerfile(
-                self.db, container, str(dockerfile_path)
-            )
+            parser = DockerfileParser(projects_directory=projects_dir)
+            dependencies = await parser.scan_container_dockerfile(self.db, container, rel)
             logger.info(f"Dockerfile scan completed: {len(dependencies)} dependencies found")
 
         except (OSError, PermissionError) as e:
