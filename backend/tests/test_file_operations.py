@@ -91,13 +91,14 @@ class TestValidateFilePathForUpdate:
                 validate_file_path_for_update(str(subdir))
 
     def test_rejects_symlink(self, tmp_path):
-        """Test rejects symbolic link (symlink attack prevention)."""
-        # NOTE: Path.resolve() follows symlinks, so the resolved path won't be a symlink
-        # The is_symlink() check in file_operations.py happens AFTER resolve()
-        # This test is skipped because symlink detection after resolve() doesn't work as expected
-        pytest.skip(
-            "Symlink detection after Path.resolve() is ineffective - resolved path is not a symlink"
-        )
+        """Rejects a symlink at the target path (the check now runs BEFORE resolve)."""
+        real = tmp_path / "real.txt"
+        real.write_text("data")
+        link = tmp_path / "link.txt"
+        link.symlink_to(real)
+
+        with pytest.raises(PathValidationError, match="symlink"):
+            validate_file_path_for_update(str(link), allowed_base=tmp_path)
 
     def test_rejects_file_too_large(self, tmp_path):
         """Test rejects file exceeding MAX_FILE_SIZE."""
@@ -308,8 +309,11 @@ class TestCreateTimestampedBackup:
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
-        # Mock shutil.copy2 to fail
-        with patch("shutil.copy2", side_effect=OSError("Mock failure")):
+        # Backup now opens the destination via _open_new_nofollow; simulate failure there.
+        with patch(
+            "app.utils.file_operations._open_new_nofollow",
+            side_effect=OSError("Mock failure"),
+        ):
             with pytest.raises(BackupError, match="Failed to create backup"):
                 create_timestamped_backup(test_file)
 
@@ -347,24 +351,22 @@ class TestAtomicFileWrite:
         assert test_file.stat().st_mode == original_mode
 
     def test_creates_temp_file_in_same_directory(self, tmp_path):
-        """Test creates temp file in same directory as target."""
+        """Test the staging temp file is created in the target's directory (same FS)."""
         test_file = tmp_path / "test.txt"
 
-        # Track temp file creation
-        temp_files_created = []
-        original_open = open
+        import tempfile as _tempfile
 
-        def mock_open(file, *args, **kwargs):
-            path = Path(file)
-            if ".tmp." in str(path):
-                temp_files_created.append(path)
-            return original_open(file, *args, **kwargs)
+        original_mkstemp = _tempfile.mkstemp
+        dirs_used = []
 
-        with patch("builtins.open", mock_open):
+        def tracking_mkstemp(*args, **kwargs):
+            dirs_used.append(kwargs.get("dir"))
+            return original_mkstemp(*args, **kwargs)
+
+        with patch("app.utils.file_operations.tempfile.mkstemp", tracking_mkstemp):
             atomic_file_write(test_file, "content")
 
-        assert len(temp_files_created) == 1
-        assert temp_files_created[0].parent == test_file.parent
+        assert dirs_used == [test_file.parent]
 
     def test_cleans_up_temp_file_on_success(self, tmp_path):
         """Test removes temp file after successful write."""
@@ -377,18 +379,10 @@ class TestAtomicFileWrite:
         assert len(temp_files) == 0
 
     def test_cleans_up_temp_file_on_failure(self, tmp_path):
-        """Test removes temp file after failed write."""
+        """Test removes temp file after a failed os.replace."""
         test_file = tmp_path / "test.txt"
 
-        # Mock replace to fail after temp file is created
-        original_replace = Path.replace
-
-        def mock_replace(self, target):
-            if ".tmp." in str(self):
-                raise OSError("Mock failure")
-            return original_replace(self, target)
-
-        with patch.object(Path, "replace", mock_replace):
+        with patch("app.utils.file_operations.os.replace", side_effect=OSError("Mock failure")):
             with pytest.raises(AtomicWriteError):
                 atomic_file_write(test_file, "content")
 
@@ -400,8 +394,10 @@ class TestAtomicFileWrite:
         """Test raises AtomicWriteError when write fails."""
         test_file = tmp_path / "test.txt"
 
-        # Mock open to fail
-        with patch("builtins.open", side_effect=OSError("Mock failure")):
+        # The staging temp is created via tempfile.mkstemp; simulate failure there.
+        with patch(
+            "app.utils.file_operations.tempfile.mkstemp", side_effect=OSError("Mock failure")
+        ):
             with pytest.raises(AtomicWriteError, match="Atomic write failed"):
                 atomic_file_write(test_file, "content")
 
@@ -430,9 +426,12 @@ class TestAtomicFileWrite:
         test_file = tmp_path / "test.txt"
         test_file.write_text("old content")
 
-        # Mock os.chown to raise PermissionError
-        with patch("os.chown", side_effect=PermissionError("Mock permission denied")):
-            # Should still succeed, just log warning
+        # Ownership is now preserved via os.fchown (fd-based); a failure there is
+        # swallowed with a warning and the write still succeeds.
+        with patch(
+            "app.utils.file_operations.os.fchown",
+            side_effect=PermissionError("Mock permission denied"),
+        ):
             result = atomic_file_write(test_file, "new content")
 
             assert result is True
@@ -470,8 +469,8 @@ class TestRestoreFromBackup:
 
         target = tmp_path / "test.txt"
 
-        # Mock shutil.copy2 to fail
-        with patch("shutil.copy2", side_effect=OSError("Mock failure")):
+        # Restore stages via tempfile + os.replace; simulate failure at os.replace.
+        with patch("app.utils.file_operations.os.replace", side_effect=OSError("Mock failure")):
             with pytest.raises(FileOperationError, match="Failed to restore"):
                 restore_from_backup(backup, target)
 
@@ -482,22 +481,11 @@ class TestRestoreFromBackup:
 
         target = tmp_path / "test.txt"
 
-        # Mock target.exists() to return False after copy
-        original_exists = Path.exists
-        copy_called = [False]
-
-        def mock_exists(self):
-            if copy_called[0] and self == target:
-                return False
-            return original_exists(self)
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch(
-                "shutil.copy2",
-                side_effect=lambda s, t: copy_called.__setitem__(0, True),
-            ):
-                with pytest.raises(FileOperationError, match="target not created"):
-                    restore_from_backup(backup, target)
+        # os.replace as a no-op → the staged temp is never moved into place, so the
+        # target does not exist and restore reports the failure.
+        with patch("app.utils.file_operations.os.replace", lambda *a, **k: None):
+            with pytest.raises(FileOperationError, match="target not created"):
+                restore_from_backup(backup, target)
 
 
 class TestCleanupOldBackups:
@@ -636,17 +624,69 @@ class TestFileOperationSecurity:
         test_file = tmp_path / "critical.txt"
         test_file.write_text("important data")
 
-        # Simulate failure during write
-        original_replace = Path.replace
-
-        def mock_replace(self, target):
-            if ".tmp." in str(self):
-                raise OSError("Disk full")
-            return original_replace(self, target)
-
-        with patch.object(Path, "replace", mock_replace):
+        # Simulate failure at the final os.replace.
+        with patch("app.utils.file_operations.os.replace", side_effect=OSError("Disk full")):
             with pytest.raises(AtomicWriteError):
                 atomic_file_write(test_file, "corrupted data")
 
         # Original file should still have original content
         assert test_file.read_text() == "important data"
+
+
+class TestSymlinkPrePlantHardening:
+    """Pre-planted-symlink resistance for atomic write / backup / restore (#10)."""
+
+    def test_atomic_write_does_not_follow_symlink_target(self, tmp_path):
+        outside = tmp_path / "outside.txt"
+        outside.write_text("SECRET")
+        target = tmp_path / "config.txt"
+        target.symlink_to(outside)
+
+        atomic_file_write(target, "new content")
+
+        assert outside.read_text() == "SECRET"  # referent untouched
+        assert not target.is_symlink()  # symlink entry replaced by a real file
+        assert target.read_text() == "new content"
+
+    def test_backup_refuses_preplanted_symlink(self, tmp_path):
+        source = tmp_path / "Dockerfile"
+        source.write_text("FROM scratch")
+        outside = tmp_path / "outside.txt"
+        outside.write_text("SECRET")
+
+        # Pre-plant a symlink at the (made-predictable) backup name.
+        fixed = "20250101-000000"
+        (tmp_path / f"Dockerfile.backup.{fixed}").symlink_to(outside)
+        mock_dt = MagicMock()
+        mock_dt.now.return_value.strftime.return_value = fixed
+
+        with patch("app.utils.file_operations.datetime", mock_dt):
+            with pytest.raises(BackupError):
+                create_timestamped_backup(source)
+
+        # O_NOFOLLOW|O_EXCL refused to write through the symlink.
+        assert outside.read_text() == "SECRET"
+
+    def test_restore_replaces_symlink_target_without_following(self, tmp_path):
+        backup = tmp_path / "test.txt.backup"
+        backup.write_text("BACKUP")
+        outside = tmp_path / "outside.txt"
+        outside.write_text("SECRET")
+        target = tmp_path / "test.txt"
+        target.symlink_to(outside)
+
+        restore_from_backup(backup, target)
+
+        assert outside.read_text() == "SECRET"  # referent untouched
+        assert not target.is_symlink()
+        assert target.read_text() == "BACKUP"
+
+    def test_restore_refuses_symlinked_backup_source(self, tmp_path):
+        outside = tmp_path / "outside.txt"
+        outside.write_text("SECRET")
+        backup = tmp_path / "test.txt.backup"
+        backup.symlink_to(outside)  # symlinked backup source
+        target = tmp_path / "test.txt"
+
+        with pytest.raises(FileOperationError):
+            restore_from_backup(backup, target)

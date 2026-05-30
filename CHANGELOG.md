@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redact auth tokens and disable redirects in health-check requests
 - Encrypt oidc_client_secret/admin_password_hash at rest; auto-bootstrap the encryption key to /data/encryption.key
 - Use argv lists (no shell) for all Docker backup/restore exec helpers; allowlist POSTGRES_USER; synthetic collision-free tar names
+- Symlink-safe atomic writes, backups, and restores in dependency updates (O_NOFOLLOW, unpredictable temp names)
 
 ## [3.11.3] - 2026-05-27
 
