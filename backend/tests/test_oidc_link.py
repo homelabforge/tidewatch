@@ -43,6 +43,7 @@ class TestLinkOIDCToAdmin:
             await link_oidc_to_admin(db, claims, None, CONFIG)
 
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject is None
         assert user.auth_method == "local"
 
@@ -54,6 +55,7 @@ class TestLinkOIDCToAdmin:
         await link_oidc_to_admin(db, claims, None, CONFIG, password_verified=True)
 
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject == "oidc-user-1"
         assert user.auth_method == "oidc"
         assert user.oidc_provider == "Test Provider"
@@ -72,6 +74,7 @@ class TestLinkOIDCToAdmin:
         await link_oidc_to_admin(db, claims, None, CONFIG)
 
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject == "oidc-user-1"
 
     async def test_relogin_mismatched_sub_raises(self, db):
@@ -88,6 +91,7 @@ class TestLinkOIDCToAdmin:
             await link_oidc_to_admin(db, claims, None, CONFIG)
 
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject == "oidc-user-1"
 
     async def test_no_password_first_time_binds_without_pending(self, db):
@@ -98,5 +102,6 @@ class TestLinkOIDCToAdmin:
         await link_oidc_to_admin(db, claims, None, CONFIG)
 
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject == "oidc-user-1"
         assert user.auth_method == "oidc"

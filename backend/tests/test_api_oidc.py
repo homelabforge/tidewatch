@@ -525,6 +525,7 @@ class TestOIDCCallbackEndpoint:
 
         # Nothing bound; a pending-link row was created.
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject is None
         rows = (await db.execute(select(OIDCPendingLink))).scalars().all()
         assert len(rows) == 1
@@ -565,6 +566,7 @@ class TestOIDCCallbackEndpoint:
         assert response.status_code == status.HTTP_403_FORBIDDEN
         # Binding unchanged.
         user = await _get_admin_user(db)
+        assert user is not None
         assert user.oidc_subject == "oidc-user-1"
 
 

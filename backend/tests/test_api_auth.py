@@ -773,6 +773,7 @@ class TestPasswordChangeBreakGlass:
 
         assert resp.status_code == status.HTTP_200_OK
         user = await _get_admin_user(db)
+        assert user is not None
         assert verify_password("NewPassword456!", user.password_hash)
 
     async def test_change_password_rejected_without_hash(self, client, db):
