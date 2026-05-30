@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Service worker routes document-destination requests (browser/Cloudflare speculative prefetch of SPA routes like `/settings`) through the navigation fallback with a 5s timeout, so a cancelled/transient prefetch no longer surfaces as an "Uncaught (in promise) Failed to fetch"
+
 ### Changed
 - Explicit HTTP health checks now fail (and roll back) instead of falling back to container status
 - Notifications to private-IP ntfy/Gotify/SMTP now require TIDEWATCH_TRUSTED_HOSTS (comma-separated hostnames/IPs/CIDRs)
