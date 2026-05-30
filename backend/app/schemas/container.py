@@ -1,11 +1,13 @@
 """Pydantic schemas for containers."""
 
 import json
+import re
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.exceptions import SSRFProtectionError
 from app.schemas.dependency import (
     AppDependencySchema,
     DockerfileDependencySchema,
@@ -13,6 +15,7 @@ from app.schemas.dependency import (
 from app.schemas.dependency import (
     HttpServerSchema as HttpServerSchemaFromDependency,
 )
+from app.utils.url_validation import validate_integration_url
 
 # Valid update policy values
 VALID_POLICIES = {
@@ -189,6 +192,42 @@ class ContainerUpdate(BaseModel):
                 f"Invalid policy '{v}'. Must be one of: {', '.join(sorted(VALID_POLICIES))}"
             )
         return v
+
+    @field_validator("release_source")
+    @classmethod
+    def validate_release_source(cls, v: str | None) -> str | None:
+        """Validate release_source: ``github:owner/repo``, bare ``owner/repo``, or
+        an http(s) URL.
+
+        Defense-in-depth + an early 422 on the write path. The changelog fetcher
+        re-validates at fetch time regardless (auto-detected sources and pre-existing
+        rows bypass this validator).
+
+        Empty/whitespace input returns the stripped empty string (NOT None) so the
+        route's existing clear-to-None path (``release_source if ... else None``,
+        gated on ``is not None``) still fires — the frontend clears the field by
+        sending "". Returning None here would make that an unintended no-op.
+        """
+        if v is None:
+            return None
+        candidate = v.strip()
+        if not candidate:
+            return ""
+        if len(candidate) > 2048:
+            raise ValueError("release_source is too long (max 2048 characters)")
+        if candidate.startswith(("http://", "https://")):
+            try:
+                validate_integration_url(candidate)
+            except (SSRFProtectionError, ValueError) as e:
+                raise ValueError(f"Invalid release_source URL: {e}")
+            return candidate
+        # github:owner/repo or bare owner/repo
+        repo = candidate[len("github:") :] if candidate.startswith("github:") else candidate
+        if not re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", repo):
+            raise ValueError(
+                "release_source must be 'github:owner/repo', 'owner/repo', or an http(s) URL"
+            )
+        return candidate
 
 
 class SiblingDivergenceWarning(BaseModel):

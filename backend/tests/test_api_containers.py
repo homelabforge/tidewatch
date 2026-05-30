@@ -940,3 +940,69 @@ class TestVersionTrackNullableClear:
             json={"version_track": "unknown"},
         )
         assert resp.status_code == 422
+
+
+class TestReleaseSourceValidation:
+    """PUT /containers/{id} release_source validation (N1)."""
+
+    async def _make(self, db, make_container, **kw):
+        container = make_container(name=f"rs-{id(self)}-{len(kw)}", **kw)
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+        return container
+
+    async def test_rejects_private_url(self, authenticated_client, db, make_container):
+        container = await self._make(db, make_container)
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": "http://10.0.0.5/CHANGELOG.md"},
+        )
+        assert resp.status_code == 422
+        await db.refresh(container)
+        assert container.release_source is None
+
+    async def test_rejects_malformed(self, authenticated_client, db, make_container):
+        container = await self._make(db, make_container)
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": "not a valid source!!!"},
+        )
+        assert resp.status_code == 422
+
+    async def test_accepts_github_prefixed(self, authenticated_client, db, make_container):
+        container = await self._make(db, make_container)
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": "github:owner/repo"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["container"]["release_source"] == "github:owner/repo"
+
+    async def test_accepts_bare_owner_repo(self, authenticated_client, db, make_container):
+        container = await self._make(db, make_container)
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": "owner/repo"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["container"]["release_source"] == "owner/repo"
+
+    async def test_empty_string_stored_none(self, authenticated_client, db, make_container):
+        container = await self._make(db, make_container)
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": ""},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["container"]["release_source"] is None
+
+    async def test_empty_string_clears_existing(self, authenticated_client, db, make_container):
+        """Sending "" clears a previously-set source (frontend clear-the-field path)."""
+        container = await self._make(db, make_container, release_source="github:owner/repo")
+        resp = await authenticated_client.put(
+            f"/api/v1/containers/{container.id}",
+            json={"release_source": ""},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["container"]["release_source"] is None

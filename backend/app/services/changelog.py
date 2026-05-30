@@ -3,13 +3,21 @@
 import logging
 import re
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 from html2text import HTML2Text
 
+from app.exceptions import SSRFProtectionError
 from app.utils.security import sanitize_log_message
+from app.utils.url_validation import validate_integration_url
 
 logger = logging.getLogger(__name__)
+
+# Cap on the raw changelog body fetched from arbitrary URLs (before HTML→markdown
+# conversion, which only shrinks). GitHub caps release bodies ~125 KB; 1 MiB is a
+# generous ceiling that still bounds memory against a hostile/huge response.
+MAX_CHANGELOG_BYTES = 1_048_576
 
 
 @dataclass
@@ -139,11 +147,29 @@ class ChangelogFetcher:
         return result
 
     async def _fetch_url(self, url: str) -> ChangelogResult | None:
+        # SSRF: validate before any outbound request. validate_integration_url
+        # honors TIDEWATCH_TRUSTED_HOSTS so an explicitly-trusted internal
+        # release page stays reachable while private/metadata targets are blocked.
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            validate_integration_url(url)
+        except (SSRFProtectionError, ValueError) as e:
+            logger.warning(
+                f"Blocked changelog fetch (SSRF) for {sanitize_log_message(str(url))}: {sanitize_log_message(str(e))}"
+            )
+            return None
+        try:
+            # follow_redirects=False: a 3xx becomes a non-2xx → HTTPStatusError →
+            # None, dropping redirect-based rebind to a private target.
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
                 response = await client.get(url)
                 response.raise_for_status()
-                return ChangelogResult(raw_text=response.text, source=url)
+                raw_text = response.text
+                # Cap the body before the HTML→markdown conversion (which only
+                # shrinks). Truncate on UTF-8 byte length, codepoint-safe.
+                encoded = raw_text.encode("utf-8", "ignore")
+                if len(encoded) > MAX_CHANGELOG_BYTES:
+                    raw_text = encoded[:MAX_CHANGELOG_BYTES].decode("utf-8", "ignore")
+                return ChangelogResult(raw_text=raw_text, source=url)
         except httpx.HTTPStatusError as e:
             logger.warning(
                 f"HTTP error fetching changelog from {sanitize_log_message(str(url))}: {sanitize_log_message(str(e))}"
@@ -163,8 +189,6 @@ class ChangelogFetcher:
     async def _fetch_github_release(self, owner_repo: str, tag: str) -> ChangelogResult | None:
         # Validate owner_repo format to prevent path traversal in URL construction
         # Valid format: owner/repo (alphanumeric, hyphens, underscores, dots)
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", owner_repo):
             logger.warning(
                 f"Invalid GitHub repository format: {sanitize_log_message(str(owner_repo))}"
@@ -187,11 +211,17 @@ class ChangelogFetcher:
             headers["Authorization"] = f"Bearer {self.github_token}"
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            # follow_redirects=False (hardening): the URL is already constrained to
+            # api.github.com with a regex-validated owner_repo, so we do not add
+            # SSRF validation here (that would break air-gapped/trusted-host setups).
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
                 for tag_variant in tag_variations:
-                    # URL is constrained to api.github.com, owner_repo validated above
+                    # URL is constrained to api.github.com, owner_repo validated above.
+                    # quote(safe="") percent-encodes the tag (incl. "/") as a single
+                    # path segment so a crafted tag can't traverse the GitHub path.
                     api_url = (
-                        f"https://api.github.com/repos/{owner_repo}/releases/tags/{tag_variant}"
+                        "https://api.github.com/repos/"
+                        f"{owner_repo}/releases/tags/{quote(tag_variant, safe='')}"
                     )
                     response = await client.get(api_url, headers=headers)
 
