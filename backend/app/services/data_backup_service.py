@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -22,8 +23,42 @@ from pathlib import Path
 from docker.errors import APIError, DockerException, NotFound
 
 from app.services.docker_access import make_docker_client, resolve_docker_url_sync
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
+
+# A POSTGRES_USER must be a plain SQL identifier before it rides as a psql /
+# pg_dumpall argv element — defends the Docker exec helpers from injection.
+_PG_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Constant staged-restore script. The only dynamic value (the tar path inside the
+# helper) is passed as "$1" via argv, never interpolated into the script.
+_RESTORE_STAGING_SCRIPT = (
+    "set -e && "
+    "rm -rf /target/.restore-staging && "
+    "mkdir -p /target/.restore-staging && "
+    'tar xzf "$1" -C /target/.restore-staging && '
+    'test "$(ls -A /target/.restore-staging)" && '
+    "find /target -mindepth 1 -maxdepth 1 ! -name .restore-staging -exec rm -rf {} + && "
+    "mv /target/.restore-staging/* /target/ 2>/dev/null || true && "
+    "mv /target/.restore-staging/.* /target/ 2>/dev/null || true && "
+    "rmdir /target/.restore-staging 2>/dev/null || true && "
+    "test ! -d /target/.restore-staging || "
+    '  (echo "ERROR: staging dir still exists after restore" >&2 && exit 1) && '
+    'test "$(ls -A /target)" || '
+    '  (echo "ERROR: target dir empty after restore" >&2 && exit 1)'
+)
+
+
+def _tar_filename(mount_type: str, mount_index: int) -> str:
+    """Synthetic, path-independent, collision-free tar name for a mount backup.
+
+    e.g. ``vol_000.tar.gz`` / ``bind_012.tar.gz``. The previous destination/source
+    derived name collapsed paths like ``/a/b`` and ``/a_b`` to the same file.
+    """
+    prefix = "vol" if mount_type == "volume" else "bind"
+    return f"{prefix}_{mount_index:03d}.tar.gz"
+
 
 # Named Docker volume used for backup storage
 BACKUP_VOLUME_NAME = "tidewatch_rollback_data"
@@ -340,7 +375,17 @@ class DataBackupService:
         env_list = container_info.get("Config", {}).get("Env", [])
         for env_var in env_list:
             if env_var.startswith("POSTGRES_USER="):
-                return env_var.split("=", 1)[1]
+                candidate = env_var.split("=", 1)[1]
+                # Allowlist the identity: it is later passed as an argv element to
+                # psql/pg_dumpall. A bad value must not silently fail the dump —
+                # fall back to the default.
+                if _PG_IDENT_RE.match(candidate):
+                    return candidate
+                logger.warning(
+                    "Ignoring invalid POSTGRES_USER '%s'; using 'postgres'",
+                    sanitize_log_message(candidate),
+                )
+                return "postgres"
         return "postgres"
 
     async def create_backup(
@@ -460,7 +505,7 @@ class DataBackupService:
             backed_up_mounts: list[MountBackupInfo] = []
             total_size = 0
 
-            for mount in eligible_mounts:
+            for mount_index, mount in enumerate(eligible_mounts):
                 # Check total timeout
                 elapsed = time.monotonic() - start_time
                 if elapsed > timeout_seconds:
@@ -493,6 +538,7 @@ class DataBackupService:
                             container_name,
                             backup_id,
                             per_mount_timeout,
+                            mount_index,
                         )
                     else:
                         mount_info = await self._backup_bind_mount(
@@ -501,6 +547,7 @@ class DataBackupService:
                             container_name,
                             backup_id,
                             per_mount_timeout,
+                            mount_index,
                         )
 
                     backed_up_mounts.append(mount_info)
@@ -597,17 +644,28 @@ class DataBackupService:
         container_name: str,
         backup_id: str,
         timeout: int,
+        mount_index: int,
     ) -> MountBackupInfo:
         """Backup a named Docker volume using a temporary alpine container."""
-        safe_name = destination.strip("/").replace("/", "_")
-        tar_filename = f"vol_{safe_name}.tar.gz"
+        # Synthetic, collision-free tar name (the old destination-derived name
+        # collapsed "/a/b" and "/a_b" to the same file). Restore reads the stored
+        # tar_filename from metadata.json, so old backups still restore.
+        tar_filename = _tar_filename("volume", mount_index)
         # Path inside the temp container's backup mount
         backup_subdir = f"{container_name}/{backup_id}"
 
         helper = await asyncio.to_thread(
             self.client.containers.run,
             "alpine:latest",
-            command=f"sh -c 'mkdir -p /backup/{backup_subdir} && tar czf /backup/{backup_subdir}/{tar_filename} -C /source .'",
+            # Static script; dynamic values ride as $1/$2 and are never re-parsed.
+            command=[
+                "sh",
+                "-c",
+                'mkdir -p "/backup/$1" && tar czf "/backup/$1/$2" -C /source .',
+                "sh",
+                backup_subdir,
+                tar_filename,
+            ],
             volumes={
                 volume_name: {"bind": "/source", "mode": "ro"},
                 BACKUP_VOLUME_NAME: {"bind": "/backup", "mode": "rw"},
@@ -650,16 +708,24 @@ class DataBackupService:
         container_name: str,
         backup_id: str,
         timeout: int,
+        mount_index: int,
     ) -> MountBackupInfo:
         """Backup a bind mount using a temporary alpine container."""
-        safe_name = source.strip("/").replace("/", "_")
-        tar_filename = f"bind_{safe_name}.tar.gz"
+        tar_filename = _tar_filename("bind", mount_index)
         backup_subdir = f"{container_name}/{backup_id}"
 
         helper = await asyncio.to_thread(
             self.client.containers.run,
             "alpine:latest",
-            command=f"sh -c 'mkdir -p /backup/{backup_subdir} && tar czf /backup/{backup_subdir}/{tar_filename} -C /source .'",
+            # Static script; dynamic values ride as $1/$2 and are never re-parsed.
+            command=[
+                "sh",
+                "-c",
+                'mkdir -p "/backup/$1" && tar czf "/backup/$1/$2" -C /source .',
+                "sh",
+                backup_subdir,
+                tar_filename,
+            ],
             volumes={
                 source: {"bind": "/source", "mode": "ro"},
                 BACKUP_VOLUME_NAME: {"bind": "/backup", "mode": "rw"},
@@ -712,7 +778,7 @@ class DataBackupService:
         try:
             exit_code, output = await asyncio.to_thread(
                 container.exec_run,
-                f"pg_dumpall -U {pg_user}",
+                ["pg_dumpall", "-U", pg_user],
                 demux=True,
             )
             if exit_code == 0 and output[0]:
@@ -884,28 +950,12 @@ class DataBackupService:
         """
         backup_subdir = f"{container_name}/{backup_id}"
 
-        # Build the staged restore command.
-        # The mv commands use || true because dotfile or wildcard globs may
-        # legitimately match nothing.  A final verification ensures at least
-        # one item landed in /target (i.e. the staging dir was emptied).
-        restore_cmd = (
-            "sh -c '"
-            "set -e && "
-            "rm -rf /target/.restore-staging && "
-            "mkdir -p /target/.restore-staging && "
-            f"tar xzf /backup/{backup_subdir}/{tar_filename} -C /target/.restore-staging && "
-            'test "$(ls -A /target/.restore-staging)" && '
-            "find /target -mindepth 1 -maxdepth 1 ! -name .restore-staging -exec rm -rf {} + && "
-            "mv /target/.restore-staging/* /target/ 2>/dev/null || true && "
-            "mv /target/.restore-staging/.* /target/ 2>/dev/null || true && "
-            "rmdir /target/.restore-staging 2>/dev/null || true && "
-            # Verify: staging dir should be gone and target should have content
-            "test ! -d /target/.restore-staging || "
-            '  (echo "ERROR: staging dir still exists after restore" >&2 && exit 1) && '
-            'test "$(ls -A /target)" || '
-            '  (echo "ERROR: target dir empty after restore" >&2 && exit 1)'
-            "'"
-        )
+        # The staged restore script is CONSTANT; the only dynamic value (the tar
+        # path inside the helper) rides as "$1" so it is never re-parsed by the
+        # shell. The &&-chain, the `|| true` on both mv globs + rmdir, the two
+        # trailing `test … || (… exit 1)` guards, and `set -e` are preserved
+        # verbatim from the prior single-string form (Decision 9: minimal re-quote).
+        tar_path_in_helper = f"/backup/{backup_subdir}/{tar_filename}"
 
         # Build volume spec for the restore container
         volumes = {
@@ -920,7 +970,7 @@ class DataBackupService:
         helper = await asyncio.to_thread(
             self.client.containers.run,
             "alpine:latest",
-            command=restore_cmd,
+            command=["sh", "-c", _RESTORE_STAGING_SCRIPT, "sh", tar_path_in_helper],
             volumes=volumes,
             detach=True,
             auto_remove=False,
@@ -976,6 +1026,16 @@ class DataBackupService:
         backup_pg_version = metadata.get("pg_version")
         pg_user = metadata.get("pg_user", "postgres")
 
+        # Defense-in-depth: the metadata could predate the capture-time allowlist
+        # (or be hand-edited). Re-validate before it rides as a psql argv element.
+        if not _PG_IDENT_RE.match(pg_user):
+            logger.error(
+                "Refusing PG restore for %s: invalid pg_user '%s' in metadata",
+                container_name,
+                sanitize_log_message(pg_user),
+            )
+            return False
+
         # Get current container
         try:
             container = await asyncio.to_thread(self.client.containers.get, container_name)
@@ -1014,17 +1074,20 @@ class DataBackupService:
             # Copy tar to container
             await asyncio.to_thread(container.put_archive, "/tmp", tar_stream.getvalue())
 
-            # Execute psql with the dump file
+            # Execute psql with the dump file via argv (no shell). `-f FILE`
+            # replaces the prior `sh -c 'psql … < /tmp/pg_dumpall.sql'` stdin
+            # redirect — equivalent for a pg_dumpall cluster dump, and removes
+            # the single-quoted sh -c that pg_user could break out of.
             exit_code, output = await asyncio.to_thread(
                 container.exec_run,
-                f"sh -c 'psql -U {pg_user} < /tmp/pg_dumpall.sql'",
+                ["psql", "-U", pg_user, "-f", "/tmp/pg_dumpall.sql"],
                 demux=True,
             )
 
             if exit_code == 0:
                 logger.info("PostgreSQL restore succeeded for %s", container_name)
                 # Clean up
-                await asyncio.to_thread(container.exec_run, "rm -f /tmp/pg_dumpall.sql")
+                await asyncio.to_thread(container.exec_run, ["rm", "-f", "/tmp/pg_dumpall.sql"])
                 return True
             else:
                 error_output = ""
