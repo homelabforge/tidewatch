@@ -728,10 +728,8 @@ class TestHealthCheckValidation:
             # Should have made 3 attempts
             assert mock_client.get.call_count == 3
 
-    @pytest.mark.asyncio
-    async def test_http_health_check_falls_back_to_docker_inspect(self):
-        """Test HTTP health check falls back to docker inspect on timeout."""
-        container = Container(
+    def _http_container(self, method):
+        return Container(
             name="sonarr",
             image="lscr.io/linuxserver/sonarr",
             current_tag="4.0.0",
@@ -739,17 +737,20 @@ class TestHealthCheckValidation:
             compose_file="/compose/media/sonarr.yml",
             service_name="sonarr",
             health_check_url="http://localhost:8989/ping",
-            health_check_method="http",
+            health_check_method=method,
         )
 
+    @pytest.mark.asyncio
+    async def test_http_method_fails_closed_on_timeout(self):
+        """An explicit http method fails CLOSED on timeout — Docker is never
+        consulted, so a broken update can't be marked applied (#8)."""
+        import httpx
+
+        container = self._http_container("http")
         mock_client = MagicMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-
-        import httpx
-
         mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
-
         mock_docker_check = AsyncMock(return_value={"success": True, "method": "docker_inspect"})
 
         with (
@@ -757,11 +758,72 @@ class TestHealthCheckValidation:
             patch.object(UpdateEngine, "_check_container_runtime", mock_docker_check),
             patch("asyncio.sleep", return_value=None),
         ):
-            result = await UpdateEngine._validate_health_check(container, timeout=60)
+            result = await UpdateEngine._validate_health_check(container, timeout=15)
 
-            assert result["success"] is True
-            assert result["method"] == "docker_inspect_fallback"
-            mock_docker_check.assert_called()
+        assert result["success"] is False
+        assert result["method"] == "http_check"
+        mock_docker_check.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_method_falls_back_to_docker_inspect(self):
+        """The auto method keeps the lenient Docker fallback on timeout (#8)."""
+        import httpx
+
+        container = self._http_container("auto")
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
+        mock_docker_check = AsyncMock(return_value={"success": True, "method": "docker_inspect"})
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch.object(UpdateEngine, "_check_container_runtime", mock_docker_check),
+            patch("asyncio.sleep", return_value=None),
+        ):
+            result = await UpdateEngine._validate_health_check(container, timeout=15)
+
+        assert result["success"] is True
+        assert result["method"] == "docker_inspect_fallback"
+        mock_docker_check.assert_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure_mode", ["non_2xx", "connect_error", "http_status_error", "data_error"]
+    )
+    async def test_http_method_fails_closed_on_all_error_modes(self, failure_mode):
+        """Every HTTP failure mode on an explicit http method fails closed without
+        consulting Docker (#8)."""
+        import httpx
+
+        container = self._http_container("http")
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        if failure_mode == "non_2xx":
+            mock_client.get = AsyncMock(return_value=MagicMock(status_code=503))
+        elif failure_mode == "connect_error":
+            mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connect failed"))
+        elif failure_mode == "http_status_error":
+            mock_client.get = AsyncMock(
+                side_effect=httpx.HTTPStatusError(
+                    "error", request=MagicMock(), response=MagicMock(status_code=500)
+                )
+            )
+        else:  # data_error
+            mock_client.get = AsyncMock(side_effect=ValueError("bad payload"))
+        mock_docker_check = AsyncMock(return_value={"success": True, "method": "docker_inspect"})
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch.object(UpdateEngine, "_check_container_runtime", mock_docker_check),
+            patch("asyncio.sleep", return_value=None),
+        ):
+            result = await UpdateEngine._validate_health_check(container, timeout=15)
+
+        assert result["success"] is False
+        assert result["method"] == "http_check"
+        mock_docker_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_docker_inspect_health_check_running_container(self):
@@ -993,6 +1055,73 @@ class TestApplyUpdateOrchestration:
 
             assert result["success"] is True
             mock_backup.assert_called_once_with("/compose/media/sonarr.yml")
+
+    @pytest.mark.asyncio
+    async def test_apply_update_fails_closed_does_not_mark_applied(
+        self, mock_db, mock_container, mock_update
+    ):
+        """A failed health check must NOT mark the update applied; it routes to
+        _handle_update_failure (retry/rollback) instead (#8 orchestration)."""
+        update_result = MagicMock()
+        update_result.scalar_one_or_none = MagicMock(return_value=mock_update)
+        container_result = MagicMock()
+        container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
+
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+        mock_failure = AsyncMock(return_value={"success": False, "rolled_back": True})
+
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", AsyncMock(return_value="/b.backup")),
+            patch(
+                "app.services.compose_parser.ComposeParser.update_compose_file",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                UpdateEngine, "_pull_docker_image", AsyncMock(return_value={"success": True})
+            ),
+            patch.object(
+                UpdateEngine, "_execute_docker_compose", AsyncMock(return_value={"success": True})
+            ),
+            patch.object(
+                UpdateEngine,
+                "_validate_health_check",
+                AsyncMock(
+                    return_value={
+                        "success": False,
+                        "method": "http_check",
+                        "http_error": "boom",
+                    }
+                ),
+            ),
+            patch.object(UpdateEngine, "_handle_update_failure", mock_failure),
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                return_value="/var/run/docker.sock",
+            ),
+            patch("app.services.event_bus.event_bus.publish", return_value=None),
+        ):
+            await UpdateEngine.apply_update(mock_db, 1, "user")
+
+        mock_failure.assert_called_once()
+        assert mock_update.status != "applied"
 
     @pytest.mark.asyncio
     async def test_apply_update_executes_phases_in_order(

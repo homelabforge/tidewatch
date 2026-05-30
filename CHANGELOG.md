@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Explicit HTTP health checks now fail (and roll back) instead of falling back to container status
+
 ### Security
 - Require password verification before first OIDC admin link; keep local password as break-glass
 - SSRF-validate and size-cap changelog/release-source fetches; quote GitHub release tags

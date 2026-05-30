@@ -1098,6 +1098,11 @@ class UpdateEngine:
         if not should_use_http:
             return await UpdateEngine._check_container_runtime(container)
 
+        # An explicit "http" method must fail CLOSED: if the HTTP probe fails we
+        # do NOT fall back to container-runtime status (which would mark a broken
+        # update "applied" and skip rollback). "auto" keeps the lenient fallback.
+        allow_docker_fallback = method != "http"
+
         logger.info(f"Performing health check for {service_name}: {health_check_url}")
 
         # Get configurable retry settings
@@ -1231,34 +1236,47 @@ class UpdateEngine:
                     await asyncio.sleep(current_delay)
                 else:
                     elapsed = time.time() - start_time
-                    logger.warning(
-                        f"HTTP health check failed after {elapsed:.1f}s with status {e.response.status_code}, "
-                        f"falling back to Docker inspect"
-                    )
+                    if allow_docker_fallback:
+                        logger.warning(
+                            f"HTTP health check failed after {elapsed:.1f}s with status {e.response.status_code}, "
+                            f"falling back to Docker inspect"
+                        )
 
-                    # Fall back to Docker inspect to verify container is actually unhealthy
-                    docker_check = await UpdateEngine._check_container_runtime(container)
-                    if docker_check["success"]:
-                        logger.info(
-                            f"Container {service_name} is running despite HTTP errors, "
-                            f"marking health check as passed"
+                        # Fall back to Docker inspect to verify container is actually unhealthy
+                        docker_check = await UpdateEngine._check_container_runtime(container)
+                        if docker_check["success"]:
+                            logger.info(
+                                f"Container {service_name} is running despite HTTP errors, "
+                                f"marking health check as passed"
+                            )
+                            return {
+                                "success": True,
+                                "method": "docker_inspect_fallback",
+                                "elapsed_seconds": elapsed,
+                                "note": f"HTTP check failed ({str(e)}) but container is running",
+                            }
+
+                        docker_error = docker_check.get("error", "Container is not running")
+                        logger.error(
+                            f"Health check failed after {elapsed:.1f}s. "
+                            f"HTTP error: {e}. Docker status: {docker_error}"
                         )
                         return {
-                            "success": True,
-                            "method": "docker_inspect_fallback",
+                            "success": False,
+                            "method": "docker_inspect",
+                            "error": docker_error,
+                            "http_error": str(e),
                             "elapsed_seconds": elapsed,
-                            "note": f"HTTP check failed ({str(e)}) but container is running",
                         }
 
-                    docker_error = docker_check.get("error", "Container is not running")
+                    # method == "http": fail closed, never consult Docker.
                     logger.error(
-                        f"Health check failed after {elapsed:.1f}s. "
-                        f"HTTP error: {e}. Docker status: {docker_error}"
+                        f"HTTP health check failed after {elapsed:.1f}s with status "
+                        f"{e.response.status_code} for {service_name}; failing closed"
                     )
                     return {
                         "success": False,
-                        "method": "docker_inspect",
-                        "error": docker_error,
+                        "method": "http_check",
                         "http_error": str(e),
                         "elapsed_seconds": elapsed,
                     }
@@ -1277,33 +1295,46 @@ class UpdateEngine:
                     await asyncio.sleep(current_delay)
                 else:
                     elapsed = time.time() - start_time
-                    logger.warning(
-                        f"HTTP health check failed after {elapsed:.1f}s: {e}, "
-                        f"falling back to Docker inspect"
-                    )
+                    if allow_docker_fallback:
+                        logger.warning(
+                            f"HTTP health check failed after {elapsed:.1f}s: {e}, "
+                            f"falling back to Docker inspect"
+                        )
 
-                    docker_check = await UpdateEngine._check_container_runtime(container)
-                    if docker_check["success"]:
-                        logger.info(
-                            f"Container {service_name} is running despite HTTP errors, "
-                            f"marking health check as passed"
+                        docker_check = await UpdateEngine._check_container_runtime(container)
+                        if docker_check["success"]:
+                            logger.info(
+                                f"Container {service_name} is running despite HTTP errors, "
+                                f"marking health check as passed"
+                            )
+                            return {
+                                "success": True,
+                                "method": "docker_inspect_fallback",
+                                "elapsed_seconds": elapsed,
+                                "note": f"HTTP check failed ({str(e)}) but container is running",
+                            }
+
+                        docker_error = docker_check.get("error", "Container is not running")
+                        logger.error(
+                            f"Health check failed after {elapsed:.1f}s. "
+                            f"HTTP error: {e}. Docker status: {docker_error}"
                         )
                         return {
-                            "success": True,
-                            "method": "docker_inspect_fallback",
+                            "success": False,
+                            "method": "docker_inspect",
+                            "error": docker_error,
+                            "http_error": str(e),
                             "elapsed_seconds": elapsed,
-                            "note": f"HTTP check failed ({str(e)}) but container is running",
                         }
 
-                    docker_error = docker_check.get("error", "Container is not running")
+                    # method == "http": fail closed, never consult Docker.
                     logger.error(
-                        f"Health check failed after {elapsed:.1f}s. "
-                        f"HTTP error: {e}. Docker status: {docker_error}"
+                        f"HTTP health check failed after {elapsed:.1f}s for {service_name}: "
+                        f"{e}; failing closed"
                     )
                     return {
                         "success": False,
-                        "method": "docker_inspect",
-                        "error": docker_error,
+                        "method": "http_check",
                         "http_error": str(e),
                         "elapsed_seconds": elapsed,
                     }
@@ -1319,63 +1350,78 @@ class UpdateEngine:
                     await asyncio.sleep(current_delay)
                 else:
                     elapsed = time.time() - start_time
-                    logger.warning(
-                        f"HTTP health check data error after {elapsed:.1f}s: {e}, "
-                        f"falling back to Docker inspect"
-                    )
+                    if allow_docker_fallback:
+                        logger.warning(
+                            f"HTTP health check data error after {elapsed:.1f}s: {e}, "
+                            f"falling back to Docker inspect"
+                        )
 
-                    docker_check = await UpdateEngine._check_container_runtime(container)
-                    if docker_check["success"]:
-                        logger.info(
-                            f"Container {service_name} is running despite HTTP errors, "
-                            f"marking health check as passed"
+                        docker_check = await UpdateEngine._check_container_runtime(container)
+                        if docker_check["success"]:
+                            logger.info(
+                                f"Container {service_name} is running despite HTTP errors, "
+                                f"marking health check as passed"
+                            )
+                            return {
+                                "success": True,
+                                "method": "docker_inspect_fallback",
+                                "elapsed_seconds": elapsed,
+                                "note": f"HTTP check failed ({str(e)}) but container is running",
+                            }
+
+                        docker_error = docker_check.get("error", "Container is not running")
+                        logger.error(
+                            f"Health check failed after {elapsed:.1f}s. "
+                            f"Data error: {e}. Docker status: {docker_error}"
                         )
                         return {
-                            "success": True,
-                            "method": "docker_inspect_fallback",
+                            "success": False,
+                            "method": "docker_inspect",
+                            "error": docker_error,
+                            "http_error": str(e),
                             "elapsed_seconds": elapsed,
-                            "note": f"HTTP check failed ({str(e)}) but container is running",
                         }
 
-                    docker_error = docker_check.get("error", "Container is not running")
+                    # method == "http": fail closed, never consult Docker.
                     logger.error(
-                        f"Health check failed after {elapsed:.1f}s. "
-                        f"Data error: {e}. Docker status: {docker_error}"
+                        f"HTTP health check data error after {elapsed:.1f}s for {service_name}: "
+                        f"{e}; failing closed"
                     )
                     return {
                         "success": False,
-                        "method": "docker_inspect",
-                        "error": docker_error,
+                        "method": "http_check",
                         "http_error": str(e),
                         "elapsed_seconds": elapsed,
                     }
 
         elapsed = time.time() - start_time
-        logger.warning(
-            f"HTTP health check timed out after {elapsed:.1f}s for {service_name}, "
-            f"falling back to Docker inspect"
-        )
-
-        # Fall back to Docker inspect to verify container is actually unhealthy
-        docker_check = await UpdateEngine._check_container_runtime(container)
-        if docker_check["success"]:
-            logger.info(
-                f"Container {service_name} is running despite HTTP timeout, "
-                f"marking health check as passed"
+        if allow_docker_fallback:
+            logger.warning(
+                f"HTTP health check timed out after {elapsed:.1f}s for {service_name}, "
+                f"falling back to Docker inspect"
             )
-            return {
-                "success": True,
-                "method": "docker_inspect_fallback",
-                "elapsed_seconds": elapsed,
-                "note": "HTTP check timed out but container is running",
-            }
 
-        # Container is actually not running
+            # Fall back to Docker inspect to verify container is actually unhealthy
+            docker_check = await UpdateEngine._check_container_runtime(container)
+            if docker_check["success"]:
+                logger.info(
+                    f"Container {service_name} is running despite HTTP timeout, "
+                    f"marking health check as passed"
+                )
+                return {
+                    "success": True,
+                    "method": "docker_inspect_fallback",
+                    "elapsed_seconds": elapsed,
+                    "note": "HTTP check timed out but container is running",
+                }
+
+        # Either method == "http" (fail closed — Docker never consulted) or Docker
+        # also reported the container as not running.
         logger.error(f"Health check failed after {elapsed:.1f}s for {service_name}")
         return {
             "success": False,
             "method": "http_check",
-            "error": f"Health check timed out after {timeout}s and container is not running",
+            "error": f"Health check timed out after {timeout}s",
             "elapsed_seconds": elapsed,
         }
 
