@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-05-30
+
 ### Fixed
 - Service worker routes document-destination requests (browser/Cloudflare speculative prefetch of SPA routes like `/settings`) through the navigation fallback with a 5s timeout, so a cancelled/transient prefetch no longer surfaces as an "Uncaught (in promise) Failed to fetch"
 

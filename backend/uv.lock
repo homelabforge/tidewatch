@@ -830,7 +830,7 @@ wheels = [
 
 [[package]]
 name = "tidewatch"
-version = "3.11.3"
+version = "3.12.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosmtplib" },
