@@ -10,6 +10,7 @@ Tests update orchestration workflow including:
 - Event bus progress notifications
 """
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -607,6 +608,89 @@ class TestHealthCheckValidation:
             assert result["success"] is True
             assert result["method"] == "http_check"
             assert result["status_code"] == 200
+
+    @pytest.mark.asyncio
+    async def test_http_health_check_does_not_log_auth_token(self, caplog):
+        """The Authorization token must not appear in the health-check log line;
+        only the header key names are logged (N2)."""
+        container = Container(
+            name="sonarr",
+            image="lscr.io/linuxserver/sonarr",
+            current_tag="4.0.0",
+            registry="lscr.io",
+            compose_file="/compose/media/sonarr.yml",
+            service_name="sonarr",
+            health_check_url="http://localhost:8989/ping",
+            health_check_method="http",
+            health_check_auth="token:supersecrettoken123",
+        )
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.get = AsyncMock(return_value=MagicMock(status_code=200))
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            caplog.at_level(logging.INFO, logger="app.services.update_engine"),
+        ):
+            await UpdateEngine._validate_health_check(container, timeout=60)
+
+        assert "supersecrettoken123" not in caplog.text
+        assert "Authorization" in caplog.text  # the key name is logged, not the value
+
+    @pytest.mark.asyncio
+    async def test_http_health_check_does_not_log_apikey_query(self, caplog):
+        """An apikey query parameter must be redacted in the health-check log (N2)."""
+        container = Container(
+            name="sonarr",
+            image="lscr.io/linuxserver/sonarr",
+            current_tag="4.0.0",
+            registry="lscr.io",
+            compose_file="/compose/media/sonarr.yml",
+            service_name="sonarr",
+            health_check_url="http://localhost:8989/ping",
+            health_check_method="http",
+            health_check_auth="topsecretapikey",
+        )
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.get = AsyncMock(return_value=MagicMock(status_code=200))
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            caplog.at_level(logging.INFO, logger="app.services.update_engine"),
+        ):
+            await UpdateEngine._validate_health_check(container, timeout=60)
+
+        assert "topsecretapikey" not in caplog.text
+        assert "<redacted>" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_http_health_check_disables_redirects(self):
+        """The health-check HTTP client is constructed with follow_redirects=False (N2)."""
+        container = Container(
+            name="sonarr",
+            image="lscr.io/linuxserver/sonarr",
+            current_tag="4.0.0",
+            registry="lscr.io",
+            compose_file="/compose/media/sonarr.yml",
+            service_name="sonarr",
+            health_check_url="http://localhost:8989/ping",
+            health_check_method="http",
+        )
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.get = AsyncMock(return_value=MagicMock(status_code=200))
+
+        with patch("httpx.AsyncClient", return_value=mock_client) as mock_cls:
+            await UpdateEngine._validate_health_check(container, timeout=60)
+
+        assert mock_cls.call_args.kwargs.get("follow_redirects") is False
 
     @pytest.mark.asyncio
     async def test_http_health_check_retries_on_non_200(self):

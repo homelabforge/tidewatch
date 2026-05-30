@@ -26,6 +26,7 @@ from app.services.docker_access import (
 from app.services.event_bus import event_bus
 from app.services.registry_client import RegistryClientFactory
 from app.services.settings_service import SettingsService
+from app.utils.security import sanitize_log_message
 from app.utils.validators import (
     ValidationError,
     validate_compose_file_path,
@@ -34,6 +35,21 @@ from app.utils.validators import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_health_url(url: str) -> str:
+    """Strip the query string from a health-check URL before logging.
+
+    The query may carry an ``apikey`` auth parameter (see the apikey/query-param
+    branch of the health check), so it is replaced with ``<redacted>``.
+    """
+    try:
+        parts = urlparse(url)
+    except ValueError, TypeError:
+        return "<unparseable-url>"
+    if parts.query:
+        parts = parts._replace(query="<redacted>")
+    return urlunparse(parts)
 
 
 class UpdateEngine:
@@ -1163,8 +1179,13 @@ class UpdateEngine:
                             )
                         )
 
-                logger.info(f"Health check for {service_name}: URL={url}, Headers={headers}")
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                logger.info(
+                    "Health check for %s: URL=%s, HeaderKeys=%s",
+                    sanitize_log_message(service_name),
+                    sanitize_log_message(_redact_health_url(url)),
+                    sanitize_log_message(", ".join(sorted(headers.keys()))),
+                )
+                async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
                     response = await client.get(url, timeout=5.0, headers=headers or None)
                     if response.status_code == 200:
                         elapsed = time.time() - start_time
@@ -1966,7 +1987,6 @@ class UpdateEngine:
             SelfManagedInfraError,
             is_self_managed_infrastructure,
         )
-        from app.utils.security import sanitize_log_message
 
         approved: list[dict] = []
         failed: list[dict] = []

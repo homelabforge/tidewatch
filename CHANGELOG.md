@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSRF-validate and size-cap changelog/release-source fetches; quote GitHub release tags
 - Contain manual Dockerfile path within the projects directory
 - Mask all encrypted notification secrets (ntfy/Slack/Discord) in settings responses
+- Redact auth tokens and disable redirects in health-check requests
 
 ## [3.11.3] - 2026-05-27
 
