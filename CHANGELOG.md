@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contain project/compose/manifest file reads within their trust roots (no symlink escape)
 - Pin HS256 on JWT decode; redact and bound OIDC token-exchange response bodies in logs
 - Block restart of self-managed Docker socket proxies (409 with manual instructions)
+- Validate release_source and percent-encode the tag before the supply-chain GitHub release lookup
 
 ## [3.11.3] - 2026-05-27
 

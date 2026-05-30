@@ -7,9 +7,11 @@ immutability gate used at apply time.
 
 import asyncio
 import logging
+import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select, text
@@ -19,6 +21,7 @@ from app.models.release_corroboration_cache import ReleaseCorroborationCache
 from app.models.supply_chain_baseline import SupplyChainBaseline
 from app.services.registry_client import RegistryClientFactory
 from app.services.settings_service import SettingsService
+from app.utils.security import sanitize_log_message
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,16 @@ async def check_release_exists(
     if repo.startswith("github:"):
         repo = repo[7:]
 
+    # Validate owner/repo before interpolating it into the GitHub URL (mirrors the
+    # hardened changelog._fetch_github_release). A malformed value fails OPEN as
+    # NO_SOURCE — a bad config must not hard-hold every update (Decision 13).
+    if not re.match(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$", repo):
+        logger.warning(
+            "Invalid release_source for GitHub release check: %s",
+            sanitize_log_message(repo),
+        )
+        return ReleaseStatus.NO_SOURCE
+
     # Try multiple tag variants
     tag_variants = [tag]
     if not tag.startswith("v"):
@@ -105,7 +118,9 @@ async def check_release_exists(
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         for variant in tag_variants:
-            url = f"https://api.github.com/repos/{repo}/releases/tags/{variant}"
+            # quote(safe="") percent-encodes the tag (incl. "/") as one path
+            # segment so a crafted tag can't traverse the GitHub API path.
+            url = f"https://api.github.com/repos/{repo}/releases/tags/{quote(variant, safe='')}"
             try:
                 response = await client.get(url, headers=headers)
                 if response.status_code == 200:

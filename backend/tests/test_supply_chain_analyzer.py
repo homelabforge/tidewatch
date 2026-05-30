@@ -648,3 +648,49 @@ class TestDigestMutationError:
         err = DigestMutationError("digest changed")
         assert isinstance(err, Exception)
         assert str(err) == "digest changed"
+
+
+class TestCheckReleaseExistsValidation:
+    """H6 — release_source is validated and the tag is quoted before the GitHub call."""
+
+    async def test_invalid_release_source_rejected(self):
+        with patch("app.services.supply_chain_analyzer.httpx.AsyncClient") as mock_client_cls:
+            result = await check_release_exists("not a valid source!!!", "1.0.0", "tok")
+        assert result == ReleaseStatus.NO_SOURCE
+        mock_client_cls.assert_not_called()  # never reaches the HTTP client
+
+    async def test_traversal_segment_rejected(self):
+        with patch("app.services.supply_chain_analyzer.httpx.AsyncClient") as mock_client_cls:
+            result = await check_release_exists("../../../../etc/passwd", "1.0.0", "tok")
+        assert result == ReleaseStatus.NO_SOURCE
+        mock_client_cls.assert_not_called()
+
+    async def test_tag_percent_encoded_in_url(self):
+        with patch("app.services.supply_chain_analyzer.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.get.return_value = mock_response
+
+            result = await check_release_exists("owner/repo", "feat/x?y", "tok")
+
+        assert result == ReleaseStatus.EXISTS
+        called_url = mock_client.get.call_args.args[0]
+        assert "feat%2Fx%3Fy" in called_url
+        assert "feat/x?y" not in called_url
+
+    async def test_valid_tag_unchanged(self):
+        with patch("app.services.supply_chain_analyzer.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.get.return_value = mock_response
+
+            result = await check_release_exists("owner/repo", "1.0.0", "tok")
+
+        assert result == ReleaseStatus.EXISTS
+        assert "/releases/tags/1.0.0" in mock_client.get.call_args.args[0]
