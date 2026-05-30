@@ -591,6 +591,21 @@ class SettingsService:
             "category": "restart",
             "description": "Delay in seconds to wait after restarting a container before health check",
         },
+        # Security secrets — present in DEFAULTS so set() keeps encrypted=True
+        # (without these the flag was silently flipped back to False on every
+        # save, storing plaintext and undoing migrations 022/024).
+        "oidc_client_secret": {
+            "value": "",
+            "category": "security",
+            "description": "OIDC client secret (encrypted)",
+            "encrypted": True,
+        },
+        "admin_password_hash": {
+            "value": "",
+            "category": "security",
+            "description": "Administrator password hash (Argon2) — legacy, retained for rollback",
+            "encrypted": True,
+        },
     }
 
     # Sensitive keys not represented in DEFAULTS (stored elsewhere or legacy) that

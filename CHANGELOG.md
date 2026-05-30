@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contain manual Dockerfile path within the projects directory
 - Mask all encrypted notification secrets (ntfy/Slack/Discord) in settings responses
 - Redact auth tokens and disable redirects in health-check requests
+- Encrypt oidc_client_secret/admin_password_hash at rest; auto-bootstrap the encryption key to /data/encryption.key
 
 ## [3.11.3] - 2026-05-27
 

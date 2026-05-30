@@ -310,6 +310,42 @@ except (ValueError, FileNotFoundError) as e:
     session_secret = secrets.token_urlsafe(32)
     logger.warning("Using temporary in-memory session secret (will invalidate sessions on restart)")
 
+# Encryption key bootstrap (module-level — runs at import, BEFORE lifespan calls
+# init_db()/run_migrations(), so migration 062's is_encryption_configured() sees
+# the key). Auto-generate a Fernet key into /data/encryption.key so encrypted
+# settings Just Work on the single-admin homelab box; fail-open (plaintext, no
+# brick) on any FS error rather than bricking first boot. This file joins
+# session_secret.key as a back-up-or-brick artifact — losing it makes every
+# encrypted setting unrecoverable, so ensure it is in the Kopia backup set.
+from cryptography.fernet import Fernet  # noqa: E402
+
+if os.environ.get("TIDEWATCH_ENCRYPTION_KEY"):
+    logger.info("Using TIDEWATCH_ENCRYPTION_KEY from environment")
+else:
+    try:
+        encryption_key_file = sanitize_path("/data/encryption.key", "/data", allow_symlinks=False)
+        if encryption_key_file.exists():
+            existing_key = encryption_key_file.read_text().strip()
+            if existing_key:
+                os.environ["TIDEWATCH_ENCRYPTION_KEY"] = existing_key
+                logger.info("Loaded encryption key from /data/encryption.key")
+            else:
+                logger.warning(
+                    "Encryption key file is empty; encrypted settings remain in plain text"
+                )
+        else:
+            new_key = Fernet.generate_key().decode()
+            encryption_key_file.parent.mkdir(parents=True, exist_ok=True)
+            encryption_key_file.write_text(new_key)
+            encryption_key_file.chmod(0o600)
+            os.environ["TIDEWATCH_ENCRYPTION_KEY"] = new_key
+            logger.warning(
+                "Generated a new encryption key at /data/encryption.key — BACK IT UP. "
+                "Losing it makes every encrypted setting unrecoverable."
+            )
+    except (ValueError, FileNotFoundError) as e:
+        logger.error("Encryption key bootstrap failed (%s); encrypted settings disabled", e)
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,

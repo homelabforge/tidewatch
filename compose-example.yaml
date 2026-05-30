@@ -24,7 +24,9 @@ services:
       - CSRF_SECURE_COOKIE=false        # Set to true if using HTTPS
       # - CORS_ORIGINS=https://tidewatch.yourdomain.com  # Set to your domain in production
 
-      # Database Encryption (optional but recommended)
+      # Database Encryption (optional). If unset, a key is auto-generated at
+      # /data/encryption.key on first boot — back up the /data volume or that
+      # key, or encrypted settings become unrecoverable.
       # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # - TIDEWATCH_ENCRYPTION_KEY=your-fernet-key-here
 

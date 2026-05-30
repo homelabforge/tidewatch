@@ -203,10 +203,23 @@ class TestUpdateSettingEndpoint:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @pytest.mark.skip(reason="Encryption implementation details not testable at API level")
     async def test_update_setting_sensitive_encrypted(self, authenticated_client, db):
-        """Test sensitive value is encrypted in storage."""
-        pass
+        """oidc_client_secret is stored as ciphertext (encrypted flag sticks) and
+        get() returns the plaintext (#3 — the flag no longer flips back to False)."""
+        from sqlalchemy import select
+
+        from app.models.setting import Setting
+        from app.services.settings_service import SettingsService
+
+        await SettingsService.set(db, "oidc_client_secret", "topsecret-value-123")
+
+        row = (
+            await db.execute(select(Setting).where(Setting.key == "oidc_client_secret"))
+        ).scalar_one()
+        assert row.encrypted is True
+        assert row.value != "topsecret-value-123"
+        assert row.value.startswith("gAAAAA")  # Fernet ciphertext
+        assert await SettingsService.get(db, "oidc_client_secret") == "topsecret-value-123"
 
     async def test_update_setting_triggers_event(self, authenticated_client, db, mock_event_bus):
         """Test triggers setting_changed event."""
