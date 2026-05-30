@@ -17,12 +17,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.utils.security import sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
 
-def resolve_project_root(container: Any) -> Path | None:
+def resolve_project_root(container: Any, projects_directory: Path | None = None) -> Path | None:
     """Resolve a project root for a Container row.
 
     Priority:
@@ -33,14 +33,20 @@ def resolve_project_root(container: Any) -> Path | None:
     Args:
         container: SQLAlchemy ``Container`` instance (or any object exposing
             ``project_root`` and ``compose_file`` attributes).
+        projects_directory: When provided, the resolved root must be contained
+            (symlink-free) under it, else None is returned. Omit for legacy
+            ``/compose/...`` roots that legitimately live outside it.
 
     Returns:
-        Path to the project root, or None when neither anchor is usable.
+        Path to the project root, or None when neither anchor is usable (or the
+        root escapes ``projects_directory`` when that containment is requested).
     """
+    root: Path | None = None
+
     project_root = getattr(container, "project_root", None)
     if project_root:
         try:
-            return Path(project_root)
+            root = Path(project_root)
         except (TypeError, ValueError) as e:
             logger.warning(
                 "Invalid project_root %s: %s",
@@ -48,18 +54,34 @@ def resolve_project_root(container: Any) -> Path | None:
                 sanitize_log_message(str(e)),
             )
 
-    compose_file = getattr(container, "compose_file", None)
-    if compose_file:
+    if root is None:
+        compose_file = getattr(container, "compose_file", None)
+        if compose_file:
+            try:
+                root = Path(compose_file).parent
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Invalid compose_file %s: %s",
+                    sanitize_log_message(str(compose_file)),
+                    sanitize_log_message(str(e)),
+                )
+
+    if root is None:
+        return None
+
+    if projects_directory is not None:
         try:
-            return Path(compose_file).parent
-        except (TypeError, ValueError) as e:
+            sanitize_path(str(root), str(projects_directory), allow_symlinks=False)
+        except (ValueError, FileNotFoundError) as e:
             logger.warning(
-                "Invalid compose_file %s: %s",
-                sanitize_log_message(str(compose_file)),
+                "project_root %s escapes projects_directory %s: %s",
+                sanitize_log_message(str(root)),
+                sanitize_log_message(str(projects_directory)),
                 sanitize_log_message(str(e)),
             )
+            return None
 
-    return None
+    return root
 
 
 def find_project_root(

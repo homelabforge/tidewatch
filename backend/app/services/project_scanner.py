@@ -150,6 +150,18 @@ class ProjectScanner:
                 if child.name.startswith(".") or child.name in DIRECTORY_IGNORE_LIST:
                     continue
 
+                # Containment: a symlinked child must not let the scan descend
+                # outside the projects directory.
+                try:
+                    sanitize_path(child.name, str(projects_path), allow_symlinks=False)
+                except (ValueError, FileNotFoundError) as e:
+                    logger.warning(
+                        "Skipping child outside projects directory: %s - %s",
+                        sanitize_log_message(str(child)),
+                        sanitize_log_message(str(e)),
+                    )
+                    continue
+
                 try:
                     files_in_dir = {p.name for p in child.iterdir() if p.is_file()}
                 except (OSError, PermissionError) as e:
@@ -338,9 +350,22 @@ class ProjectScanner:
         compose_file = project_dir / compose_filename
         project_root_str = str(project_dir)
 
+        # Containment: refuse a compose filename that escapes the project dir
+        # (e.g. a symlink). The logical path stored on the Container stays
+        # project_dir/compose_filename; we only OPEN the validated path.
+        try:
+            safe_compose = sanitize_path(compose_filename, str(project_dir), allow_symlinks=False)
+        except (ValueError, FileNotFoundError) as e:
+            logger.warning(
+                "Skipping compose file outside project dir: %s - %s",
+                sanitize_log_message(str(compose_file)),
+                sanitize_log_message(str(e)),
+            )
+            return ("skipped", project_root_str, None)
+
         try:
             yaml = YAML()
-            with open(compose_file) as f:
+            with open(safe_compose) as f:
                 compose_data = yaml.load(f)
         except YAMLError as e:
             logger.error(f"YAML parsing error in {compose_file}: {e}")

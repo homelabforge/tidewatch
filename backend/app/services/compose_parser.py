@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.container import Container
 from app.services.docker_access import make_docker_client, resolve_docker_url
 from app.services.settings_service import SettingsService
-from app.utils.security import sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,9 @@ class ComposeParser:
 
         for compose_file in compose_files:
             try:
-                file_containers = await ComposeParser._parse_compose_file(str(compose_file), db)
+                file_containers = await ComposeParser._parse_compose_file(
+                    str(compose_file), validated_dir, db
+                )
                 containers.extend(file_containers)
             except YAMLError as e:
                 logger.error(f"YAML parsing error in {compose_file}: {e}")
@@ -410,11 +412,14 @@ class ComposeParser:
         return containers
 
     @staticmethod
-    async def _parse_compose_file(file_path: str, db: AsyncSession) -> list[Container]:
+    async def _parse_compose_file(
+        file_path: str, base_dir: Path, db: AsyncSession
+    ) -> list[Container]:
         """Parse a single compose file.
 
         Args:
             file_path: Path to compose file
+            base_dir: Trust root the file must live under (no symlink escape)
             db: Database session
 
         Returns:
@@ -422,7 +427,18 @@ class ComposeParser:
         """
         containers = []
 
-        with open(file_path) as f:
+        try:
+            safe_file = sanitize_path(file_path, str(base_dir), allow_symlinks=False)
+        except (ValueError, FileNotFoundError) as e:
+            logger.warning(
+                "Refusing compose file outside %s: %s - %s",
+                sanitize_log_message(str(base_dir)),
+                sanitize_log_message(file_path),
+                sanitize_log_message(str(e)),
+            )
+            return []
+
+        with open(safe_file) as f:
             compose_data = yaml.load(f)
 
         if not compose_data or "services" not in compose_data:

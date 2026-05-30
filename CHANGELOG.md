@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Symlink-safe atomic writes, backups, and restores in dependency updates (O_NOFOLLOW, unpredictable temp names)
 - Confine registry tag-pagination follows to the registry origin (a malicious next/Link can no longer exfiltrate credentials)
 - SSRF-validate ntfy/Gotify server URLs and the SMTP host; skip a blocked notifier non-fatally instead of aborting all notifications
+- Contain project/compose/manifest file reads within their trust roots (no symlink escape)
 
 ## [3.11.3] - 2026-05-27
 

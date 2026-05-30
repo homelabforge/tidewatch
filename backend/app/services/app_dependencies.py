@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.app_dependency import AppDependency as AppDependencyModel
 from app.utils.project_resolver import find_project_root, resolve_project_root
-from app.utils.security import sanitize_log_message
+from app.utils.security import sanitize_log_message, sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +241,24 @@ class DependencyScanner:
             logger.error(f"Invalid path finding project root: {sanitize_log_message(str(e))}")
             return None
 
+    def _safe_manifest(self, candidate: Path, base: Path) -> Path | None:
+        """Return ``candidate`` only if it is a regular file safely contained
+        under ``base`` (no symlink escape), else None.
+
+        Contained against the resolved ``project_root`` (NOT projects_directory):
+        tighter, blocks symlink-escape-from-root, and does not reject legacy
+        ``/compose/...`` roots that legitimately live outside projects_directory.
+        """
+        try:
+            rel = candidate.relative_to(base)
+        except ValueError:
+            return None
+        try:
+            safe = sanitize_path(str(rel), str(base), allow_symlinks=False)
+        except ValueError, FileNotFoundError:
+            return None
+        return safe if safe.is_file() else None
+
     async def _scan_npm(self, project_root: Path) -> list[AppDependency]:
         """Scan for npm/Node.js dependencies."""
         dependencies = []
@@ -254,10 +272,11 @@ class DependencyScanner:
         ]
 
         for package_json in locations:
-            if package_json.exists():
-                logger.info(f"Found package.json at {sanitize_log_message(str(package_json))}")
-                content = package_json.read_text()
-                dependencies.extend(await self._parse_package_json(content, package_json))
+            safe = self._safe_manifest(package_json, project_root)
+            if safe is not None:
+                logger.info(f"Found package.json at {sanitize_log_message(str(safe))}")
+                content = safe.read_text()
+                dependencies.extend(await self._parse_package_json(content, safe))
 
         return dependencies
 
@@ -287,12 +306,11 @@ class DependencyScanner:
         ]
 
         for file_path, parser in locations:
-            if file_path.exists():
-                logger.info(
-                    f"Found Python dependency file at {sanitize_log_message(str(file_path))}"
-                )
-                content = file_path.read_text()
-                dependencies.extend(await parser(content, file_path))
+            safe = self._safe_manifest(file_path, project_root)
+            if safe is not None:
+                logger.info(f"Found Python dependency file at {sanitize_log_message(str(safe))}")
+                content = safe.read_text()
+                dependencies.extend(await parser(content, safe))
 
         return dependencies
 
@@ -305,10 +323,11 @@ class DependencyScanner:
         ]
 
         for composer_json in locations:
-            if composer_json.exists():
-                logger.info(f"Found composer.json at {sanitize_log_message(str(composer_json))}")
-                content = composer_json.read_text()
-                return await self._parse_composer_json(content, composer_json)
+            safe = self._safe_manifest(composer_json, project_root)
+            if safe is not None:
+                logger.info(f"Found composer.json at {sanitize_log_message(str(safe))}")
+                content = safe.read_text()
+                return await self._parse_composer_json(content, safe)
 
         return []
 
@@ -321,10 +340,11 @@ class DependencyScanner:
         ]
 
         for go_mod in locations:
-            if go_mod.exists():
-                logger.info(f"Found go.mod at {sanitize_log_message(str(go_mod))}")
-                content = go_mod.read_text()
-                return await self._parse_go_mod_content(content, go_mod)
+            safe = self._safe_manifest(go_mod, project_root)
+            if safe is not None:
+                logger.info(f"Found go.mod at {sanitize_log_message(str(safe))}")
+                content = safe.read_text()
+                return await self._parse_go_mod_content(content, safe)
 
         return []
 
@@ -337,10 +357,11 @@ class DependencyScanner:
         ]
 
         for cargo_toml in locations:
-            if cargo_toml.exists():
-                logger.info(f"Found Cargo.toml at {sanitize_log_message(str(cargo_toml))}")
-                content = cargo_toml.read_text()
-                return await self._parse_cargo_toml_content(content, cargo_toml)
+            safe = self._safe_manifest(cargo_toml, project_root)
+            if safe is not None:
+                logger.info(f"Found Cargo.toml at {sanitize_log_message(str(safe))}")
+                content = safe.read_text()
+                return await self._parse_cargo_toml_content(content, safe)
 
         return []
 

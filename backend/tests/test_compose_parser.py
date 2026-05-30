@@ -547,7 +547,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].name == "nginx"
@@ -576,7 +576,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "auto"
@@ -602,7 +602,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             # Should only have valid-name
             assert len(containers) == 1
@@ -628,7 +628,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             # Should only have enabled service
             assert len(containers) == 1
@@ -654,7 +654,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 3
             names = [c.name for c in containers]
@@ -681,7 +681,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "auto"
@@ -705,7 +705,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "auto"
@@ -728,7 +728,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "auto"
@@ -751,7 +751,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "auto"
@@ -774,7 +774,7 @@ services:
             path = f.name
 
         try:
-            containers = await ComposeParser._parse_compose_file(path, mock_db)
+            containers = await ComposeParser._parse_compose_file(path, Path(path).parent, mock_db)
 
             assert len(containers) == 1
             assert containers[0].policy == "monitor"

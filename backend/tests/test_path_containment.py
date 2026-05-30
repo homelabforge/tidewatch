@@ -125,3 +125,81 @@ class TestAutoScanDockerfileRoot:
         assert len(deps) == 1
         # The per-project file (python), never the root decoy (alpine).
         assert deps[0].image_name == "python"
+
+
+class TestScannerContainment:
+    """#9 — compose / manifest / resolver path containment."""
+
+    async def test_parse_compose_file_rejects_symlink_escape(self, tmp_path):
+        from app.services.compose_parser import ComposeParser
+
+        outside = tmp_path / "outside" / "evil.yml"
+        outside.parent.mkdir()
+        outside.write_text("services:\n  evil:\n    image: evil:latest\n")
+        base = tmp_path / "project"
+        base.mkdir()
+        link = base / "docker-compose.yml"
+        link.symlink_to(outside)
+
+        result = await ComposeParser._parse_compose_file(str(link), base, AsyncMock())
+        assert result == []  # symlink escaping base_dir is refused
+
+    async def test_parse_compose_file_in_tree_ok(self, tmp_path):
+        from app.services.compose_parser import ComposeParser
+
+        base = tmp_path / "project"
+        base.mkdir()
+        compose = base / "docker-compose.yml"
+        compose.write_text("services:\n  web:\n    image: nginx:1.25\n")
+
+        result = await ComposeParser._parse_compose_file(str(compose), base, AsyncMock())
+        assert len(result) == 1
+
+    async def test_scan_npm_rejects_symlinked_manifest(self, tmp_path):
+        from app.services.app_dependencies import DependencyScanner
+
+        outside = tmp_path / "outside.json"
+        outside.write_text('{"dependencies": {"left-pad": "1.0.0"}}')
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "package.json").symlink_to(outside)
+
+        scanner = DependencyScanner(projects_directory=str(tmp_path))
+        deps = await scanner._scan_npm(project)
+        assert deps == []  # symlinked manifest never read
+
+    async def test_scan_python_in_tree_ok(self, tmp_path):
+        from app.services.app_dependencies import DependencyScanner
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "requirements.txt").write_text("requests==2.31.0\n")
+
+        scanner = DependencyScanner(projects_directory=str(tmp_path))
+        with patch.object(
+            DependencyScanner, "_get_pypi_latest", new=AsyncMock(return_value=None)
+        ):
+            deps = await scanner._scan_python(project)
+        assert any(d.name == "requests" for d in deps)
+
+    def test_resolve_project_root_contains_when_base_given(self, tmp_path, make_container):
+        from app.utils.project_resolver import resolve_project_root
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        container = make_container(name="x", project_root=str(outside))
+
+        assert resolve_project_root(container, projects_directory=projects_dir) is None
+
+    def test_resolve_project_root_in_tree_with_base(self, tmp_path, make_container):
+        from app.utils.project_resolver import resolve_project_root
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        proj = projects_dir / "myapp"
+        proj.mkdir()
+        container = make_container(name="x", project_root=str(proj))
+
+        assert resolve_project_root(container, projects_directory=projects_dir) == proj
