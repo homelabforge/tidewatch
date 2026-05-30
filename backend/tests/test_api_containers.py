@@ -1006,3 +1006,38 @@ class TestReleaseSourceValidation:
         )
         assert resp.status_code == 200
         assert resp.json()["container"]["release_source"] is None
+
+
+class TestRestartSelfManagedGuard:
+    """H5 — restarting self-managed infrastructure returns 409."""
+
+    async def test_restart_self_managed_returns_409(self, authenticated_client, db, make_container):
+        container = make_container(name="socket-proxy-rw")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        response = await authenticated_client.post(f"/api/v1/containers/{container.id}/restart")
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["error"] == "self_managed_infrastructure"
+        assert detail["operation"] == "restart"
+
+    async def test_restart_normal_container_returns_200(
+        self, authenticated_client, db, make_container
+    ):
+        from unittest.mock import AsyncMock, patch
+
+        container = make_container(name="nginx-app")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        with patch(
+            "app.services.restart_service.RestartService._execute_docker_compose_restart",
+            new=AsyncMock(return_value={"success": True}),
+        ):
+            response = await authenticated_client.post(f"/api/v1/containers/{container.id}/restart")
+
+        assert response.status_code == 200

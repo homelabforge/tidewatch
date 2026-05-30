@@ -115,3 +115,23 @@ def test_error_str_includes_instructions():
     err = SelfManagedInfraError("socket-proxy-rw", operation="apply", target_tag="3.2.16")
     assert "self-managed infrastructure" in str(err)
     assert "3.2.16" in str(err)
+
+
+# ─── restart operation (H5) ──────────────────────────────────────────────────
+
+
+def test_restart_operation_is_valid():
+    err = SelfManagedInfraError(
+        "socket-proxy-rw", operation="restart", service_name="socket-proxy-rw"
+    )
+    assert err.operation == "restart"
+
+
+def test_restart_instructions_mention_manual_restart_not_edit_compose():
+    err = SelfManagedInfraError(
+        "socket-proxy-rw", operation="restart", service_name="socket-proxy-rw"
+    )
+    instructions = err.manual_update_instructions
+    assert "restart" in instructions.lower()
+    # The default apply/rollback wording must NOT leak into a restart.
+    assert "Edit compose file" not in instructions

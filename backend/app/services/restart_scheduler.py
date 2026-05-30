@@ -15,6 +15,7 @@ from app.models import Container
 from app.models.restart_state import ContainerRestartState
 from app.services.container_monitor import container_monitor
 from app.services.event_bus import event_bus
+from app.services.protected_infra import SelfManagedInfraError
 from app.services.restart_service import restart_service
 from app.services.settings_service import SettingsService
 
@@ -341,6 +342,10 @@ class RestartSchedulerService:
                             result.get("error", "Unknown error"),
                         )
 
+            except SelfManagedInfraError as e:
+                # An enabled auto-restart on a socket proxy must not spew errors.
+                logger.info("Skipping auto-restart of self-managed infrastructure: %s", e)
+                return
             except OperationalError as e:
                 logger.error(
                     f"Database error executing restart for container {container_id}: {e}",

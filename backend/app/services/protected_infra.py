@@ -48,7 +48,7 @@ class SelfManagedInfraError(Exception):
     "open compose in editor" button has structured data to work with).
     """
 
-    OPERATIONS = ("apply", "rollback", "approve")
+    OPERATIONS = ("apply", "rollback", "approve", "restart")
 
     def __init__(
         self,
@@ -75,6 +75,14 @@ class SelfManagedInfraError(Exception):
         )
 
     def _build_instructions(self) -> str:
+        if self.operation == "restart":
+            # A restart does not change a tag — the default "edit compose, set
+            # image to version X" wording would be wrong.
+            return (
+                f"Restart {self.service_name} manually outside TideWatch — it "
+                f"cannot restart its own Docker socket proxy without orphaning "
+                f"itself. Run: dcp restart {self.service_name}"
+            )
         file_hint = f" ({self.compose_file})" if self.compose_file else ""
         tag = self.target_tag or "<target tag>"
         return (

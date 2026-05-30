@@ -26,6 +26,7 @@ from app.schemas.restart import (
     RestartStatsResponse,
 )
 from app.services.auth import require_auth
+from app.services.protected_infra import SelfManagedInfraError
 from app.services.restart_service import RestartService
 
 logger = logging.getLogger(__name__)
@@ -372,6 +373,20 @@ async def manual_restart(
                 state=RestartStateSchema.model_validate(state),
             )
 
+    except SelfManagedInfraError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "self_managed_infrastructure",
+                "message": str(e),
+                "container": e.container_name,
+                "operation": e.operation,
+                "target_tag": e.target_tag,
+                "compose_file": e.compose_file,
+                "service_name": e.service_name,
+                "manual_update_instructions": e.manual_update_instructions,
+            },
+        )
     except OperationalError as e:
         return RestartActionResponse(
             success=False,

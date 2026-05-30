@@ -409,3 +409,25 @@ class TestRestartStatsEndpoint:
 
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestManualRestartSelfManagedGuard:
+    """H5 — a manual restart of self-managed infrastructure returns 409."""
+
+    async def test_manual_restart_self_managed_returns_409(
+        self, authenticated_client, db, make_container
+    ):
+        container = make_container(name="socket-proxy-rw", image="x", current_tag="latest")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        response = await authenticated_client.post(
+            f"/api/v1/restarts/{container.id}/manual-restart",
+            json={"reason": "test", "skip_backoff": True},
+        )
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["error"] == "self_managed_infrastructure"
+        assert detail["operation"] == "restart"

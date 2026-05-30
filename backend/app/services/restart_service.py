@@ -13,6 +13,10 @@ from app.models import Container
 from app.models.restart_log import ContainerRestartLog
 from app.models.restart_state import ContainerRestartState
 from app.services.event_bus import event_bus
+from app.services.protected_infra import (
+    SelfManagedInfraError,
+    is_self_managed_infrastructure,
+)
 from app.services.settings_service import SettingsService
 from app.services.update_engine import UpdateEngine
 
@@ -271,6 +275,18 @@ class RestartService:
         """
         now = datetime.now(UTC)
 
+        # Self-managed infrastructure guard (early — before any log row or SSE
+        # event is created). Restarting a socket proxy would sever TideWatch's own
+        # daemon connection mid-command. Backstopped by the choke-point guard in
+        # _execute_docker_compose_restart.
+        if is_self_managed_infrastructure(container):
+            raise SelfManagedInfraError(
+                container.name,
+                operation="restart",
+                compose_file=container.compose_file,
+                service_name=container.service_name,
+            )
+
         # Create log entry
         log_entry = ContainerRestartLog(
             container_id=container.id,
@@ -526,6 +542,17 @@ class RestartService:
         Returns:
             Result dictionary
         """
+        # Choke-point guard: every restart entry point funnels here, including the
+        # raw containers.py call. SelfManagedInfraError is NOT a ValueError/KeyError,
+        # so it slips every typed except below and propagates to the caller.
+        if is_self_managed_infrastructure(container):
+            raise SelfManagedInfraError(
+                container.name,
+                operation="restart",
+                compose_file=container.compose_file,
+                service_name=container.service_name,
+            )
+
         start_time = datetime.now(UTC)
 
         try:

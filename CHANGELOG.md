@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSRF-validate ntfy/Gotify server URLs and the SMTP host; skip a blocked notifier non-fatally instead of aborting all notifications
 - Contain project/compose/manifest file reads within their trust roots (no symlink escape)
 - Pin HS256 on JWT decode; redact and bound OIDC token-exchange response bodies in logs
+- Block restart of self-managed Docker socket proxies (409 with manual instructions)
 
 ## [3.11.3] - 2026-05-27
 

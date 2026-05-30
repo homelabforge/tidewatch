@@ -639,3 +639,62 @@ class TestBackoffIntegration:
         # All within expected range
         for delay in delays:
             assert 64.0 <= delay <= 96.0  # Base 80 ± 20%
+
+
+def _self_managed_container() -> Container:
+    return Container(
+        name="socket-proxy-rw",
+        image="x",
+        current_tag="latest",
+        registry="docker.io",
+        compose_file="/compose/proxies.yml",
+        service_name="socket-proxy-rw",
+    )
+
+
+def _normal_container() -> Container:
+    return Container(
+        name="nginx-app",
+        image="nginx",
+        current_tag="latest",
+        registry="docker.io",
+        compose_file="/compose/web.yml",
+        service_name="nginx-app",
+    )
+
+
+class TestSelfManagedRestartGuard:
+    """H5 — restarting self-managed infra (socket proxies) is blocked."""
+
+    async def test_choke_point_blocks_self_managed(self):
+        from app.services.protected_infra import SelfManagedInfraError
+
+        with pytest.raises(SelfManagedInfraError) as exc:
+            await RestartService._execute_docker_compose_restart(
+                _self_managed_container(), AsyncMock()
+            )
+        assert exc.value.operation == "restart"
+
+    async def test_choke_point_normal_does_not_trip_guard(self):
+        from app.services.protected_infra import SelfManagedInfraError
+
+        # A normal container must get past the guard (it then fails later on the
+        # mocked docker setup — any non-SelfManagedInfraError outcome is fine).
+        try:
+            await RestartService._execute_docker_compose_restart(_normal_container(), AsyncMock())
+        except SelfManagedInfraError:
+            pytest.fail("normal container tripped the self-managed guard")
+        except Exception:
+            pass
+
+    async def test_execute_restart_blocks_before_logging(self):
+        from app.services.protected_infra import SelfManagedInfraError
+
+        mock_db = AsyncMock()
+        state = MagicMock(spec=ContainerRestartState)
+        with pytest.raises(SelfManagedInfraError):
+            await RestartService.execute_restart(
+                mock_db, _self_managed_container(), state, 1, "manual: test"
+            )
+        # The guard fires before the ContainerRestartLog row is added.
+        mock_db.add.assert_not_called()

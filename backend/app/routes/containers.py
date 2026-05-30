@@ -964,9 +964,25 @@ async def restart_container(
     Returns:
         Success message
     """
+    from app.services.protected_infra import SelfManagedInfraError
     from app.services.restart_service import RestartService
 
-    result = await RestartService._execute_docker_compose_restart(container, db)
+    try:
+        result = await RestartService._execute_docker_compose_restart(container, db)
+    except SelfManagedInfraError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "self_managed_infrastructure",
+                "message": str(e),
+                "container": e.container_name,
+                "operation": e.operation,
+                "target_tag": e.target_tag,
+                "compose_file": e.compose_file,
+                "service_name": e.service_name,
+                "manual_update_instructions": e.manual_update_instructions,
+            },
+        )
 
     if not result["success"]:
         raise HTTPException(
