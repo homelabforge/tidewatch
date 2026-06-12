@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-06-12
+
 ### Added
 - Live per-update apply progress bar (backup → pull → deploy → health-check), driven by SSE
 
