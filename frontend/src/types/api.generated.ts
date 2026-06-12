@@ -3390,19 +3390,23 @@ export interface paths {
          * Apply Update
          * @description Apply an approved update.
          *
-         *     This will:
-         *     1. Update the compose file
-         *     2. Execute docker compose up -d
-         *     3. Create history record
-         *     4. Update container status
-         *     5. Validate health check (if configured)
+         *     Validates synchronously (returning 400/409 on an invalid apply) and then
+         *     runs the update — backup, pull, deploy, health check — in a background task,
+         *     returning 202 immediately. The 15-60s flow does NOT hold this request open:
+         *     a long-blocking response is fragile to proxy timeouts and to recreating the
+         *     very container carrying the response (e.g. cloudflared tears down the tunnel
+         *     serving TideWatch, yielding a spurious 502 despite a successful update).
+         *
+         *     Progress and the terminal result are delivered over SSE
+         *     (``update-progress`` / ``update-complete``); the client must not block on
+         *     this response for the outcome.
          *
          *     Args:
          *         update_id: Update ID
          *         request: Update apply request (includes triggered_by)
          *
          *     Returns:
-         *         Result of the update operation
+         *         Acknowledgement that the apply has started.
          */
         post: operations["apply_update_api_v1_updates__update_id__apply_post"];
         delete?: never;
@@ -9773,7 +9777,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

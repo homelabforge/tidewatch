@@ -11596,7 +11596,7 @@
     },
     "/api/v1/updates/{update_id}/apply": {
       "post": {
-        "description": "Apply an approved update.\n\nThis will:\n1. Update the compose file\n2. Execute docker compose up -d\n3. Create history record\n4. Update container status\n5. Validate health check (if configured)\n\nArgs:\n    update_id: Update ID\n    request: Update apply request (includes triggered_by)\n\nReturns:\n    Result of the update operation",
+        "description": "Apply an approved update.\n\nValidates synchronously (returning 400/409 on an invalid apply) and then\nruns the update \u2014 backup, pull, deploy, health check \u2014 in a background task,\nreturning 202 immediately. The 15-60s flow does NOT hold this request open:\na long-blocking response is fragile to proxy timeouts and to recreating the\nvery container carrying the response (e.g. cloudflared tears down the tunnel\nserving TideWatch, yielding a spurious 502 despite a successful update).\n\nProgress and the terminal result are delivered over SSE\n(``update-progress`` / ``update-complete``); the client must not block on\nthis response for the outcome.\n\nArgs:\n    update_id: Update ID\n    request: Update apply request (includes triggered_by)\n\nReturns:\n    Acknowledgement that the apply has started.",
         "operationId": "apply_update_api_v1_updates__update_id__apply_post",
         "parameters": [
           {
@@ -11622,7 +11622,7 @@
           }
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
