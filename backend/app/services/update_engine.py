@@ -295,7 +295,13 @@ class UpdateEngine:
             try:
                 await UpdateEngine.apply_update(db, update_id, triggered_by=triggered_by)
             except Exception:
-                logger.exception("Background apply failed for update %s", update_id)
+                # update_id is an int path param (not injectable), but route it
+                # through the same sanitizer the rest of this module uses so the
+                # log-injection safeguard is applied uniformly (CodeQL py/log-injection).
+                logger.exception(
+                    "Background apply failed for update %s",
+                    sanitize_log_message(str(update_id)),
+                )
 
     @staticmethod
     async def apply_update(db: AsyncSession, update_id: int, triggered_by: str = "user") -> dict:
