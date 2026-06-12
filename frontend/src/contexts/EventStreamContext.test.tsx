@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EventStreamProvider } from './EventStreamContext'
 import { AuthContext, type AuthContextType } from './AuthContext'
 
@@ -36,12 +37,18 @@ const createMockAuthContext = (overrides?: Partial<AuthContextType>): AuthContex
 })
 
 function renderWithAuth(authContext: AuthContextType) {
+  // Fresh QueryClient per render — EventStreamProvider now calls
+  // useQueryClient() to invalidate caches on SSE events, so it must be
+  // mounted inside a QueryClientProvider (mirrors the real app tree).
+  const queryClient = new QueryClient()
   return render(
-    <AuthContext.Provider value={authContext}>
-      <EventStreamProvider>
-        <div>test child</div>
-      </EventStreamProvider>
-    </AuthContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={authContext}>
+        <EventStreamProvider>
+          <div>test child</div>
+        </EventStreamProvider>
+      </AuthContext.Provider>
+    </QueryClientProvider>
   )
 }
 
@@ -88,11 +95,13 @@ describe('EventStreamContext', () => {
     const loggedOutContext = createMockAuthContext({ isLoading: false, isAuthenticated: false })
     act(() => {
       rerender(
-        <AuthContext.Provider value={loggedOutContext}>
-          <EventStreamProvider>
-            <div>test child</div>
-          </EventStreamProvider>
-        </AuthContext.Provider>
+        <QueryClientProvider client={new QueryClient()}>
+          <AuthContext.Provider value={loggedOutContext}>
+            <EventStreamProvider>
+              <div>test child</div>
+            </EventStreamProvider>
+          </AuthContext.Provider>
+        </QueryClientProvider>
       )
     })
 

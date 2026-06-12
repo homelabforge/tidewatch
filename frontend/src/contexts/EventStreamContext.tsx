@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { ConnectionStatus, CheckJobProgressEvent, DepScanProgressEvent } from '../hooks/useEventStream';
 import { useAuth } from '../hooks/useAuth';
@@ -38,6 +39,7 @@ export function EventStreamProvider({ children, enableToasts = true }: EventStre
   const connectRef = useRef<(() => void) | undefined>(undefined);
   const subscribersRef = useRef<Set<EventCallback>>(new Set());
   const { isAuthenticated, isLoading } = useAuth();
+  const queryClient = useQueryClient();
 
   const subscribe = useCallback((callback: EventCallback) => {
     subscribersRef.current.add(callback);
@@ -68,38 +70,69 @@ export function EventStreamProvider({ children, enableToasts = true }: EventStre
       subscriber(event);
     }
 
-    // Handle toasts centrally
-    if (!enableToasts) return;
-
     const { type, data: explicitData, ...restData } = event;
     const data = (explicitData as Record<string, unknown> | undefined) ??
       (Object.keys(restData).length > 0 ? restData : undefined);
 
+    // Keep cached lists fresh on events that mutate them. This runs regardless
+    // of `enableToasts` and is the ONLY mechanism that refreshes the UI live:
+    // mutation onSuccess handlers don't fire for scheduler auto-applies, nor
+    // when a long-running apply request is dropped (e.g. updating cloudflared
+    // tears down the tunnel carrying the response). The backend emits
+    // hyphenated event names — the previous underscored cases never matched.
     switch (type) {
-      case 'update_available':
-        toast.info(`Update available for ${data?.container_name || 'container'}`, {
-          description: `New version: ${data?.new_version || 'unknown'}`,
-        });
+      case 'update-complete':
+      case 'rollback-complete':
+        queryClient.invalidateQueries({ queryKey: ['updates', 'all'] });
+        queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+        queryClient.invalidateQueries({ queryKey: ['history'] });
         break;
-      case 'update_applied':
-        toast.success(`Update applied to ${data?.container_name || 'container'}`, {
-          description: `Updated to version ${data?.new_version || 'unknown'}`,
-        });
+      case 'update-available':
+      case 'check-job-completed':
+      case 'check-job-canceled':
+        queryClient.invalidateQueries({ queryKey: ['updates', 'all'] });
+        queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
         break;
-      case 'update_failed':
-        toast.error(`Update failed for ${data?.container_name || 'container'}`, {
-          description: String(data?.error ?? 'Unknown error occurred'),
-        });
+      case 'restart-complete':
+        queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
+        queryClient.invalidateQueries({ queryKey: ['history'] });
         break;
-      case 'container_restarted':
-        toast.info(`Container restarted: ${data?.container_name || 'unknown'}`, {
-          description: `Restart reason: ${data?.reason || 'manual'}`,
-        });
+      case 'dependency-scan-completed':
+        queryClient.invalidateQueries({ queryKey: ['dependencies'] });
+        queryClient.invalidateQueries({ queryKey: ['containers', 'dependencySummary'] });
         break;
-      case 'health_check_failed':
-        toast.warning(`Health check failed for ${data?.container_name || 'container'}`, {
-          description: String(data?.error ?? 'Container may be unhealthy'),
-        });
+    }
+
+    // Handle toasts centrally
+    if (!enableToasts) return;
+
+    switch (type) {
+      // 'update-available' intentionally has no toast: it fires once per
+      // container during a check (would be a 12-toast storm). The list still
+      // refreshes live via the invalidation above, and 'check-job-completed'
+      // emits a single summary toast.
+      case 'update-complete':
+        if (data?.status === 'failed') {
+          toast.error(`Update failed for ${data?.container_name || 'container'}`);
+        } else {
+          toast.success(`Update applied to ${data?.container_name || 'container'}`, {
+            description: `Updated to ${data?.to_tag || 'new version'}`,
+          });
+        }
+        break;
+      case 'rollback-complete':
+        if (data?.status === 'failed') {
+          toast.error(`Rollback failed for ${data?.container_name || 'container'}`);
+        } else {
+          toast.warning(`Rolled back ${data?.container_name || 'container'}`, {
+            description: `Restored to ${data?.to_tag || 'previous version'}`,
+          });
+        }
+        break;
+      case 'restart-complete':
+        if (data?.status !== 'failed') {
+          toast.info(`Container restarted: ${data?.container_name || 'unknown'}`);
+        }
         break;
       case 'check-job-completed':
         toast.success('Update check complete', {
@@ -132,7 +165,7 @@ export function EventStreamProvider({ children, enableToasts = true }: EventStre
         });
         break;
     }
-  }, [enableToasts]);
+  }, [enableToasts, queryClient]);
 
   const connect = useCallback(() => {
     if (!isMountedRef.current) return;
