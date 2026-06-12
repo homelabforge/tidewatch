@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Live per-update apply progress bar (backup → pull → deploy → health-check), driven by SSE
+
+### Changed
+- Apply updates asynchronously: the API returns immediately and the update runs in the background, so a long apply no longer blocks the request or 502s when updating the proxy (e.g. cloudflared) that carries the response
+- Roll back immediately when a freshly-deployed container crash-loops (exited/restarting/dead) instead of waiting out the full retry backoff
+
+### Fixed
+- Scheduled update check no longer crashes and silently stops detecting updates when it coincides with auto-apply (file SQLite now uses per-connection pooling)
+- Auto-apply now applies ready `pending_retry` updates, so a failed update advances to auto-rollback instead of leaving the container down indefinitely
+- Update and container lists refresh live from SSE events without a manual page reload
+
+### Security
+- Sanitize the update id in the background-apply error log (CodeQL py/log-injection)
+
 ## [3.12.0] - 2026-05-30
 
 ### Fixed

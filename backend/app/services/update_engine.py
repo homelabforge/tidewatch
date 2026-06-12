@@ -53,6 +53,15 @@ def _redact_health_url(url: str) -> str:
     return urlunparse(parts)
 
 
+class UpdateFatalError(Exception):
+    """Raised when a freshly-deployed container is in a terminal state.
+
+    Signals that the new image will not stay up (crash-loop / exited / dead),
+    so retrying the same image is futile. ``_handle_update_failure`` treats this
+    as an immediate-rollback trigger instead of cycling the backoff schedule.
+    """
+
+
 class UpdateEngine:
     """Service for applying container updates."""
 
@@ -646,10 +655,23 @@ class UpdateEngine:
                 container, timeout=60, db=db
             )
 
+            # A terminal container state right after deploy could be a momentary
+            # boundary flap, so confirm with one short grace re-check before
+            # declaring the failure fatal.
+            if not health_check_result["success"] and health_check_result.get("fatal"):
+                await asyncio.sleep(5)
+                health_check_result = await UpdateEngine._check_container_runtime(container)
+
             if not health_check_result["success"]:
-                raise Exception(
+                error_msg = (
                     f"Health check failed: {health_check_result.get('error', 'Unknown error')}"
                 )
+                # Terminal state (crash-loop / exited): retrying the same image is
+                # futile — raise a fatal error so _handle_update_failure rolls back
+                # immediately instead of cycling the 5m/15m/1h backoff schedule.
+                if health_check_result.get("fatal"):
+                    raise UpdateFatalError(error_msg)
+                raise Exception(error_msg)
 
             logger.info(
                 f"Health check passed for {container.name} "
@@ -797,6 +819,10 @@ class UpdateEngine:
             except (OSError, PermissionError) as restore_error:
                 logger.error(f"Failed to restore compose backup: {restore_error}")
 
+        # A fatal failure means the new container will not stay up; retrying the
+        # same image is pointless, so skip the backoff schedule and roll back now.
+        fatal = isinstance(error, UpdateFatalError)
+
         # Update retry logic - wrap in transaction for atomicity
         async with db.begin_nested():
             update.last_error = str(error)
@@ -804,7 +830,7 @@ class UpdateEngine:
             update.version += 1  # Increment version for optimistic locking
 
             # Calculate next retry time using exponential backoff
-            if update.retry_count < (update.max_retries or 3):
+            if not fatal and update.retry_count < (update.max_retries or 3):
                 # Backoff schedule: 5min, 15min, 1hr, 4hrs
                 backoff_multiplier = update.backoff_multiplier or 3
                 if update.retry_count == 1:
@@ -826,12 +852,18 @@ class UpdateEngine:
                     f"(attempt {update.retry_count + 1}/{update.max_retries or 3})"
                 )
             else:
-                # Max retries reached - attempt automatic rollback
+                # Fatal failure or max retries reached - attempt automatic rollback
                 update.next_retry_at = None
-                logger.warning(
-                    f"Max retries ({update.max_retries or 3}) reached for "
-                    f"update {update.id}, initiating automatic rollback"
-                )
+                if fatal:
+                    logger.warning(
+                        f"Update {update.id} for {container.name} failed fatally "
+                        f"(container did not stay up); rolling back immediately"
+                    )
+                else:
+                    logger.warning(
+                        f"Max retries ({update.max_retries or 3}) reached for "
+                        f"update {update.id}, initiating automatic rollback"
+                    )
 
                 if history.backup_path:
                     try:
@@ -1589,6 +1621,11 @@ class UpdateEngine:
                             "success": False,
                             "error": f"Container status: {status}",
                             "container": target,
+                            # "running" means the main process is alive, so a
+                            # slow-but-healthy app still reports running. These
+                            # states mean the process died — the new image won't
+                            # stay up, so the caller can fail fast and roll back.
+                            "fatal": status in ("restarting", "exited", "dead"),
                         }
 
                     stderr = stderr_bytes.decode("utf-8").strip() if stderr_bytes else ""

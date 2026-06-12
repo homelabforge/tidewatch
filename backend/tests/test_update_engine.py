@@ -1305,6 +1305,103 @@ class TestApplyUpdateOrchestration:
             # the Update object gets modified inside async with db.begin_nested()
             # and the state changes may not be visible outside that context in tests
 
+    @pytest.mark.asyncio
+    async def test_fatal_failure_rolls_back_immediately(self, mock_db, mock_container, mock_update):
+        """A fatal (crash-loop) failure rolls back at once, skipping backoff.
+
+        Even though retry_count (1) is below max_retries (3), a container that
+        will not stay up should not cycle the 5m/15m/1h retry schedule — it
+        rolls back to the working version immediately.
+        """
+        from app.services.update_engine import UpdateFatalError
+
+        mock_update.retry_count = 0
+        mock_update.max_retries = 3
+        mock_update.version = 1
+        history = UpdateHistory(
+            id=1,
+            container_id=1,
+            container_name="sonarr",
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            update_id=1,
+            update_type="manual",
+            status="in_progress",
+            backup_path="/data/backups/sonarr.yml.backup",
+        )
+
+        mock_rollback = AsyncMock(return_value={"success": True})
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.notify_update_applied = AsyncMock()
+
+        with (
+            patch.object(UpdateEngine, "_restore_compose_file", AsyncMock()),
+            patch.object(UpdateEngine, "rollback_update", mock_rollback),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher,
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
+            result = await UpdateEngine._handle_update_failure(
+                mock_db,
+                mock_update,
+                mock_container,
+                history,
+                UpdateFatalError("Health check failed: Container status: restarting"),
+            )
+
+        assert result["success"] is False
+        mock_rollback.assert_called_once()  # immediate, not scheduled
+        assert mock_update.status == "rolled_back"
+        assert mock_update.next_retry_at is None
+
+    @pytest.mark.asyncio
+    async def test_non_fatal_failure_schedules_retry_not_rollback(
+        self, mock_db, mock_container, mock_update
+    ):
+        """Contrast: a non-fatal failure below max_retries schedules a retry and
+        does NOT roll back (only fatal/max-retries trigger rollback)."""
+        mock_update.retry_count = 0
+        mock_update.max_retries = 3
+        mock_update.version = 1
+        history = UpdateHistory(
+            id=1,
+            container_id=1,
+            container_name="sonarr",
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            update_id=1,
+            update_type="manual",
+            status="in_progress",
+            backup_path="/data/backups/sonarr.yml.backup",
+        )
+
+        mock_rollback = AsyncMock(return_value={"success": True})
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.notify_update_applied = AsyncMock()
+
+        with (
+            patch.object(UpdateEngine, "_restore_compose_file", AsyncMock()),
+            patch.object(UpdateEngine, "rollback_update", mock_rollback),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher,
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
+            await UpdateEngine._handle_update_failure(
+                mock_db,
+                mock_update,
+                mock_container,
+                history,
+                Exception("Health check timeout"),  # transient, not fatal
+            )
+
+        mock_rollback.assert_not_called()
+        assert mock_update.status == "pending_retry"
+        assert mock_update.next_retry_at is not None
+
 
 class TestRollbackUpdate:
     """Test suite for rollback_update() functionality."""
