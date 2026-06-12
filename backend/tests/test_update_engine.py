@@ -990,7 +990,8 @@ class TestApplyUpdateOrchestration:
         with pytest.raises(ValueError) as exc_info:
             await UpdateEngine.apply_update(mock_db, 1, "user")
 
-        assert "must be approved first" in str(exc_info.value)
+        # "pending" is neither approved nor a pending_retry → rejected.
+        assert "cannot be applied from status" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_apply_update_creates_backup_before_changes(

@@ -226,8 +226,12 @@ class UpdateEngine:
             raise ValueError(f"Update {update_id} not found")
         if update.status == "applied":
             raise ValueError("This update has already been applied")
-        if update.status != "approved":
-            raise ValueError(f"Update must be approved first (status: {update.status})")
+        # "approved" is a fresh apply; "pending_retry" is the scheduler retrying
+        # a previously-approved update whose backoff window has elapsed. Both are
+        # applyable — rejecting pending_retry here made auto-apply fail every
+        # ready retry with "must be approved first".
+        if update.status not in ("approved", "pending_retry"):
+            raise ValueError(f"Update cannot be applied from status: {update.status}")
 
         result = await db.execute(select(Container).where(Container.id == update.container_id))
         container = result.scalar_one_or_none()
@@ -314,8 +318,12 @@ class UpdateEngine:
 
         if update.status == "applied":
             raise ValueError("This update has already been applied")
-        if update.status != "approved":
-            raise ValueError(f"Update must be approved first (status: {update.status})")
+        # "approved" is a fresh apply; "pending_retry" is the scheduler retrying
+        # a previously-approved update whose backoff window has elapsed. Both are
+        # applyable — rejecting pending_retry here made auto-apply fail every
+        # ready retry with "must be approved first".
+        if update.status not in ("approved", "pending_retry"):
+            raise ValueError(f"Update cannot be applied from status: {update.status}")
 
         # Get the container
         result = await db.execute(select(Container).where(Container.id == update.container_id))

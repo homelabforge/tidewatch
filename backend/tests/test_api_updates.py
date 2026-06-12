@@ -852,6 +852,44 @@ class TestApplyUpdateEndpoint:
             assert data["success"] is True
             mock_spawn.assert_called_once()
 
+    async def test_apply_update_pending_retry_accepted(
+        self, authenticated_client, db, make_update, make_container
+    ):
+        """A pending_retry update is applyable (the scheduler retry path).
+
+        Regression: the apply gate previously rejected anything but "approved",
+        so every ready auto-apply retry failed with "must be approved first"
+        and the update never advanced toward auto-rollback — leaving a broken
+        update stuck and the container down.
+        """
+        from datetime import datetime
+        from unittest.mock import patch
+
+        container = make_container(name=f"test-container-{id(self)}", image="nginx:1.20")
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        update = make_update(
+            container_id=container.id,
+            current_tag="1.20",
+            new_tag="1.21",
+            status="pending_retry",  # mid-backoff retry of a prior approved apply
+            approved_at=datetime.now(UTC),
+            created_at=datetime.now(UTC),
+        )
+        db.add(update)
+        await db.commit()
+        await db.refresh(update)
+
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
+            response = await authenticated_client.post(
+                f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
+            )
+
+            assert response.status_code == status.HTTP_202_ACCEPTED
+            mock_spawn.assert_called_once()
+
     async def test_apply_update_creates_history(
         self, authenticated_client, db, make_update, make_container
     ):
