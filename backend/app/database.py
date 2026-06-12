@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from datetime import date, datetime
 from pathlib import Path
 
-from sqlalchemy import event, text
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -60,27 +60,53 @@ if DATABASE_URL.startswith("sqlite") and ":memory:" not in DATABASE_URL:
 # SQLite doesn't benefit from connection pooling and should use minimal pool
 # PostgreSQL/MySQL benefit from larger pools for concurrent connections
 if "sqlite" in DATABASE_URL:
-    # SQLite: Use StaticPool for better performance
-    # StaticPool maintains a single connection, better than NullPool which recreates connections
-    # This reduces connection overhead while avoiding SQLite's locking issues
-    from sqlalchemy.pool import StaticPool
+    # Pool choice is load-bearing for correctness under the async scheduler:
+    #
+    # - In-memory SQLite (tests) MUST use StaticPool. Each new connection opens
+    #   a *private* in-memory database, so a single shared connection is the
+    #   only way the schema created at startup stays visible to later queries.
+    #
+    # - File-backed SQLite (production) uses NullPool so every AsyncSession gets
+    #   its OWN connection. StaticPool's single shared connection is unsafe here:
+    #   concurrent scheduler jobs (e.g. the 6h update check colliding with the
+    #   */5 auto-apply tick) interleave statements on the one connection and
+    #   corrupt each other's transaction view — which surfaced as
+    #   "InvalidRequestError: Could not refresh instance" and silently killed
+    #   every scheduled update check. NullPool isolates sessions; WAL plus a
+    #   per-connection busy_timeout (below) handle SQLite's single-writer lock.
+    from sqlalchemy.pool import NullPool, StaticPool
+
+    is_memory = ":memory:" in DATABASE_URL
 
     engine = create_async_engine(
         DATABASE_URL,
         echo=False,
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,  # Single persistent connection for SQLite
-        pool_reset_on_return=None,  # Don't reset connections on return for SQLite
+        poolclass=StaticPool if is_memory else NullPool,
     )
 
-    # Enable foreign key enforcement on every new SQLite connection.
-    # This is a connection-level pragma that does NOT persist across connections,
-    # so it must be set each time — unlike WAL/synchronous/cache which are database-level.
+    # Apply SQLite tuning on EVERY new connection. With NullPool each session
+    # opens a fresh connection, so per-connection pragmas (busy_timeout,
+    # synchronous, cache_size, foreign_keys) must be (re)set here — otherwise a
+    # new connection silently reverts to busy_timeout=0 and raises
+    # "database is locked" the moment two writers contend. journal_mode=WAL is
+    # database-level/persistent, but re-asserting it is idempotent and keeps the
+    # full configuration self-contained in one place.
     @event.listens_for(engine.sync_engine, "connect")
-    def _set_sqlite_fk_pragma(dbapi_connection, connection_record):  # noqa: ARG001
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):  # noqa: ARG001
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        try:
+            # busy_timeout first so the pragmas below wait out any brief lock.
+            cursor.execute("PRAGMA busy_timeout=5000")
+            if not is_memory:
+                # WAL/synchronous/cache are meaningless (and WAL errors) on
+                # :memory:, which is always an in-RAM journal.
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.execute("PRAGMA cache_size=-64000")  # negative = KB → 64MB
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
 
 else:
     # PostgreSQL/MySQL: Use connection pooling for better performance
@@ -114,29 +140,18 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
 
 async def init_db():
     """Initialize database tables and run pending migrations."""
-    # First, create base tables
+    # First, create base tables. SQLite tuning (WAL, synchronous, cache_size,
+    # busy_timeout, foreign_keys) is applied per-connection via the engine
+    # "connect" hook above, so it is already in effect for this connection and
+    # every session connection that follows.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # Enable WAL mode and optimizations for SQLite
-        if "sqlite" in DATABASE_URL:
-            # WAL mode allows concurrent reads/writes
-            await conn.execute(text("PRAGMA journal_mode=WAL"))
-
-            # NORMAL synchronous is safe with WAL and faster than FULL
-            await conn.execute(text("PRAGMA synchronous=NORMAL"))
-
-            # Increase cache size (negative = KB, -64000 = 64MB)
-            await conn.execute(text("PRAGMA cache_size=-64000"))
-
-            # Set busy timeout to 5 seconds to handle concurrent access
-            await conn.execute(text("PRAGMA busy_timeout=5000"))
-
-            # Note: foreign_keys=ON is set per-connection via engine connect hook above
-
-            logger.info(
-                "SQLite optimizations applied: WAL mode, 64MB cache, 5s busy timeout, FK enforcement"
-            )
+    if "sqlite" in DATABASE_URL and ":memory:" not in DATABASE_URL:
+        logger.info(
+            "SQLite optimizations applied per-connection: "
+            "WAL mode, NORMAL sync, 64MB cache, 5s busy timeout, FK enforcement"
+        )
 
     # Run pending migrations — fail-fast so we don't run with a broken schema
     from app.migrations.runner import run_migrations

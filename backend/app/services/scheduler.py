@@ -107,10 +107,14 @@ class SchedulerService:
                 max_instances=1,  # Prevent overlapping runs
             )
 
-            # Add auto-apply job (runs every 5 minutes)
+            # Add auto-apply job (every 5 minutes, offset to minutes 1,6,11,…).
+            # The default update check runs at minute 0 ("0 */6 * * *"); firing
+            # auto-apply on the same minute made the two write-heavy jobs contend
+            # on the database every 6 hours. Staggering by a minute keeps them —
+            # and the metrics job (minute 2,7,…) — from piling onto the same tick.
             self.scheduler.add_job(
                 self._run_auto_apply,
-                CronTrigger.from_crontab("*/5 * * * *"),
+                CronTrigger.from_crontab("1-56/5 * * * *"),
                 id="auto_apply",
                 name="Automatic Update Application",
                 replace_existing=True,
@@ -315,6 +319,16 @@ class SchedulerService:
         except (KeyError, ValueError, AttributeError) as e:
             duration = (datetime.now() - start_time).total_seconds()
             logger.error(f"Invalid data during scheduled update check after {duration:.2f}s: {e}")
+        except Exception:
+            # Catch-all safety net. A scheduled job that lets an unexpected
+            # exception escape produces no updates and only a terse APScheduler
+            # log line — which is exactly how an InvalidRequestError silently
+            # disabled update checking. Log the full traceback with context and
+            # let the next cycle try again rather than failing invisibly.
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.exception(
+                f"Unexpected error during scheduled update check after {duration:.2f}s"
+            )
 
     async def _run_auto_apply(self):
         """Apply approved updates for containers with auto policies.

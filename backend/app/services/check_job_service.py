@@ -92,7 +92,11 @@ class CheckJobService:
         )
         db.add(job)
         await db.commit()
-        await db.refresh(job)
+        # No refresh: with expire_on_commit=False the object keeps its flushed
+        # primary key and in-memory values, and every caller only reads job.id /
+        # job.total_count. The previous db.refresh(job) re-SELECTed the row and
+        # was the exact line that raised "InvalidRequestError: Could not refresh
+        # instance" whenever a concurrent session perturbed the transaction.
 
         # Publish creation event
         await event_bus.publish(
