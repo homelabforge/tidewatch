@@ -728,7 +728,7 @@ class TestApplyUpdateEndpoint:
     ):
         """Test applying approved update triggers update engine."""
         from datetime import datetime
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         # Create test container and approved update
         container = make_container(
@@ -753,39 +753,29 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Mock UpdateEngine.apply_update to return success
-        mock_result = {
-            "success": True,
-            "message": "Update completed successfully",
-            "container_id": container.id,
-            "old_tag": "1.20",
-            "new_tag": "1.21",
-        }
-
-        with patch(
-            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
-        ) as mock_apply:
-            mock_apply.return_value = mock_result
-
+        # Apply is now asynchronous: the route validates synchronously, then
+        # spawns a background task and returns 202. Mock the spawn so no real
+        # update flow runs during the test.
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
             # Apply the update
             response = await authenticated_client.post(
                 f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
             )
 
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_202_ACCEPTED
             data = response.json()
             assert data["success"] is True
-            assert "Update completed successfully" in data["message"]
+            assert data["status"] == "applying"
 
-            # Verify UpdateEngine.apply_update was called
-            mock_apply.assert_called_once()
+            # Background apply was spawned for this update
+            mock_spawn.assert_called_once()
 
     async def test_apply_update_pending_rejected(
         self, authenticated_client, db, make_update, make_container
     ):
         """Test applying pending update returns 400 (must approve first)."""
         from datetime import datetime
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         # Create test container and pending update
         container = make_container(
@@ -809,25 +799,23 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Mock UpdateEngine to raise ValueError for non-approved updates
-        with patch(
-            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
-        ) as mock_apply:
-            mock_apply.side_effect = ValueError("Update must be approved before applying")
-
+        # Preflight validation rejects a non-approved update synchronously,
+        # before any background task is spawned.
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
             # Try to apply pending update
             response = await authenticated_client.post(
                 f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
             )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
+            mock_spawn.assert_not_called()
 
     async def test_apply_update_failed_retry(
         self, authenticated_client, db, make_update, make_container
     ):
         """Test applying failed update allows retry."""
         from datetime import datetime
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         # Create test container and failed update
         container = make_container(
@@ -844,7 +832,7 @@ class TestApplyUpdateEndpoint:
             container_id=container.id,
             current_tag="1.20",
             new_tag="1.21",
-            status="failed",  # Previous attempt failed
+            status="approved",  # Re-approved after a previous failure (retry)
             approved_at=datetime.now(UTC),
             created_at=datetime.now(UTC),
         )
@@ -852,33 +840,24 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Mock successful retry
-        mock_result = {
-            "success": True,
-            "message": "Update completed successfully on retry",
-            "container_id": container.id,
-        }
-
-        with patch(
-            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
-        ) as mock_apply:
-            mock_apply.return_value = mock_result
-
+        # A retried (re-approved) update applies like any other: 202 + spawn.
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
             # Retry the failed update
             response = await authenticated_client.post(
                 f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
             )
 
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_202_ACCEPTED
             data = response.json()
             assert data["success"] is True
+            mock_spawn.assert_called_once()
 
     async def test_apply_update_creates_history(
         self, authenticated_client, db, make_update, make_container
     ):
         """Test apply creates history entry."""
         from datetime import datetime
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         # Create test container and approved update
         container = make_container(
@@ -903,27 +882,18 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Mock UpdateEngine to simulate successful apply
-        mock_result = {
-            "success": True,
-            "message": "Update completed successfully",
-            "container_id": container.id,
-            "history_id": 1,  # Simulated history entry
-        }
-
-        with patch(
-            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
-        ) as mock_apply:
-            mock_apply.return_value = mock_result
-
+        # History is now written by the background apply task, not returned
+        # synchronously. The endpoint just acknowledges with 202 + a spawn.
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
             # Apply the update
             response = await authenticated_client.post(
                 f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
             )
 
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_202_ACCEPTED
             data = response.json()
-            assert "history_id" in data or data["success"] is True
+            assert data["success"] is True
+            mock_spawn.assert_called_once()
 
     async def test_apply_update_event_bus_progress(
         self, authenticated_client, db, mock_event_bus, make_container, make_update
@@ -941,8 +911,11 @@ class TestApplyUpdateEndpoint:
         await db.commit()
         await db.refresh(update)
 
-        # Apply update
-        response = await authenticated_client.post(f"/api/v1/updates/{update.id}/apply")
+        # Apply update — patch the background spawn so no real update flow runs.
+        from unittest.mock import patch
+
+        with patch("app.routes.updates.UpdateEngine.start_apply_background"):
+            response = await authenticated_client.post(f"/api/v1/updates/{update.id}/apply")
 
         # Test validates mock_event_bus fixture works
         # When event bus integration is complete, verify:
@@ -975,7 +948,7 @@ class TestApplyUpdateEndpoint:
     ):
         """Test apply when container was deleted returns 400."""
         from datetime import datetime
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         # Create test container and approved update
         container = make_container(
@@ -1004,18 +977,16 @@ class TestApplyUpdateEndpoint:
         await db.delete(container)
         await db.commit()
 
-        # Mock UpdateEngine to raise error for missing container
-        with patch(
-            "app.routes.updates.UpdateEngine.apply_update", new_callable=AsyncMock
-        ) as mock_apply:
-            mock_apply.side_effect = ValueError("Container not found")
-
+        # Preflight resolves the (now-missing) container and rejects with 400,
+        # before any background task is spawned.
+        with patch("app.routes.updates.UpdateEngine.start_apply_background") as mock_spawn:
             # Try to apply update for deleted container
             response = await authenticated_client.post(
                 f"/api/v1/updates/{update.id}/apply", json={"triggered_by": "admin"}
             )
 
             assert response.status_code == status.HTTP_400_BAD_REQUEST
+            mock_spawn.assert_not_called()
 
 
 class TestDeleteUpdateEndpoint:

@@ -44,11 +44,9 @@ export interface DepScanProgressEvent {
 }
 
 interface UseEventStreamOptions {
-  onUpdateAvailable?: (data: Record<string, unknown> | undefined) => void;
-  onUpdateApplied?: (data: Record<string, unknown> | undefined) => void;
-  onUpdateFailed?: (data: Record<string, unknown> | undefined) => void;
-  onContainerRestarted?: (data: Record<string, unknown> | undefined) => void;
-  onHealthCheckFailed?: (data: Record<string, unknown> | undefined) => void;
+  // Update lifecycle (backend emits hyphenated event names).
+  onUpdateProgress?: (data: Record<string, unknown> | undefined) => void;
+  onUpdateComplete?: (data: Record<string, unknown> | undefined) => void;
   // Check job callbacks
   onCheckJobCreated?: (data: CheckJobProgressEvent) => void;
   onCheckJobStarted?: (data: CheckJobProgressEvent) => void;
@@ -76,11 +74,8 @@ interface UseEventStreamOptions {
  */
 export function useEventStream(options: UseEventStreamOptions = {}) {
   const {
-    onUpdateAvailable,
-    onUpdateApplied,
-    onUpdateFailed,
-    onContainerRestarted,
-    onHealthCheckFailed,
+    onUpdateProgress,
+    onUpdateComplete,
     onCheckJobCreated,
     onCheckJobStarted,
     onCheckJobProgress,
@@ -103,20 +98,11 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
       (Object.keys(restData).length > 0 ? restData : undefined);
 
     switch (type) {
-      case 'update_available':
-        onUpdateAvailable?.(data);
+      case 'update-progress':
+        onUpdateProgress?.(data);
         break;
-      case 'update_applied':
-        onUpdateApplied?.(data);
-        break;
-      case 'update_failed':
-        onUpdateFailed?.(data);
-        break;
-      case 'container_restarted':
-        onContainerRestarted?.(data);
-        break;
-      case 'health_check_failed':
-        onHealthCheckFailed?.(data);
+      case 'update-complete':
+        onUpdateComplete?.(data);
         break;
       case 'check-job-created':
         if (data) onCheckJobCreated?.(data as unknown as CheckJobProgressEvent);
@@ -156,11 +142,8 @@ export function useEventStream(options: UseEventStreamOptions = {}) {
         break;
     }
   }, [
-    onUpdateAvailable,
-    onUpdateApplied,
-    onUpdateFailed,
-    onContainerRestarted,
-    onHealthCheckFailed,
+    onUpdateProgress,
+    onUpdateComplete,
     onCheckJobCreated,
     onCheckJobStarted,
     onCheckJobProgress,

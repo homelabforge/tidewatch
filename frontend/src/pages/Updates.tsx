@@ -5,6 +5,7 @@ import { api, ApiError } from '../services/api';
 import UpdateCard from '../components/UpdateCard';
 import CheckProgressBar from '../components/CheckProgressBar';
 import { useCheckJob } from '../hooks/useCheckJob';
+import { useApplyProgress } from '../hooks/useApplyProgress';
 import { RefreshCw, CircleCheckBig, CircleX, CircleAlert, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,8 +43,6 @@ export default function Updates() {
     queryClient.invalidateQueries({ queryKey: ['updates', 'all'] });
   const invalidateContainers = () =>
     queryClient.invalidateQueries({ queryKey: ['containers', 'all'] });
-  const invalidateHistory = () =>
-    queryClient.invalidateQueries({ queryKey: ['history'] });
 
   const onCheckJobDone = () => {
     invalidateUpdates();
@@ -54,6 +53,9 @@ export default function Updates() {
     onCompleted: onCheckJobDone,
     onCanceled: onCheckJobDone,
   });
+
+  // Live per-container apply progress, driven by SSE update-progress events.
+  const { applyProgress, markApplying } = useApplyProgress();
 
   // Shared concurrent-modification toast — preserves the today's pre-existing
   // "refresh and try again" wording when the backend returns a write conflict.
@@ -98,38 +100,15 @@ export default function Updates() {
   });
 
   const applyMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await api.updates.apply(id);
-
-      // Backend returns success on apply trigger, but the update record may
-      // not yet reflect terminal state. Poll until terminal (or timeout) so
-      // the post-apply UI shows the right status.
-      let attempts = 0;
-      const maxAttempts = 30;
-      while (attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        try {
-          const refreshed = await api.updates.get(id);
-          if (
-            refreshed.status === 'applied' ||
-            refreshed.status === 'rejected' ||
-            refreshed.status === 'failed' ||
-            refreshed.status === 'rolled_back'
-          ) {
-            break;
-          }
-        } catch {
-          // Update might be deleted, break polling
-          break;
-        }
-        attempts++;
-      }
-    },
+    // Apply is fire-and-forget: the API validates synchronously and returns 202,
+    // then runs the update in the background. Progress and the terminal result
+    // arrive over SSE (useApplyProgress + EventStreamContext), so we neither
+    // block nor poll here — that long-blocking request was the source of the
+    // proxy 502 / dropped-response failures.
+    mutationFn: (id: number) => api.updates.apply(id),
     onSuccess: () => {
-      toast.success('Update applied successfully');
+      toast.info('Update started', { description: 'Applying in the background…' });
       invalidateUpdates();
-      invalidateContainers();
-      invalidateHistory();
     },
     onError: (error) => {
       if (error instanceof ApiError && error.isSelfManaged) {
@@ -222,8 +201,13 @@ export default function Updates() {
   const handleApply = (id: number) => {
     if (applyingUpdateIds.has(id)) return;
     if (!confirm('Are you sure you want to apply this update?')) return;
+    const target = updates.find((u) => u.id === id);
     setApplyingUpdateIds((prev) => new Set(prev).add(id));
     applyMutation.mutate(id, {
+      onSuccess: () => {
+        // Show the progress bar immediately, before the first SSE frame lands.
+        if (target) markApplying(target.container_id, containers.get(target.container_id)?.name ?? '');
+      },
       onSettled: () =>
         setApplyingUpdateIds((prev) => {
           const next = new Set(prev);
@@ -467,6 +451,7 @@ export default function Updates() {
                 isApplying={applyingUpdateIds.has(update.id)}
                 isApproving={approvingUpdateIds.has(update.id)}
                 isRejecting={rejectingUpdateIds.has(update.id)}
+                applyProgress={applyProgress.get(update.container_id)}
               />
             ))}
           </div>

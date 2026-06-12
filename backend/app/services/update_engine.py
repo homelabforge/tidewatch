@@ -13,6 +13,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import AsyncSessionLocal
 from app.models.container import Container
 from app.models.history import UpdateHistory
 from app.models.update import Update
@@ -54,6 +55,11 @@ def _redact_health_url(url: str) -> str:
 
 class UpdateEngine:
     """Service for applying container updates."""
+
+    # Background apply tasks are parked here so the event loop's garbage
+    # collector cannot reclaim them before completion (mirrors
+    # CheckJobService._background_tasks).
+    _apply_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
 
     @staticmethod
     async def recover_stuck_records(db: AsyncSession) -> int:
@@ -197,6 +203,95 @@ class UpdateEngine:
         from app.services.compose_parser import ComposeParser
 
         return await ComposeParser.resolve_project_compose_files(db, container)
+
+    @staticmethod
+    async def validate_apply_preflight(db: AsyncSession, update_id: int) -> None:
+        """Synchronously validate that an update can be applied.
+
+        Runs the same gates as the head of ``apply_update`` so the API can
+        reject an invalid apply *before* handing the heavy work to a background
+        task — the caller gets an immediate 400/409 instead of a 202 followed
+        by a silent failure. ``apply_update`` re-checks these in its own
+        session, so this is a fast pre-flight, not the source of truth.
+
+        Raises:
+            ValueError: update missing, wrong status, container missing, or an
+                operation already in progress for the container (→ HTTP 400).
+            SelfManagedInfraError: container is protected infrastructure
+                (→ HTTP 409).
+        """
+        result = await db.execute(select(Update).where(Update.id == update_id))
+        update = result.scalar_one_or_none()
+        if not update:
+            raise ValueError(f"Update {update_id} not found")
+        if update.status == "applied":
+            raise ValueError("This update has already been applied")
+        if update.status != "approved":
+            raise ValueError(f"Update must be approved first (status: {update.status})")
+
+        result = await db.execute(select(Container).where(Container.id == update.container_id))
+        container = result.scalar_one_or_none()
+        if not container:
+            raise ValueError(f"Container {update.container_id} not found")
+
+        from app.services.protected_infra import (
+            SelfManagedInfraError,
+            is_self_managed_infrastructure,
+        )
+
+        if is_self_managed_infrastructure(container):
+            raise SelfManagedInfraError(
+                container.name,
+                operation="apply",
+                target_tag=update.to_tag,
+                compose_file=container.compose_file,
+                compose_project=container.compose_project,
+                service_name=container.service_name,
+            )
+
+        in_progress = await db.execute(
+            select(UpdateHistory)
+            .where(
+                UpdateHistory.container_id == container.id,
+                UpdateHistory.status == "in_progress",
+            )
+            .limit(1)
+        )
+        if in_progress.scalar_one_or_none():
+            raise ValueError(f"Another operation is already in progress for {container.name}")
+
+    @staticmethod
+    def start_apply_background(update_id: int, triggered_by: str = "user") -> None:
+        """Run ``apply_update`` detached in a background task.
+
+        The API returns 202 immediately and the 15-60s update flow (backup →
+        pull → deploy → health check) runs without holding the request open.
+        This avoids the failure mode where a long-blocking apply response is
+        dropped by a proxy — or by recreating the very container that carries
+        the response (e.g. cloudflared) — surfacing a spurious 502 even though
+        the update succeeds. Progress and completion reach the UI via the
+        ``update-progress`` / ``update-complete`` SSE events apply_update emits.
+
+        Call ``validate_apply_preflight`` first so obvious errors are returned
+        synchronously to the caller.
+        """
+        task = asyncio.create_task(UpdateEngine._run_apply_background(update_id, triggered_by))
+        UpdateEngine._apply_tasks.add(task)
+        task.add_done_callback(UpdateEngine._apply_tasks.discard)
+
+    @staticmethod
+    async def _run_apply_background(update_id: int, triggered_by: str) -> None:
+        """Background entrypoint for an apply — owns its own DB session.
+
+        ``apply_update`` already emits a terminal ``update-complete`` (status
+        "failed") for every handled failure via its top-level exception
+        handler, so this wrapper only needs to log anything that escapes that.
+        """
+        async with AsyncSessionLocal() as db:
+            try:
+                await UpdateEngine.apply_update(db, update_id, triggered_by=triggered_by)
+            except Exception:
+                logger.exception("Background apply failed for update %s", update_id)
 
     @staticmethod
     async def apply_update(db: AsyncSession, update_id: int, triggered_by: str = "user") -> dict:

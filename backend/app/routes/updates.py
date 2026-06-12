@@ -530,7 +530,7 @@ def _advance_anchor_major_on_accept(container: Container, update: Update) -> Non
         container.last_digest_major = digest_major
 
 
-@router.post("/{update_id}/apply")
+@router.post("/{update_id}/apply", status_code=202)
 async def apply_update(
     update_id: int,
     _admin: dict | None = Depends(require_auth),
@@ -539,35 +539,26 @@ async def apply_update(
 ) -> dict[str, Any]:
     """Apply an approved update.
 
-    This will:
-    1. Update the compose file
-    2. Execute docker compose up -d
-    3. Create history record
-    4. Update container status
-    5. Validate health check (if configured)
+    Validates synchronously (returning 400/409 on an invalid apply) and then
+    runs the update — backup, pull, deploy, health check — in a background task,
+    returning 202 immediately. The 15-60s flow does NOT hold this request open:
+    a long-blocking response is fragile to proxy timeouts and to recreating the
+    very container carrying the response (e.g. cloudflared tears down the tunnel
+    serving TideWatch, yielding a spurious 502 despite a successful update).
+
+    Progress and the terminal result are delivered over SSE
+    (``update-progress`` / ``update-complete``); the client must not block on
+    this response for the outcome.
 
     Args:
         update_id: Update ID
         request: Update apply request (includes triggered_by)
 
     Returns:
-        Result of the update operation
+        Acknowledgement that the apply has started.
     """
     try:
-        result = await UpdateEngine.apply_update(db, update_id, triggered_by=request.triggered_by)
-
-        if not result["success"]:
-            # Log internal details but don't expose to client
-            logger.error("Update failed: %s", sanitize_log_message(result.get("message", "")))
-            raise HTTPException(status_code=500, detail="Update failed")
-
-        # Return only safe fields to client (no internal error details)
-        return {
-            "success": result["success"],
-            "message": "Update completed successfully",
-            "history_id": result.get("history_id"),
-        }
-
+        await UpdateEngine.validate_apply_preflight(db, update_id)
     except SelfManagedInfraError as e:
         # Self-managed infrastructure carve-out — surface manual instructions
         # to the user. 409 Conflict: the update exists but cannot be applied
@@ -588,11 +579,16 @@ async def apply_update(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OperationalError as e:
-        logger.error(f"Database error applying update: {sanitize_log_message(str(e))}")
+        logger.error(f"Database error validating update: {sanitize_log_message(str(e))}")
         raise HTTPException(status_code=500, detail="Database error during update")
-    except (KeyError, AttributeError) as e:
-        logger.error(f"Invalid data applying update: {sanitize_log_message(str(e))}")
-        raise HTTPException(status_code=500, detail="Invalid update data")
+
+    UpdateEngine.start_apply_background(update_id, triggered_by=request.triggered_by)
+
+    return {
+        "success": True,
+        "status": "applying",
+        "message": "Update is being applied",
+    }
 
 
 @router.post("/{update_id}/reject")

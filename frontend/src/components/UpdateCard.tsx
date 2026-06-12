@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Update, Container } from '../types';
 import StatusBadge from './StatusBadge';
+import ApplyProgressBar from './ApplyProgressBar';
+import type { ApplyProgress } from '../hooks/useApplyProgress';
 import { ArrowRight, Shield, TriangleAlert, ExternalLink, Check, X, Trash2, Clock, Archive, ChevronDown, ChevronRight, FileText, LoaderCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -54,9 +56,10 @@ interface UpdateCardProps {
   isApplying?: boolean;
   isApproving?: boolean;
   isRejecting?: boolean;
+  applyProgress?: ApplyProgress;
 }
 
-export default function UpdateCard({ update, container, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false }: UpdateCardProps) {
+export default function UpdateCard({ update, container, onApprove, onReject, onApply, onSnooze, onRemoveContainer, onCancelRetry, onDelete, isApplying = false, isApproving = false, isRejecting = false, applyProgress }: UpdateCardProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const isStale = update.reason_type === 'stale';
   const isScopeViolation = update.scope_violation === 1;
@@ -385,8 +388,11 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
         )}
       </div>
 
+        {/* In-flight apply: progress bar replaces the action buttons */}
+        {applyProgress && <ApplyProgressBar progress={applyProgress} />}
+
         {/* Actions */}
-        {update.status === 'pending' && isStale && (onSnooze || onRemoveContainer || onReject) && (
+        {!applyProgress && update.status === 'pending' && isStale && (onSnooze || onRemoveContainer || onReject) && (
           <div className="flex gap-2">
             {onSnooze && (
               <button
@@ -424,7 +430,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
           </div>
         )}
 
-        {update.status === 'pending' && !isStale && (onApprove || onReject) && (
+        {!applyProgress && update.status === 'pending' && !isStale && (onApprove || onReject) && (
           <div className="flex gap-2">
             {onApprove && (
               <button
@@ -451,7 +457,7 @@ export default function UpdateCard({ update, container, onApprove, onReject, onA
           </div>
         )}
 
-        {update.status === 'approved' && (onApply || onReject) && (
+        {!applyProgress && update.status === 'approved' && (onApply || onReject) && (
           <div className="flex gap-2">
             {onApply && (
               <button

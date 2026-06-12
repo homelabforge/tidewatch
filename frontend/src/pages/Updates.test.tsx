@@ -1062,12 +1062,13 @@ describe('Updates', () => {
       window.confirm = originalConfirm
     })
 
-    it('apply mutation invalidates updates + containers + history', async () => {
-      vi.mocked(api.updates.apply).mockResolvedValue({ success: true } as never)
-      // Return a terminal status on the FIRST poll so the mutation finishes quickly.
-      vi.mocked(api.updates.get).mockResolvedValue({
-        id: 1,
-        status: 'applied',
+    it('apply mutation is fire-and-forget: invalidates only updates', async () => {
+      // Apply now returns 202 immediately; the update runs in the background and
+      // containers/history refresh later via the SSE update-complete event, so
+      // the mutation itself only invalidates the updates list.
+      vi.mocked(api.updates.apply).mockResolvedValue({
+        success: true,
+        status: 'applying',
       } as never)
       const originalConfirm = window.confirm
       window.confirm = vi.fn(() => true)
@@ -1081,15 +1082,11 @@ describe('Updates', () => {
 
       fireEvent.click(screen.getAllByText('Apply')[0])
 
-      // Mutation onSuccess only fires after the (mocked, 1 iteration) poll loop.
-      await waitFor(
-        () => {
-          expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
-          expect(spy).toHaveBeenCalledWith({ queryKey: ['containers', 'all'] })
-          expect(spy).toHaveBeenCalledWith({ queryKey: ['history'] })
-        },
-        { timeout: 3000 },
-      )
+      await waitFor(() => {
+        expect(api.updates.apply).toHaveBeenCalled()
+        expect(spy).toHaveBeenCalledWith({ queryKey: ['updates', 'all'] })
+      })
+      expect(spy).not.toHaveBeenCalledWith({ queryKey: ['history'] })
 
       window.confirm = originalConfirm
     })
