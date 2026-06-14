@@ -42,6 +42,7 @@ class ContainerSchema(BaseModel):
     include_prereleases: bool | None = None
     vulnforge_enabled: bool
     current_vuln_count: int
+    vuln_scanned_at: datetime | None = None
     is_my_project: bool = False
     update_available: bool
     latest_tag: str | None = None

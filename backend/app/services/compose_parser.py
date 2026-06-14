@@ -1136,6 +1136,14 @@ class ComposeParser:
             if (container.service_name, container.compose_file) in discovered_ids:
                 continue
 
+            # My Projects are discovered from the projects directory, not the
+            # compose directory, so they never appear in discovered_ids and would
+            # always false-positive here. They have their own lifecycle reaper
+            # (ProjectScanner.remove_missing_projects); stale detection does not
+            # apply to them.
+            if container.is_my_project:
+                continue
+
             # Exclude dev containers if configured
             if exclude_dev and container.name.endswith("-dev"):
                 logger.debug(f"Skipping dev container: {container.name}")

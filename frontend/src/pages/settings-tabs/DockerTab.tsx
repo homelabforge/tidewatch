@@ -465,6 +465,26 @@ export default function DockerTab({ settings, saving, updateSetting, handleTextC
                   Manually scan {String(settings.projects_directory || '/projects')} for dev containers
                 </p>
               </div>
+
+              {/* Dependency Scan Schedule */}
+              <div className="pt-2 border-t border-tide-border/50">
+                <label className="block text-sm font-medium text-tide-text mb-2">
+                  Dependency Scan Schedule
+                </label>
+                <select
+                  value={String(settings.dependency_scan_schedule || 'daily')}
+                  onChange={(e) => updateSetting('dependency_scan_schedule', e.target.value)}
+                  disabled={saving || !settings.my_projects_enabled}
+                  className="w-full bg-tide-surface text-tide-text rounded px-3 py-2 border border-tide-border-light focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="disabled">Disabled</option>
+                  <option value="daily">Daily (5 AM)</option>
+                  <option value="weekly">Weekly (Sunday 5 AM)</option>
+                </select>
+                <p className="text-xs text-tide-text-muted mt-1">
+                  How often to auto-run the full dependency scan (HTTP servers, Dockerfile, and app dependencies) for My Projects
+                </p>
+              </div>
             </div>
 
           </div>

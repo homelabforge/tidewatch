@@ -64,6 +64,14 @@ class SettingsService:
             "category": "paths",
             "description": "Docker Compose command for My Projects (use {compose_file}, {service} placeholders)",
         },
+        "dependency_scan_schedule": {
+            "value": "daily",
+            "category": "paths",
+            "description": (
+                "Schedule for the full My Projects dependency scan "
+                "(HTTP servers, Dockerfile, app dependencies): daily, weekly, or disabled"
+            ),
+        },
         "docker_socket": {
             "value": os.getenv("DOCKER_HOST", "/var/run/docker.sock"),
             "category": "system",

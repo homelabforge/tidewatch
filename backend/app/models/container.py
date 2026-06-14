@@ -49,6 +49,12 @@ class Container(UpdatePolicyMixin, RestartConfigMixin, Base):
     # VulnForge integration
     vulnforge_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     current_vuln_count: Mapped[int] = mapped_column(Integer, default=0)
+    # NULL = VulnForge has never returned a match for this image (UI shows
+    # "Not scanned"). A timestamp = last successful scan, after which
+    # current_vuln_count is authoritative (0 means genuinely clean). This
+    # distinguishes "never scanned" from "clean" — essential for My Projects,
+    # whose local/empty image refs never match a VulnForge-scanned image.
+    vuln_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # My Projects feature
     is_my_project: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

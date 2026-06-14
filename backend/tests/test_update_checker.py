@@ -1573,3 +1573,44 @@ class TestCalverBlockedTagPersistence:
             await UpdateChecker.apply_decision(mock_db, base_container, decision, fetch)
 
         assert base_container.calver_blocked_tag is None
+
+
+class TestRefreshVulnforgeBaseline:
+    """_refresh_vulnforge_baseline keeps Container vuln state honest (R1-H1)."""
+
+    async def test_resets_to_not_scanned_when_no_match(self, db, make_container):
+        """A previously-scanned container reverts to 'Not scanned' when VulnForge
+        no longer matches its image, instead of showing a stale count."""
+        from datetime import UTC, datetime
+
+        container = make_container(name="vf-reset", vulnforge_enabled=True, current_vuln_count=7)
+        container.vuln_scanned_at = datetime.now(UTC)
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        with patch("app.services.update_checker.create_vulnforge_client") as mock_factory:
+            mock_client = AsyncMock()
+            mock_client.get_image_vulnerabilities.return_value = None  # no match
+            mock_factory.return_value = mock_client
+            await UpdateChecker._refresh_vulnforge_baseline(db, container)
+
+        assert container.current_vuln_count == 0
+        assert container.vuln_scanned_at is None
+
+    async def test_stamps_on_match(self, db, make_container):
+        """A successful match stamps both the count and the scan timestamp."""
+        container = make_container(name="vf-stamp", vulnforge_enabled=True, current_vuln_count=0)
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+        assert container.vuln_scanned_at is None
+
+        with patch("app.services.update_checker.create_vulnforge_client") as mock_factory:
+            mock_client = AsyncMock()
+            mock_client.get_image_vulnerabilities.return_value = {"total_vulns": 4}
+            mock_factory.return_value = mock_client
+            await UpdateChecker._refresh_vulnforge_baseline(db, container)
+
+        assert container.current_vuln_count == 4
+        assert container.vuln_scanned_at is not None

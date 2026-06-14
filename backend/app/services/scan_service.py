@@ -86,6 +86,18 @@ class ScanService:
                 )
 
                 db.add(scan)
+
+                # Keep the dashboard badge (Container.current_vuln_count /
+                # vuln_scanned_at) in sync with this scan. Only a real VulnForge
+                # match counts as "scanned"; a no-match (vuln_data is None) leaves
+                # the container "Not scanned" rather than falsely clean.
+                if vuln_data:
+                    container.current_vuln_count = scan.total_vulns
+                    container.vuln_scanned_at = scan.scanned_at
+                else:
+                    container.current_vuln_count = 0
+                    container.vuln_scanned_at = None
+
                 await db.commit()
                 await db.refresh(scan)
 

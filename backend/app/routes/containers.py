@@ -610,12 +610,11 @@ async def scan_all_dependencies(
     """
     from app.services.dependency_scan_service import DependencyScanService
 
-    # Check for existing running job
-    existing = await DependencyScanService.get_active_job(db)
-    if existing:
-        return {"success": True, "job_id": existing.id, "already_running": True}
+    # Atomically dedup against any in-flight scan (manual or scheduled).
+    job, created = await DependencyScanService.get_or_create_job(db, triggered_by="user")
+    if not created:
+        return {"success": True, "job_id": job.id, "already_running": True}
 
-    job = await DependencyScanService.create_job(db, triggered_by="user")
     DependencyScanService.start_job_background(job.id)
     return {"success": True, "job_id": job.id, "status": "queued"}
 

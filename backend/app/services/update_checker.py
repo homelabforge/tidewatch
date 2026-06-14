@@ -1331,6 +1331,7 @@ class UpdateChecker:
                         update.vuln_delta = 0
                         update.cves_fixed = []
                         container.current_vuln_count = current_data["total_vulns"]
+                        container.vuln_scanned_at = datetime.now(UTC)
 
                         if not update.reason_summary:
                             update.reason_summary = (
@@ -1345,6 +1346,13 @@ class UpdateChecker:
                             f"(new tag {update.to_tag} not scanned)"
                         )
                     else:
+                        # VulnForge is reachable but has no match for this image
+                        # (connection/HTTP errors are caught separately below, so
+                        # this is a genuine no-data result). Clear any prior
+                        # baseline so the container reverts to "Not scanned"
+                        # rather than showing a stale count.
+                        container.current_vuln_count = 0
+                        container.vuln_scanned_at = None
                         logger.info(
                             f"VulnForge has no vulnerability data for "
                             f"{container.name} ({container.current_tag})"
@@ -1375,6 +1383,7 @@ class UpdateChecker:
                 # Update container vulnerability count
                 if comparison["current"]:
                     container.current_vuln_count = comparison["current"]["total_vulns"]
+                    container.vuln_scanned_at = datetime.now(UTC)
 
                 logger.info(f"VulnForge enrichment for {container.name}: {comparison['summary']}")
 
@@ -1430,11 +1439,17 @@ class UpdateChecker:
 
                 if data:
                     container.current_vuln_count = data["total_vulns"]
+                    container.vuln_scanned_at = datetime.now(UTC)
                     logger.info(
                         f"VulnForge baseline for {container.name}: "
                         f"{data['total_vulns']} vulnerabilities"
                     )
                 else:
+                    # No VulnForge match for this image. Clear any prior baseline
+                    # so a container that lost its match reverts to "Not scanned"
+                    # rather than showing stale vulnerability data.
+                    container.current_vuln_count = 0
+                    container.vuln_scanned_at = None
                     logger.info(
                         f"VulnForge baseline missing for {container.name} ({container.current_tag})"
                     )

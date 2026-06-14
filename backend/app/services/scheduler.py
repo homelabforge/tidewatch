@@ -78,6 +78,12 @@ class SchedulerService:
                     db, "dockerfile_scan_schedule", default="daily"
                 )
 
+                # Load full dependency scan schedule (HTTP + Dockerfile + app
+                # deps for My Projects) while we have the session
+                dependency_scan_schedule = await SettingsService.get(
+                    db, "dependency_scan_schedule", default="daily"
+                )
+
                 # Load cleanup settings
                 cleanup_enabled = await SettingsService.get_bool(
                     db, "cleanup_old_images", default=False
@@ -149,6 +155,21 @@ class SchedulerService:
                     CronTrigger.from_crontab(cron_schedule),
                     id="dockerfile_dependencies_check",
                     name="Dockerfile Dependencies Update Check",
+                    replace_existing=True,
+                    max_instances=1,
+                )
+
+            # Add full My Projects dependency scan job (runs based on setting,
+            # default daily at 5 AM). Unlike the Dockerfile-only check above,
+            # this runs the same HTTP + Dockerfile + app-dependency scan as the
+            # manual "Scan Dep" button.
+            if dependency_scan_schedule != "disabled":
+                dep_scan_cron = "0 5 * * 0" if dependency_scan_schedule == "weekly" else "0 5 * * *"
+                self.scheduler.add_job(
+                    self._run_dependency_scan,
+                    CronTrigger.from_crontab(dep_scan_cron),
+                    id="dependency_scan",
+                    name="My Projects Dependency Scan",
                     replace_existing=True,
                     max_instances=1,
                 )
@@ -634,6 +655,38 @@ class SchedulerService:
             logger.error(
                 f"Invalid data during Dockerfile dependencies check after {duration:.2f}s: {e}"
             )
+
+    async def _run_dependency_scan(self):
+        """Run the full My Projects dependency scan on schedule.
+
+        Mirrors the manual "Scan Dep" action: scans every is_my_project
+        container for HTTP server, Dockerfile, and app-dependency updates.
+        Skips if a scan (manual or scheduled) is already in progress.
+        """
+        from app.services.dependency_scan_service import DependencyScanService
+
+        logger.info("Starting scheduled dependency scan")
+        start_time = datetime.now()
+        try:
+            async with AsyncSessionLocal() as db:
+                job, created = await DependencyScanService.get_or_create_job(
+                    db, triggered_by="scheduler"
+                )
+                if not created:
+                    logger.info(
+                        "Dependency scan already active (job %d); skipping scheduled run",
+                        job.id,
+                    )
+                    return
+                job_id = job.id
+
+            await DependencyScanService.run_job(job_id)
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.info(f"Scheduled dependency scan finished in {duration:.2f}s")
+        except OperationalError as e:
+            logger.error(f"Database error during scheduled dependency scan: {e}")
+        except (ImportError, AttributeError) as e:
+            logger.error(f"Failed to run scheduled dependency scan: {e}")
 
     async def _run_pending_scan_job_cleanup(self):
         """Clean up old completed/failed PendingScanJob rows (30-day retention)."""

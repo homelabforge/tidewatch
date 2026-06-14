@@ -1175,6 +1175,18 @@
             ],
             "title": "Version Track"
           },
+          "vuln_scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vuln Scanned At"
+          },
           "vulnforge_enabled": {
             "title": "Vulnforge Enabled",
             "type": "boolean"

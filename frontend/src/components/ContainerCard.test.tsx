@@ -193,6 +193,22 @@ describe('ContainerCard', () => {
       expect(greenText).toBeInTheDocument()
     })
 
+    it('shows "Not scanned" (not a clean shield) when never scanned', () => {
+      const container = {
+        ...defaultContainer,
+        vulnforge_enabled: true,
+        vuln_scanned_at: null,
+        current_vuln_count: 0,
+      }
+      render(
+        <ContainerCard container={container} onClick={defaultOnClick} vulnforgeGlobalEnabled={true} />
+      )
+
+      expect(screen.getByText('Not scanned')).toBeInTheDocument()
+      // A never-scanned container must NOT claim to be clean.
+      expect(screen.queryByText('No known vulnerabilities')).not.toBeInTheDocument()
+    })
+
     it('shows yellow alert for 1-5 vulnerabilities', () => {
       const container = {
         ...defaultContainer,

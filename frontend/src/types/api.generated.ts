@@ -4227,6 +4227,8 @@ export interface components {
             updated_at: string;
             /** Version Track */
             version_track?: string | null;
+            /** Vuln Scanned At */
+            vuln_scanned_at?: string | null;
             /** Vulnforge Enabled */
             vulnforge_enabled: boolean;
         };

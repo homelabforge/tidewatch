@@ -28,6 +28,12 @@ class DependencyScanService:
     # Strong references to fire-and-forget background tasks to prevent GC
     _background_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
 
+    # Serializes get-active-or-create so a manual "Scan Dep" request and the
+    # scheduled scan can't both observe "no active job" and start overlapping
+    # runs. Safe as a module-level lock because TideWatch runs a single worker /
+    # single event loop.
+    _create_lock: asyncio.Lock = asyncio.Lock()
+
     @staticmethod
     async def get_active_job(db: AsyncSession) -> DependencyScanJob | None:
         """Get currently active (queued or running) job if any.
@@ -80,6 +86,23 @@ class DependencyScanService:
         )
 
         return job
+
+    @staticmethod
+    async def get_or_create_job(
+        db: AsyncSession, triggered_by: str = "user"
+    ) -> tuple[DependencyScanJob, bool]:
+        """Atomically return the active job, or create a new queued one.
+
+        Returns ``(job, created)``. Runs under ``_create_lock`` so concurrent
+        callers (a manual "Scan Dep" request and the scheduled scan) can't both
+        pass the active-job check and start overlapping runs.
+        """
+        async with DependencyScanService._create_lock:
+            existing = await DependencyScanService.get_active_job(db)
+            if existing:
+                return existing, False
+            job = await DependencyScanService.create_job(db, triggered_by=triggered_by)
+            return job, True
 
     @staticmethod
     async def get_job(db: AsyncSession, job_id: int) -> DependencyScanJob | None:
@@ -196,17 +219,33 @@ class DependencyScanService:
                                 job.current_project = container.name
                                 await db.commit()
 
-                            # Scan HTTP servers (filesystem)
-                            http_updates = await _scan_http_servers(container, db)
-                            project_result["http_server_updates"] = http_updates
+                            # Each project scan runs concurrently (bounded by
+                            # `semaphore`), so it MUST use its own AsyncSession —
+                            # SQLAlchemy sessions are not safe for concurrent use
+                            # and sharing the outer `db` here raises "concurrent
+                            # operations are not permitted". Re-fetch the container
+                            # in the task-local session so the scanners operate on
+                            # an instance attached to that session.
+                            async with AsyncSessionLocal() as scan_db:
+                                scan_container = await scan_db.get(Container, container.id)
+                                if scan_container is None:
+                                    raise RuntimeError(
+                                        f"Container {container.id} disappeared mid-scan"
+                                    )
 
-                            # Scan Dockerfile dependencies
-                            dockerfile_updates = await _scan_dockerfile_deps(container, db)
-                            project_result["dockerfile_updates"] = dockerfile_updates
+                                # Scan HTTP servers (filesystem)
+                                http_updates = await _scan_http_servers(scan_container, scan_db)
+                                project_result["http_server_updates"] = http_updates
 
-                            # Scan app dependencies
-                            app_updates = await _scan_app_deps(container, db)
-                            project_result["app_updates"] = app_updates
+                                # Scan Dockerfile dependencies
+                                dockerfile_updates = await _scan_dockerfile_deps(
+                                    scan_container, scan_db
+                                )
+                                project_result["dockerfile_updates"] = dockerfile_updates
+
+                                # Scan app dependencies
+                                app_updates = await _scan_app_deps(scan_container, scan_db)
+                                project_result["app_updates"] = app_updates
 
                             total_updates = http_updates + dockerfile_updates + app_updates
                             project_result["updates_found"] = total_updates

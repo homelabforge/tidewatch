@@ -67,6 +67,82 @@ class TestScanContainerEndpoint:
         assert data["high"] == 5
         assert len(data["cves"]) == 2
 
+    async def test_scan_container_stamps_container_state(self, authenticated_client, db):
+        """A successful scan stamps current_vuln_count + vuln_scanned_at (R1-H2).
+
+        Otherwise a manually-scanned container would still render "Not scanned".
+        """
+        container = Container(
+            name=f"scan-stamp-{id(self)}",
+            image="nginx",
+            current_tag="1.20",
+            registry="docker.io",
+            compose_file="/compose/test.yml",
+            service_name="nginx-stamp",
+            vulnforge_enabled=True,
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+        assert container.vuln_scanned_at is None  # never scanned yet
+
+        await SettingsService.set(db, "vulnforge_url", "http://vulnforge:8080")
+        await SettingsService.set(db, "vulnforge_enabled", "true")
+        await db.commit()
+
+        mock_vuln_data = {
+            "total_vulns": 15,
+            "critical": 2,
+            "high": 5,
+            "medium": 6,
+            "low": 2,
+            "cves": [],
+            "risk_score": 7.5,
+        }
+        with patch("app.services.vulnforge_client.create_vulnforge_client") as mock_factory:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.get_image_vulnerabilities.return_value = mock_vuln_data
+            mock_factory.return_value = mock_instance
+            response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        await db.refresh(container)
+        assert container.current_vuln_count == 15
+        assert container.vuln_scanned_at is not None
+
+    async def test_scan_container_no_match_marks_not_scanned(self, authenticated_client, db):
+        """A no-match scan resets state to 'Not scanned' rather than falsely clean (R1-H2)."""
+        container = Container(
+            name=f"scan-nomatch-{id(self)}",
+            image="local-only",
+            current_tag="dev",
+            registry="local",
+            compose_file="/compose/test.yml",
+            service_name="nomatch",
+            vulnforge_enabled=True,
+            current_vuln_count=9,  # pretend a prior stale value
+        )
+        db.add(container)
+        await db.commit()
+        await db.refresh(container)
+
+        await SettingsService.set(db, "vulnforge_url", "http://vulnforge:8080")
+        await SettingsService.set(db, "vulnforge_enabled", "true")
+        await db.commit()
+
+        with patch("app.services.vulnforge_client.create_vulnforge_client") as mock_factory:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.get_image_vulnerabilities.return_value = None  # no VulnForge match
+            mock_factory.return_value = mock_instance
+            response = await authenticated_client.post(f"/api/v1/scan/container/{container.id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        await db.refresh(container)
+        assert container.current_vuln_count == 0
+        assert container.vuln_scanned_at is None
+
     async def test_scan_container_nonexistent(self, authenticated_client):
         """Test scanning nonexistent container returns 404."""
         response = await authenticated_client.post("/api/v1/scan/container/99999")

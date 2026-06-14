@@ -1,5 +1,5 @@
 import { Container, DependencySummary } from '../types';
-import { Package, Calendar, Shield, ShieldAlert, TriangleAlert, RotateCw, Zap, Eye, PowerOff, Server, Layers, Wrench } from 'lucide-react';
+import { Package, Calendar, Shield, ShieldAlert, ShieldQuestion, TriangleAlert, RotateCw, Zap, Eye, PowerOff, Server, Layers, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ContainerCardProps {
@@ -105,7 +105,12 @@ export default function ContainerCard({ container, onClick, hasUpdate = false, v
         {/* Vulnerability Count */}
         {vulnforgeGlobalEnabled && container.vulnforge_enabled && (
           <div className="col-span-2 flex items-center gap-2">
-            {container.current_vuln_count === 0 ? (
+            {!container.vuln_scanned_at ? (
+              <>
+                <ShieldQuestion size={14} className="text-tide-text-muted" />
+                <span className="text-tide-text-muted">Not scanned</span>
+              </>
+            ) : container.current_vuln_count === 0 ? (
               <>
                 <Shield size={14} className="text-green-400" />
                 <span className="text-green-400">No known vulnerabilities</span>
