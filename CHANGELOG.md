@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-06-14
+
 ### Added
 - Scheduled dependency scan for My Projects (Settings → Docker; daily/weekly/disabled, default daily)
 - "Not scanned" vulnerability state so unscanned containers no longer show a false "No known vulnerabilities"
