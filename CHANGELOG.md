@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dev Dependencies
+- **@playwright/test**: 1.60.0 → 1.61.0
+- **@tailwindcss/typography**: 0.5.19 → 0.5.20
+- **@tailwindcss/vite**: 4.3.0 → 4.3.1
+- **@tanstack/react-query-devtools**: 5.100.14 → 5.101.0
+- **@types/react**: 19.2.15 → 19.2.17
+- **@typescript-eslint/eslint-plugin**: 8.59.4 → 8.61.1
+- **@typescript-eslint/parser**: 8.59.4 → 8.61.1
+- **@vitest/coverage-v8**: 4.1.7 → 4.1.9
+- **@vitest/ui**: 4.1.7 → 4.1.9
+- **eslint**: 10.4.0 → 10.5.0
+- **eslint-plugin-react-refresh**: 0.5.2 → 0.5.3
+- **pytest**: 9.0.3 → 9.1.1
+- **ruff**: 0.15.15 → 0.15.18
+- **tailwindcss**: 4.3.0 → 4.3.1
+- **typescript-eslint**: 8.59.4 → 8.61.1
+- **vite**: 8.0.14 → 8.0.16
+- **vitest**: 4.1.7 → 4.1.9
+
+### App Dependencies
+- **@tanstack/react-query**: 5.100.14 → 5.101.0
+- **aiosmtplib**: 5.1.1 → 5.1.2
+- **cryptography**: 48.0.0 → 49.0.0
+- **date-fns**: 4.3.0 → 4.4.0
+- **fastapi**: 0.136.3 → 0.138.0
+- **joserfc**: 1.7.0 → 1.7.1
+- **lucide-react**: 1.16.0 → 1.21.0
+- **python-multipart**: 0.0.30 → 0.0.32
+- **react**: 19.2.6 → 19.2.7
+- **react-dom**: 19.2.6 → 19.2.7
+- **react-router-dom**: 7.15.1 → 7.18.0
+- **sqlalchemy**: 2.0.50 → 2.0.51
+
+### HTTP Servers
+- **granian**: 2.7.5 → 2.7.6
+
+### Fixed
+- OIDC login no longer shows "TideWatch is offline" — the service worker was racing the slow (>5s) callback navigation against its 5s timeout and serving the offline page over a successful login; backend `/api/` navigations now bypass the service worker entirely
+
+### Security
+- Override-pinned `undici` ≥8.5.0, `@babel/core` ≥8.0.1, and `js-yaml` ≥4.2.0 to clear all `bun audit` findings (dev/build-only transitives whose parents lag on the fixed versions)
+
 ## [3.13.0] - 2026-06-14
 
 ### Added

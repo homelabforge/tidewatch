@@ -83,6 +83,16 @@ self.addEventListener('fetch', (event) => {
   // surfaced as an "Uncaught (in promise) Failed to fetch" whenever the
   // speculative fetch was cancelled or hit a transient edge error.
   if (request.mode === 'navigate' || request.destination === 'document') {
+    // Backend endpoints are never SPA shell routes. The OIDC login/callback flow
+    // navigates the top-level document through /api/... and the server-side token
+    // exchange legitimately takes >5s. Racing it against the navigation timeout
+    // below serves offline.html over a login that actually succeeded; the user's
+    // Retry then reloads the callback URL and re-hits the one-time OIDC state,
+    // failing with "Invalid or expired state". Let the browser handle these
+    // natively — no timeout race, no offline fallback.
+    if (url.pathname.startsWith('/api/')) {
+      return;
+    }
     event.respondWith(
       Promise.race([
         fetch(request),
