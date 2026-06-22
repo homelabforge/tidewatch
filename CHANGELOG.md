@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OIDC login no longer shows "TideWatch is offline" — the service worker was racing the slow (>5s) callback navigation against its 5s timeout and serving the offline page over a successful login; backend `/api/` navigations now bypass the service worker entirely
 
 ### Security
-- Override-pinned `undici` ≥8.5.0, `@babel/core` ≥8.0.1, and `js-yaml` ≥4.2.0 to clear all `bun audit` findings (dev/build-only transitives whose parents lag on the fixed versions)
+- Override-pinned `undici` ≥7.28.0, `@babel/core` ≥8.0.1, and `js-yaml` ≥4.2.0 to clear all `bun audit` findings (dev/build-only transitives whose parents lag on the fixed versions); undici held at 7.x because jsdom 29.1.1 requires its 7.x internal module layout
 
 ## [3.13.0] - 2026-06-14
 
