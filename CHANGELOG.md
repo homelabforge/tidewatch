@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.1] - 2026-06-22
+
 ### Dev Dependencies
 - **@playwright/test**: 1.60.0 → 1.61.0
 - **@tailwindcss/typography**: 0.5.19 → 0.5.20
