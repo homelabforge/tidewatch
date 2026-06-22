@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- OIDC login is faster: the provider discovery document and JWKS are now cached (1h / 15min TTL) instead of being re-fetched on every login, cutting network round-trips on the callback hot path. Key rotation is still handled via a bounded refetch on verification failure, and the cache is cleared when the OIDC config changes.
+
 ## [3.13.1] - 2026-06-22
 
 ### Dev Dependencies

@@ -142,6 +142,10 @@ async def update_oidc_config(
         db, "oidc_link_max_password_attempts", str(oidc_config.link_max_password_attempts)
     )
 
+    # Issuer/keys may have changed — drop cached discovery metadata + JWKS so the
+    # next login re-discovers against the new configuration.
+    oidc_service.reset_oidc_discovery_cache()
+
     logger.info(
         "OIDC configuration updated by admin: %s",
         sanitize_log_message(admin["username"]),

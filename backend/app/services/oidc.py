@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import secrets
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
@@ -37,6 +38,38 @@ from app.utils.security import mask_sensitive, sanitize_log_message
 from app.utils.url_validation import validate_oidc_url
 
 logger = logging.getLogger(__name__)
+
+# ----------------------------------------------------------------------------
+# Discovery caches (provider metadata + JWKS)
+#
+# The login/callback flow otherwise re-fetches the discovery document and the
+# JWKS on every login, adding network round-trips to a latency-sensitive path
+# (~5.7s observed on a real Rauthy login). Both rarely change, so we cache them
+# in module-level dicts keyed by URL. This is safe because TideWatch enforces
+# --workers 1 (see CLAUDE.md), so there is a single process and no cross-worker
+# coherency concern — same pattern as data_backup_service's module cache.
+#
+# Caches are keyed by URL so an issuer/JWKS change naturally misses, and are
+# cleared explicitly when the admin updates the OIDC config.
+# ----------------------------------------------------------------------------
+_METADATA_TTL = 3600.0  # discovery doc effectively never changes
+_JWKS_TTL = 900.0  # 15 min; key rotation is also handled by the bounded refetch below
+# Lower bound between JWKS refetches triggered by a verification failure, so a
+# flood of bad tokens cannot hammer the provider's JWKS endpoint.
+_JWKS_MIN_REFRESH_INTERVAL = 60.0
+
+# url -> (monotonic_fetch_time, value)
+_metadata_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_jwks_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def reset_oidc_discovery_cache() -> None:
+    """Clear cached provider metadata and JWKS.
+
+    Call after an OIDC config change (issuer/keys may differ) and in tests.
+    """
+    _metadata_cache.clear()
+    _jwks_cache.clear()
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -224,6 +257,13 @@ async def get_provider_metadata(issuer_url: str) -> dict[str, Any] | None:
         )
         raise SSRFProtectionError(f"Invalid OIDC discovery URL: {e}")
 
+    # Serve from cache when fresh. SSRF validation above always runs first, so a
+    # cache hit never bypasses the guard.
+    now = time.monotonic()
+    cached = _metadata_cache.get(discovery_url)
+    if cached is not None and (now - cached[0]) <= _METADATA_TTL:
+        return cached[1]
+
     try:
         async with httpx.AsyncClient() as client:
             # lgtm[py/ssrf] - discovery_url validated by validate_oidc_url() on lines 156,166
@@ -231,6 +271,7 @@ async def get_provider_metadata(issuer_url: str) -> dict[str, Any] | None:
             response.raise_for_status()
             metadata = response.json()
 
+            _metadata_cache[discovery_url] = (now, metadata)
             logger.info(
                 "Successfully fetched OIDC metadata from %s",
                 mask_sensitive(discovery_url, visible_chars=20),
@@ -540,6 +581,33 @@ async def get_userinfo(
         return None
 
 
+async def _get_jwks(jwks_uri: str, *, allow_refresh: bool = False) -> dict[str, Any]:
+    """Return the provider JWKS, cached by URI.
+
+    Normal calls serve the cached copy while within the TTL. ``allow_refresh``
+    (set after a verification failure, in case the signing keys rotated) forces
+    a refetch — but only when the cached copy is older than the min refresh
+    interval, which bounds how hard a flood of bad tokens can hit the JWKS
+    endpoint. Caller is responsible for SSRF-validating ``jwks_uri`` first.
+    """
+    now = time.monotonic()
+    entry = _jwks_cache.get(jwks_uri)
+    if entry is not None:
+        age = now - entry[0]
+        # allow_refresh (post-verification-failure) trusts only a very recent
+        # copy, bounding how often a flood of bad tokens can force a refetch.
+        ttl = _JWKS_MIN_REFRESH_INTERVAL if allow_refresh else _JWKS_TTL
+        if age <= ttl:
+            return entry[1]
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(jwks_uri, timeout=10.0)
+        response.raise_for_status()
+        jwks = response.json()
+    _jwks_cache[jwks_uri] = (now, jwks)
+    return jwks
+
+
 async def verify_id_token(
     id_token: str,
     config: dict[str, str],
@@ -571,30 +639,36 @@ async def verify_id_token(
             logger.error("SSRF protection blocked JWKS URI: %s - %s", jwks_uri, str(e))
             return None
 
-        # Fetch JWKS
-        async with httpx.AsyncClient() as client:
-            response = await client.get(jwks_uri, timeout=10.0)
-            response.raise_for_status()
-            jwks = response.json()
-
-        # Create key set
-        key_set = KeySet.import_key_set(jwks)
-
         # Decode (verifies signature) then validate iss/aud/nonce + default exp/nbf/iat.
         # Use issuer from metadata as fallback if not configured.
         # Explicit allowlist accepts EdDSA (Rauthy default) and RS256
         # (Authentik/Keycloak/etc.) — rejects anything else.
         issuer = config.get("issuer_url") or metadata.get("issuer", "")
-        decoded = jwt.decode(id_token, key_set, algorithms=["EdDSA", "RS256"])
         claims_registry = JWTClaimsRegistry(
             iss={"essential": True, "value": issuer},
             aud={"essential": True, "value": config.get("client_id", "")},
             nonce={"essential": True, "value": nonce},
         )
-        claims_registry.validate(decoded.claims)
 
-        logger.info("Successfully verified ID token for subject: %s", decoded.claims.get("sub"))
-        return dict(decoded.claims)
+        def _decode(jwks: Any) -> dict[str, Any]:
+            key_set = KeySet.import_key_set(jwks)
+            decoded = jwt.decode(id_token, key_set, algorithms=["EdDSA", "RS256"])
+            claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
+
+        jwks = await _get_jwks(jwks_uri)
+        try:
+            claims = _decode(jwks)
+        except JoseError:
+            # Verification failed — the signing keys may have rotated since the
+            # JWKS was cached. Refetch once (bounded) and retry before rejecting.
+            refreshed = await _get_jwks(jwks_uri, allow_refresh=True)
+            if refreshed == jwks:
+                raise  # no new keys; the original failure stands
+            claims = _decode(refreshed)
+
+        logger.info("Successfully verified ID token for subject: %s", claims.get("sub"))
+        return claims
 
     except JoseError as e:
         logger.error("ID token verification failed: %s", str(e))
