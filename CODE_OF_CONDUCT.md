@@ -59,9 +59,9 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement via
-[GitHub Discussions](https://github.com/homelabforge/tidewatch/discussions) or
-[private GitHub Issues](https://github.com/homelabforge/tidewatch/issues/new/choose).
+reported privately to the community leaders responsible for enforcement by
+direct message to a maintainer on our
+[Discord community](https://discord.gg/6XttnVgG).
 
 All complaints will be reviewed and investigated promptly and fairly.
 
