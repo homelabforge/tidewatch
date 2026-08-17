@@ -63,8 +63,5 @@
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"
-  },
-  "overrides": {
-    "@babel/core": "^8.0.1"
   }
 }
