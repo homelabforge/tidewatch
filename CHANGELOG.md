@@ -15,6 +15,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timed-out `docker compose` restarts are killed and reaped; the recreate path gets a longer budget for image pulls
 - "Container Missing" renders correctly on the History page
 
+### Changed
+- Removed all five `package.json` dependency overrides; every pinned version now resolves on its own
+
+### Dev Dependencies
+- **@playwright/test**: 1.61.0 → 1.62.1
+- **@tailwindcss/vite**: 4.3.1 → 4.3.3
+- **@tanstack/react-query-devtools**: 5.101.0 → 5.101.4
+- **@testing-library/jest-dom**: 6.9.1 → 7.0.1
+- **@testing-library/user-event**: 14.6.1 → 14.6.4
+- **@types/react**: 19.2.17 → 19.2.18
+- **@types/react-dom**: 19.2.3 → 19.2.4
+- **@typescript-eslint/eslint-plugin**: 8.61.1 → 8.67.0
+- **@typescript-eslint/parser**: 8.61.1 → 8.67.0
+- **@vitejs/plugin-react**: 6.0.2 → 6.0.5
+- **@vitest/coverage-v8**: 4.1.9 → 4.1.10
+- **@vitest/ui**: 4.1.9 → 4.1.10
+- **autoprefixer**: 10.5.0 → 10.5.4
+- **coverage**: 7.14.2 → 7.15.4
+- **eslint**: 10.5.0 → 10.8.1
+- **eslint-plugin-react-refresh**: 0.5.3 → 0.5.4
+- **globals**: 17.6.0 → 17.11.0
+- **jsdom**: 29.1.1 → 30.0.1
+- **postcss**: 8.5.15 → 8.5.26
+- **pyright**: 1.1.410 → 1.1.411
+- **ruff**: 0.15.18 → 0.16.3
+- **tailwindcss**: 4.3.1 → 4.3.3
+- **typescript-eslint**: 8.61.1 → 8.67.0
+- **vite**: 8.0.16 → 8.2.1
+- **vitest**: 4.1.9 → 4.1.10
+
+### App Dependencies
+- **@tanstack/react-query**: 5.101.0 → 5.101.4
+- **annotated-doc**: 0.0.4 → 0.0.5
+- **annotated-types**: 0.7.0 → 0.8.0
+- **anyio**: 4.14.0 → 4.14.2
+- **apscheduler**: 3.11.2 → 3.11.3
+- **certifi**: 2026.6.17 → 2026.7.22
+- **cffi**: 2.0.0 → 2.1.1
+- **charset-normalizer**: 3.4.7 → 3.5.1
+- **click**: 8.4.1 → 8.4.2
+- **cryptography**: 49.0.0 → 50.0.0
+- **docker**: 7.1.0 → 7.2.0
+- **fastapi**: 0.138.0 → 0.141.1
+- **granian**: 2.7.6 → 2.8.1
+- **greenlet**: 3.5.2 → 3.5.5
+- **joserfc**: 1.7.1 → 1.7.4
+- **lucide-react**: 1.21.0 → 1.31.0
+- **packaging**: 26.2 → 26.3
+- **prometheus-client**: 0.25.0 → 0.26.0
+- **pygments**: 2.20.0 → 2.21.0
+- **react**: 19.2.7 → 19.2.8
+- **react-dom**: 19.2.7 → 19.2.8
+- **react-router-dom**: 7.18.0 → 7.18.2
+- **recharts**: 3.8.1 → 3.10.1
+- **sonner**: 2.0.7 → 2.0.8
+- **sqlalchemy**: 2.0.51 → 2.0.52
+- **starlette**: 1.3.1 → 1.6.0
+- **typing-extensions**: 4.15.0 → 4.16.0
+- **typing-inspection**: 0.4.2 → 0.4.4
+- **tzdata**: 2026.2 → 2026.3
+- **tzlocal**: 5.4.3 → 5.4.4
+
 ## [3.13.2] - 2026-06-22
 
 ### Changed
