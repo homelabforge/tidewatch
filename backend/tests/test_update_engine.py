@@ -1289,7 +1289,27 @@ class TestApplyUpdateOrchestration:
         mock_health = AsyncMock(return_value={"success": False, "error": "Health check timeout"})
         mock_restore = AsyncMock()
 
+        # Mock the pre-update data backup. Without this the real
+        # DataBackupService runs and asks the *live* Docker daemon for a
+        # container named "sonarr": the test then passes or fails depending on
+        # whether the developer's machine happens to have one, and behaves
+        # differently from CI, where it does not exist.
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+
         with (
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
             patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
             patch(
                 "app.services.compose_parser.ComposeParser.update_compose_file",
@@ -1340,7 +1360,27 @@ class TestApplyUpdateOrchestration:
         # Update execute mock to handle history query
         mock_db.execute = AsyncMock(side_effect=[update_result, container_result, history_result])
 
+        # Mock the pre-update data backup. Without this the real
+        # DataBackupService runs and asks the *live* Docker daemon for a
+        # container named "sonarr": the test then passes or fails depending on
+        # whether the developer's machine happens to have one, and behaves
+        # differently from CI, where it does not exist.
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+
         with (
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
             patch.object(UpdateEngine, "_backup_compose_file", mock_backup),
             patch(
                 "app.services.compose_parser.ComposeParser.update_compose_file",
@@ -1881,7 +1921,27 @@ class TestEventBusProgress:
         async def capture_event(event):
             events.append(event)
 
+        # Mock the pre-update data backup. Without this the real
+        # DataBackupService runs and asks the *live* Docker daemon for a
+        # container named "sonarr": the test then passes or fails depending on
+        # whether the developer's machine happens to have one, and behaves
+        # differently from CI, where it does not exist.
+        from app.services.data_backup_service import BackupResult
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="success",
+                mounts_backed_up=1,
+            )
+        )
+
         with (
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
             patch.object(
                 UpdateEngine,
                 "_backup_compose_file",
