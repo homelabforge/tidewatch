@@ -34,7 +34,7 @@ dependencies = [
     # enabled when TIDEWATCH_LOG_PRETTY=true
     "rich>=15.0.0",
     # Transitive dependency floors (security)
-    "cryptography>=49.0.0",
+    "cryptography>=50.0.0",
     "requests>=2.34.2",
     "urllib3>=2.7.0",
 ]
