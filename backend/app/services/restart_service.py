@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import os
 import random
+import signal
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -532,8 +534,95 @@ class RestartService:
             )
 
     @staticmethod
+    async def _terminate(process) -> None:  # type: ignore[no-untyped-def]
+        """Kill a timed-out compose child and reap it, ignoring races.
+
+        Signals the whole process *group*, not just the `docker` wrapper: the
+        CLI runs `compose` as a plugin subprocess, so killing only the wrapper
+        orphans a plugin that keeps mutating the project. The children are
+        spawned with ``start_new_session=True`` so the group id is the wrapper's
+        pid. Falls back to killing the wrapper alone if the group is already
+        gone.
+        """
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except ProcessLookupError, PermissionError, OSError:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                return  # Already exited between the timeout and the kill
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("Could not kill timed-out compose process: %s", e)
+                return
+        try:
+            await asyncio.wait_for(process.wait(), timeout=10)
+        except TimeoutError, ProcessLookupError:
+            logger.warning("Timed-out compose process did not reap within 10s")
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Could not reap timed-out compose process: %s", e)
+
+    @staticmethod
+    async def _compose_service_exists(
+        base_cmd: list[str], container: Container, env: dict[str, str]
+    ) -> bool:
+        """Whether Compose currently has a container for this service.
+
+        Uses `compose ps -aq <service>`, which resolves the container through the
+        project rather than by name. The `-a` is load-bearing: plain `ps -q`
+        lists only *running* containers, so a merely-stopped one would report as
+        absent and get recreated -- and a stopped container is the normal
+        auto-restart case, so that would turn every self-heal into an `up -d`
+        that also applies unrelated pending compose edits. Verified against
+        Compose directly: stopped -> `-aq` prints an id and `-q` prints nothing;
+        removed -> both print nothing, both exit 0.
+
+        Fails **closed** (reports "exists") on any error: a restart that fails
+        with "no container to restart" is a harmless wrong answer, while
+        recreating a live service is not.
+        """
+        probe = [*base_cmd, "ps", "-aq", container.service_name]
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *probe,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                start_new_session=True,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+        except TimeoutError:
+            # Reap it: a stalled daemon would otherwise leave one probe (and its
+            # pipes) behind per recovery attempt.
+            if process is not None:
+                await RestartService._terminate(process)
+            logger.warning("compose ps probe timed out for %s; assuming present", container.name)
+            return True
+        except Exception as e:
+            logger.warning(
+                "compose ps probe failed for %s (%s); assuming present", container.name, e
+            )
+            return True
+
+        if process.returncode != 0:
+            return True
+        return bool(stdout.decode().strip())
+
+    @staticmethod
     async def _execute_docker_compose_restart(container: Container, db: AsyncSession) -> dict:
         """Execute docker compose restart command.
+
+        Picks `restart` or `up -d --no-deps` from the container's *observed*
+        existence rather than from a caller-supplied flag. `docker compose
+        restart` fails outright on a removed container ("no container to
+        restart"), so a removed one has to be created instead. Deciding here
+        keeps the choice consistent across all three restart entry points (the
+        scheduler, the manual button, and the raw containers.py call) — the same
+        reason the self-managed guard below lives at this choke point.
+
+        The distinction has to stay observation-driven, not a default: `up -d`
+        on a container that merely exited would also apply any unrelated pending
+        compose edits, which a restart must never do.
 
         Args:
             container: Container to restart
@@ -578,7 +667,6 @@ class RestartService:
                 cmd_parts.extend(["-p", container.compose_project])
             for cf in compose_files:
                 cmd_parts.extend(["-f", cf])
-            cmd_parts.extend(["restart", container.service_name])
 
             # Build env with DOCKER_HOST
             docker_host = (
@@ -588,14 +676,58 @@ class RestartService:
             )
             env = docker_subprocess_env(docker_host)
 
+            # Ask Compose whether the service has a container, using the same
+            # binary, endpoint and project resolution as the command below.
+            # Probing the Docker API by name is NOT equivalent and would make
+            # this unsafe: container_monitor resolves DOCKER_HOST from the
+            # environment while this path uses the DB-configured socket, and
+            # `runtime_name` falls back to the display name, which never
+            # matches Compose's default `<project>-<service>-<N>`. Either
+            # mismatch reports a live container as missing, and `up -d` on a
+            # live service applies unrelated pending compose edits.
+            exists = await RestartService._compose_service_exists(cmd_parts, container, env)
+
+            if exists:
+                cmd_parts.extend(["restart", container.service_name])
+                timeout_seconds = 120
+            else:
+                logger.info(f"{container.name} no longer exists; recreating instead of restarting")
+                # --no-recreate makes this safe even if the probe above was
+                # wrong. Verified against Compose: on a live container it is a
+                # no-op and does NOT apply pending compose edits; on an absent
+                # one it creates; on a stopped one it starts. That also closes
+                # the probe/action TOCTOU -- if something else creates the
+                # service in between, this will not recreate it.
+                cmd_parts.extend(["up", "-d", "--no-deps", "--no-recreate", container.service_name])
+                # `up` may have to pull the image; `restart` never does, so the
+                # 120s budget sized for a restart is not enough here.
+                timeout_seconds = 600
+
             process = await asyncio.create_subprocess_exec(
                 *cmd_parts,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                # Own process group, so a timeout can kill the compose plugin
+                # child too instead of orphaning it. See _terminate.
+                start_new_session=True,
             )
 
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=timeout_seconds
+                )
+            except TimeoutError:
+                # Reap the child. Leaving it running lets the scheduler start a
+                # second `compose up` while the first is still mutating the
+                # project.
+                await RestartService._terminate(process)
+                return {
+                    "success": False,
+                    "error": f"Docker compose restart timed out after {timeout_seconds} seconds",
+                    "command": " ".join(cmd_parts),
+                    "duration": float(timeout_seconds),
+                }
 
             duration = (datetime.now(UTC) - start_time).total_seconds()
 
@@ -615,12 +747,6 @@ class RestartService:
                 "duration": duration,
             }
 
-        except TimeoutError:
-            return {
-                "success": False,
-                "error": "Docker compose restart timed out after 120 seconds",
-                "duration": 120.0,
-            }
         except OperationalError as e:
             return {
                 "success": False,

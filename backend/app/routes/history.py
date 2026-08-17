@@ -81,6 +81,7 @@ def get_restart_performed_by(restart: ContainerRestartLog) -> str:
         "exit_code",
         "health_check",
         "oom_killed",
+        "container_missing",
         "signal_killed_SIGKILL",
         "signal_killed_SIGTERM",
     ]:

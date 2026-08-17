@@ -23,7 +23,9 @@ class UpdateHistorySchema(BaseModel):
     triggered_by: str
     backup_path: str | None = None
     data_backup_id: str | None = None
-    data_backup_status: str | None = None  # success, failed, skipped, timeout
+    data_backup_status: str | None = (
+        None  # success, failed, skipped, timeout, partial, container_missing
+    )
     can_rollback: bool
     rolled_back_at: datetime | None = None
     duration_seconds: int | None = None

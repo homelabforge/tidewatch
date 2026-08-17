@@ -15,7 +15,7 @@ from app.models import Container
 from app.models.restart_state import ContainerRestartState
 from app.services.container_monitor import container_monitor
 from app.services.event_bus import event_bus
-from app.services.protected_infra import SelfManagedInfraError
+from app.services.protected_infra import SelfManagedInfraError, is_self_managed_infrastructure
 from app.services.restart_service import restart_service
 from app.services.settings_service import SettingsService
 
@@ -104,6 +104,19 @@ class RestartSchedulerService:
             container: Container to check
         """
         try:
+            # Filter self-managed infrastructure out here rather than letting the
+            # scheduled job discover it. RestartService raises
+            # SelfManagedInfraError when the job runs; _execute_restart catches
+            # it and returns without clearing next_retry_at or the failure count,
+            # so every poll re-schedules and the operator eventually gets a
+            # bogus "max retries reached" for a restart never attempted.
+            if is_self_managed_infrastructure(container):
+                logger.debug(
+                    "Skipping restart scheduling for self-managed infrastructure: %s",
+                    container.name,
+                )
+                return
+
             # Get or create restart state
             state = await restart_service.get_or_create_restart_state(db, container)
 
@@ -147,12 +160,15 @@ class RestartSchedulerService:
             # Get exit information
             exit_code = container_state.get("exit_code")
             oom_killed = container_state.get("oom_killed", False)
-            container_state.get("error", "")
+            missing = bool(container_state.get("missing"))
 
             # Determine if we should retry
             should_retry, failure_reason = await container_monitor.should_retry_restart(
-                exit_code, oom_killed
+                exit_code, oom_killed, missing=missing
             )
+
+            if missing:
+                logger.warning(f"Container {container.name} does not exist; scheduling recreate")
 
             if not should_retry:
                 logger.info(
@@ -296,8 +312,13 @@ class RestartSchedulerService:
                     logger.error(f"Restart state not found for {container.name}")
                     return
 
-                # Double-check if container is still down
-                container_state = await container_monitor.get_container_state(container.name)
+                # Double-check if container is still down. Probe the Docker-facing
+                # name (docker_name label, falling back to name) -- probing the
+                # display name reports a live container as missing, which now
+                # triggers a recreate.
+                container_state = await container_monitor.get_container_state(
+                    container.runtime_name
+                )
 
                 if container_state and container_state.get("running"):
                     logger.info(f"Container {container.name} is already running, skipping restart")
@@ -309,7 +330,10 @@ class RestartSchedulerService:
                     await db.commit()
                     return
 
-                # Execute restart
+                # Execute restart. Whether this recreates or restarts is decided
+                # inside _execute_docker_compose_restart from a fresh probe, so
+                # a container that came back during the backoff window still
+                # gets a plain restart.
                 trigger_reason = state.last_failure_reason or "scheduled"
                 result = await restart_service.execute_restart(
                     db,
@@ -390,7 +414,7 @@ class RestartSchedulerService:
                     if state.should_reset_backoff:
                         # Verify container is actually running
                         container_state = await container_monitor.get_container_state(
-                            container.name
+                            container.runtime_name
                         )
 
                         if container_state and container_state.get("running"):

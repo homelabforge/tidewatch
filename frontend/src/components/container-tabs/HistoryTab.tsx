@@ -16,6 +16,17 @@ interface HistoryTabProps {
   onUpdate?: () => void;
 }
 
+// Every legal BackupResult.status, so `partial` and `skipped` stop falling
+// through to the neutral gray badge that reads as "unknown".
+const BACKUP_STATUS_BADGES: Record<string, { className: string; label: string }> = {
+  success: { className: 'bg-green-500/20 text-green-400', label: 'Success' },
+  failed: { className: 'bg-red-500/20 text-red-400', label: 'Failed' },
+  container_missing: { className: 'bg-red-500/20 text-red-400', label: 'Container Missing' },
+  timeout: { className: 'bg-yellow-500/20 text-yellow-400', label: 'Timeout' },
+  partial: { className: 'bg-yellow-500/20 text-yellow-400', label: 'Partial' },
+  skipped: { className: 'bg-gray-500/20 text-gray-400', label: 'Skipped' },
+};
+
 const DEP_TYPE_VARIANTS: ReadonlySet<DepTypeRaw> = new Set([
   'app',
   'app_dependency',
@@ -296,15 +307,11 @@ export default function HistoryTab({ container, onClose, onUpdate }: HistoryTabP
                   <div>
                     <span className="text-tide-text-muted">Data Backup:</span>
                     <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                      item.data_backup_status === 'success'
-                        ? 'bg-green-500/20 text-green-400'
-                        : item.data_backup_status === 'failed'
-                          ? 'bg-red-500/20 text-red-400'
-                          : item.data_backup_status === 'timeout'
-                            ? 'bg-yellow-500/20 text-yellow-400'
-                            : 'bg-gray-500/20 text-gray-400'
+                      BACKUP_STATUS_BADGES[item.data_backup_status]?.className
+                        ?? 'bg-gray-500/20 text-gray-400'
                     }`}>
-                      {item.data_backup_status}
+                      {BACKUP_STATUS_BADGES[item.data_backup_status]?.label
+                        ?? item.data_backup_status}
                     </span>
                   </div>
                 )}

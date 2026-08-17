@@ -62,8 +62,45 @@ class UpdateFatalError(Exception):
     """
 
 
+class UpdatePreconditionError(Exception):
+    """Raised when the environment is not in a state where an update can start.
+
+    Distinct from :class:`UpdateFatalError` on both axes that matter to
+    ``_handle_update_failure``:
+
+    * **No retry** — the condition is external (a removed container, say) and
+      will not clear on its own, so cycling the 5m/15m/1h backoff just burns
+      windows and fills the error panel with identical cards.
+    * **No rollback** — this is raised before the compose file is mutated, so
+      nothing has changed. Rolling back would run a ``compose up`` with the old
+      tag as a side effect of a failure that touched nothing.
+
+    The message is operator-facing: it must name the condition and the remedy.
+    """
+
+
 class UpdateEngine:
     """Service for applying container updates."""
+
+    @staticmethod
+    async def _recreate_command(db: AsyncSession, container: Container) -> str:
+        """Operator-runnable command to bring a missing container back.
+
+        Spans the whole project (-p plus every -f), because a lone -f resolves
+        to a project name derived from the file's directory and would create a
+        *different* container, and would drop cross-file `depends_on`.
+        """
+        parts = ["docker compose"]
+        if container.compose_project:
+            parts.append(f"-p {container.compose_project}")
+        try:
+            compose_files = await UpdateEngine._ensure_compose_metadata(db, container)
+        except Exception:  # pragma: no cover - metadata is best-effort here
+            compose_files = [container.compose_file]
+        for cf in compose_files or [container.compose_file]:
+            parts.append(f"-f {cf}")
+        parts.append(f"up -d {container.service_name}")
+        return " ".join(parts)
 
     # Background apply tasks are parked here so the event loop's garbage
     # collector cannot reclaim them before completion (mirrors
@@ -513,15 +550,37 @@ class UpdateEngine:
                     "status": "in_progress",
                     "step_id": "data_backup",
                     "duration_ms": int(data_backup_result.duration_seconds * 1000),
-                    "error_code": (
-                        "BACKUP_FAILED" if data_backup_result.status == "failed" else None
-                    ),
+                    "error_code": {
+                        "container_missing": "CONTAINER_MISSING",
+                        "failed": "BACKUP_FAILED",
+                    }.get(data_backup_result.status),
                     "message": (
                         f"Data backup: {data_backup_result.status} "
                         f"({data_backup_result.mounts_backed_up} mounts)"
                     ),
                 }
             )
+
+            # A container that no longer exists is a precondition failure, not a
+            # backup failure. The abort is still correct — orphaned volumes may
+            # hold data nothing has snapshotted, and mounts cannot be enumerated
+            # without the container — but it is terminal and non-destructive, so
+            # it must not cycle the backoff or trigger a rollback.
+            if data_backup_result.status == "container_missing":
+                # Build the remediation against the FULL project: a single -f
+                # with no -p resolves to a different project name and a
+                # different container, and drops cross-file `depends_on`. That
+                # would be actively wrong advice for a multi-file stack.
+                remediation = await UpdateEngine._recreate_command(db, container)
+                # No "then retry": this Update lands in `failed`, which cannot be
+                # approved or applied again. The next check cycle raises a fresh
+                # record once the container is back.
+                raise UpdatePreconditionError(
+                    f"Container {container.runtime_name} does not exist, so its data "
+                    f"cannot be backed up and the update cannot proceed safely. "
+                    f"Recreate it with `{remediation}`; "
+                    f"the next update check will pick it up again."
+                )
 
             if data_backup_result.status == "failed":
                 logger.error(
@@ -810,8 +869,21 @@ class UpdateEngine:
         Returns:
             Failure result dict
         """
-        # Restore compose file from backup (single attempt, no double-restore)
-        if history.backup_path:
+        # A fatal failure means the new container will not stay up; retrying the
+        # same image is pointless, so skip the backoff schedule and roll back now.
+        fatal = isinstance(error, UpdateFatalError)
+
+        # A precondition failure never mutated anything and will not clear on a
+        # timer. Terminal like `fatal`, but must NOT roll back: there is nothing
+        # to revert, and rollback would `compose up` the old tag as a side
+        # effect of a failure that changed nothing.
+        precondition = isinstance(error, UpdatePreconditionError)
+
+        # Restore compose file from backup (single attempt, no double-restore).
+        # Skipped for a precondition abort, which is raised before the compose
+        # write: _restore_compose_file is a blocking copyfile, and there it
+        # would only overwrite the file with a byte-identical copy of itself.
+        if history.backup_path and not precondition:
             try:
                 await UpdateEngine._restore_compose_file(
                     container.compose_file, history.backup_path
@@ -819,18 +891,21 @@ class UpdateEngine:
             except (OSError, PermissionError) as restore_error:
                 logger.error(f"Failed to restore compose backup: {restore_error}")
 
-        # A fatal failure means the new container will not stay up; retrying the
-        # same image is pointless, so skip the backoff schedule and roll back now.
-        fatal = isinstance(error, UpdateFatalError)
-
         # Update retry logic - wrap in transaction for atomicity
         async with db.begin_nested():
             update.last_error = str(error)
             update.retry_count = (update.retry_count or 0) + 1
             update.version += 1  # Increment version for optimistic locking
 
+            if precondition:
+                update.next_retry_at = None
+                update.status = "failed"
+                logger.warning(
+                    f"Update {update.id} for {container.name} aborted on a "
+                    f"precondition; not retrying and not rolling back: {error}"
+                )
             # Calculate next retry time using exponential backoff
-            if not fatal and update.retry_count < (update.max_retries or 3):
+            elif not fatal and update.retry_count < (update.max_retries or 3):
                 # Backoff schedule: 5min, 15min, 1hr, 4hrs
                 backoff_multiplier = update.backoff_multiplier or 3
                 if update.retry_count == 1:
@@ -915,7 +990,10 @@ class UpdateEngine:
                 history.status = "failed"
                 history.error_message = str(error)
                 history.completed_at = datetime.now(UTC)
-                history.can_rollback = bool(history.backup_path)
+                # A precondition abort mutated nothing, so there is nothing to
+                # revert; never offer a Rollback button for it even though a
+                # compose backup exists from step 1.
+                history.can_rollback = bool(history.backup_path) and not precondition
 
         await db.commit()
 

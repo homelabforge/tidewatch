@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Self-healing restarts now recover a container that was removed, not just stopped
+- A missing container reports a precondition error instead of "Pre-update data backup failed", and no longer cycles the retry schedule or offers a rollback
+- Restart liveness probes use the container's Docker-facing name instead of its display name
+- Self-managed infrastructure is skipped before a restart is scheduled, so it no longer sends bogus "max retries reached" notifications
+- Timed-out `docker compose` restarts are killed and reaped; the recreate path gets a longer budget for image pulls
+- "Container Missing" renders correctly on the History page
+
 ## [3.13.2] - 2026-06-22
 
 ### Changed

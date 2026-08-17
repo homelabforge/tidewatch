@@ -49,33 +49,25 @@ beforeEach(() => {
 });
 
 describe('HistoryTab — data_backup_status badge', () => {
-  it('renders green success badge when data_backup_status is "success"', async () => {
-    mockFetchWithHistory([makeHistoryItem({ data_backup_status: 'success' })]);
-
-    render(<HistoryTab container={mockContainer} onClose={vi.fn()} />);
-
-    // Wait for history to load — both status badge and backup badge show 'success'
-    await waitFor(() => {
-      expect(screen.getAllByText('success').length).toBeGreaterThanOrEqual(1);
-    });
-
-    // The data backup badge is the one with the green class
-    const badges = screen.getAllByText('success');
-    const backupBadge = badges.find((el) => el.className.includes('text-green-400'));
-    expect(backupBadge).toBeDefined();
-  });
-
-  it('renders red failed badge when data_backup_status is "failed"', async () => {
-    mockFetchWithHistory([makeHistoryItem({ data_backup_status: 'failed' })]);
+  it.each([
+    ['success', 'text-green-400', 'Success'],
+    ['failed', 'text-red-400', 'Failed'],
+    ['container_missing', 'text-red-400', 'Container Missing'],
+    ['partial', 'text-yellow-400', 'Partial'],
+  ])('renders the %s backup status as a readable, colour-coded badge', async (
+    status,
+    expectedClass,
+    expectedLabel,
+  ) => {
+    mockFetchWithHistory([makeHistoryItem({ data_backup_status: status })]);
 
     render(<HistoryTab container={mockContainer} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText('failed')).toBeInTheDocument();
+      expect(screen.getByText(expectedLabel)).toBeInTheDocument();
     });
 
-    const badge = screen.getByText('failed');
-    expect(badge.className).toContain('text-red-400');
+    expect(screen.getByText(expectedLabel).className).toContain(expectedClass);
   });
 
   it('does not render the Data Backup section when data_backup_status is absent', async () => {

@@ -171,7 +171,7 @@ class BackupResult:
 
     backup_id: str
     container_name: str
-    status: str  # success, failed, timeout, skipped, partial
+    status: str  # success, failed, timeout, skipped, partial, container_missing
     mounts_backed_up: int = 0
     total_size_bytes: int = 0
     duration_seconds: float = 0.0
@@ -621,12 +621,21 @@ class DataBackupService:
             )
 
         except NotFound:
+            # Precondition failure, NOT a backup failure. The backup subsystem
+            # never ran: there is no container to enumerate mounts from. Kept
+            # distinct from "failed" so the update engine can report something
+            # the operator can act on ("recreate the container") instead of
+            # sending them to inspect a backup volume that is working fine.
+            logger.warning(
+                "Container %s does not exist; cannot enumerate mounts to back up",
+                container_name,
+            )
             return BackupResult(
                 backup_id=backup_id,
                 container_name=container_name,
-                status="failed",
+                status="container_missing",
                 duration_seconds=time.monotonic() - start_time,
-                error=f"Container {container_name} not found",
+                error=f"Container {container_name} does not exist (removed, or never created)",
             )
         except (DockerException, APIError) as e:
             return BackupResult(

@@ -1125,6 +1125,65 @@ class TestApplyUpdateOrchestration:
         assert mock_update.status != "applied"
 
     @pytest.mark.asyncio
+    async def test_missing_container_aborts_before_touching_compose(
+        self, mock_db, mock_container, mock_update
+    ):
+        """A removed container aborts the update, but as a *precondition* error.
+
+        Aborting stays correct: orphaned volumes may still hold data that
+        nothing has backed up, and mounts cannot be enumerated without the
+        container. What changes is the diagnosis.
+        """
+        update_result = MagicMock()
+        update_result.scalar_one_or_none = MagicMock(return_value=mock_update)
+        container_result = MagicMock()
+        container_result.scalar_one_or_none = MagicMock(return_value=mock_container)
+        no_in_progress_result = MagicMock()
+        no_in_progress_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(
+            side_effect=[update_result, container_result, no_in_progress_result]
+        )
+
+        from app.services.data_backup_service import BackupResult
+        from app.services.update_engine import UpdatePreconditionError
+
+        mock_data_backup = AsyncMock(
+            return_value=BackupResult(
+                backup_id="bk-1",
+                container_name="sonarr",
+                status="container_missing",
+                error="Container sonarr does not exist (removed, or never created)",
+            )
+        )
+        mock_failure = AsyncMock(return_value={"success": False, "rolled_back": False})
+        mock_compose = AsyncMock(return_value=True)
+
+        with (
+            patch.object(UpdateEngine, "_backup_compose_file", AsyncMock(return_value="/b.backup")),
+            patch("app.services.compose_parser.ComposeParser.update_compose_file", mock_compose),
+            patch.object(UpdateEngine, "_handle_update_failure", mock_failure),
+            patch(
+                "app.services.data_backup_service.DataBackupService.create_backup",
+                mock_data_backup,
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
+            await UpdateEngine.apply_update(mock_db, 1, "user")
+
+        # The compose file must never be touched when the container is gone.
+        mock_compose.assert_not_called()
+
+        mock_failure.assert_called_once()
+        raised = mock_failure.call_args.args[4]
+        assert isinstance(raised, UpdatePreconditionError)
+        message = str(raised)
+        assert "sonarr" in message
+        assert "does not exist" in message
+        # Must name the remedy, not the backup subsystem.
+        assert "up -d" in message
+        assert "data backup failed" not in message.lower()
+
+    @pytest.mark.asyncio
     async def test_apply_update_executes_phases_in_order(
         self, mock_db, mock_container, mock_update
     ):
@@ -1355,6 +1414,68 @@ class TestApplyUpdateOrchestration:
         mock_rollback.assert_called_once()  # immediate, not scheduled
         assert mock_update.status == "rolled_back"
         assert mock_update.next_retry_at is None
+
+    @staticmethod
+    def _failed_history() -> UpdateHistory:
+        return UpdateHistory(
+            id=1,
+            container_id=1,
+            container_name="sonarr",
+            from_tag="3.0.0",
+            to_tag="4.0.0",
+            update_id=1,
+            update_type="manual",
+            status="in_progress",
+            backup_path="/data/backups/sonarr.yml.backup",
+        )
+
+    @pytest.mark.asyncio
+    async def test_precondition_failure_does_not_retry_or_roll_back(
+        self, mock_db, mock_container, mock_update
+    ):
+        """A precondition failure is terminal AND non-destructive.
+
+        Nothing was mutated (the abort happens before the compose write), so
+        rollback would run a `compose up` with the old tag as a side effect of
+        a failure that changed nothing. And retrying is futile: a removed
+        container will still be removed in 5 minutes.
+        """
+        from app.services.update_engine import UpdatePreconditionError
+
+        mock_update.retry_count = 0
+        mock_update.max_retries = 3
+        mock_update.version = 1
+        history = self._failed_history()
+
+        mock_rollback = AsyncMock(return_value={"success": True})
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.notify_update_applied = AsyncMock()
+
+        with (
+            patch.object(UpdateEngine, "_restore_compose_file", AsyncMock()),
+            patch.object(UpdateEngine, "rollback_update", mock_rollback),
+            patch(
+                "app.services.notifications.dispatcher.NotificationDispatcher",
+                return_value=mock_dispatcher,
+            ),
+            patch("app.services.event_bus.event_bus.publish", new=AsyncMock()),
+        ):
+            result = await UpdateEngine._handle_update_failure(
+                mock_db,
+                mock_update,
+                mock_container,
+                history,
+                UpdatePreconditionError("Container sonarr does not exist"),
+            )
+
+        assert result["success"] is False
+        mock_rollback.assert_not_called()
+        assert mock_update.status == "failed"
+        assert mock_update.next_retry_at is None
+        # The History card must not offer Rollback for an update that never
+        # changed anything, even though step 1 left a compose backup behind.
+        assert history.status == "failed"
+        assert history.can_rollback is False
 
     @pytest.mark.asyncio
     async def test_non_fatal_failure_schedules_retry_not_rollback(

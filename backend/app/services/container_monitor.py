@@ -63,7 +63,13 @@ class ContainerMonitorService:
                 "health": state.get("Health", {}),
             }
         except NotFound:
-            return {"error": "Container not found", "running": False}
+            # `missing` is what separates "removed" from "stopped". Both are
+            # running=False, but only a removed container needs `compose up`
+            # (compose restart cannot recreate one), and only a removed
+            # container has no exit code to reason about. Callers that cannot
+            # tell them apart end up reporting a phantom "exited with code
+            # None" forever instead of recovering the container.
+            return {"error": "Container not found", "running": False, "missing": True}
         except (DockerException, RequestsConnectionError) as e:
             logger.error(f"Docker error getting state for {container_name}: {e}")
             return {"error": str(e), "running": False}
@@ -72,7 +78,9 @@ class ContainerMonitorService:
             return {"error": str(e), "running": False}
 
     @staticmethod
-    async def should_retry_restart(exit_code: int | None, oom_killed: bool) -> tuple[bool, str]:
+    async def should_retry_restart(
+        exit_code: int | None, oom_killed: bool, missing: bool = False
+    ) -> tuple[bool, str]:
         """Determine if container should be restarted based on exit code.
 
         Exit code semantics:
@@ -88,10 +96,18 @@ class ContainerMonitorService:
         Args:
             exit_code: Container exit code (None if container is running)
             oom_killed: Whether container was OOM killed
+            missing: Container no longer exists at all
 
         Returns:
             (should_retry, reason_code)
         """
+        # A removed container has no exit code to classify, so this must be
+        # decided before the None check below - otherwise it reads as
+        # "no_exit_code -> don't retry" and the container is stranded forever.
+        # It is recoverable (compose up), so retry it.
+        if missing:
+            return True, "container_missing"
+
         # Container still running or no exit code - don't retry
         if exit_code is None:
             return False, "no_exit_code"
@@ -169,8 +185,11 @@ class ContainerMonitorService:
 
         if not state or not state.get("running"):
             return {
+                # "not_running" would tell an operator the container is stopped
+                # when it does not exist at all, which is the exact misleading
+                # diagnosis this distinction exists to prevent.
                 "healthy": False,
-                "status": "not_running",
+                "status": "missing" if state and state.get("missing") else "not_running",
                 "error": state.get("error") if state else "Container not found",
             }
 

@@ -9,6 +9,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from docker.errors import DockerException, NotFound
 
 from app.services import data_backup_service as dbs
 
@@ -273,3 +274,35 @@ class TestRestorePostgresql:
         ]
         assert psql_calls, "psql was not invoked via argv"
         assert psql_calls[0].args[0] == ["psql", "-U", "myuser", "-f", "/tmp/pg_dumpall.sql"]
+
+
+class TestMissingContainer:
+    """A container that no longer exists is a *precondition* failure, not a
+    backup failure.
+
+    The distinction is load-bearing: ``status="failed"`` means "the backup
+    subsystem tried and could not protect your data", which is what the update
+    engine hard-aborts on. A removed container means the backup never ran at
+    all, and the operator's fix is to recreate it -- not to investigate a
+    backup volume that is working fine.
+    """
+
+    async def test_absent_container_reports_container_missing(self, service):
+        service.client.containers.get = MagicMock(side_effect=NotFound("no such container"))
+        with patch.object(service, "_check_backup_volume_space", new=AsyncMock(return_value=None)):
+            result = await service.create_backup("glances")
+
+        assert result.status == "container_missing"
+        # The operator has to learn *what to do* from this string alone; it is
+        # what lands in update.last_error and the History card.
+        assert "glances" in result.error
+        assert "does not exist" in result.error
+
+    async def test_real_docker_errors_are_still_backup_failures(self, service):
+        """Only NotFound is reclassified. A daemon/permission error still means
+        the backup subsystem genuinely failed and the update must abort."""
+        service.client.containers.get = MagicMock(side_effect=DockerException("permission denied"))
+        with patch.object(service, "_check_backup_volume_space", new=AsyncMock(return_value=None)):
+            result = await service.create_backup("glances")
+
+        assert result.status == "failed"

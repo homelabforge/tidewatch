@@ -38,7 +38,7 @@ class UpdateHistory(Base):
     data_backup_id: Mapped[str | None] = mapped_column(String, nullable=True)
     data_backup_status: Mapped[str | None] = mapped_column(
         String, nullable=True
-    )  # success, failed, skipped, timeout
+    )  # success, failed, skipped, timeout, partial, container_missing
 
     # Execution details
     status: Mapped[str] = mapped_column(

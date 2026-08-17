@@ -122,6 +122,77 @@ class TestContainerMonitorConnectionError:
         assert result is not None
         assert result["running"] is False
         assert "Connection refused" in result["error"]
+        # A degraded daemon is not evidence the container is gone; recreating
+        # on a transient proxy blip would be destructive.
+        assert result.get("missing", False) is False
+
+    @pytest.mark.asyncio
+    async def test_missing_container_is_flagged_missing(self):
+        """A removed container must be distinguishable from a stopped one.
+
+        Both are `running: False`, but only one can be fixed by `compose
+        restart`. Collapsing them cost 23 hours of downtime on a deleted
+        `glances`: NotFound was swallowed into a dict with no `exit_code`, the
+        scheduler read `exit_code=None`, decided "no_exit_code -> do not
+        retry", and logged that the container "exited with code None" 2,507
+        times without ever reporting that it did not exist.
+        """
+        from docker.errors import NotFound
+
+        from app.services.container_monitor import ContainerMonitorService
+
+        monitor = ContainerMonitorService.__new__(ContainerMonitorService)
+        mock_client = MagicMock()
+        mock_client.containers.get.side_effect = NotFound("no such container")
+        monitor.client = mock_client
+
+        result = await monitor.get_container_state("glances")
+
+        assert result is not None
+        assert result["missing"] is True
+        assert result["running"] is False
+
+    @pytest.mark.asyncio
+    async def test_stopped_container_is_not_flagged_missing(self):
+        """Contrast: a container that exists but exited is NOT missing."""
+        from app.services.container_monitor import ContainerMonitorService
+
+        monitor = ContainerMonitorService.__new__(ContainerMonitorService)
+        container = MagicMock()
+        container.attrs = {"State": {"Status": "exited", "Running": False, "ExitCode": 127}}
+        container.reload = MagicMock()
+        mock_client = MagicMock()
+        mock_client.containers.get.return_value = container
+        monitor.client = mock_client
+
+        result = await monitor.get_container_state("glances")
+
+        assert result is not None
+        assert result.get("missing", False) is False
+        assert result["exit_code"] == 127
+
+    @pytest.mark.asyncio
+    async def test_missing_container_is_retryable(self):
+        """The classifier, not its caller, owns this: a removed container has no
+        exit code, and reading the absent code as None yields "no_exit_code ->
+        do not retry", which strands it forever. It is recoverable via
+        `compose up`, so it must classify as retryable."""
+        from app.services.container_monitor import ContainerMonitorService
+
+        assert await ContainerMonitorService.should_retry_restart(None, False, missing=True) == (
+            True,
+            "container_missing",
+        )
+
+    @pytest.mark.asyncio
+    async def test_absent_exit_code_alone_is_still_not_retryable(self):
+        """Contrast: no exit code and not missing stays non-retryable."""
+        from app.services.container_monitor import ContainerMonitorService
+
+        assert await ContainerMonitorService.should_retry_restart(None, False) == (
+            False,
+            "no_exit_code",
+        )
 
     def test_reconnect_creates_new_client(self):
         """reconnect() should create a fresh Docker client."""

@@ -26,6 +26,7 @@ const formatTriggerReason = (reason?: string): string => {
     exit_code: 'Container Exited',
     health_check: 'Health Check Failed',
     oom_killed: 'Out of Memory',
+    container_missing: 'Container Missing',
     signal_killed_SIGKILL: 'Killed (SIGKILL)',
     signal_killed_SIGTERM: 'Terminated (SIGTERM)',
     manual: 'Manual Restart',

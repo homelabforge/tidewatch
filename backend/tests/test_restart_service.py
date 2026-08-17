@@ -663,13 +663,120 @@ def _normal_container() -> Container:
     )
 
 
+class TestRecreateMissingContainer:
+    """`docker compose restart` cannot recreate a container that no longer
+    exists -- it errors with "no container to restart". The choke point picks
+    the action from the container's observed existence so all three restart
+    entry points (scheduler, manual button, raw containers.py call) agree.
+
+    Existence is asked of Compose itself, never of the Docker API by name:
+    `container_monitor` resolves DOCKER_HOST from the environment while this
+    path uses the DB-configured socket, and `runtime_name` falls back to a
+    display name that does not match Compose's `<project>-<service>-<N>`.
+    Either mismatch would report a live container as missing and `up -d` it,
+    applying unrelated pending compose edits to a running service.
+    """
+
+    @staticmethod
+    async def _run(ps_stdout: bytes) -> tuple[list[str], list[list[str]]]:
+        """Drive the choke point; return (action argv, every argv executed)."""
+        calls: list[list[str]] = []
+
+        def _spawn(*argv, **_kw):
+            calls.append(list(argv))
+            proc = AsyncMock()
+            # The `ps -q` probe answers first; the action command answers after.
+            out = ps_stdout if "ps" in argv else b""
+            proc.communicate = AsyncMock(return_value=(out, b""))
+            proc.returncode = 0
+            return proc
+
+        mock_exec = AsyncMock(side_effect=_spawn)
+        monitor_probe = AsyncMock(return_value={"running": False, "missing": True})
+
+        with (
+            patch(
+                "app.services.update_engine.UpdateEngine._ensure_compose_metadata",
+                AsyncMock(return_value=["/compose/web.yml"]),
+            ),
+            patch(
+                "app.services.settings_service.SettingsService.get",
+                AsyncMock(side_effect=["/var/run/docker.sock", "docker compose"]),
+            ),
+            patch(
+                "app.services.container_monitor.container_monitor.get_container_state",
+                monitor_probe,
+            ),
+            patch("asyncio.create_subprocess_exec", mock_exec),
+        ):
+            await RestartService._execute_docker_compose_restart(_normal_container(), AsyncMock())
+
+        # The name-based Docker API probe must never be the oracle here.
+        monitor_probe.assert_not_awaited()
+        assert calls, "no compose command was executed"
+        return calls[-1], calls
+
+    async def test_absent_compose_service_is_recreated(self):
+        action, calls = await self._run(ps_stdout=b"")
+        assert action[-5:] == ["up", "-d", "--no-deps", "--no-recreate", "nginx-app"]
+
+    async def test_recreate_cannot_apply_pending_compose_edits(self):
+        """--no-recreate is the backstop that makes a wrong probe answer safe.
+
+        Verified against Compose: on a live container it is a no-op and does
+        NOT apply pending compose edits; on an absent one it creates; on a
+        stopped one it starts. It also closes the probe/action TOCTOU. Without
+        it, anything that misreads existence silently applies unrelated staged
+        compose changes to a running service.
+        """
+        action, _ = await self._run(ps_stdout=b"")
+        assert "--no-recreate" in action
+
+    async def test_probe_includes_stopped_containers(self):
+        """`-a` is load-bearing and verified against Compose itself: plain
+        `ps -q` prints nothing for a *stopped* container, so without `-a` the
+        normal auto-restart case (stopped) would read as absent and every
+        self-heal would become an `up -d` that applies pending compose edits.
+        Removed containers print nothing under `-aq` too, which is the
+        discrimination this relies on."""
+        _, calls = await self._run(ps_stdout=b"")
+        probe = calls[0]
+        assert probe[-3:] == ["ps", "-aq", "nginx-app"]
+
+    async def test_present_compose_service_is_restarted(self):
+        """Regression guard: `up -d` on a merely-stopped container would also
+        apply unrelated pending compose edits, which a restart must never do."""
+        action, _ = await self._run(ps_stdout=b"9f2c1b4e5a6d\n")
+        assert action[-2:] == ["restart", "nginx-app"]
+        assert "up" not in action
+
+    async def test_probe_uses_the_same_endpoint_as_the_action(self):
+        """Both commands must carry the DB-resolved DOCKER_HOST. Probing a
+        different daemon than the one being mutated is how a live remote
+        service gets reported missing and recreated."""
+        _, calls = await self._run(ps_stdout=b"")
+        assert len(calls) == 2
+        # Same compose binary, project and file flags on probe and action.
+        assert calls[0][: calls[0].index("ps")] == calls[1][: calls[1].index("up")]
+
+
 class TestSelfManagedRestartGuard:
     """H5 — restarting self-managed infra (socket proxies) is blocked."""
 
-    async def test_choke_point_blocks_self_managed(self):
+    @pytest.mark.parametrize("missing", [False, True])
+    async def test_choke_point_blocks_self_managed(self, missing):
+        """The guard fires before the recreate branch, so a *removed* socket
+        proxy is blocked too -- recreating one would sever TideWatch's own
+        daemon connection just as surely as restarting it."""
         from app.services.protected_infra import SelfManagedInfraError
 
-        with pytest.raises(SelfManagedInfraError) as exc:
+        with (
+            patch(
+                "app.services.container_monitor.container_monitor.get_container_state",
+                AsyncMock(return_value={"running": False, "missing": missing}),
+            ),
+            pytest.raises(SelfManagedInfraError) as exc,
+        ):
             await RestartService._execute_docker_compose_restart(
                 _self_managed_container(), AsyncMock()
             )

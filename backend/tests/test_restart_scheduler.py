@@ -546,6 +546,186 @@ class TestCheckAndScheduleRestart:
         await restart_scheduler._check_and_schedule_restart(db, container)
 
 
+class TestMissingContainerRecovery:
+    """A container that was *removed* (not just stopped) must still be
+    recovered, not stranded as an unclassifiable absent exit code."""
+
+    async def test_missing_container_schedules_recovery(
+        self,
+        restart_scheduler,
+        db,
+        make_container,
+        mock_restart_service,
+        mock_container_monitor,
+        scheduler,
+        mock_event_bus,
+    ):
+        container = make_container(
+            name="glances",
+            image="nicolargo/glances",
+            current_tag="4.5.5",
+            auto_restart_enabled=True,
+        )
+        db.add(container)
+        await db.commit()
+
+        state = ContainerRestartState(
+            container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
+            enabled=True,
+            max_attempts=5,
+            consecutive_failures=0,
+        )
+        mock_restart_service.get_or_create_restart_state.return_value = state
+        mock_container_monitor.get_container_state.return_value = {
+            "running": False,
+            "missing": True,
+            "error": "Container not found",
+        }
+        mock_container_monitor.should_retry_restart.return_value = (True, "container_missing")
+        mock_restart_service.calculate_backoff_delay.return_value = 60.0
+
+        await restart_scheduler._check_and_schedule_restart(db, container)
+
+        scheduler.add_job.assert_called_once()
+        event = mock_event_bus.publish.call_args[0][0]
+        assert event["type"] == "restart-scheduled"
+        assert event["reason"] == "container_missing"
+
+    async def test_liveness_check_uses_runtime_name(
+        self,
+        restart_scheduler,
+        db,
+        make_container,
+        mock_restart_service,
+        mock_container_monitor,
+        mock_async_session,
+    ):
+        """The Docker-facing name is `runtime_name` (docker_name label, falling
+        back to name). Probing `name` would report a container missing that is
+        actually running -- and now that "missing" triggers a recreate, that
+        mistake would recreate a live container."""
+        container = make_container(
+            name="Glances (monitoring)",
+            image="nicolargo/glances",
+            current_tag="4.5.5",
+            auto_restart_enabled=True,
+        )
+        container.docker_name = "glances"
+        db.add(container)
+        await db.commit()
+
+        state = ContainerRestartState(
+            container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
+            enabled=True,
+            max_attempts=5,
+            consecutive_failures=1,
+        )
+        db.add(state)
+        await db.commit()
+
+        mock_container_monitor.get_container_state.return_value = {"running": True}
+
+        await restart_scheduler._execute_restart(container.id, 1)
+
+        mock_container_monitor.get_container_state.assert_awaited_with("glances")
+
+
+class TestSelfManagedInfraNotScheduled:
+    """Self-managed infrastructure must be filtered out *before* a restart is
+    scheduled, not after.
+
+    RestartService raises SelfManagedInfraError when the job finally runs, and
+    the scheduler catches it and returns -- without clearing `next_retry_at` or
+    `consecutive_failures`. So every poll re-schedules, the failure count climbs,
+    and the operator eventually gets a "max retries reached" notification for a
+    restart that was never attempted.
+    """
+
+    async def test_missing_self_managed_container_is_not_scheduled(
+        self,
+        restart_scheduler,
+        db,
+        make_container,
+        mock_restart_service,
+        mock_container_monitor,
+        scheduler,
+    ):
+        container = make_container(
+            name="socket-proxy-rw",
+            image="x",
+            current_tag="latest",
+            auto_restart_enabled=True,
+        )
+        container.service_name = "socket-proxy-rw"
+        db.add(container)
+        await db.commit()
+
+        state = ContainerRestartState(
+            container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
+            enabled=True,
+            max_attempts=5,
+            consecutive_failures=0,
+        )
+        mock_restart_service.get_or_create_restart_state.return_value = state
+        mock_container_monitor.get_container_state.return_value = {
+            "running": False,
+            "missing": True,
+        }
+        mock_container_monitor.should_retry_restart.return_value = (True, "container_missing")
+
+        await restart_scheduler._check_and_schedule_restart(db, container)
+
+        scheduler.add_job.assert_not_called()
+        assert state.consecutive_failures == 0
+        assert state.next_retry_at is None
+
+    async def test_exited_self_managed_container_is_not_scheduled(
+        self,
+        restart_scheduler,
+        db,
+        make_container,
+        mock_restart_service,
+        mock_container_monitor,
+        scheduler,
+    ):
+        """Same hole predates the missing-container work: any non-zero exit on a
+        socket proxy scheduled a restart that could only ever raise."""
+        container = make_container(
+            name="socket-proxy-ro",
+            image="x",
+            current_tag="latest",
+            auto_restart_enabled=True,
+        )
+        container.service_name = "socket-proxy-ro"
+        db.add(container)
+        await db.commit()
+
+        state = ContainerRestartState(
+            container_id=container.id,
+            success_window_seconds=300,
+            container_name=container.name,
+            enabled=True,
+            max_attempts=5,
+            consecutive_failures=0,
+        )
+        mock_restart_service.get_or_create_restart_state.return_value = state
+        mock_container_monitor.get_container_state.return_value = {
+            "running": False,
+            "exit_code": 1,
+        }
+        mock_container_monitor.should_retry_restart.return_value = (True, "application_error")
+
+        await restart_scheduler._check_and_schedule_restart(db, container)
+
+        scheduler.add_job.assert_not_called()
+
+
 class TestExecuteRestart:
     """Test suite for _execute_restart() method."""
 
