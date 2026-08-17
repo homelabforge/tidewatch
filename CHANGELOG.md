@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-08-17
+
 ### Fixed
 - Self-healing restarts now recover a container that was removed, not just stopped
 - A missing container reports a precondition error instead of "Pre-update data backup failed", and no longer cycles the retry schedule or offers a rollback
