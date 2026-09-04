@@ -15,6 +15,6 @@ permissions:
 
 jobs:
   ci:
-    uses: homelabforge/shared-workflows/.github/workflows/python-react-ci.yml@v1.4.3
+    uses: homelabforge/shared-workflows/.github/workflows/python-react-ci.yml@v1.5.0
     with:
       security-tripwire-script: .github/scripts/security-tripwire.sh
